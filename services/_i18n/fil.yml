@@ -1,0 +1,2511 @@
+# Filipino translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/fil.yml --restamp '<key>'
+2miners-etc.description:
+  text: "Subaybayan ang hindi pa nababayarang Ethereum Classic na balanse na hawak ng 2Miners para sa iyong public na ETC payout address. Patakbuhin ang sarili mong miner at ituro ito sa pool. Binabasa ng CashPilot ang balanse at hihilingin nitong kumpirmahin mo ang mga payout kapag bumaba ang balanse.\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "Ethereum Classic mining pool, sinusubaybayan gamit ang iyong payout address"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC (nababago)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "Tinitingnan ng pool ang iyong payout threshold kada dalawang oras"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "Awtomatikong nagbabayad ang 2Miners sa iyong address kapag naabot mo na ang threshold na pinili mo. Ang pinakamababang threshold para sa ETC payout ay 0.1 ETC.\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "Sa 2Miners naiipon ang hindi pa nababayarang balanse. Hiwalay na binabasa mula sa Ethereum Classic ang balanse ng wallet. Tingnan sa iyong wallet ang halagang natanggap mo bago kumpirmahin ang isang payout sa CashPilot.\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "Ilagay ang public na Ethereum Classic payout address na ginagamit ng iyong miner sa 2Miners, na nagsisimula sa <b>0x</b>. Huwag isama ang pangalan ng worker.\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "Kailangan ng ETCHash miner na nakaturo sa 2Miners"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "compute"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "Hindi. Ang miner mo ang nagpapadala ng mining work sa pool."
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "Ginagamit ng pool ang iyong payout address, ang mga pangalan ng worker na pinili mo, at ang IP address ng iyong miner."
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "Kahit sino ay puwedeng tumingin ng stats gamit ang payout address. Para mabago ang threshold, hihingi ang pool ng kumpirmasyon ng IP ng worker."
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "Naniningil ang pool ng 1% na fee at hindi nagbabayad hangga't hindi naaabot ang iyong threshold."
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Ang Anyone Protocol (dating ATOR) ay isang decentralized na privacy network na gumagamit ng onion routing. Nagpapatakbo ng mga relay node ang mga node operator at kumikita sila ng ANYONE token para sa bandwidth na ibinibigay nila. Isipin itong \"Tor na may insentibo.\" Pinapatakbo ito ng CashPilot gamit ang sarili nitong image, na binuo mula sa signed na Debian package ng proyekto, para sa amd64 at arm64. Sa file ginagawa ang configuration, sa pamamagitan ng anonrc file na naka-mount sa container (Nickname, ContactInfo, ORPort, atbp.). Walang kinikita ang isang relay hangga't walang 100 ANYONE na naka-lock para dito nang hindi bababa sa 180 araw, at kini-claim ang mga reward sa pamamagitan ng pag-sign sa iyong wallet. Inililista rin ng relay ang iyong public IP sa relay directory ng network, na puwedeng makasira sa reputasyon ng IP na binabayaran ng mga residential bandwidth app.\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "Decentralized onion routing - mga Tor relay node na may insentibo"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "Ang ed25519 identity key ng relay. Kapag nasira ito, mawawala ang reputasyon ng relay at babalik sa zero ang kasaysayan ng kita nito."
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "Nagbabayad lang kapag may 100 ANYONE na naka-lock kada relay nang hindi bababa sa 180 araw at may reward claim na na-sign sa iyong wallet. Kung walang stake, walang kinikita ang relay. Kung mayroon, nakadepende ang kita sa bandwidth na ibinigay at sa uptime."
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "Batay sa epoch"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "Itinatakda bilang ContactInfo sa anonrc, na may prefix na '@anon:0x...'."
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "Mga relay fingerprint na pinaghihiwalay ng kuwit. Wala ito sa web dashboard: patakbuhin ang <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> sa host na nagpapatakbo ng relay.\n"
+  source: "9b5c068c9636"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "Bandwidth, bilang relay sa Anyone network (isang fork ng Tor)."
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "Oo. Ipinapasa nito ang traffic ng ibang tao. Kung ang IP mo ang huling hop ay nakadepende sa kung naka-configure bilang exit ang relay."
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "Ang public identity key ng relay, ang iyong IP at port, at ang uptime statistics, na sadyang inilalathala lahat sa network directory. Kung magtatakda ka ng ContactInfo sa iyong anonrc, ilalathala rin ito roon at permanenteng mai-index sa publiko — kadalasan ay email address ito, kaya iwanan itong blangko maliban kung gusto mong maging public ito."
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "Totoo. Iniuugnay sa koneksyon mo ang traffic ng relay. Lalo na ang mga exit relay ay umaakit ng mga abuse complaint; maraming consumer ISP ang nagbabawal sa mga ito."
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "Walang account na kailangang i-sign up, kaya walang limitasyon kada account. Para kumita, kailangan mo pa rin ng Ethereum wallet na may 100 ANYONE na naka-lock para sa bawat relay nang hindi bababa sa 180 araw, at kailangan ng CashPilot ang mga relay fingerprint para mabasa ang mga reward. Hindi naglalathala ang proyekto ng limitasyon ng relay kada IP, at wala ring idinedeklara ang katalogo."
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "Walang kinikita ang isang relay maliban kung may 100 ANYONE na naka-lock para dito nang hindi bababa sa 180 araw, at bawat reward claim ay sina-sign sa iyong wallet."
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "Sadyang ipinapasa nito ang traffic ng ibang tao, nang hindi sinusuri kung sino sila; umaakit ng mga abuse complaint ang mga exit relay."
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "Inilalathala sa network directory ang identity, IP at uptime ng relay, at magiging public magpakailanman ang anumang ContactInfo na itatakda mo."
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "Walang account na kailangang i-sign up. Wallet lang ang kailangan ng relay, walang identity check."
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "Ang relay software ay isang public na fork ng Tor, sa ilalim ng lisensya ng Tor."
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "Bumubuo ang CashPilot ng sarili nitong image mula sa inilathalang relay software ng Anyone, na hindi nangangailangan ng account."
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Ang Bitping ay isang decentralized na platform para sa network monitoring na nagbabayad sa iyo para magpatakbo ng node. Gumagawa ang node mo ng website monitoring, latency testing at network quality check para sa mga customer ng Bitping. Gumagana ito sa parehong residential at VPS na koneksyon. Sa unang start, nagla-log in ang Docker image gamit ang mga environment variable na BITPING_EMAIL at BITPING_PASSWORD (\"Attempting login with environment variables\" sa sarili nitong log), at pagkatapos ay sine-save ang session sa volume mount para hindi na kailangang mag-authenticate ulit tuwing restart.\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "Bandwidth sharing - decentralized network monitoring, gumagana sa VPS"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "Password"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "Ang email ng iyong Bitping account (parehong login sa <a href='https://app.bitping.com' target='_blank'>app.bitping.com</a>)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "Ang password ng iyong Bitping account. Isang beses lang itong ginagamit para gumawa ng node session, na pagkatapos ay nananatili sa data volume."
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "Nakadepende ang kita sa kalidad ng network at sa demand para sa monitoring mula sa lokasyon mo. Tinatanggap ang mga VPS node."
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "Nasa nodes.bitping.com ang kita ng node; ang app.bitping.com ay ang dashboard para sa mga API customer. SOL lang ang mga withdrawal: kapag lumampas na sa $0.05 ang hindi pa nababayarang balanse, i-type ang Solana address sa request, na ipoproseso sa loob ng 24 na oras. Ang bago o walang lamang Solana wallet ay kailangang may mga 0.001 SOL muna, para sa rent minimum ng network."
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "Solana na lang ngayon, at ita-type ang address SA ORAS NG WITHDRAWAL sa halip na naka-save."
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "Gamitin ang email at password ng iyong Bitping account (pareho sa <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)."
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "I-withdraw ang iyong Bitping balanse"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "Puwedeng kunin ng Bitping ang kitang hindi na-claim nang mahigit 12 buwan, matapos ang 30 araw na abiso sa email."
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "Mag-request ng SOL withdrawal sa nodes.bitping.com at i-type ang iyong Solana address sa request."
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "Binabayaran ang mga withdrawal sa Solana (SOL), sa address na ita-type mo sa bawat request."
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "Ayon sa help ng Bitping, puwedeng pumalya ang withdrawal sa bago at walang lamang Solana wallet hangga't hindi mo nilalagyan ng kaunting SOL ang wallet na iyon."
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "Ayon sa help ng Bitping, suportado ang mga server at Docker container."
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "Solana address lang na ita-type sa request ang kailangan para sa withdrawal."
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Ang Bytebenefit ay isang bandwidth-sharing na serbisyo na nagbabayad sa PayPal at Stripe. Walang opisyal na Docker image; ang Windows desktop app at Android app ang mga client. Nasa bytebenefit.io ang serbisyo -- tinalikuran na ang lumang bytebenefit.com domain at naka-park ito sa isang marketplace, kaya minsan itong minarkahang patay dito.\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "Bandwidth sharing - PayPal/Stripe payout, desktop/Android app"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "Walang available na Docker image. Windows desktop at Android app lang."
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "20% ng kita mula sa traffic ng mga referral"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "$1 (10,000 Coins) na welcome bonus"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "Sinasabi ng listing ng app sa Google Play na ginagamit ang traffic mo para sa mga web-intelligence request ng mga client ng Infatica, nang hindi sinasabi kung sino sila o paano sila sinusuri."
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "Nawala sa Google Play ang Android app noong Abril 2026 matapos ang 17 buwan."
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "Hindi pinapatakbo ng CashPilot ang ByteBenefit: ginagamit mo ang sariling app ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Hinahayaan ka ng Bytelixir na kumita ng passive income sa pag-share ng hindi mo nagagamit na internet bandwidth. Windows at Android lang ang suportado — sinasabi ng opisyal na FAQ na walang planong Linux o Docker client, hindi suportado ang iOS, at walang macOS. Malaki ang epekto ng lokasyon sa kita. May web dashboard sa dash.bytelixir.com para sa pagsubaybay. Walang available na Docker image.\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "Bandwidth sharing - Windows + Android lang"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "Session Cookie"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "Remember Web Cookie"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "XSRF Token"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "Mag-log in sa <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a>, pindutin ang F12 → Application → buksan ang <b>Cookies</b> sa kaliwang sidebar → i-click ang sub-item na <code>https://dash.bytelixir.com</code> → sa listahan ng cookie sa kanan, hanapin ang <code>bytelixir_session</code> → kopyahin ang Value nito (isang mahabang JWT na nagsisimula sa eyJ)"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "Parehong lokasyon (Cookies → <code>https://dash.bytelixir.com</code>) → hanapin ang cookie na <code>remember_web_...</code> → kopyahin ang Value nito (opsyonal, pinapahaba ang buhay ng session)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "Parehong lokasyon → hanapin ang <code>XSRF-TOKEN</code> → kopyahin ang Value nito (opsyonal)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "Nag-iiba ang kita ayon sa lokasyon ($2-50/buwan). Walang Docker image. Kailangan ang desktop app o Android app."
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "Crypto lang. Nakadepende sa coin ang minimum: USDT $5, USDC $5, TON $8, LTC $10, ETH $40, BTC $250. Ita-type mo ang address sa bawat request. Inaasikaso ang mga request sa oras ng trabaho, sa loob ng 24 na oras."
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "Hawak ng Bytelixir ang balanse; ita-type ang wallet address sa bawat payout request, at hindi ito kailanman sine-save sa container."
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "Mag-log in sa <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> <b>nang naka-tick ang Remember Me</b>, pindutin ang F12 → Application → buksan ang <b>Cookies</b> sa kaliwang sidebar → i-click ang <code>https://dash.bytelixir.com</code>, pagkatapos ay kopyahin ang tatlong value: <b>bytelixir_session</b>, <b>remember_web_…</b> (ang mahaba na nagsisimula sa prefix na iyon) at <b>XSRF-TOKEN</b>. Ang session cookie lang ay mag-e-expire mga dalawang oras matapos mo itong kopyahin, kaya titigil ang pagkolekta sa hapon ding iyon; isang taon ang tagal ng remember_web cookie at ito ang nagpapanatiling gumagana nito."
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "50% ng kanilang kita habambuhay"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "$1 na greeting bonus"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "Crypto lang, at nakadepende sa coin ang minimum, mula $5 para sa USDT hanggang $250 para sa Bitcoin."
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Bytelixir: ginagamit mo ang sariling app ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "May rating itong 4.6 sa Trustpilot mula sa 283 review, karamihan ay pumupuri sa mga crypto payout; ilan ang nag-uulat na hindi dumating ang payout nila."
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "Crypto address lang na ita-type sa request ang kailangan para sa payout."
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Ang Clore.ai ay isang peer-to-peer na GPU marketplace. Ililista mo ang isang Linux machine na may NVIDIA GPU, itatakda mo ang sarili mong spot at on-demand na presyo, at magpapatakbo ang mga renter ng sarili nilang Docker container dito. Binabayaran ka lang para sa mga minutong naka-rent ito, sa CLORE, BTC, USDT o USDC. Para mag-host, kailangan ng x86_64 machine na may Ubuntu 22.04 o mas bago (o HiveOS), gumaganang NVIDIA driver at hindi bababa sa 100 Mbps na upload at download. Hindi suportado ang mga AMD GPU.\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "GPU marketplace - paupahan ang mga NVIDIA GPU, bayad sa CLORE, BTC o USD stablecoin"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "Binabayaran lang para sa mga minutong naka-rent, sa presyong itinakda mo. Ang pinakamataas sa range, $490, ay ang sariling ceiling ng Clore para sa isang RTX 4090 na nakalista kada minuto ('up to ~$490/month'); mas maliit ang kita ng mas maliliit na card at walang kinikita ang card na idle. Kinukuha ng Clore ang 5% (on-demand) o 1.25% (spot) ng bawat rental, dagdag pa ang 15% kapag nagbayad ang renter sa BTC, USDT o USDC sa halip na CLORE."
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "Mag-withdraw mula sa Account > Billing papunta sa sarili mong wallet: CLORE (ERC-20, minimum 200, fee na mga $0.50), BTC (minimum 0.0001, fee 0.00005 BTC) o USDT/USDC sa Ethereum o BNB Chain (minimum $10, fee $1)."
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "Hawak ng Clore ang balanse (CLORE, BTC at isang USD balanse para sa USDT/USDC) hanggang mag-withdraw ka. Pinipili ang chain sa bawat withdrawal: Ethereum para sa CLORE, Bitcoin para sa BTC, Ethereum o BNB Chain para sa USDT/USDC."
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "15% (standard tier) ng mga platform fee na binabayaran ng mga host at renter na ni-refer mo, sa bawat rental; hindi nag-e-expire ang code; bayad sa currency ng rental (CLORE, BTC o USD)"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "100 Mbps na upload at download"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "GPU compute time sa iyong makina."
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "Oo. Nagpapatakbo ang mga renter ng sarili nilang Docker container sa iyong makina, at lumalabas ang traffic nila mula sa koneksyon mo; naka-forward sa internet ang SSH at mga application port."
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "Saklaw ng privacy policy ng Clore ang account data at ang iyong IP address na may tinatayang lokasyon; mga identity document lang kung hihingi ang Clore ng KYC."
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "Kailangang maaabot mula sa internet ang mga inbound port (22, 8080 at 3000-4000 bilang default) at tumatakbo sa linya mo ang mga workload ng mga estranghero. Sinasabi mismo ng network guide ng Clore na may mga ISP na nagbabawal ng hosting."
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "18 pataas, at wala sa bansang may sanction. Puwedeng i-suspend o isara ng Clore ang isang account ayon sa sarili nitong pasya, at puwedeng mawala ang pondo dahil sa ipinagbabawal na paggamit."
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "Walang legal na entity na pinangalanan ang mga termino o ang privacy policy, at ipinapaubaya ng mga termino sa susunod na bersyon kung aling hurisdiksyon ang masusunod."
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Puwedeng i-suspend o isara ng Clore ang isang account ayon sa sarili nitong pasya, at puwedeng humantong sa pagkawala ng pondo ang ipinagbabawal na paggamit."
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "Crypto lang ang mga payout (CLORE, BTC, USDT o USDC), at kumukuha ang Clore ng dagdag na 15% sa rental na binayaran ng renter sa BTC, USDT o USDC, maliban kung mag-lock ang host ng CLORE para mabawasan ito."
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "Binabayaran lang ang host para sa mga minutong naka-rent, at ang numero ng Clore para sa RTX 4090 ay ceiling (\"up to ~$490/month\") para sa isang card lang."
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "Walang KYC para sa basic na paggamit, pero puwedeng humingi ang Clore ng identity verification para sa malalaking withdrawal o compliance case."
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "Puwedeng magpatakbo ang mga renter ng kahit anong public na Docker image sa iyong makina. Nakalista sa mga termino ang mga ipinagbabawal na paggamit (malware, DDoS, CSAM at iba pa), pero wala kaming nakitang paliwanag kung paano sinusuri ang mga renter."
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Clore.ai: ikaw ang mag-i-install ng hosting agent ng Clore sa sarili mong GPU machine (Ubuntu 22.04 o mas bago, o HiveOS), kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo."
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "Kinukuha ng Clore ang 5% ng on-demand na rental (1.25% sa spot) kapag nagbayad ang renter sa CLORE, walang dagdag na fee."
+  source: "699adf0a2179"
+dawn.description:
+  text: "Nagpapatakbo ang DAWN ng validator network na sumusuri sa bandwidth at coverage para sa AI infrastructure na pinopondohan sa pamamagitan ng DAWN protocol. Sumasali ang DAWN Validator browser extension sa mga proof-of-bandwidth at coverage check na ito at kumikita ng DAWN reward habang tumatakbo. Wala pang tiyak na cash value ang mga reward. Gumawa ng account sa extension at ilagay ang referral code na 2QLQV97F kapag hiningi ito.\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "DePIN validator - kumikita ng DAWN points ang browser extension"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "Kumikita ng Dawn Points bago ang token launch. Nakadepende ang totoong halaga sa magiging presyo ng token. Mas malaki ang kita ng hardware box kaysa sa browser extension."
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "Token airdrop (TBA)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "Gumagana ang extension pero hilaw pa. May inanunsyong Black Box hardware. Tingnan ulit sa hinaharap."
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "Points ang kinikita ng extension; hanggang Oktubre 2026, walang nakumpirmang token distribution sa mga node operator."
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "Walang tiyak na halaga ang points hangga't walang token launch at hindi pa inaanunsyo ang conversion nito."
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Dawn: ginagamit mo ang sariling browser extension ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Ang Deeper Network ay isang proyekto ng decentralized VPN at web3 infrastructure. Pangunahing nangangailangan ito ng proprietary na Deeper Connect hardware device. Ang Moken ay kaugnay na platform para sa mining/staking. Hindi ito software lang.\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "Decentralized VPN - kailangan ng proprietary na hardware device"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "Kailangan ng Deeper Connect hardware ($200-500). Moken platform para sa mining/staking. Hindi ito software lang."
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "Tuloy-tuloy"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "Komisyon sa benta ng device"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "5% diskwento sa Deeper Connect device gamit ang coupon na SERGIO"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "DPR ang mining reward at nakadepende ito sa credit score na mabagal tumaas o tumataas sa pag-stake ng DPR."
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Deeper Network: ginagamit mo ang sariling router hardware ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "Hinahayaan ka ng EarnApp ng Bright Data na ibenta ang hindi mo nagagamit na bandwidth para sa passive income. Ang Bright Data ang pinakamalaking proxy network sa mundo, na nagpapatakbo ng data collection para sa mga kumpanyang Fortune 500. Pinapatakbo ito ng CashPilot gamit ang sarili nitong image, na nagda-download ng naka-pin na EarnApp build mula sa CDN ng Bright Data sa unang start, sinusuri ang sha256 nito at pinapatakbo ito sa lite mode gamit lang ang UUID.\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "Bandwidth sharing - suportado ng Bright Data"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "Node UUID"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "Ang iyong EarnApp node ID: sdk-node- na sinusundan ng 32 lowercase hex character, gaya ng ipinapakita ng 'earnapp showid'. Pagkatapos mag-deploy, i-link ito nang isang beses sa pagbukas ng https://earnapp.com/r/ na sinusundan ng UUID na ito habang naka-sign in sa EarnApp; kumikita ang node na hindi naka-link, pero walang napupunta sa balanse mo"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "Paulit-ulit na hindi maabot ng EarnApp ang mga server nito at nagre-restart, kaya kaunti o walang kinikita. I-restart ang kopyang ito; kung patuloy itong nangyayari, tingnan ang internet connection ng makinang ito."
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "Buksan ang link na ito habang naka-sign in sa EarnApp para idagdag ang node sa iyong account. Hangga't hindi mo ito ginagawa, kumikita ang node pero walang napupunta sa balanse mo."
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "Malaki ang epekto ng lokasyon. Pinakamalaki ang kita ng mga IP sa US/EU. Tumataas ang kita ayon sa bandwidth na nagamit."
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "Kapag hiniling (may auto-redeem: PayPal $10 min, Wise $10 min, Amazon $50 min)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "I-on nang isang beses ang auto-redeem at kusang magbabayad ang EarnApp tuwing maaabot ng balanse ang minimum ng paraan: PayPal $10, Wise $10, Amazon $50. Galing sa Bright Data Ltd. ang mga bayad sa PayPal. Noong Oktubre 2026, dumating ang isang bayad sa PayPal na mga 2% na mas mababa sa na-redeem na balanse."
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "Hawak ng EarnApp ang balanse; nire-redeem sa Amazon/Wise/PayPal."
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "Mag-log in sa <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, pindutin ang F12 → Application → Cookies, kopyahin ang value ng <b>oauth-refresh-token</b>."
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "10% ng kanilang kita habambuhay, binabayaran nang dagdag sa kita nila"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "Sinasabi ng help centre ng EarnApp na mahigpit na ipinagbabawal ang pag-install nito sa mga Docker container, virtual machine, hosting service o home server, at ganoon mismo ito pinapatakbo ng CashPilot."
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "Sinasabi ng parehong help article na ang account na mahuhuling ganoon ang paggamit ay tatanggalin nang walang abiso at kakanselahin ang mga nakabinbing bayad nito."
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "Dumating ang aming PayPal payout noong Oktubre 2026, mga 2% na mas mababa sa na-redeem na balanse."
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "$10 na minimum para sa PayPal at Wise, na may auto-redeem na kusang nagbabayad."
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "Pag-aari ng Bright Data ang EarnApp, at galing sa Bright Data Ltd., isang kumpanyang may pangalan, ang mga bayad nito sa PayPal."
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Binabayaran ka ng Earn.fm para sa pag-share ng iyong internet bandwidth. Gumagamit ang earnings collector ng email/password na auth sa pamamagitan ng Supabase. Magaan na Docker image na madaling i-deploy (gumagamit ang Docker client ng hiwalay na UUID token).\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "Bandwidth sharing - email/password na auth, magaan na client"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "API Key"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "Mag-log in sa <a href=\"https://app.earn.fm\">app.earn.fm</a> → i-click ang profile icon mo (kanang itaas) → Account Settings → kopyahin ang API Key (UUID format)"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "Medyo bagong platform. Nag-iiba ang kita ayon sa lokasyon at available na bandwidth."
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "Minimum $15. Mga paraan: USDT sa BEP20 o Polygon ($1 fee) o TRC20 ($3 fee), PayPal, Amazon o Starbucks gift card mula $15, o bank wire mula $1,000 na ibinabawas ang transfer fee. Bago ang unang payout, sasagutan mo ang isang billing profile (legal na pangalan at address), na ginagamit para sa mga resibo ng payout."
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "Hawak ng Earn.fm ang balanse; iwi-withdraw kapag hiniling."
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "Gamitin ang email at password ng iyong Earn.fm account (pareho sa login sa <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a>)."
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "10% ng kanilang kita habambuhay"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "$5 na panimulang balanse"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "$15 na minimum, $1 hanggang $3 na fee sa USDT, at bank wire lang mula $1,000."
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "Bago ang unang payout, sasagutan mo ang billing profile gamit ang iyong legal na pangalan at address."
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "Iniulat ng mga reviewer noong 2025 na hindi sumasagot ang support sa email at Discord; napansin ng Trustpilot na hindi sumasagot ang Earn.fm sa mga negatibong review."
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Naglalathala ang Earn.fm ng sarili nitong Docker image, earnfm/earnfm-client."
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ang Ebesucher ay isang traffic exchange platform kung saan kumikita ka ng credit sa pagbisita sa mga website sa pamamagitan ng awtomatikong surfbar. Tumatakbo ito bilang browser extension/addon. Hindi ito tradisyonal na bandwidth-sharing na serbisyo — gumagawa ito ng traffic sa awtomatikong pag-browse sa mga website.\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "Traffic exchange surfbar - browser extension"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "Kita sa BTP points na puwedeng gawing EUR. Browser extension lang."
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "Payout sa euro sa pamamagitan ng PayPal o bank transfer."
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "Hindi pinapatakbo ng CashPilot ang eBesucher: isa itong browser extension, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "Payout mula 2 euro sa PayPal o SEPA, hindi bababa sa isang beses kada linggo, walang fee."
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "Tumatakbo ang eBesucher mula pa noong 2002."
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "Pinapangalanan ng imprint ang operator, ang TurboAd GmbH, na nakarehistro sa Berlin-Charlottenburg (HRB 160730 B)."
+  source: "84cbddd4330b"
+flux.description:
+  text: "Ang Flux ay isang compute infrastructure na nakakalat sa buong mundo. Nag-i-stake ng FLUX token ang mga node operator at nagbibigay sila ng server resources. Tatlong tier: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). May mga opisyal na Docker image.\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "Decentralized compute - kailangan ng FLUX token stake"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "Kailangan ng stake na 1,000+ FLUX (~$50-500 depende sa presyo). Mas maraming collateral ang kailangan ng mas matataas na tier pero mas malaki ang kita."
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "Block reward"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "Kailangan ng pinakamaliit na node tier ng 1,000 FLUX na naka-lock bilang collateral."
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "Bumababa nang 10% kada taon ang block reward, at nakita ng isang gabay noong 2026 na mahina ang reward ng maliit na tier kung susukatin sa dolyar."
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Flux: ginagamit mo ang sariling node software ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "Open source ang Flux daemon sa ilalim ng MIT licence."
+  source: "1d44e028b43d"
+golem.description:
+  text: "Ang Golem Network ay isang decentralized compute marketplace kung saan nagshe-share ka ng CPU at GPU resources kapalit ng GLM token. Pinapatakbo ng mga provider ang Yagna agent na namamahala sa pagpapatakbo ng mga workload sa mga sandboxed na environment. Isa ito sa pinakamatatandang decentralized compute project (itinatag noong 2016). Suportado ang mga CPU task, GPU rendering at general-purpose compute. Bayad sa pamamagitan ng Polygon L2.\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "Decentralized compute marketplace - GLM token sa pamamagitan ng Yagna agent"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "Nakadepende ang kita sa hardware, presyo at demand sa mga task. Mas maliit ang kita ng mga CPU-only node. Mas malaki ang kita ng mga GPU node pero kailangan ng NVIDIA. Patakbuhin ang Yagna provider agent (hindi Docker image). Bayad sa Polygon gamit ang GLM token."
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "Kada natapos na task"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "GLM token ang kinikita. I-configure ang payout wallet sa provider setup."
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Golem: ikaw mismo ang mag-i-install ng provider agent, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Dinodokumento ng Golem kung paano patakbuhin ang provider sa sarili nitong Docker image."
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "Open source ang provider agent, ang yagna, sa ilalim ng GPL-3.0."
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "Walang account: magtatakda ka ng payout wallet sa provider setup."
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "Mga sampung taon nang tumatakbo ang network."
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "Pinapangalanan ng privacy policy ng Golem ang operator, ang Golem Factory GmbH sa Zug, Switzerland."
+  source: "bae79b651923"
+grass.description:
+  text: "Ang Grass ay isang decentralized network na hinahayaan kang ibenta ang hindi mo nagagamit na bandwidth para sa AI training data. Gumagana ito bilang browser extension at desktop app, at idinadaan sa koneksyon mo ang mga web scraping request para bumuo ng mga structured dataset. May 8.5M+ user ito, kaya isa ito sa pinakamalalaking DePIN bandwidth network. Kumikita ng GRASS token sa Solana blockchain.\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "DePIN bandwidth sharing para sa AI data - kumikita ng GRASS token"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "Access Token"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "Mag-log in sa <a href=\"https://app.grass.io\">app.grass.io</a>, pindutin ang F12 → Application → Local Storage → i-click ang <code>https://app.grass.io</code> → kopyahin ang value ng <code>token</code>"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "Kumikita ng Grass Points na puwedeng gawing GRASS token sa pamamagitan ng mga airdrop. Nakadepende sa presyo ng token ang totoong halaga sa USD. Kailangan ang browser extension o desktop app."
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "Airdrop batay sa epoch"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "Dumarating ang mga reward bilang pana-panahong distribution na kini-claim sa Grass dashboard. Ang Stage 2 distribution (aktibidad mula Oktubre 2024 hanggang Hunyo 2026) ay binabayaran sa USDC: i-claim ito sa app.grass.io/dashboard nang hindi lalampas sa 22 Enero 2027, o mas maaga kung ma-claim na muna ang lahat ng allocation. Itinatabi ng Grass ang mga reward na hindi na-claim."
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "POINTS ang naiipon; kini-claim ang GRASS mula sa Grass dashboard sa mga pana-panahong airdrop."
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "Mag-log in sa <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, pindutin ang F12 → Application → Local Storage, kopyahin ang value ng <b>accessToken</b>."
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "20% ng uptime points ng mga direktang referral, 10% sa ikalawang level, 5% sa ikatlo"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "I-claim ang iyong Grass Stage 2 USDC"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "Itinatabi ng Grass ang bawat Stage 2 allocation na hindi na-claim hanggang 22 Ene 2027, at puwedeng magsara nang mas maaga ang window kapag na-claim na ang lahat ng allocation."
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "Mag-sign in sa app.grass.io gamit ang account na ginamit mo sa Stage 2, i-activate ang Grass Wallet, buksan ang tab na Allocation at kumpirmahin. Sa app.grass.io ka lang mag-claim. Walang Stage 2 points? Piliin ang Hindi para sa akin."
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "Sa mga airdrop season lang dumarating ang mga reward. Iniulat ng mga matagal nang node operator na nasa ilang dolyar hanggang mababang dalawang-digit na dolyar ang tantiya nila para sa season 2."
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "Tuluyang mawawala ang mga season 2 reward na hindi na-claim hanggang 22 Enero 2027."
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "Umani ng batikos ang unang airdrop dahil sa maliit na reward kada point, na hinati sa mahigit dalawang milyong user."
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Grass: ginagamit mo ang sariling app o extension ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "Umabot ang unang airdrop sa halos 1.5 milyong address na nag-claim."
+  source: "a4c55e10affa"
+helium.description:
+  text: "Ang Helium ay isang matatag nang decentralized wireless network. Dati itong mga LoRaWAN hotspot, ngayon ay umabot na sa 5G. Kailangan ng dedikadong hardware ($500+). Kumikita ng HNT/MOBILE token. Malaki na ang ibinaba ng ROI - karaniwang $4-8/buwan.\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "Decentralized wireless network - kailangan ng hardware, HNT token"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "Kailangang bumili ng hardware na $500+. Malaki na ang ibinaba ng ROI. May approval process para sa mga bagong operator."
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "Batay sa epoch"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "Tinapos ng HIP 149 ang Proof-of-Coverage reward noong 6 Hulyo 2026; ngayon ay kumikita lang ang mga IoT hotspot para sa data na dinadala nila, at mahigit 114,000 sa kanila ang walang dinalang anuman."
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "Ilang beses nang nagbago sa pamamagitan ng botohan ang reward model ng Helium, nagbitiw ang CEO nito, at bumagsak nang mga 96% ang HNT."
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Helium: ginagamit mo ang sariling hotspot hardware ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "Open source ang hotspot gateway software sa ilalim ng Apache-2.0 licence."
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "Subaybayan ang hindi pa nababayarang Kaspa na balanse na hawak ng HeroMiners para sa iyong public na payout address. Patakbuhin ang sarili mong Kaspa miner at ituro ito sa pool. Binabasa ng CashPilot ang balanse sa pool at hihilingin nitong kumpirmahin mo ang mga payout kapag bumaba ang balanse.\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "Kaspa mining pool, sinusubaybayan gamit ang iyong payout address"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS (nababago)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "Tinitingnan ng pool ang iyong payout threshold kada oras"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "Awtomatikong nagbabayad ang HeroMiners sa iyong address kapag naabot mo na ang threshold na pinili mo. Ang pinakamababang threshold ay 1 KAS.\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "Sa HeroMiners naiipon ang balanse. Tingnan sa iyong wallet ang halagang natanggap mo bago kumpirmahin ang isang payout sa CashPilot.\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "Ilagay ang buong public na Kaspa payout address na ginagamit ng iyong miner sa HeroMiners. Isama ang prefix na <b>kaspa:</b> at huwag isama ang pangalan ng worker.\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "Kailangan ng Kaspa miner na nakaturo sa HeroMiners"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "compute"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "Hindi. Ang miner mo ang nagpapadala ng mining work sa pool."
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "Ipinapakita ng public stats ng pool ang bawat payout address at ang mining activity nito."
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "Ginagamit ng pool ang iyong payout address bilang kapalit ng account."
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "Naniningil ang pool ng 0.9% na fee at hindi nagbabayad hangga't hindi naaabot ang iyong threshold."
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "I-share ang hindi mo nagagamit na internet bandwidth at kumita ng passive income. Idinadaan ng Honeygain sa koneksyon mo ang traffic para sa web intelligence, content delivery at market research. Isa ito sa pinakamatatag na bandwidth-sharing platform, na may 12M+ user at mahigit 1M na natapos na payout.\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "Bandwidth sharing - pinakamatatag na platform"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "Password"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "Pangalan ng device"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "Ang email ng iyong Honeygain account"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "Ang password ng iyong Honeygain account"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "Pangalang ipinapakita sa iyong Honeygain dashboard"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "Nag-iiba ayon sa lokasyon. Mas malaki ang kita ng mga IP sa US/EU. Hanggang 10 device kada account."
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "Minimum $20 (20,000 credit). Dalawang opsyon: PayPal sa pamamagitan ng Tipalti, na may mga 15% fee, o JumpTask credit na walang fee, na ipinapasok sa isang JumpTask wallet. Kailangan ng request ang 6-digit na code na ipinadala sa email. Mananatiling \"waiting for details\" ang unang PayPal payout hangga't hindi ka nagrerehistro sa Tipalti mula sa link na ie-email nila. Isang beses lang gumagana ang link na iyon, kaya buksan ito kapag kaya mong tapusin nang tuloy-tuloy at hawak mo ang telepono mo: pagkatapos magtakda ng password, ipapakumpirma ng Tipalti ang isang mobile number sa SMS (nag-e-expire ang mga code sa loob ng ilang minuto), pagkatapos ay hihingin ang iyong pangalan, address, bansa at petsa ng kapanganakan, at ang iyong PayPal address. Naniningil ang Tipalti ng $2.02 kada bayad; piliin ang USD para maiwasan ang 1.9-3% na currency conversion fee nito. Darating ang bayad sa loob ng 2 business day. Aalis agad sa account mo ang balanse sa sandaling mag-request ka, kahit naghihintay pa ang payout sa Tipalti. Bawat susunod na login sa Tipalti ay magpapadala ng bagong SMS code maliban kung i-tick mo ang opsyong tandaan ang device sa loob ng 30 araw. Noong Oktubre 2026, hindi humingi ang Tipalti ng tax form sa isang payee sa Spain."
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "Hawak ng Honeygain ang balanse; iwi-withdraw kapag hiniling."
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "Gamitin ang email at password ng iyong Honeygain account (pareho sa <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>)."
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "Hanggang 25% ng kita ng bawat ni-refer na kaibigan sa Honeygain mode"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "$3 na sign-up bonus gamit ang link na ito"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "I-withdraw ang iyong Honeygain balanse"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "Panatilihing nagshe-share ang isang Honeygain device, o mag-payout"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "May bisa ang kita sa loob ng 24 na buwan matapos nitong maabot ang $20 na minimum. Pagkatapos noon, puwedeng burahin ng Honeygain ang hindi na-payout."
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "Kung hindi magagamit ang app nang mahigit 6 na buwan, ituturing ng Honeygain na expired na ang hindi pa nababayarang balanse, kahit mas mababa sa $20."
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "Panatilihing nagshe-share ang isang device, o mag-request ng payout. Sa JumpTask mode, normal na hindi gumagalaw ang balanse, kaya piliin ang Hindi para sa akin."
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "Pinapayagan ng mga termino ang Honeygain na burahin ang kitang umabot sa $20 na threshold at hindi na-payout sa loob ng 24 na buwan, at ituring na expired ang kita matapos ang anim na buwang walang paggamit."
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "$20 ang minimum, at dumadaan sa Tipalti ang mga PayPal payout, na naniningil ng $2.02 kada bayad."
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "Pinapayagan ng mga termino ang Honeygain na i-suspend ang isang account at pigilan o burahin ang kitang itinuturing nitong naipon sa mapanlinlang na paraan."
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "Bago ang unang PayPal payout, ipapakumpirma ng Tipalti ang isang mobile number sa SMS at hihingin ang iyong pangalan, address at petsa ng kapanganakan."
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "Sinasabi ng mga termino na ginagamit ng mga business client ang traffic para mangalap ng public na web data, pero walang pinapangalanang client, at hindi mo malalaman kung aling client ang gumagamit ng koneksyon mo."
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "Sinasabi mismo ng Honeygain sa mga sagot nito sa mga review tungkol sa mababang kita na nakadepende ang kita sa demand ng network at sa lokasyon; iniuulat ng mga reviewer na napakatagal bago nila naabot ang $20 na minimum."
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Naglalathala ang Honeygain ng sarili nitong Docker image, honeygain/honeygain."
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "Pinapangalanan ng mga termino ang operator, ang Honeygain UAB, na nakarehistro sa Vilnius, Lithuania."
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "Sinasabi ng press page ng Honeygain na itinatag ito noong 2019."
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "Ang io.net ay isang decentralized GPU network para sa mga AI/ML workload. Pinagsasama-sama nito ang mga idle GPU mula sa mga consumer at data center. Kailangan ng NVIDIA GPU na may 8GB+ VRAM para sa makabuluhang kita. Suportado ang mga deployment na batay sa container.\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "Decentralized GPU network para sa AI - kailangan ng NVIDIA GPU"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "Kailangan ng NVIDIA GPU na may 8GB+ VRAM. May mga nagsasabing $500-1000/buwan para sa RTX 4090 (malamang mas mababa sa totoo)."
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "Batay sa epoch"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "Binayaran ang reward ng mga supplier mula sa token emission kahit walang bayad na job, at iniuulat ng mga may-ari ng GPU na idle sila halos lagi."
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "Nasa IO token ang mga reward at nagbago ang payout model noong 2026 tungo sa isang engine na naka-peg sa dolyar."
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "Noong Abril 2024, mga 1.8 milyong pekeng GPU ang sumubok sumali gamit ang isang na-leak na authentication token, at kalaunan ay nagbitiw ang CEO bago ang token launch."
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "Hindi pinapatakbo ng CashPilot ang io.net: ginagamit mo ang sariling worker software ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "Hinahayaan ka ng IPRoyal Pawns na kumita sa pag-share ng hindi mo nagagamit na bandwidth. Ang IPRoyal ay isang matatag nang proxy provider, at ang Pawns ang sangay nila para sa residential bandwidth sharing. Tumatanggap ng credentials ang CLI Docker image sa pamamagitan ng mga command-line flag. Ang bagong user na nag-sign up gamit ang referral link ay makakakuha ng $1 sa bawat isa sa unang tatlong payout niya, hanggang $3. Dapat dumating ang bawat payout sa loob ng window na isa hanggang tatlong linggo, depende sa lokasyon. Nagsisimula ang window sa pag-sign up at nagsisimula ulit pagkatapos ng bawat payout. Kung magsara muna ang isang window, mawawala ang natitirang bonus.\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "Bandwidth sharing - hanggang $3 na bonus sa mga unang payout mo"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "Password"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "Pangalan ng device"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "Device ID"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "Ang email ng iyong IPRoyal Pawns account (ipinapasa bilang -email flag)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "Ang password ng iyong IPRoyal Pawns account (ipinapasa bilang -password flag)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "Pangalang ipinapakita sa iyong Pawns dashboard (ipinapasa bilang -device-name flag)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "Natatanging identifier ng device (ipinapasa bilang -device-id flag)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "Na-disable ng IPRoyal Pawns ang account na ito."
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "May nakikitang ibang aktibong device ang Pawns sa IP address na ito at isa lang ang binabayaran nito kada IP, kaya tumatakbo ang kopyang ito pero walang shine-share at walang kinikita. Itigil ang anumang ibang Pawns app sa IP na ito, nasa ibang makina man, PC o telepono. Kung wala, hintaying tanggalin ng Pawns ang lumang device, o hilingin sa support ng Pawns na i-release ito."
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "Nakadepende ang kita sa lokasyon at paggamit ng bandwidth. Mas malaki ang kita ng mga residential IP sa US/EU."
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "Minimum $5. Piliin muna ang bansa mo; nakadepende rito ang mga paraan. Mula Spain (Oktubre 2026): PayPal 4% na may $0.25 na minimum fee, binabayaran sa pamamagitan ng Tremendous, na mag-e-email ng link kung saan mo ilalagay ang iyong pangalan at PayPal address; USDT (BEP20, ERC20, TRC20) o USDC (BEP20, ERC20) na may $1 na network fee; Bitcoin na may $2 na minimum fee; gift card na walang fee. Kailangan ng unang payout ang isang beses na SMS check ng iyong phone number: binubuksan ito ng Withdraw, at ilalagay ang numero kasama ang country code nito. Pagkatapos, bawat payout ay hihingi ng code na ipinadala sa email ng account mo at susuriin nang hanggang 72 oras bago ipadala."
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "Hawak ng IPRoyal Pawns ang balanse; iwi-withdraw kapag hiniling."
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "Gamitin ang email at password ng iyong IPRoyal Pawns account (pareho sa <a href='https://pawns.app' target='_blank'>pawns.app</a>)."
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "$1 sa bawat isa sa unang tatlong payout nila, hanggang $3, kung dumating ang bawat isa sa loob ng 1-3 linggong window nito"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "$1 sa bawat isa sa unang tatlong payout mo, hanggang $3; kapag lumampas ka sa isang 1-3 linggong window, mag-e-expire ang natitira"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "Sinasabi ng mga termino na puwedeng i-block ang isang account nang walang paunang abiso dahil sa pag-abuso sa mga kondisyon ng withdrawal o sa maraming account, at maaaring hindi na mabayaran ang kita nito."
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "Sinasabi ng mga termino na hindi pinapayagan ng Pawns ang anumang server, VPN o proxy service para sa traffic sharing, at isang device lang kada IP."
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "4% ang PayPal (hindi bababa sa $0.25) sa pamamagitan ng Tremendous, at bawat payout ay sinusuri nang hanggang 72 oras."
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "Kailangan ng unang payout ang SMS check ng iyong phone number, at bawat payout ay kailangan ng code na ipinadala sa email."
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "Pinapangalanan ng privacy policy ang operator, ang Pawns.App Ltd (kumpanya 16043795 sa England and Wales), na ayon sa Companies House ay itinatag noong 28 Oktubre 2024, wala pang tatlong taon ang nakararaan."
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "Sinasabi ng mga termino na idinadaan ng Pawns at ng mga business client nito ang traffic sa iyong device, at hindi mo matutukoy kung aling client ang gumagamit nito."
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "$5 na minimum, at walang fee ang mga gift card."
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "Mag-mine ng Pearl gamit ang KRig sa isang NVIDIA GPU. Kino-convert ng Kryptex ang mga reward sa Bitcoin at hawak nito ang balanse sa account mo hanggang mag-request ka ng withdrawal."
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "Mag-mine ng Pearl sa NVIDIA GPU at makakuha ng account credit sa Bitcoin"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "Email ng Kryptex account"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "Pangalan ng worker"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "Ang verified na email sa iyong Kryptex account."
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "Bigyan ng magkakaibang pangalan ang bawat makina sa iyong Kryptex account."
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "0.00001 BTC sa Lightning (iba-iba sa ibang paraan)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kino-convert ng Kryptex ang mga Pearl reward sa BTC at hawak nito ang balanse sa account mo. Mag-request ng withdrawal sa Kryptex. May sariling minimum at fee ang bawat paraan. Ang minimum para sa Bitcoin Lightning ay 0.00001 BTC."
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "Hawak ng Kryptex ang na-convert na Bitcoin sa account mo hanggang mag-withdraw ka."
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "20% ng pool income ng Kryptex mula sa mga ni-refer na user"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64, isang NVIDIA GPU na Volta (sm_70) o mas bago, at NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "Hosting connection ang iniuulat ng makinang ito. Tingnan ang mga termino ng iyong provider bago mag-mine. May mga provider, kasama ang Hetzner Cloud, na nagbabawal nito. Alamin ang totoong gastos mo sa kuryente bago umasa sa isang tantiya ng kita."
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "0% na miner fee ang sinisingil ng KRig sa Kryptex Pool. May hiwalay na 3% na Pearl PPS+ pool fee na nakalista ang Kryptex. Iba-iba ang withdrawal fee ayon sa paraan."
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "compute"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "Hindi. Ipinapasa ng KRig ang mining work sa Kryptex Pool."
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Nakikita ng Kryptex ang email ng iyong account, pangalan ng worker, hashrate at IP address."
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "May mga network at DNS resolver na nagba-block ng koneksyon sa mga mining pool."
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "I-verify ang email ng iyong Kryptex account bago mag-mine papunta rito."
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Puwedeng i-suspend ng Kryptex ang mga inactive na account sa ikaanim na buwan at burahin ang mga ito sa isang taon."
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "Iba-iba ang withdrawal minimum at fee ayon sa paraan."
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "Pinapayagan ng lisensya ng KRig ang pag-download ng release at pagpapatakbo nito mula sa mining software."
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "Gumagamit ang KRig ng isang public na TLS endpoint para magpasa ng mga Pearl share sa Kryptex Pool."
+  source: "fd21819f191a"
+mysterium.description:
+  text: "Ang MystNodes (Mysterium Network) ay isang decentralized na VPN at proxy network na binuo sa blockchain technology. Kumikita ka ng MYST token sa pagpapatakbo ng node na nagbibigay ng VPN, proxy at data scraping service sa mga user. Kailangan nito ang mga capability na NET_ADMIN, SETUID at SETGID at isang TUN device, na ginagamit nito sa loob ng sarili nitong network namespace sa naka-bakod na earner bridge. May kasama itong built-in na web UI para sa pamamahala ng node. Gumagana ito sa parehong residential at VPS na koneksyon, pero binabayaran lang ang referral bonus para sa mga node na nasa residential IP.\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "Decentralized VPN node - batay sa blockchain, gumagana sa VPS"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "WebUI address"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "Saklaw ng UDP port"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "Ang mga host address kung saan inilalathala ang WebUI ng node (port 4449). Pinapanatili ito ng 127.0.0.1 sa makinang ito lang. Para maabot ito sa pamamagitan ng reverse proxy, idagdag ang address na kinokonektahan ng proxy, pinaghihiwalay ng kuwit at walang espasyo: 127.0.0.1,172.18.0.1."
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "Ang mga UDP port na ginagamit ng node para sa mga VPN session, bilang start:end. I-forward ang parehong saklaw na ito sa iyong router. Mga dalawang port ang ginagamit ng bawat session, kaya kaya ng default na 30 ang mga 15 session nang sabay-sabay, higit pa sa natatanggap ng isang home node. Walang naaayos ang mas malawak na saklaw at mas magastos pa: pinababagal ng bawat inilathalang port ang pag-start at pag-alis ng node (mga 12 s bago mag-start ang 300 port), hanggang 300 lang ang tinatanggap ng CashPilot, at sa default na userland proxy ng Docker, gumagamit din ang bawat port ng mga 2.5 MB na memory. Kapag pumapalya ang lahat ng session, problema iyon ng router, hindi kakulangan ng port: tingnan ang \"Routers that rewrite UDP source ports\" sa Mysterium guide. Panatilihin itong mas mababa sa 32768: ang mga port na 32768-60999 ay ang ephemeral range ng Linux, kung saan puwedeng humawak saglit ng isa ang kahit anong program sa host, at isang nakuhang port lang ay magpapapalya sa pag-start ng node. Pinapanatili ng node na may saklaw na ang saklaw nito."
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "Ang identity keystore ng node. Kapag nasira ito, gagawa ng bagong-bagong identity: mawawala sa node ang reputasyon nito at ang anumang kitang nakahawak pa sa luma."
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "Hindi makapagpatakbo ng sudo ang node sa loob ng container nito, kaya hindi nito ma-configure ang VPN interface o firewall nito at pumapalya ang bawat session sa setup: mukhang online ito pero walang kinikita. Ginawa ang container nang walang mga capability na SETUID at SETGID. I-update ang CashPilot at ang worker na nagpapatakbo sa node na ito, pagkatapos ay i-redeploy ang Mysterium mula sa dashboard; nasa data volume nito ang identity ng node at mananatili ito."
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "Walang VPN session sa nakaraang 6 na oras ang direktang nakaabot sa node na ito. Lahat ay bumagsak sa hole punching, at maraming buyer ang hindi makakonekta sa ganoong paraan, kaya mas maliit ang kinikita ng node. Hindi maaabot mula sa internet ang mga UDP port nito. Sa iyong router, i-forward ang saklaw ng UDP port na ${UDP_PORTS} (start:end, parehong saklaw sa magkabilang panig) papunta sa ${HOST_ADDRESS}. Kusa itong mawawala kapag may session na direktang nakakonekta."
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "Minarkahan ng monitoring ng Mysterium na failed ang node sa ${WORKER_NAME}, kaya hindi ito kasama sa listahan ng node na pinagpipilian ng karamihan ng buyer, kahit sinasabi ng sarili nitong check na naaabot ang lahat ng port. Siguraduhin muna na may /dev/net/tun at SETUID/SETGID ang node, dahil ganito rin ang pagpalya kapag wala ang mga ito: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 Kapag nandiyan na ang mga iyon, karaniwang sanhi ang router sa harap ng ${WORKER_NAME} na binabago ang UDP source port ng mga sagot ng node kapag may packet na mula sa labas na nakaabot sa port na iyon. Tingnan ang test sa gabay: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "Natapos ang bawat isa sa huling limang VPN session ng node sa ${WORKER_NAME} matapos ang mga isang minuto nang walang nailipat na data, kaya walang kinikita ito kahit mukhang online. Malamang na sanhi ang router sa harap ng ${WORKER_NAME}: kapag may packet na mula sa labas na nakaabot sa isang port, binabago nito ang source port ng mga susunod na sagot ng node mula sa port na iyon, at nagsisimula ang bawat session sa ganoong packet (ang sariling port check ng node), kaya itinatapon ng mga buyer ang mga sagot ng node. Hindi nakakatulong ang mas malawak na saklaw ng port. Tingnan ang test at ang mga solusyon sa gabay: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports Mawawala ito kapag may session na nakapagdala ng data."
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "Kita sa MYST token. Mas malaki nang husto ang kita ng mga residential IP. Nasa port 4449 ang WebUI ng node para sa pamamahala, at bilang default ay inilalathala lang ito sa makinang pinagtatakbuhan nito (127.0.0.1); mula sa ibang makina, magbukas muna ng SSH tunnel (ssh -L 14449:127.0.0.1:4449 na sinusundan ng address ng makina ng node, pagkatapos ay buksan ang http://127.0.0.1:14449; local port 14449 para hindi ito bumangga sa node sa sarili mong makina), o magdagdag ng address sa UI_ADDRESS (tingnan ang WebUI address sa Mysterium guide). Tinatanggap ang VPS. Lubos na inirerekomenda ang port forwarding ng UDP 23000-23029 (ang default ng UDP_PORTS) -- kung wala ito, magkakaroon ng Strict NAT status ang mga node at maraming VPN session ang papalya, na malaki ang bawas sa kita. Mahalaga: pagkatapos ng unang takbo, itakda ang iyong beneficiary (settlement) wallet sa WebUI o CLI ng node para tumugma sa iyong mystnodes.com account -- ito ang nagli-link ng on-chain na kita sa iyong cloud dashboard."
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "Awtomatikong on-chain settlement tuwing may 5 MYST na hindi pa na-settle ang isang node"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "Walang button na pipindutin. Kusang nagse-settle sa Polygon ang bawat node kapag may 5 MYST na itong hindi pa na-settle, at mga 21% ang napupunta sa fee (ang 20% na Hermes fee dagdag ang maliit na transaction fee), kaya mga 3.9 MYST ang umaabot sa beneficiary wallet kada settlement. Inililista ng TequilAPI ng bawat node ang mga settlement nito sa /transactor/settle/history. Ang numerong \"total earnings\" sa MystNodes ay para lang sa nakaraang 30 araw; hindi ito balanse at hindi rin kabuuang kita mula sa simula. Hindi kusang nagse-settle ang bonus MYST mula sa rewards program ng MystNodes: i-claim ito sa Rewards page, sa loob ng 30 araw mula sa distribution ayon sa help center ng MystNodes."
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "Itinatakda ang beneficiary wallet PAGKATAPOS mag-deploy, sa TequilAPI o sa WebUI ng node -- hindi sa env var, kaya hindi ito mababasa mula sa container spec."
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "Gamitin ang email at password ng iyong MystNodes account (pareho sa <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>)."
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "5 MYST kada kaibigang kumita ng 5 MYST ang node (residential IP lang)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "5 MYST kapag kumita na ang node mo ng unang 5 MYST nito (residential IP, node na na-claim sa mystnodes.com)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "I-claim ang MystNodes reward noong nakaraang buwan"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "Mawawala ang mga reward na hindi na-claim sa loob ng 30 araw mula sa buwanang distribution at babalik ang mga ito sa pool ng susunod na buwan."
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "Buksan ang Rewards page at ipalit ang iyong points sa MYST."
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "Bandwidth. Ginagamit ang koneksyon mo bilang exit node ng Mysterium network, na nagbebenta ng VPN, proxy AT data-scraping service. Ang scraping traffic na lumalabas sa residential IP ang paggamit na pinakamalamang na umani ng reklamo, at hindi mo mapipili kung alin sa tatlo ang dadalhin ng node mo."
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "Oo. Idinadaan ng mga estranghero ang traffic nila sa iyong IP address — iyon mismo ang produkto."
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "Ang identity ng node (isang blockchain address), ang iyong IP, at ang tinatayang lokasyon (bansa/lungsod/ISP), na inilalathala ng node sa network para mapili ito ng mga buyer."
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "Totoo at sulit na maintindihan. Lumalabas sa koneksyon mo ang traffic ng ibang tao na nakapangalan sa iyo, kaya anumang gawin nila ay mukhang nanggaling sa linya mo. Ipinagbabawal ito ng maraming kontrata ng consumer ISP. Tingnan muna ang sa iyo bago ito patakbuhin."
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "Walang limitasyon sa device kada account at kada IP."
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "Mga 21% ng bawat settlement ang napupunta sa fee, ang 20% na Hermes fee dagdag ang transaction fee, at binabayaran ang kita sa MYST token."
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "Exit ang node mo para sa mga VPN, proxy at data-scraping customer ng Mysterium, at hindi mo mapipili kung alin sa kanila ang dadalhin nito."
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "Open source ang node software sa ilalim ng GPL-3.0."
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Naglalathala ang Mysterium ng sarili nitong Docker image, mysteriumnetwork/myst."
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "Napupunta ang settlement sa wallet na pag-aari mo; hindi kailangan ng phone number o ID."
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "Tumatakbo ang node project mula pa noong 2017."
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "Sinasabi ng site ng Mysterium na dine-develop ang network ng Blockdev AG, Zug, Switzerland."
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Ang Nodepay ay isang DePIN network na nagbibigay ng reward sa mga user na nagshe-share ng bandwidth sa pamamagitan ng browser extension. Nasa likod ng Cloudflare protection ang platform, na puwedeng magpahirap sa awtomatikong access. Kumikita ang mga user ng Nodepay Points sa pagpapanatiling aktibo ng extension. Nakatuon ang network sa pagbibigay ng infrastructure para sa AI training data.\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "DePIN bandwidth sharing para sa AI - browser extension"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "Kumikita ng Nodepay Points; ang points ng mga user na papasa sa eligibility check ng Nodepay ay kino-convert sa NC token. Puwedeng i-block ng Cloudflare protection ang awtomatikong pagkolekta. Kailangan ang browser extension."
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "NC token airdrop (hindi pa kumpirmado ang petsa)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "Sistemang batay sa points. Ang points ng mga user na papasa sa eligibility check ng Nodepay ay kino-convert sa NC token, na inilunsad noong Enero 2025."
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "Sa review ng unang season nito, tinanggal ng Nodepay ang mahigit 300,000 account na itinuring nitong bot at kinansela ang 17 bilyong points."
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "Points ang mga reward na kino-convert sa NC token, kaya nakasalalay sa token ang halaga nila."
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Nodepay: ginagamit mo ang sariling browser extension ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Ang Noderr Micronodes ay ang libreng entry tier ng Noderr Protocol, isang DeFi project sa Base L2. Ang micronode ay isang maliit na agent sa isang ekstrang Android phone, Windows PC, Mac o Chromium browser. Sa Android, shine-share nito ang mobile connection ng telepono: lumalabas ang ibang Noderr traffic sa carrier IP ng telepono, kaya kailangan nito ng SIM na may mobile data. Sa PC o sa browser, nagpapatakbo ito ng mga automation task para sa protocol gamit ang ekstrang compute. Dinisenyo ang mga reward para bayaran sa NODR, ayon sa on-chain na score ng uptime at pagiging maaasahan, pero nasa Base Sepolia testnet ang network habang beta pa ito: walang pondo ang mga node reward at wala pang naibabayad.\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "Libreng micronode (Android connection sharing, Windows, Mac, browser) - testnet, walang pondo pa ang mga reward"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "Testnet beta: walang pondo ang mga node reward at wala pang naibabayad. Ang 5-10% APY sa site ay target ng disenyo. Balikan kapag umalis na ang network sa Base Sepolia."
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "Naiipon ang mga reward sa sariling wallet ng node at kini-claim mula sa app o sa dApp. Habang beta, Base Sepolia testnet token ang mga ito na walang halaga sa merkado."
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "Ginagawa ng app ang node wallet sa unang launch at nagmi-mint dito ng libreng soulbound na Utility NFT. I-backup ang wallet mula sa app: kapag nawala ang device, mawawala ang identity ng node. Nasa Base Sepolia (testnet) ang mga reward habang beta."
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Kailangan ng Android ng SIM na may mobile data; walang inilathalang IP requirement para sa desktop at browser client."
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "Nakadepende sa device. Ibinebenta ng Android phone ang mobile connection nito: lumalabas ang ibang Noderr traffic sa carrier IP address ng telepono at binabawas ito sa data plan nito. Ibinebenta ng Windows PC, Mac o browser ang ekstrang compute para sa tinatawag ng provider na social media at content automation task."
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "Oo. Sa Android, lumalabas ang ibang Noderr traffic sa mobile IP address ng telepono mo; humihingi ang app ng consent na nire-record bago ito magsimula at puwede mong itigil ang pag-share mula sa parehong screen. Para sa Windows, Mac at browser client, mga automation task ang inilalarawan ng provider at hindi nito sinasabi kung nagdadala ang mga iyon ng traffic para sa ibang tao."
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "Napupunta on-chain ang wallet address ng node at ang mga numero ng uptime at natapos na task nito bilang reputation score (ang TrustFingerprint). Sinasabi ng provider na anonymised ang mga task, tumatakbo sa sandbox at hindi kailanman umaalis sa device ang wallet key. Wala nang mas tiyak na inilathala."
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "Sa Android, carrier mobile plan ang shine-share na koneksyon: nagbababala mismo ang docs ng provider na maaaring hindi pinapayagan ang pag-share sa ilalim ng acceptable-use policy ng ilang carrier, at ginagamit ng shine-share na traffic ang allowance ng plan. Para sa desktop at browser client, walang sinasabi ang provider tungkol sa mga termino ng ISP."
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "Isang node kada device, bawat isa ay may sariling soulbound na Utility NFT; pinapayagan at hinihikayat ang pagpapatakbo ng maraming device. Walang inilathalang limitasyon kada IP. Walang account sa karaniwang kahulugan: ang identity ay isang wallet na ginagawa ng app sa unang launch."
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "Walang pondong testnet token ang mga node reward na walang halaga sa merkado, at wala pang naibabayad; ang 5 hanggang 10% APY sa site nito ay target ng disenyo."
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "Para sa desktop at browser client, mga automation task ang inilalarawan ng Noderr at hindi nito sinasabi kung nagdadala ang mga ito ng traffic ng ibang tao."
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "Sinasabi ng provider na anonymised at naka-sandbox ang mga task pero wala nang mas tiyak na inilalathala."
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "Testnet beta pa rin sa Base Sepolia."
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Noderr: ginagamit mo ang sariling app o extension ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "Walang account: gumagawa ang app ng wallet sa unang launch."
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Ginagamit ng Nodle ang Bluetooth ng smartphone para bumuo ng IoT infrastructure. Pasibong nade-detect at ipinapasa ng app ang data mula sa mga kalapit na IoT device, at kumikita ng NODL token. Itinampok sa Forbes, may mga enterprise partnership sa Vivendi at Hayden AI. Mobile lang (iOS at Android).\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "Bluetooth IoT relay - mobile app, reward sa NODL token"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "Napakaliit ng kita. Phone app sa background na gumagamit ng Bluetooth. Puwedeng pumalya-palya ang pag-connect ng wallet."
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "Tuloy-tuloy"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "Nasa sariling wallet ng app sa ZKsync Era ang NODL; tingnan ito sa app o sa isang ZKsync Era block explorer. Umalis ang Nodle sa Polkadot parachain nito, at nagsara ang Polkadot-to-ZKsync bridge noong 31 Disyembre 2025, kaya hindi na maililipat sa ZKsync ang NODL na nasa panig pa ng Polkadot."
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+nodle.referral.bonus.referrer:
+  text: "Isang NODL reward para sa bawat bagong aktibong user na sasali gamit ang invite (hindi inilalathala ng Nodle ang halaga)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "Iniulat ng isang reviewer na mga $3 ang kinita niya sa loob ng tatlo hanggang apat na taon; iniulat naman ng iba na matindi ang pagbaba ng araw-araw na kita."
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Nodle: ginagamit mo ang sariling phone app ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Ang Nosana ay isang decentralized GPU compute marketplace na binuo sa Solana. Ikinokonekta nito ang mga may-ari ng GPU sa demand para sa AI workload, at nagbabayad sa NOS token. Kumikita ang RTX 3060 ng humigit-kumulang $0.048/oras. Nakatuon ang platform sa mga AI inference workload at ginagamit ang Solana blockchain para sa job scheduling at payment settlement. Nagpapatakbo ang mga node ng mga containerized workload sa pamamagitan ng Nosana CLI.\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "GPU compute sa Solana - NOS token, RTX 3060 ~$0.048/oras"
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 ~$0.048/oras, mas malaki ang kita ng mas mataas na klase ng GPU. Nakadepende ang kita sa dami ng job at sa modelo ng GPU. Kailangan ng NVIDIA GPU, Linux, Docker at Nosana CLI. Bayad sa NOS token sa Solana."
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "Kada natapos na job"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "NOS token ang kinikita sa Solana. Payout sa naka-configure na wallet."
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "Bilang default, gumagawa ang Nosana ng Solana wallet, kaya hindi pa nakikita ng karamihan sa mga user ang address nito."
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "Kailangang mag-lock ang bawat host ng NOS stake na katumbas ng oras-oras na presyo ng GPU nito."
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "Binabayaran sa NOS ang mga host, kaya gumagalaw ang kita sa dolyar kasabay ng token at ng demand para sa card nila."
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Nosana: ginagamit mo ang sariling host software ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "Ang OCEAN ay isang Bitcoin mining pool na walang account: nagla-log in ang iyong miner gamit ang iyong Bitcoin address bilang username, at binabayaran ng pool ang address na iyon. Hindi nagpapatakbo ng miner dito ang CashPilot. Binabasa nito ang hindi pa nababayarang balanse na hawak ng OCEAN para sa address mo, para makita mo ang kinita ng iyong ASIC (isang Bitaxe, isang Antminer) katabi ng iba mo pang kita. Ang hindi pa nababayarang balanse ay kinita na pero hindi pa natatanggap: binabayaran ito ng OCEAN on-chain kapag lumampas na sa payout threshold.\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "Bitcoin mining pool, sinusubaybayan gamit ang iyong payout address"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "Kapag may block na nagpalampas sa balanse mo sa threshold"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "Nagbabayad ang OCEAN on-chain sa address mo kapag naabot na ng hindi pa nababayarang balanse ang threshold. Hindi nade-detect ng CashPilot ang mga Lightning payout (opt-in, BOLT12)."
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "Ang unpaid ay kinita na pero hindi pa natatanggap hangga't hindi ito binabayaran ng OCEAN on-chain sa address na ito, maliban kung in-on mo ang Lightning payout."
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "Ang iyong BTC payout address: ang username na ginagamit ng iyong miner sa OCEAN, nang walang bahaging <b>.workername</b>. Public ito at hindi nito nabubuksan ang anumang pondo."
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "Kailangan ng Bitcoin ASIC miner (isang Bitaxe, isang Antminer) na nakaturo sa mine.ocean.xyz:3334"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "compute"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "Hindi. Nagpapadala ang miner mo ng mga hash sa pool; walang nagdadaan ng traffic sa koneksyon mo."
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "Ang iyong Bitcoin address, ang mga pangalan ng worker na pinili mo, ang iyong hashrate at ang IP address ng iyong miner ayon sa nakikita ng pool."
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "Isang koneksyon lang sa pool ang pinananatiling bukas ng miner at kaunti lang ang bandwidth na ginagamit nito. Kuryente ang gastos na dapat bantayan, hindi ang ISP mo."
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "Walang account. Ang address ang identity, at kahit sino ay puwedeng magbasa ng stats nito sa ocean.xyz."
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "Bitcoin lang ang bayad, at walang ibinabayad on-chain hangga't hindi umaabot sa 0.01048576 BTC ang balanse mo."
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "2% na pool fee, o 1% kapag gumagawa ka ng sarili mong block template gamit ang DATUM."
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "Hindi nagpapatakbo ang CashPilot ng miner para sa OCEAN: ikaw ang magtuturo ng sarili mong hardware sa pool, at binabasa lang ng CashPilot ang balanse."
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "Walang account at walang identity check. Ang Bitcoin address lang na babayaran ang hinihingi ng OCEAN."
+  source: "38c4a7764846"
+packetstream.description:
+  text: "Ang PacketStream ay isang peer-to-peer na bandwidth marketplace kung saan puwede mong ibenta ang hindi mo nagagamit na bandwidth. Pinapatakbo nito ang isang residential proxy network na ginagamit para sa market research, SEO monitoring at ad verification. Simpleng Docker setup na CID (Client ID) lang ang kailangan. Tandaan na ang login na protektado ng CAPTCHA ay puwedeng magpahirap sa awtomatikong pagkolekta ng kita.\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "Bandwidth sharing - simpleng setup na batay sa CID"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "Client ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "Mag-log in sa <a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> → i-click ang Setup sa sidebar → ipinapakita ang iyong CID sa Docker command"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "Tinatanggihan ng PacketStream ang IP address ng kopyang ito dahil hindi ito residential, kaya walang kinikita. Patakbuhin ito sa makinang home line ang internet connection, o alisin ang kopyang ito."
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "May iba nang client ang PacketStream sa IP address na ito, at isa lang ang binabayaran nito kada IP. Alisin ang kopyang ito, o ang isa pang kahati nito sa IP."
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "Nagbabayad ng $0.10/GB para sa shine-share na bandwidth. Malaki ang epekto ng demand para sa lokasyon ng IP mo sa kita."
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "PayPal lang, minimum $5, at ipinapakita ang 3% na fee bago ka mag-confirm. Sine-save ng unang withdrawal ang iyong PayPal email; kapag binago ito kalaunan, kailangan ng email confirmation at 7 araw na paghihintay, kaya tingnan ang address bago mag-confirm. Sinusuri at ipinapadala ang mga request sa loob ng 7 araw; puwede mong kanselahin ang isa habang naghihintay ito, at makakagawa ka lang ng bago kapag nabayaran na ito."
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "Hawak ng PacketStream ang balanse; iwi-withdraw kapag hiniling."
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "Mag-log in sa <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, pindutin ang F12 → Application → Cookies, kopyahin ang value ng cookie na <b>auth</b> (isa itong JWT)."
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "20% ng kanilang kita sa bandwidth (limited-time na Packeter bonus)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "10% na bonus credit sa una mong deposito gamit ang card o PayPal (para sa mga proxy customer)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "Iniulat ng mga reviewer sa Trustpilot noong 2025 at 2026 na huli o hindi dumating ang mga payout, at sinabi ng isang matagal nang user na bumagal at pagkatapos ay tumigil ang mga payout; iniulat naman ng iba noong 2026 na nabayaran sila."
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "PayPal lang, may 3% na cashout fee; walang ibang paraan ang mga user sa mga bansang hindi sakop ng PayPal."
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "Pinapayagan ng mga termino ang PacketStream na pigilan, bawiin o ipawalang-bisa ang kitang iniuugnay nito sa fraud, manipulasyon o ipinagbabawal na aktibidad."
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "Sinasabi ng mga termino na idinadaan ng mga proxy customer at ng PacketStream mismo ang traffic sa koneksyon mo; walang inilalarawang pagsusuri sa mga ordinaryong buyer."
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "Napansin ng Trustpilot na hindi sumasagot ang PacketStream sa mga negatibong review; iniuulat ng mga reviewer na hindi sinasagot ang mga email nila."
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "Naglalathala ang PacketStream ng sarili nitong Docker image, packetstream/psclient."
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "Device at koneksyon lang na pag-aari mo o may pahintulot kang gamitin ang hinihingi ng mga termino."
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "Walang inilalarawang identity check sa mga termino; PayPal address ang kailangan para sa payout."
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "Pinapangalanan ng mga termino ang PacketStream Inc. sa ilalim ng batas ng California."
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "Tumatakbo ang PacketStream mula pa noong 2018."
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "Ang PassiveApp ay isang DePIN platform na hinahayaan kang kumita ng crypto at PayPal reward sa pag-share ng hindi mo nagagamit na bandwidth at computing resources. Windows lang talaga sa praktika: ang download page mismo ng vendor ay naglilista ng Android, iOS at Linux bilang \"coming soon\" nang walang pagbabago mula pa noong Pebrero 2025 man lang, at walang macOS version — kahit sinasabi ng marketing copy sa parehong site na mas malawak ang suporta. Walang Docker image.\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "DePIN bandwidth/compute - Windows lang, crypto at PayPal payout"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "Windows desktop app lang (v1.0.x); inanunsyo ng vendor na 'coming soon' ang Android/iOS/Linux mula pa noong unang bahagi ng 2025 at hindi kailanman lumabas. Walang opisyal na Docker image."
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "10% ng kanilang kita habambuhay"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "Hindi pinapatakbo ng CashPilot ang PassiveApp: ginagamit mo ang sariling desktop app ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "Nakalista sa site ng PassiveApp ang PayPal, crypto at gift card mula sa $3 na minimum."
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "Ang ProxyBase ay isang bandwidth-sharing platform na nagbabayad sa mga user sa cryptocurrency para sa pag-share ng hindi nila nagagamit na internet connection. Ia-authenticate mo ang peer client gamit ang Access Token mula sa iyong dashboard. Pinakamalaki ang kita ng mga residential IP, pero suportado rin ang mga datacenter IP. Opisyal na multi-arch Docker image (amd64/arm64/armv7).\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - bandwidth sharing, crypto payout, Access Token na auth. Walang ginagawang wallet"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Access Token"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "Pangalan ng Device"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "Mag-log in sa <a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> → kopyahin ang iyong Access Token (ipinapakita sa Docker command sa setup page)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "Kahit anong pangalan (walang espasyo) para makilala ang device na ito sa iyong ProxyBase dashboard"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "Hindi naaabot ng ProxyBase ang relay nito nang hindi bababa sa kalahating oras, kaya walang kinikita. Naaayos ito ng restart; kung nandiyan pa rin pagkatapos ng restart, tingnan kung naaabot ng makinang ito ang internet."
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "Crypto payout. Nakadepende ang kita sa lokasyon at paggamit ng bandwidth."
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "Nakalista sa site ang $0.20 na minimum, at may request na mas mababa sa $1 na pumasok noong Oktubre 2026. Laging iwi-withdraw ng request ang buong balanse, bilang USDC sa Polygon, POL o Litecoin, sa address na ita-type mo. Sagot ng ProxyBase ang network fee."
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "Naiipon ang kita sa ACCOUNT ng ProxyBase na may-ari ng Access Token, at iwi-withdraw mula sa dashboard kapag hiniling. Walang hawak na wallet ang peer client at walang state na itinatabi ang container -- walang laman ang docker.volumes. Huwag itong ipagkamali sa proxybase-xyz (ProxyBase Markets, parehong organisasyon), na talagang nagmi-mint ng local wallet at idinedeklara itong critical volume."
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "Isinulat mismo ng ProxyBase noong Agosto 2025 na bago pa ito at hindi pa ito ang lugar para i-maximize ang kita."
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "Nagpalit ng peer client ang ProxyBase noong 2026 at isinara ang lumang backend, kaya patuloy na tumakbo ang mga container sa lumang image pero tumigil sa pagkita."
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "Crypto lang, bilang USDC sa Polygon, POL o Litecoin, walang fiat na paraan. $0.20 ang minimum at ang ProxyBase ang nagbabayad ng network fee."
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "Pumasok ang aming withdrawal na mas mababa sa $1 noong Oktubre 2026."
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "Address lang na ita-type sa request ang kailangan para sa withdrawal."
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "Naglalathala ang ProxyBase ng sarili nitong peer client image at suportado nito ang mga datacentre IP."
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "Ang ProxyBase Markets ay isang SOCKS5 proxy marketplace na ginawa para sa mga AI agent. Nagpapatakbo ang mga seller ng magaan na Rust CLI daemon na kumokonekta sa pamamagitan ng WebSocket para ipasa ang traffic ng buyer sa kanilang internet connection, at kumikita ng USDC sa Tempo Chain kada GB na naibenta. Suportado ang direct (sariling bandwidth) at upstream (muling pagbenta ng external proxy) na mode na may auto-reconnect. Bumibili ang mga buyer ng proxy session ayon sa bansa, ISP at bandwidth. Dumadaloy ang bayad sa Machine Payments Protocol (MPP) sa Tempo Chain. Para sa mga buyer ang referral link: ang buyer na magbubukas ng console gamit ito ay makakakuha ng dagdag na 10% sa una niyang deposito.\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - SOCKS5 marketplace para sa mga AI agent, USDC payout. Gumagawa ng wallet na ang volume ang may hawak ng nag-iisang kopya ng key"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "Backend API URL"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "I-override ang backend API URL (default ay https://api.proxybase.xyz)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "Kusang nagse-setup ang container sa unang start: gumagawa ito ng secp256k1 wallet (BIP-39), nag-a-authenticate sa pamamagitan ng ECDSA challenge-response, at nagsisimulang magbenta ng bandwidth sa direct-only mode. Sine-save ang lahat ng state (wallet, session token, seller config) sa volume na <code>proxybase-data</code>. Tingnan ang container logs sa unang takbo para sa wallet address. Gamitin ang <code>--upstream</code> para magdagdag ng mga external proxy resell path.\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "Ang ginawang wallet keyfile. Ang volume na ito MISMO ang pera: walang kopya sa server, kaya kapag binura mo ito, mawawala rin ang pondo."
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "Batay ang kita sa GB na naibenta sa presyo ng merkado. Mas maliit ang kita ng mga VPS/datacenter IP kaysa sa residential. Kayang pagsamahin ng multi-upstream mode ang sarili mong bandwidth at mga external proxy."
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "I-lock ang kita gamit ang <code>proxybase-cli seller payout create</code>, na matatanggap bilang USDC sa Tempo Chain (Tempo MPP). Nagbabayad ito sa kahit anong EVM address na hawak mo ang key (EVM chain ang Tempo), nang walang kailangang i-sign; idagdag ang Tempo network sa wallet para makita ang USDC. Kung hindi pa rin ito lumalabas sa wallet, kailangang idagdag nang mano-mano ang Tempo USDC token: i-import ito gamit ang contract address na ibinibigay ng Proxybase, at suriin ang address na iyon bago pagkatiwalaan ang balanse."
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "Gumagawa ang client ng sarili nitong wallet sa unang takbo."
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "15% ng bawat depositong gagawin ng ni-refer na buyer, bilang credit para sa sarili mong mga proxy session"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "+10% sa unang deposito ng buyer"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "Bandwidth, bilang SOCKS5 proxy na ibinebenta sa mga buyer sa ProxyBase marketplace."
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "Oo. Idinadaan ng mga buyer ang traffic nila sa koneksyon mo — iyon mismo ang ibinebenta."
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "Isang wallet address na ginawa sa iyong makina, at ang dami ng traffic na ipinapasa mo."
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "Totoo, at direktang tumatama ito sa mga home connection. Lumalabas sa ilalim ng IP mo ang proxy traffic mula sa mga hindi kilalang buyer, kaya sa iyo darating ang mga abuse complaint. Walang anuman sa katalogong ito na naglilimita sa serbisyo sa mga datacentre address, at mas malaki ang kita ng mga residential IP, kaya mali ang direksyon ng insentibo rito: basahin ang mga termino ng iyong ISP bago ito patakbuhin sa bahay."
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "hindi alam - hindi naglalathala ang provider ng limitasyon ng device kada account o kada IP, at wala ring idinedeklara ang katalogo."
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "USDC sa Tempo Chain ang mga payout, sa kahit anong EVM address na hawak mo ang key."
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "Ibinebenta ang koneksyon mo bilang SOCKS5 proxy sa mga buyer sa marketplace; wala kaming nakitang paliwanag kung paano sinusuri ang mga buyer."
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "Sinasabi mismo ng pamagat ng earn page nito na walang kailangang KYC, na may $1 na payout."
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "Naglalathala ang ProxyBase ng sarili nitong client image at tumatanggap ng mga datacentre connection."
+  source: "ae81d006093f"
+proxylite.description:
+  text: "Pinagkakakitaan ng ProxyLite ang iyong internet traffic sa pag-share ng bandwidth sa mga verified na organisasyon. Gumagana ito sa parehong residential at VPS/datacenter na koneksyon. Simpleng setup na user ID lang mula sa dashboard ang kailangan. Nag-aalok ng mapagbigay na 15% na lifetime referral commission.\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "Bandwidth sharing - 15% lifetime referral, gumagana sa VPS"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "User ID"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "Mag-log in sa <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → ipinapakita ang iyong User ID sa main dashboard page katabi ng iyong email. Kailangan ng account? Mag-sign up gamit ang <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a>"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "Mas malaki ang kita ng mga residential IP. Tinatanggap ang mga VPS/datacenter na koneksyon sa mas mababang rate."
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "15% ng kanilang kita habambuhay"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "Nakatago sa domain records ang may-ari ng site, at wala kaming nakitang kumpanyang may pangalan sa likod nito."
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "$5 na minimum, sa crypto o PayPal."
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "Naglalathala ang ProxyLite ng Docker image, proxylite/proxyservice, at tumatanggap ng mga datacentre connection sa mas mababang rate."
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "Hinahayaan ka ng Peer program ng ProxyRack na kumita sa pag-share ng iyong bandwidth bilang bahagi ng kanilang proxy network. Kailangan ng bawat device ng natatanging 64-character na hex UUID at, kung gusto, isang API key para awtomatikong mairehistro ang device. Gumagana ito sa parehong residential at VPS/datacenter na koneksyon. Nasa likod ng Cloudflare ang dashboard, kaya maaaring kailanganing kunin nang mano-mano sa browser ang API key.\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "Bandwidth sharing - UUID kada device, gumagana sa VPS"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "Device UUID"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "API Key"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "Pangalan ng device"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "Natatanging 64-character na hex ID kada device. Gumawa nito gamit ang: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "Mag-log in sa <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → ipinapakita ang API Key sa main dashboard page (awtomatikong irerehistro ang device kung ibibigay mo ito). Kailangan ng account? Mag-sign up gamit ang <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "Madaling tandaang pangalan para sa device sa dashboard"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "Hindi na-download ang client ng Proxyrack nang mag-start ang container, kaya tumatakbo ang container pero walang kinikita. Ida-download itong muli ng restart; kung nandiyan pa rin ito pagkatapos ng restart, tingnan kung naaabot ng makinang ito ang internet."
+  source: "b5143d72ce35"
+proxyrack.device_link.steps:
+  text: "Mag-sign in sa ProxyRack, buksan ang Devices, piliin ang Add device at i-paste ang UUID na ito. Hangga't wala sa account mo ang device, wala itong kinikita para sa kahit sino. Kung naglagay ka ng API key, kusang magrerehistro ang container: tingnan kung nakalista roon ang device."
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "Mas malaki ang kita ng mga residential IP kaysa sa datacenter. Puwedeng magpahirap sa awtomatikong access ang dashboard na nasa likod ng Cloudflare."
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "Mag-request ng payout sa dashboard. Sinusuri ito ng ProxyRack sa loob ng 72 oras, pagkatapos ay mag-e-email sa iyo ang Tremendous ng reward na ire-redeem bilang PayPal, gift card o wire transfer. Walang crypto na opsyon."
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "Hawak ng ProxyRack ang balanse; iwi-withdraw kapag hiniling."
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "Mag-log in sa <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, pindutin ang F12 → Network, maghanap ng kahit anong API request at kopyahin ang value ng header na <b>Api-Key</b>. Kailangan ng account? Mag-sign up gamit ang <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>."
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Dinodokumento ng Proxyrack ang limitasyong 500 device kada ACCOUNT at walang limitasyon kada IP. Tinatanggap ang mga datacentre IP pero inililipat sa mas mababang rate."
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "Sinasabi ng help centre ng ProxyRack na kapag inalis ang isang device, tatanggalin din sa account mo ang kita ng device na iyon, at babalik lang ito kung idadagdag ulit ang parehong device."
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "Naglalathala ang ProxyRack ng sarili nitong Docker image, proxyrack/pop, at tumatanggap ng mga datacentre IP sa mas mababang rate."
+  source: "278541f81053"
+repocket.description:
+  text: "Hinahayaan ka ng Repocket na kumita ng passive income sa pag-share ng hindi mo nagagamit na internet bandwidth. Pinakamalaki ang kita ng mga residential IP; tinatanggap ang mga VPS/datacenter IP sa mas mababang rate. Hanggang 5 device at 5 aktibong session kada account. Nag-a-authenticate ang Docker container gamit ang email ng iyong account at isang API key mula sa Repocket dashboard (hindi ang password mo).\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "Bandwidth sharing - hanggang 5 device, API key na auth"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "API Key (UUIDv4, hindi ang password mo)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "Ang email ng iyong Repocket account"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "Ang iyong Repocket API key — mag-log in sa <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> at kopyahin ang API key na ipinapakita sa bandwidth-earnings page (HINDI ito ang password ng account mo). Kailangan ng account? Mag-sign up gamit ang <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a>"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "Mas malaki ang kita ng mga residential IP. Tinatanggap ang mga VPS/datacenter IP pero sa mas mababang rate."
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4 ($2 pagkatapos ng unang payout)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Itinatakda ng Repocket ang minimum kada account: $4 bago ang unang payout at $2 pagkatapos nito noong Oktubre 2026, malayong mas mababa sa $20 na dati nitong ina-advertise. Mga paraan: Tremendous (sa iyong email) o USDT sa Polygon. Kinukumpirma ang bawat request mula sa link na ie-email sa loob ng 2 oras, at isang request lang ang puwedeng nakabinbin sa isang pagkakataon. Noong Oktubre 2026, tinanggihan ng Repocket ang isang Tremendous request na may \"Please, message support\", habang pumasok naman ang USDT sa Polygon."
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "Hawak ng Repocket ang balanse; iwi-withdraw kapag hiniling."
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "Gamitin ang email at password ng iyong Repocket account (pareho sa <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>). Kailangan ng account? Mag-sign up gamit ang <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a>."
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "$2 kapag kumita na ng $7 ang ni-refer, pagkatapos ay 5% ng kanilang kita habambuhay"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "$2 na wallet bonus sa pag-sign up"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Dinodokumento ng Repocket ang limitasyong limang device kada ACCOUNT pero walang inilalathalang limitasyon ng device kada IP. Walang pinagmulang galing sa provider ang numerong '2 device kada IP' na inuulit sa mga review site, kaya hindi ito iginigiit ng CashPilot."
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "Panatilihing nagshe-share ang isang Repocket device, o i-withdraw ang iyong balanse"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "Pagkatapos ng 12 buwang walang login, payout o bandwidth sharing, puwedeng kunin ng Repocket ang hindi pa nababayarang balanse."
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "Panatilihing nagshe-share ang isang device, mag-sign in, o mag-withdraw. Kung titigil ka na sa paggamit ng Repocket, mag-withdraw muna."
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "Iniulat ng ilang reviewer sa Trustpilot na kinansela ang mga payout nila at na-reset sa zero ang balanse; sinabi ng isa na binanggit ng support ang iregular na kita sa bandwidth. Binibigyan ng page ang Repocket ng 2.7 at napansin nitong hindi ito sumasagot sa mga negatibong review."
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "Iniulat ng mga reviewer na tinanggihan ang mga withdrawal nila at kinailangan nilang habulin ang bayad."
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "Pinapayagan ng payment policy ng Repocket na bawiin, kanselahin o permanenteng kunin nito ang kita tuwing hinihinala nitong hindi ito valid, at kunin ang hindi pa nababayarang kita ng dormant na account."
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "Pinapayagan din ng parehong policy ang Repocket na magdagdag, mag-alis o magpalit ng mga payout method anumang oras nang walang abiso; inalis na ang PayPal."
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "Sinasabi ng mga termino na puwedeng humingi ang Repocket ng identity o account verification anumang oras, at nakadepende rito kung makakapag-payout ka."
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "Sinasabi ng mga termino na ginagamit ng Repocket at ng mga partner nito ang network capacity, pero hindi sinasabi kung sino ang mga partner o paano sila sinusuri."
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "Napansin ng Trustpilot na hindi sumasagot ang Repocket sa mga negatibong review, at sinasabi ng mga reviewer na hindi pinapansin ang mga mensahe."
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "Pinapangalanan ng kasalukuyang mga termino ang Repocket Pte. Ltd. sa Singapore; walang kumpanyang pinangalanan ang mga dating termino."
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Naglalathala ang Repocket ng sarili nitong Docker image, repocket/repocket, at pinapayagan ng mga termino nito ang mga container na pag-aari mo."
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "Mababa ang minimum: $4 bago ang unang payout at $2 pagkatapos nito."
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Hinahayaan ka ng Salad.io na i-share ang iyong GPU para sa mga distributed AI workload at kumita ng Salad balance na puwedeng i-redeem sa gift card, laro o cash. Windows lang, may native na desktop application. Kailangan ng dedikadong GPU (NVIDIA o AMD). Idinadaan ng platform sa makina mo ang AI inference, rendering at iba pang compute task kapag idle ito. Isa sa mas madaling gamiting GPU sharing platform.\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "GPU sharing para sa AI - Windows lang, payout sa gift card o cash"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "Nakadepende ang kita sa modelo ng GPU at sa dami ng trabaho. RTX 3060 ~$1-3/araw. Windows lang. Native app, walang Docker support. Puwedeng i-redeem sa gift card, laro o PayPal."
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "PayPal o gift card sa pamamagitan ng Salad storefront."
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "PayPal at gift card lang, hindi kailanman crypto. Walang wallet address, kaya walang on-chain na balance na maipapakita ang CashPilot."
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "Mag-log in sa <a href='https://app.salad.io' target='_blank'>app.salad.io</a>, pindutin ang F12 → Application → Cookies, kopyahin ang value ng cookie na <b>auth</b>."
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "Kumita ng ilang Salad Reward Points, o gastusin ang iyong balanse"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "Kung walang kinitang Reward Points ang isang account sa loob ng 12 sunod-sunod na buwan, puwedeng mag-expire ang hindi pa nare-redeem na balanse nito."
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "Patakbuhin ang Salad app hanggang kumita ito, o gastusin ang buong balanse sa Salad Storefront. Hindi nire-reset ng paggastos ng bahagi lang nito ang 12 buwan."
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Salad: ginagamit mo ang sariling desktop app ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "Iniulat ng ilang reviewer sa Trustpilot noong Oktubre at Nobyembre 2026 na mabilis dumating ang mga PayPal cash-out, ang ilan ay higit sa isang beses; sinabi naman ng isang reviewer sa parehong panahon na pumalya ang paulit-ulit niyang pagsubok na mag-cash out."
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Ang Sentinel ay isang Layer 1 Cosmos blockchain para sa decentralized VPN. Nagbebenta ng bandwidth ang mga node operator sa mga VPN user na may flexible na presyo (kada GB o kada oras). May opisyal na Docker deployment guide. Matagal nang tumatakbong proyekto na may aktibong komunidad.\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "Decentralized VPN sa Cosmos - nagbebenta ng bandwidth ang mga node operator"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "Ang mga operator ang nagtatakda ng sarili nilang presyo kada GB o kada oras. Nakadepende ang kita sa demand ng mga VPN user sa rehiyon mo."
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "Kada session"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "Nasa P2P token ang bayad, at 20% ng bawat bandwidth payment ay napupunta sa mga staker sa halip na sa host ng node."
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "Pinalitan ang pangalan ng token mula SENT tungong DVPN noong 2021 at mula DVPN tungong P2P noong 2025."
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Sentinel: ginagamit mo ang sariling node software ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Inilalathala ng Sentinel ang source code ng node nito sa ilalim ng sarili nitong open source licence."
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Ang Sia ay isang decentralized storage marketplace na pinapatakbo ng Sia Foundation (isang Swiss non-profit) at tumatakbo mula pa noong 2015. Patakbuhin ang opisyal na hostd node ng Foundation para paupahan ang ekstrang disk space at kumita ng Siacoin mula sa mga storage at bandwidth contract. Kailangan mong bumili muna ng kaunting Siacoin bago makakita ang node: nagla-lock ang mga host ng collateral para sa bawat contract at nagbabayad ng fee para sa bawat storage proof. Ibinabalik ang collateral kapag natapos ang isang contract at sinusunog ito kapag nag-offline o nawalan ng data ang node, kaya kailangan nito ng makinang laging bukas (sinasabi ng Sia na hindi bababa sa 95% na uptime). Nakadepende ang kita sa dami ng data na talagang iniimbak ng mga renter; inirerekomenda ng Sia na presyuhan ang storage ng $1 kada TB kada buwan, kaya bagay ito sa mga makinang may malaking ekstrang disk kaysa sa maliliit na VPS.\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "Storage node ng Sia Foundation - opisyal na Docker image, kumita ng Siacoin"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "Seed phrase ng wallet"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "Password ng dashboard"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "Storage directory"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "BIP-39 seed phrase na kumokontrol sa Siacoin wallet ng host. Gumawa nito gamit ang `docker run --rm ghcr.io/siafoundation/hostd seed` at i-backup ito -- ito LANG ang paraan para maabot ang kita"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "Password para sa hostd web UI at local API (BasicAuth). Kahit anong mahabang passphrase"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "Host path sa pinakamalaki mong disk kung saan iniimbak ang data ng renter (hal. /srv/sia). Kailangan ng hindi bababa sa 256GB na bakante"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "Sa pag-deploy, gagawa ang CashPilot ng bagong wallet sa makinang nagpapatakbo ng node at ipapakita nang isang beses ang seed phrase nito: isulat ito. Para gumamit ng wallet na mayroon ka na, i-paste na lang ang seed phrase nito. Pagkatapos mag-deploy, magpadala ng kaunting Siacoin sa wallet ng node para sa collateral at fee, pagkatapos ay idagdag ang storage folder (/storage), itakda ang mga presyo at i-announce ang host sa dashboard.\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "Ang seed phrase ng wallet (hostd.yml), ang wallet database, mga setting ng host at ang state ng mga contract. Kapag nawala ito, mawawala ang identity ng node at ang pagsubaybay sa kita mula sa mga contract; ang seed phrase na isinulat mo na lang ang tanging paraan para mabawi ang pondo."
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "Ang naka-imbak na data ng renter. Kapag nawala ito, papalya ang mga storage proof at mawawala ang collateral na naka-lock para sa mga contract na iyon."
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "Ang mga host ang nagtatakda ng sarili nilang presyo. Inirerekomenda ng Sia ang $1 kada TB na naka-imbak kada buwan at higit sa $5 kada TB na na-download, at 3.9% ng bawat contract payout ay napupunta sa mga may hawak ng Siafund. Tumataas ang kita ayon sa dami ng data ng renter na napupunta sa node, na nagsisimula sa zero at lumalaki kasabay ng uptime at presyo. Naka-lock kada contract ang collateral (iminumungkahi ng Sia ang 2x ng presyo ng storage) at ibinabalik kapag matagumpay na natapos.\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "Naiipon ang kita sa sariling Siacoin wallet ng host (kontrolado ng seed). I-convert ang SC sa isang exchange at mula roon mag-withdraw sa bangko/card; walang payout request sa panig ng provider.\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "Nasa Sia wallet na kontrolado ng seed sa loob ng node ang pondo. Nasa data volume lang ng hostd sa makinang nagpapatakbo nito ang seed phrase; hindi ito kailanman sine-save ng CashPilot. Ang phrase na isinulat mo nang gawin ang wallet ang tanging paraan para mabawi ito.\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "Isang stable na public address na naka-forward ang mga port na 9981 (TCP, consensus) at 9984 (TCP at UDP, mga contract ng renter). Karaniwan sa Sia ang datacenter/VPS hosting. Kailangan ng wallet ng Siacoin bago makatanggap ng contract ang node."
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "Disk space at ang bandwidth para maibigay ito."
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "Hindi. Nag-iimbak ang mga renter ng mga naka-encrypt na piraso ng file sa disk mo at kinukuha nila ulit ang mga ito. Walang ibang taong nagdadaan ng kung anu-anong traffic sa IP mo."
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "Ang iyong Sia wallet address, ang public key ng host, at ang public na IP:port na ina-announce ng node para maabot ito ng mga renter."
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "Tuloy-tuloy na upload/download traffic sa linya, katulad ng pagpapatakbo ng kahit anong storage server; walang anonymised na third-party web traffic na iniuugnay sa iyo."
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "Permissionless: walang sign-up o account. Sinusunog ang collateral kapag hindi nakagawa ng storage proof ang node, dahil nag-offline ito o nawalan ng data."
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "Siacoin sa sarili mong wallet ang kita: walang payout sa bangko, kaya ikaw mismo ang magbebenta sa exchange."
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "Naka-lock kada contract ang collateral at sinusunog kapag hindi nakagawa ng storage proof ang host dahil nag-offline ito o nawalan ng data."
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "Mga 30% lang ng storage na iniaalok sa network ang ginagamit, kaya kakaunti ang demand na pag-aagawan ng bagong host."
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "Nag-iimbak ang mga renter ng mga naka-encrypt na piraso ng file at walang nagdadaan ng traffic sa IP mo, pero hindi namin nakita kung saan sinasabi ng Sia kung sino ang mga renter o paano sila sinusuri."
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "Hayagang dine-develop ng Sia Foundation ang hostd, mula pa noong 2022."
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "Open source ang hostd sa ilalim ng MIT licence."
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "Inilalathala ng Sia Foundation ang hostd bilang container image."
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "Permissionless: walang sign-up o account."
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Ang Spide ay isang bandwidth-sharing na serbisyo na hinahayaan kang pagkakitaan ang hindi mo nagagamit na internet bandwidth. Gumagamit ito ng opsyonal na machine ID para sa pagsubaybay sa device. Available ito sa pamamagitan ng mga community Docker image mula sa income-generator project.\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "Bandwidth sharing - batay sa machine ID"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "Machine ID"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "Machine ID para sa kasalukuyang device na nakarehistro na (awtomatikong gagawin kung walang laman)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "Limitado ang available na impormasyon. Nakadepende sa lokasyon ang kita."
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "10% ng kanilang kita"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "$5 na sign-up bonus"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "Hinahati sa mga device na nagshe-share nito ang traffic na dumadaan sa isang public IP, kaya walang naidadagdag ang pangalawang device sa parehong koneksyon."
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Spide: ginagamit mo ang sariling app ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "Mag-mine ng Pearl, Zano o Ravencoin gamit ang isang NVIDIA GPU. Dina-download ng CashPilot ang opisyal na SRBMiner-Multi release sa unang start at sinusuri ang SHA-256 nito. Ang pool na pinili mo ang nagbabayad sa iyong public na payout address. Kinukuha ng SRBMiner-Multi ang 2% ng hashing time sa Pearl at 0.85% sa dalawa pa. Puwedeng mas mahal ang kuryente kaysa sa mga coin na kikitain mo."
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "Mag-mine ng Pearl at iba pang GPU coin sa isang NVIDIA GPU"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "Payout address"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "Pangalan ng worker"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "Algorithm"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "Pool (host:port)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "I-encrypt ang koneksyon sa pool (TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "Ang iyong public na Pearl address (prl1...). Para sa Zano o Ravencoin, ilagay ang address ng coin na iyon at isang pool para dito."
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "pearlhash para sa Pearl, progpow_zano para sa Zano, kawpow para sa Ravencoin."
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "Gross na tantiya bago ang kuryente. Noong 2026-11-25, tinantiya ng hashrate.no na mga $2.45 kada araw sa Pearl para sa RTX 4070 na kumukonsumo ng mga 142 W. Hindi pa namin ito nasusukat. Bagong coin ang Pearl, at mabilis magbago ang presyo at difficulty nito. Tingnan ang konsumo ng iyong GPU at ang presyo ng kuryente mo para malaman kung sulit ito."
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL (HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "Kapag naabot ang threshold ng pool"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "Nagbabayad ang pool sa address mo kapag naabot na ng balanse mo ang iyong threshold. Hawak ng pool ang balanse hanggang bayaran ka nito."
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64, isang NVIDIA GPU at NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "Hosting connection ang iniuulat ng makinang ito. Tingnan ang mga termino ng iyong provider bago mag-mine. May mga provider, kasama ang Hetzner Cloud, na nagbabawal nito. Alamin ang totoong gastos mo sa kuryente bago umasa sa isang tantiya ng kita."
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "Para sa pearlhash ang 2% na miner fee. Kinukuha ng SRBMiner-Multi ang 0.85% sa progpow_zano at kawpow. Naniningil ang HeroMiners, ang default na Pearl pool, ng 1% na pool fee. Tinitingnan nito ang mga payout kada oras at nagbabayad mula 1 PRL. Ang ibang pool ang nagtatakda ng sarili nilang rate at threshold."
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "compute"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "Hindi. Nagpapadala ang miner ng trabaho sa pool na pinili mo."
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "Napupunta sa pool ang iyong payout address, pangalan ng worker at IP address. Dina-download ng unang start ang miner mula sa GitHub."
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "May mga network at DNS resolver na nagba-block ng koneksyon sa mga mining pool."
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "Kinikilala ka ng karamihan ng pool gamit ang iyong public na payout address."
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "Kinukuha ng miner ang 2% ng hashing time sa Pearl at 0.85% sa Zano at Ravencoin."
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "May mga hosting provider na nagbabawal ng cryptocurrency mining."
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "Closed source ang miner, kaya walang sinuman sa labas ng developer nito ang makakapag-audit kung ano ang pinapatakbo nito."
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "Puwedeng mas mahal ang kuryente ng GPU kaysa sa mga coin na kinita, at mabilis gumalaw ang presyo ng Pearl."
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "Nagpapadala ang miner ng trabaho sa pool at hindi nagpapasa ng traffic ng ibang tao."
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "Puwede kang mag-mine ng Pearl sa HeroMiners gamit ang public address at walang account."
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Ang Storj ay isang decentralized cloud storage network kung saan kumikita ka sa pagpapaupa ng hindi mo nagagamit na disk space. Patakbuhin ang storage node gamit ang Docker at mabayaran ng $1.35/TB na naka-imbak kada buwan dagdag ang $1/TB na egress (mga rate mula 1 Setyembre 2026). Buwanan ang payout sa USDC, isang stablecoin na naka-peg sa US dollar, sa Ethereum mainnet papunta sa wallet na kontrolado mo, kapag lumampas na ang balanse sa minimum na batay sa fee (STORJ token hanggang sa payout ng Setyembre 2026). Kailangan ng hindi bababa sa 550GB na available na disk space at stable na internet connection. Hindi kailangan ng account o sign-up -- permissionless na ang mga node mula kalagitnaan ng 2025. BABALA (Oktubre 2026): Nag-file ang Storj Labs ng Chapter 11 noong 26 Hulyo 2026 (US Bankruptcy Court, Northern District of West Virginia, kaso 5:26-bk-00512) para i-restructure ang lumang utang. Patuloy na tumatakbo ang network at patuloy na nagbabayad ang Storj sa mga aktibong node, pero naka-freeze ang kita ng mga node bago ang filing hanggang magpasya ang korte tungkol dito. Bumaba nang mga 98% ang STORJ token mula sa peak nito noong 2021. Dinelist ito ng Binance noong 3 Setyembre 2026, at sinuspinde ng Coinbase ang trading nito noong 28 Setyembre 2026. Pinipigilan ng bagong node ang bahagi ng kita nito sa unang siyam na buwan at napupuno lang ito ayon sa pinapayagan ng demand ng customer, kaya ang pagsisimula ng isa ngayon ay nagtatali ng mahabang payback sa isang kumpanyang nire-restructure na puwede pang magsara.\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "Decentralized storage node - $1.35/TB na naka-imbak + $1/TB na egress"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "Wallet address"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "External address"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "Storage allocation"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "Identity directory"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "Storage directory"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "Ethereum wallet address para sa mga USDC payout (hal. 0x1234...abcd). Dapat self-custodial (MetaMask, Ledger, atbp.) -- huwag kailanman gumamit ng address ng exchange"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "Email address para sa mga notification sa operator"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "DDNS hostname na may port (hal. mynode.ddns.net:28967) -- mas mainam ito kaysa sa literal na IP, na mag-iiwan sa node na hindi maabot sa araw na tahimik itong palitan ng ISP mo. Dapat naka-forward ang port 28967 (TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "Pinakamalaking disk space na ilalaan (hal. 2TB). Gumamit ng spinning disk (HDD), hindi SSD"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "Host path kung saan naka-imbak ang mga identity file (dapat may ca.cert, ca.key, identity.cert, identity.key)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "Host path sa isang spinning disk (HDD) para sa data storage ng Storj. Kailangan ng hindi bababa sa 550GB na bakante"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "Bago ang unang takbo, i-initialize ang config ng storage node: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "Ang identity ng node. Nakatali sa proof-of-work ang ID nito at ilang oras bago ito magawa ulit, at hindi ito magagawang muli mula sa backup ng anumang ibang bagay. Kapag nawala ito, mawawala ang nakatabing payout balance."
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "Ang naka-imbak na data ng customer at ang nakatabing halaga ng node. Kapag nawala ito, madi-disqualify ang node at mawawala ang nakatabing balanse."
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "Hindi ma-dial pabalik ng Storj network ang node mo sa ina-advertise nitong ADDRESS, kaya itinuturing itong offline ng mga satellite: titigil ang pagdating ng bagong data, hihinto ang kita mula sa egress, at hahantong sa suspension ang matagal na pagka-offline. Tingnan kung tugma ang ADDRESS sa KASALUKUYANG public IP mo (gumamit ng DDNS hostname, hindi literal na IP, para hindi maiwang hindi maabot ang node kapag pinalitan ng ISP ang IP) at kung naka-forward sa makinang ito ang port 28967 TCP+UDP."
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "$1.35/TB na naka-imbak + $1/TB na egress + $1/TB na audit/repair mula 1 Setyembre 2026. Tumataas ang kita ayon sa data na naka-imbak at sa edad ng node. Sa unang 9 na buwan, pinipigilan ang 75%, pagkatapos ay 50%, pagkatapos ay 25% ng kita; ibinabalik ang kalahati ng nakatabing halaga sa ika-16 na buwan at ang natitira sa graceful exit. Dapat naka-forward ang port 28967."
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "4x ng Ethereum transaction fee, ipinapasa sa susunod ang mas maliliit na balanse"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "Buwanan"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "Binabayaran buwan-buwan sa USDC sa Ethereum mainnet kapag ang balanse ng wallet ay hindi bababa sa apat na beses ng kasalukuyang transaction fee; ipinapasa sa susunod na buwan ang mas maliliit na balanse. STORJ token hanggang sa payout ng Setyembre 2026. Dashboard sa port 14002."
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "Binabayaran buwan-buwan sa USDC sa Ethereum mainnet sa address na nasa WALLET kapag lumampas na ang balanse sa minimum na batay sa fee. STORJ token hanggang sa payout ng Setyembre 2026; natapos ang mga zkSync Era payout noong 1 Setyembre 2026."
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "Ang URL ng node dashboard sa port 14002, gamit ang LAN IP ng server sa halip na localhost, halimbawa <b>http://192.168.1.10:14002</b>. Para sa maraming node, ilista ang mga URL nila na pinaghihiwalay ng kuwit: pagsasamahin ng CashPilot ang mga ito."
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "Naghahati sa data allocation ang mga Storj node sa parehong /24 subnet, kaya bumababa ang kita kada node."
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "5 Mbps na upload"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "Disk space at ang bandwidth para maibigay ito."
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "Hindi. Nag-iimbak ka ng mga naka-encrypt at erasure-coded na piraso ng data ng customer. Walang ibang taong nagdadaan ng sarili nilang traffic sa IP mo."
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "Ang identity ng node, ang iyong wallet address, ang email address na hinihingi ng node para sa mga notification sa operator, at ang iyong IP at port, na dapat maaabot para makapagbigay ng data ang node."
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "Kadalasan ay tanong ito ng data cap kaysa ng pananagutan: tuloy-tuloy na nagbibigay at tumatanggap ng data ng customer ang node, na totoong tuloy-tuloy na traffic sa linya mo. Pero hindi tulad ng proxy o relay, hindi ito anonymised na third-party traffic na iniuugnay sa iyo bilang pinagmulan, kaya hindi ito umaakit ng mga abuse complaint na gaya ng sa mga iyon."
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "Walang limitasyon sa dami ng node, pero naghahati sa allocation ang mga node sa parehong /24 subnet, kaya mas maliit ang kita ng bawat isa kapag marami sa iisang koneksyon."
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "Iniulat ng CoinDesk noong 27 Hulyo 2026 na nag-file ang Storj Labs para sa Chapter 11 bankruptcy protection."
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "Napunta sa bankruptcy claims process ang mga bayad sa mga node operator bago ang filing."
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "Sa bagong node, pinipigilan ang 75%, pagkatapos ay 50%, pagkatapos ay 25% ng kita nito sa unang siyam na buwan; ibinabalik ang kalahati sa ika-16 na buwan at ang natitira ay sa graceful exit lang."
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "Nag-iimbak ang mga customer ng mga naka-encrypt na piraso ng file at walang nagdadaan ng traffic sa IP mo, pero hindi namin nakita kung saan sinasabi ng Storj kung sino ang mga customer o paano sila sinusuri."
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "Open source ang storage node software sa ilalim ng AGPL-3.0."
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Naglalathala ang Storj ng sarili nitong Docker image, storjlabs/storagenode."
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "Walang account: isang wallet address at isang email para sa mga abiso sa operator."
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "Patuloy na nabayaran ang mga aktibong node pagkatapos ng filing."
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "Ang SupportXMR ay isang Monero mining pool na walang account: nagla-log in ang iyong miner gamit ang iyong Monero address bilang username, at binabayaran ng pool ang address na iyon. Hindi nagpapatakbo ng miner dito ang CashPilot. Binabasa nito ang balanse na hawak ng SupportXMR para sa address mo, para makita mo ang kinita ng iyong CPU miner katabi ng iba mo pang kita. Ang balanse ay kinita na pero hindi pa natatanggap: binabayaran ito ng pool kapag lumampas na sa iyong payout threshold.\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "Monero mining pool, sinusubaybayan gamit ang iyong payout address"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR (awtomatiko), 0.01 XMR kapag hiniling"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "Kapag lumampas sa threshold mo ang balanse, o kapag hiniling"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "Nagbabayad ang SupportXMR sa address mo kapag naabot na ng balanse ang iyong threshold (0.1 XMR bilang default). Sa site nito, puwede ka ring mag-request ng instant payout mula 0.01 XMR, na may 0.001 XMR na fee."
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "Kinita na ang balanse pero hindi pa natatanggap hangga't hindi ito binabayaran ng SupportXMR sa address na ito. Hindi mababasa on-chain ang Monero balance nang walang private view key, na hindi kailanman hinihingi ng CashPilot, kaya ikaw mismo ang magkukumpirma ng bawat payout."
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "Ang iyong Monero payout address: ang username na ginagamit ng iyong miner sa SupportXMR, nang walang anumang bahaging <b>.workername</b> o <b>+difficulty</b>. Public ito at hindi nito nabubuksan ang anumang pondo."
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "Kailangan ng Monero miner (XMRig) na nakaturo sa pool.supportxmr.com"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "compute"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "Hindi. Nagpapadala ang miner mo ng mga hash sa pool; walang nagdadaan ng traffic sa koneksyon mo."
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "Ang iyong Monero address, ang mga pangalan ng worker na pinili mo, ang iyong hashrate at ang IP address ng iyong miner ayon sa nakikita ng pool."
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "Isang koneksyon lang sa pool ang pinananatiling bukas ng miner at kaunti lang ang bandwidth na ginagamit nito. Kuryente ang gastos na dapat bantayan, hindi ang ISP mo."
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "Walang account. Ang address ang identity, at kahit sino ay puwedeng magbasa ng stats nito sa supportxmr.com."
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "Monero lang ang bayad, may 0.6% na pool fee at 0.1 XMR na default threshold bago ang awtomatikong payout."
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "Hindi nagpapatakbo ang CashPilot ng miner para sa SupportXMR: ikaw ang magtuturo ng sarili mong miner sa pool, at binabasa lang ng CashPilot ang balanse."
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Binibigyan ng Teneo Protocol ang mga AI agent ng access sa live na web sa pamamagitan ng network ng mga Beacon. Ang Teneo Beacon ay sariling app ng Teneo para sa Android, iOS, macOS, Windows at Linux, na may command-line version para sa mga server at Raspberry Pi. Shine-share nito ang hindi mo nagagamit na bandwidth pagkatapos mong tanggapin ang consent screen nito, at kumikita ng Teneo Protocol Points at Fragments habang online ito. Binibilang ang Fragments sa mga seasonal draw na binabayaran sa USDC (ang Beacon Drop). Sinasabi ng Teneo na doble ang points na kinikita ng Beacon kumpara sa mas lumang browser extension nito. Isang Beacon lang ang kumikita kada internet connection. Naka-standby ang ibang device sa parehong koneksyon. Mag-sign up sa Expedition Hub gamit ang referral link o ang code na PSA3BHPJ, pagkatapos ay mag-sign in sa Beacon.\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "DePIN bandwidth app (Beacon) - Fragments para sa seasonal USDC draw, +100 Fragments gamit ang referral link"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "Kumikita ng Teneo Points at Fragments. Binibilang ang Fragments sa mga seasonal USDC draw, kaya premyo ang ibinabayad ng isang season, hindi rate. Sinasabi ng Teneo na doble ang points na kinikita ng Beacon kumpara sa browser extension. I-claim ang boost kada 8 oras para sa hanggang 3x na Fragments; bababa ang multiplier kapag may na-miss na window."
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "Seasonal draw (Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "Binabayaran sa USDC ang mga premyo ng Beacon Drop sa wallet na ibi-bind mo sa Expedition Hub. Ipinapakita ng Hub kung ilang araw ang mayroon ka para mag-bind ng isa; mawawala ang premyong walang naka-bind na wallet sa tamang oras."
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "Mag-bind ng wallet sa Expedition Hub bago bayaran ang mga premyo ng isang season; kinukuha ng Hub ang premyong hindi na-bind ang wallet sa tamang oras."
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "8% ng Fragments ng bawat ni-refer na kaibigan at 2% ng Fragments ng kanilang mga referral, kapag nag-sign up ang kaibigan sa loob ng 7 araw at kumita ng 480 Fragments"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "+100 Fragments sa pag-sign up, at +150 pa kapag naabot mo ang 480 Fragments"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "Isang Beacon lang ang kumikita kada internet connection. Kumikita lang ang mga datacentre machine sa mga hosting provider na in-enable ng Teneo, sa kalahati ng Fragments at walang points o referral bonus. Hindi kailanman kumikita ang mga VPN connection."
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "Nagbabayad lang ng USDC ang Fragments ng Beacon bilang premyo sa mga seasonal draw, kaya walang tiyak na halagang kinikita sa pagpapatakbo nito."
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Sinasabi ng Teneo na pagsasamahin ang points sa $AGENTIC, isang hindi naililipat na reward token, hindi sa $TENEO token."
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "Hanggang Nobyembre 2026, walang nakumpirmang launch date, allocation o claim process ng $TENEO, matapos lumipas ang naunang target na ikalawang quarter ng 2026."
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Teneo: ikaw ang mag-i-install ng sariling Beacon app ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Sinasabi ng Teneo na galing ang traffic sa mga nasuring business customer at bina-block nito ang mga private address at mga port na madalas abusuhin, pero hindi nito sinasabi kung paano nito sinusuri ang mga customer na iyon."
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Ang Theta Network ay isang matatag nang decentralized network para sa video delivery at AI compute (mula 2018). Nagpapatakbo ang mga user ng mga Edge Node na nagshe-share ng bandwidth, storage at compute power. May malalaking content partnership. Kumikita ng TFUEL token.\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "Decentralized CDN + AI compute - TFUEL reward, matatag nang proyekto"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "Desktop app lang. Nakadepende ang kita sa resources at lokasyon. May malalaking partnership, nakalista sa lahat ng exchange."
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "Tuloy-tuloy"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Theta Edge: ginagamit mo ang sariling desktop app ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "893de938ed14"
+titan.description:
+  text: "Ang Titan Network ay isang DePIN platform na nagshe-share ng iyong IP address, storage at bandwidth kapalit ng TNT token reward. Available sa Windows, Mac at Android. Nag-aambag ang mga node sa isang decentralized na CDN at storage layer. Karaniwang $5-30/buwan ang kita depende sa resources na shine-share at sa heograpikong lokasyon.\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "DePIN na nagshe-share ng IP, storage, bandwidth - $5-30/buwan"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "Nagshe-share ng IP, storage at bandwidth. Nakadepende ang kita sa resources na iniambag at sa rehiyon. Mas mataas ang reward kapag mas malaki ang inilaang storage."
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "Batay sa epoch"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "Sinasabi mismo ng help ng Titan na hindi garantisado ang kita ng tumatakbong node: kapag walang task na naka-assign, wala itong kinikita, at nasa TNT token ang mga reward."
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Titan: ginagamit mo ang sariling app o extension ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Hinahayaan ka ng Traffmonetizer na pagkakitaan ang iyong internet traffic sa pag-share ng bandwidth sa mga verified na negosyo. Isa ito sa iilang bandwidth-sharing na serbisyo na maayos gumagana sa mga VPS at datacenter IP bukod pa sa residential na koneksyon. Gumagamit ito ng simpleng token-based na authentication na ipinapasa sa mga command-line argument. Suportado ang mga ARM architecture para sa Raspberry Pi at mga katulad na device.\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "Bandwidth sharing - gumagana sa VPS, token-based na auth"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "Token"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "Pangalan ng device"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "Mag-log in sa <a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a>, pindutin ang F12 → Application → Local Storage → i-click ang <code>https://app.traffmonetizer.io</code> → kopyahin ang value ng <code>authToken</code> (mga 54 na character: mga digit, isang <code>|</code>, pagkatapos ay mga letra at digit)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "Pangalang ipinapakita sa dashboard para sa pamamahala ng device"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "Mas maliit ang kita ng mga VPS at datacenter IP kaysa sa residential. Mas malaki ang kita ng mga lokasyon sa US/EU. Suportado ang maraming IP sa pamamagitan ng mga Docker network."
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "Minimum $10. Wala nang PayPal. Mag-save muna ng isang payout method sa profile: USDT sa Solana o TON (pinakamababang fee), Arbitrum (mababang fee) o Tron TRC20 (mataas na network fee), o bank transfer mula $1,000. Agad na magagamit ang unang address na i-save mo; kapag binago ito kalaunan, kailangan ng email confirmation. Puwedeng humingi ang dashboard ng messenger contact (WhatsApp, Telegram o Skype) bago ang unang withdrawal. Buong dolyar lang ang ibinabayad ng request at naiiwan sa balanse ang mga sentimo."
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "USDT sa chain na naka-save sa payout settings ng profile (Solana, TON, Arbitrum o Tron), o bank transfer. Nasa settings ng Traffmonetizer ang address, hindi sa container."
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "Mag-log in sa <a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a>, pindutin ang F12 → Application → Local Storage → value ng <b>authToken</b> (mga 54 na character: mga digit, isang <code>|</code>, pagkatapos ay mga letra at digit)."
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "10% ng bawat payout na hihilingin nila"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "Hinihingi ng ToS ng Traffmonetizer ang residential IP, pero sa praktika ay tinatanggap ang mga VPS node."
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "1.9 ang rating nito sa Trustpilot; iniulat ng mga reviewer mula 2023 hanggang Nobyembre 2026 na nakabinbin nang ilang linggo ang mga payout, o minarkahang tapos na pero walang katugmang transaksyon."
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "Iniulat din ng parehong mga reviewer na hindi sumasagot ang live chat at email support, minsan nang ilang linggo."
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "Crypto o bank wire mula $1,000 lang; wala nang PayPal, at buong dolyar lang ang ibinabayad ng request."
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "Hinihingi ng mga termino ng Traffmonetizer ang residential IP, kaya labas sa mga ito ang server na nasa hosting connection."
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "Iniulat ng apat na reviewer sa Trustpilot mula 2023 hanggang 2025 na napakabagal ng kita, gaya ng isang sentimo kada araw sa apat na device, o halos dalawang taon bago umabot sa $10."
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "Naka-save na crypto address lang na kinumpirma sa email ang kailangan para sa payout; puwedeng humingi ang dashboard ng messenger contact."
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Naglalathala ang Traffmonetizer ng sarili nitong Docker image, traffmonetizer/cli_v2."
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "Mag-mine gamit ang iyong CPU at mabayaran sa coin na pipiliin mo, gaya ng SHIB, DOGE o XMR. Pinapatakbo ng CashPilot ang XMRig laban sa RandomX pool ng unMineable, at kino-convert ng unMineable ang Monero na mina-mine ng CPU mo sa coin mo. Binabayaran nito ang iyong public address kapag naabot na ng balanse mo ang payment threshold ng coin. Dala ng bawat worker na idine-deploy ng CashPilot ang unMineable referral code ng CashPilot, na nagpapababa sa iyong platform fee mula 1% tungong 0.75%. Puwedeng mas mahal ang kuryente kaysa sa kinikita mo."
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "Mag-mine gamit ang iyong CPU at mabayaran sa coin na pipiliin mo"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "Payout coin"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "Payout address"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "Pangalan ng worker"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "Max na CPU thread (%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "RandomX mode"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "Ticker ng coin na ibinabayad ng unMineable, gaya ng SHIB, DOGE o XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "Ang iyong public address para sa coin na iyon. Hindi suportado ang mga coin na nangangailangan ng memo o tag."
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "Gross na tantiya bago ang kuryente, binabayaran sa coin mo ayon sa conversion rate ng unMineable. Noong 2026-11-25, ang 1 kH/s ng RandomX ay nagkakahalaga ng mga $1 kada buwan. Ang desktop CPU na nasa kalahati ng mga thread nito ay puwedeng kumonsumo ng dagdag na 30 hanggang 50 W. Tingnan ang totoong konsumo mo at ang presyo ng kuryente para malaman kung sulit ito."
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "Itinatakda ng unMineable kada coin (0.03 XMR noong 2026-11-26)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "Kapag naabot ang payment threshold ng coin"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "Nagbabayad ang unMineable sa address mo kapag naabot na ng balanse mo ang payment threshold ng coin. Iba-iba ang threshold ayon sa coin at network; binabasa ng CashPilot ang iniuulat ng unMineable para sa address mo."
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "Kinita na ang balanse pero hindi pa natatanggap hangga't hindi ito binabayaran ng unMineable sa address na ito. Nakadepende sa coin na pipiliin mo ang chain."
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "Ang parehong payout address at coin ticker na ginamit mo sa pag-deploy ng miner, halimbawa <b>XMR</b>. Ilagay ang address lang, nang walang coin, pangalan ng worker o referral code. Public ito at hindi nito nabubuksan ang anumang pondo."
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "0.25% ng mining reward ng bawat ni-refer na miner"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "Ibinaba ang platform fee mula 1% tungong 0.75%"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "Hosting connection ang iniuulat ng makinang ito. Tingnan ang mga termino ng iyong provider bago mag-mine. May mga provider, kasama ang Hetzner Cloud, na nagbabawal nito. Alamin ang totoong gastos mo sa kuryente bago umasa sa isang tantiya ng kita."
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "Naniningil ang unMineable ng 1% na platform fee. Idinadagdag ng CashPilot ang referral code nito (#awk6-j1z0) pagkatapos ng bawat pangalan ng worker, na nagpapababa sa fee mo sa 0.75%. Pagkatapos ay binabayaran ng unMineable ang maintainer ng CashPilot ng 0.25% ng iyong mining reward; sa iyo ang 99.25%. May sariling payment threshold ang bawat coin, halimbawa 0.03 XMR."
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "compute"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "Hindi. Nagpapadala ang miner ng trabaho sa pool ng unMineable."
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "Napupunta sa unMineable ang iyong payout address, coin, pangalan ng worker, hashrate at IP address."
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "May mga network at DNS resolver na nagba-block ng koneksyon sa mga mining pool."
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "Hindi kailangan ng account. Ang address at coin ang identity, at kahit sino ay puwedeng magbasa ng stats nila sa unmineable.com."
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "Kinukuha ng unMineable ang 0.75% na platform fee kapag may referral code at nagbabayad lang mula sa threshold ng bawat coin."
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "May mga hosting provider na nagbabawal ng cryptocurrency mining."
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "Puwedeng mas mahal ang dagdag na kuryente kaysa sa mga coin na kinita."
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "Public sa kahit sinong nakakaalam ng address ang stats nito, kasama ang balanse."
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "Nagpapadala ang miner ng mga hash sa pool at hindi nagpapasa ng traffic ng ibang tao."
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "Puwede kang mag-mine papunta sa isang public address sa coin na pipiliin mo nang hindi gumagawa ng account."
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Ang Uprock ay isang DePIN (Decentralized Physical Infrastructure Network) platform na hinahayaan kang kumita ng cryptocurrency sa pag-share ng iyong internet connection. Bahagi ito ng mas malawak na Web3 ecosystem. May mga community Docker image pero walang opisyal na image. Browser extension ang pangunahing interface.\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "DePIN internet sharing - crypto payout, pangunahing browser extension"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "Kita na batay sa crypto/token. Walang opisyal na Docker image — browser extension ang pangunahing client."
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "UPT token, iwi-withdraw sa Solana wallet mula 250 UPT, nang naka-on ang two-factor authentication. May withdrawal fee."
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "Sinasabi ng help centre ng UpRock na UPT token ang mga withdrawal papunta sa Solana wallet, na may 250 UPT na minimum."
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "UPT token ang mga reward; sinasabi ng mga reviewer at ng isang third-party review na napakababa ng halaga nila."
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "Hindi pinapatakbo ng CashPilot ang UpRock: ginagamit mo ang sariling app o extension ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "51f68f082425"
+urnetwork.description:
+  text: "Ang URnetwork ay isang decentralized na VPN at bandwidth-sharing network. Kumikita ka sa pagbibigay ng bandwidth bilang community provider. Nag-a-authenticate ang provider binary gamit ang email at password ng iyong account (ang auth-provide subcommand nito) at sine-save ang nakuhang session JWT sa data volume. Opisyal na Docker image mula sa BringYour, Inc.\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "Decentralized VPN/bandwidth - email+password na auth, JWT session sa volume"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "Password"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "Ang email ng iyong URnetwork account (ang login na ginagamit mo sa <a href=\"https://ur.io\" target=\"_blank\">ur.io</a>). Kailangang magtakda muna ng password ang mga account na ginawa gamit ang Google/Apple sign-in. Kailangan ng account? Mag-sign up gamit ang <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a>"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "Ang password ng iyong URnetwork account (walang espasyo). Ginagamit ito ng auth-provide login ng provider; pagkatapos ay mananatili ang session sa data volume."
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "Gumagana sa VPS at residential. Binabayaran sa SN25α (Bittensor subnet 25) kada lingguhang epoch mula 2026-10-06. Suportado ang proxy mode para sa mga setup na maraming IP."
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "Batay sa epoch"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "Magtakda ng Bittensor coldkey sa ur.io/app/account/earnings (naka-sign gamit ang Talisman, TAO.com o isang WalletConnect wallet), pagkatapos ay i-claim ang bawat natapos na epoch. Nagbabayad ang isang claim ng gas sa TAO mula sa isang EVM gas key. NAG-E-EXPIRE ANG MGA EPOCH NA HINDI NA-CLAIM, at kinansela ang mga lumang USDC payout kapag walang wallet na na-link sa loob ng 30 araw."
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "3 GiB kada araw ng libreng UR data kada kaibigan, hanggang 20 kaibigan (data, hindi pera)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "3 GiB kada araw ng libreng UR data kapag nakagamit ka ng hindi bababa sa 10 MiB sa app sa loob ng 2 araw sa unang 90 araw mula nang sumali; kung hindi, matatapos ang referral"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "Nag-e-expire ang mga epoch na hindi na-claim, at kinansela ang mga lumang USDC payout para sa mga network na walang na-link na wallet sa loob ng 30 araw."
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "Mula Oktubre 2026, binabayaran ang mga reward sa SN25α, isang Bittensor subnet token, at bawat claim ay may gastos na gas sa TAO."
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "Dating BringYour ang URnetwork; dala pa ng naka-archive nitong whitepaper ang lumang pangalan."
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "Inilalathala ng URnetwork ang source code ng provider client nito."
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "Naglalathala ang URnetwork ng sarili nitong Docker image, bringyour/community-provider, at gumagana ito sa VPS at residential na koneksyon."
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "Bittensor wallet lang na kontrolado mo ang kailangan para sa isang claim."
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Ang Vast.ai ay isang GPU cloud marketplace kung saan pinapaupahan mo ang iyong NVIDIA GPU sa mga AI/ML researcher at developer. Docker-native na platform kung saan ikaw ang nagtatakda ng sarili mong oras-oras na presyo. Karaniwang kumikita ang RTX 3090 ng $0.20-0.40/oras kapag naka-rent. Kailangan ng NVIDIA GPU na may bagong driver at stable na internet connection. Malaki ang epekto ng modelo ng GPU, ng diskarte sa presyo at ng demand sa merkado sa kita.\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "GPU marketplace - ikaw ang nagtatakda ng presyo, RTX 3090 ~$0.20-0.40/oras"
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "API Key"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "Vast.ai host API key mula sa dashboard"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "RTX 3090 ~$0.20-0.40/oras, RTX 4090 ~$0.40-0.80/oras kapag naka-rent. Nag-iiba ang utilization. Kailangan ng NVIDIA GPU, Linux host, Docker at nvidia-container-toolkit. Ikaw ang nagtatakda ng presyo."
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "Lingguhan (tuwing Biyernes)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "Naiipon ang kita sa Vast.ai balance. Mag-withdraw sa pamamagitan ng Wise, PayPal o Stripe."
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "3% ng ginagastos ng mga ni-refer na renter, habang buhay ang account nila, bilang referral credit; hanggang 75% ang puwedeng i-cash out mula sa isang dedikadong referral account"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "Kumikita lang ang host habang naka-rent, at nakadepende sa uri ng rental at reliability score ang sariling numero ng Vast para sa isang consumer GPU."
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Vast.ai: ikaw ang mag-i-install ng host software ng Vast sa sarili mong GPU machine, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Binubuo ng Vast ang hosting sa paligid ng Docker sa isang Linux host."
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Sinasabi ng Vast na ang rate na itinakda ng host ay ang rate na natatanggap nito, walang ibinabawas na fee."
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "Dumadaan sa Wise, PayPal o Stripe ang mga payout mula sa $20 na minimum, na ini-invoice lingguhan; ipinapasa sa susunod na linggo ang mas maliit na balanse."
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Ang Wipter ay isang bandwidth sharing platform na available sa Windows, Mac, Linux at Android. Sinasabi nitong nagbabayad ito ng hanggang $1/GB ng shine-share na bandwidth na may $20 na minimum payout threshold. Gumagana ang platform na katulad ng mga tradisyonal na bandwidth sharing app, na nagdadaan ng lehitimong traffic sa mga residential na koneksyon.\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "Bandwidth sharing - sinasabing hanggang $1/GB, minimum na payout $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "Sinasabing hanggang $1/GB pero mas mababa ang totoong kita. Minimum na payout $20. Malaki ang pagkakaiba ng kita ayon sa lokasyon at demand."
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "Kapag hiniling"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "Walang web dashboard ang Wipter. Buksan ang Wipter desktop o phone app, mag-sign in, at doon mag-request ng payout kapag umabot na sa $20 ang balanse. USDT sa BNB Smart Chain (BEP20) lang ang ibinabayad ng Wipter, sa wallet na itinakda mo sa Payments section ng app; walang opsyong PayPal."
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "10% ng kanilang kita sa traffic kapag naabot na nila ang payout minimum, para sa lahat ng kaibigang ni-refer mo"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "$5 na sign-up bonus"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "Hindi pinapatakbo ng CashPilot ang Wipter: ginagamit mo ang sariling desktop o phone app ng provider, kaya hindi ito kayang i-deploy o i-update ng CashPilot para sa iyo. Hindi nasuri ang mga termino nito para sa mga container."
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "Mag-mine ng Monero gamit ang iyong CPU. Pinapatakbo ng CashPilot ang XMRig, at ang pool na pinili mo ang nagbabayad ng Monero sa iyong public na payout address. Ginagamit ng XMRig ang 1% ng hashing time para suportahan ang mga developer nito. Puwedeng mas mahal ang kuryente kaysa sa XMR na kikitain mo."
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "Mag-mine ng Monero gamit ang iyong CPU at ang pool na gusto mo"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "Monero address"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "Pool"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "Pangalan ng worker"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "Max na CPU thread (%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "RandomX mode"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "Gross na tantiya bago ang kuryente. Noong 2026-11-25, ang 1 kH/s ay nagkakahalaga ng mga $1 kada buwan sa naobserbahang presyo ng XMR at network difficulty. Ang desktop CPU na nasa kalahati ng mga thread nito ay puwedeng kumonsumo ng dagdag na 30 hanggang 50 W. Tingnan ang totoong konsumo mo at ang presyo ng kuryente para malaman kung sulit ito."
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR (MoneroOcean, pagkatapos mo itong ibaba)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "Kapag naabot ang threshold ng pool"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "Nagbabayad ang pool sa iyong Monero address kapag naabot na ng balanse mo ang iyong threshold. Hawak ng pool ang balanse hanggang bayaran ka nito."
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "Hosting connection ang iniuulat ng makinang ito. Tingnan ang mga termino ng iyong provider bago mag-mine. May mga provider, kasama ang Hetzner Cloud, na nagbabawal nito. Alamin ang totoong gastos mo sa kuryente bago umasa sa isang tantiya ng kita."
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "Naniningil ang MoneroOcean, ang default na pool, ng 0% na mining fee. 0.3 XMR ang default na payout threshold, at puwede mo itong ibaba sa 0.003 XMR. Puwedeng magkahalaga ng hanggang 0.0004 XMR ang mga payout na mas mababa sa 4 XMR. Ang ibang pool ang nagtatakda ng sarili nilang rate at threshold."
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "compute"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "Hindi. Nagpapadala ang miner ng trabaho sa mga mining pool."
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "Napupunta sa pool ang iyong Monero address, pangalan ng worker at IP address."
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "May mga network at DNS resolver na nagba-block ng koneksyon sa mga mining pool."
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "Kinikilala ka ng karamihan ng Monero pool gamit ang iyong public na payout address."
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "Kailangan ng payout ang sapat na XMR para maabot ang threshold ng iyong pool."
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "May mga hosting provider na nagbabawal ng cryptocurrency mining."
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "Puwedeng mas mahal ang dagdag na kuryente kaysa sa XMR na kinita."
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "Nagpapadala ang miner ng mga hash sa mga pool at hindi nagpapasa ng traffic ng ibang tao."
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "Open source ang miner at naka-pin ng image ang isang signed na upstream release."
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "Puwede kang mag-mine gamit ang public na Monero address nang hindi nagpapakilala sa pangalan."
+  source: "752cbb728aac"

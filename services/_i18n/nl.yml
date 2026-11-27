@@ -1,0 +1,2511 @@
+# Dutch translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/nl.yml --restamp '<key>'
+2miners-etc.description:
+  text: "Volg het onbetaalde Ethereum Classic-saldo dat 2Miners aanhoudt voor je openbare ETC-uitbetalingsadres. Draai je eigen miner en laat die naar de pool wijzen. CashPilot leest het saldo uit en vraagt je uitbetalingen te bevestigen wanneer het saldo daalt.\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "Ethereum Classic-miningpool, gevolgd via je uitbetalingsadres"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC (aanpasbaar)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "De pool controleert je uitbetalingsdrempel elke twee uur"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "2Miners betaalt automatisch uit naar je adres zodra je je gekozen drempel bereikt. De laagste drempel voor ETC-uitbetalingen is 0.1 ETC.\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "Het onbetaalde saldo wordt bij 2Miners opgebouwd. Het walletsaldo wordt apart uitgelezen van Ethereum Classic. Controleer in je wallet welk bedrag je hebt ontvangen voordat je een uitbetaling in CashPilot bevestigt.\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "Vul het openbare Ethereum Classic-uitbetalingsadres in dat je miner op 2Miners gebruikt, beginnend met <b>0x</b>. Laat een eventuele workernaam weg.\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "Vereist een ETCHash-miner die naar 2Miners wijst"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "rekenkracht"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "Nee. Je miner stuurt miningwerk naar de pool."
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "De pool gebruikt je uitbetalingsadres, de workernamen die je kiest en het IP-adres van je miner."
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "Iedereen kan statistieken bekijken via het uitbetalingsadres. Om de drempel te wijzigen vraagt de pool om bevestiging van het IP-adres van een worker."
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "De pool rekent 1% kosten en houdt uitbetalingen vast tot je drempel is bereikt."
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol (voorheen ATOR) is een gedecentraliseerd privacynetwerk op basis van onion routing. Node-operators draaien relay-nodes en verdienen ANYONE-tokens voor de bandbreedte die ze bijdragen. Zie het als \"Tor met beloning\". CashPilot draait het vanuit een eigen image, gebouwd uit het ondertekende Debian-pakket van het project, voor amd64 en arm64. De configuratie gebeurt via een anonrc-bestand dat in de container wordt gekoppeld (Nickname, ContactInfo, ORPort, enz.). Een relay verdient niets totdat er 100 ANYONE voor is vastgezet gedurende minstens 180 dagen, en beloningen claim je door in je wallet te ondertekenen. De relay zet je openbare IP-adres ook in de relaylijst van het netwerk, wat de IP-reputatie kan schaden waarvoor residentiële bandbreedte-apps betalen.\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "Gedecentraliseerde onion routing - Tor-relay-nodes met beloning"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "De ed25519-identiteitssleutel van de relay. Als je die vernietigt, verdwijnt de reputatie van de relay en begint de inkomstengeschiedenis weer bij nul."
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "Betaalt alleen met 100 ANYONE vastgezet per relay gedurende minstens 180 dagen en een beloningsclaim die je in je wallet ondertekent. Zonder die inzet verdient een relay niets. Met de inzet hangen de inkomsten af van de bijgedragen bandbreedte en de uptime."
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "Per epoch"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "Ingesteld als ContactInfo in anonrc, met het voorvoegsel '@anon:0x...'."
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "Relay-fingerprints, gescheiden door komma's. Deze staat niet in een webdashboard: voer <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> uit op de host waarop de relay draait.\n"
+  source: "9b5c068c9636"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "Bandbreedte, als relay in het Anyone-netwerk (een fork van Tor)."
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "Ja. Het stuurt verkeer van andere mensen door. Of jouw IP-adres de laatste hop is, hangt ervan af of de relay als exit is ingesteld."
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "De openbare identiteitssleutel van de relay, je IP-adres en poort, en uptimestatistieken, die allemaal bewust in de netwerklijst worden gepubliceerd. Als je ContactInfo in je anonrc instelt, wordt die daar ook gepubliceerd en blijvend en openbaar geïndexeerd — meestal is het een e-mailadres, dus laat het leeg tenzij je wilt dat het openbaar is."
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "Reëel. Relayverkeer wordt aan jouw verbinding toegeschreven. Vooral exit-relays trekken misbruikklachten aan; veel consumentenproviders verbieden ze."
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "Er is geen account om voor aan te melden, dus er valt per account niets te beperken. Om te verdienen heb je wel een Ethereum-wallet nodig met 100 ANYONE vastgezet voor elke relay gedurende minstens 180 dagen, en CashPilot heeft de relay-fingerprints nodig om de beloningen uit te lezen. Het project publiceert geen relaylimiet per IP-adres en de catalogus vermeldt er ook geen."
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "Een relay verdient niets tenzij er minstens 180 dagen 100 ANYONE voor is vastgezet, en elke beloningsclaim onderteken je in je wallet."
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "Het stuurt bewust verkeer van andere mensen door, zonder te controleren wie dat zijn; exit-relays trekken misbruikklachten aan."
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "De identiteit, het IP-adres en de uptime van de relay worden in de netwerklijst gepubliceerd, en elke ContactInfo die je instelt blijft voorgoed openbaar."
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "Er is geen account om voor aan te melden. Een relay heeft alleen een wallet nodig, zonder identiteitscontrole."
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "De relaysoftware is een gepubliceerde fork van Tor, onder de licentie van Tor."
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "CashPilot bouwt een eigen image uit de gepubliceerde relaysoftware van Anyone, waarvoor geen account nodig is."
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping is een gedecentraliseerd platform voor netwerkmonitoring dat je betaalt voor het draaien van een node. Je node voert websitemonitoring, latentietests en controles van de netwerkkwaliteit uit voor de klanten van Bitping. Werkt op zowel residentiële als VPS-verbindingen. De Docker-image logt bij de eerste start in met de omgevingsvariabelen BITPING_EMAIL en BITPING_PASSWORD (\"Attempting login with environment variables\" in zijn eigen log) en bewaart daarna de sessie in de volume-mount, zodat herstarts niet opnieuw hoeven te authenticeren.\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "Bandbreedte delen - gedecentraliseerde netwerkmonitoring, werkt op VPS"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "E-mailadres"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "Wachtwoord"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "Het e-mailadres van je Bitping-account (dezelfde login als <a href='https://app.bitping.com' target='_blank'>app.bitping.com</a>)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "Het wachtwoord van je Bitping-account. Wordt één keer gebruikt om de nodesessie aan te maken, die daarna in het datavolume bewaard blijft."
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "De inkomsten hangen af van de netwerkkwaliteit en de vraag naar monitoring vanaf jouw locatie. VPS-nodes worden geaccepteerd."
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "Node-inkomsten staan op nodes.bitping.com; app.bitping.com is het dashboard voor API-klanten. Opnames gaan alleen in SOL: zodra het onbetaalde saldo meer dan $0.05 is, typ je het Solana-adres in de aanvraag, die binnen 24 uur wordt verwerkt. Een nieuwe of lege Solana-wallet heeft eerst ongeveer 0.001 SOL nodig, voor het rent-minimum van het netwerk."
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "Nu alleen Solana, en het adres typ je in OP HET MOMENT VAN OPNAME in plaats van dat het wordt opgeslagen."
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "Gebruik het e-mailadres en wachtwoord van je Bitping-account (dezelfde als op <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)."
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "Neem je Bitping-saldo op"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "Bitping kan inkomsten die langer dan 12 maanden niet zijn opgenomen laten vervallen, na een aankondiging per e-mail 30 dagen vooraf."
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "Vraag een SOL-opname aan op nodes.bitping.com en typ je Solana-adres in de aanvraag."
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "Opnames worden betaald in Solana (SOL), naar een adres dat je bij elke aanvraag intypt."
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "Volgens de helppagina's van Bitping kan een opname naar een nieuwe, lege Solana-wallet mislukken totdat je die wallet zelf met een beetje SOL hebt gevuld."
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "Volgens de helppagina's van Bitping worden servers en Docker-containers ondersteund."
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "Voor een opname is alleen een Solana-adres nodig dat je in de aanvraag typt."
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit is een dienst voor het delen van bandbreedte die uitbetaalt via PayPal en Stripe. Er is geen officiële Docker-image; de Windows-desktopapp en de Android-app zijn de clients. De dienst staat op bytebenefit.io -- het oude domein bytebenefit.com is opgegeven en staat geparkeerd op een marktplaats, en daarom werd de dienst hier ooit als dood gemarkeerd.\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "Bandbreedte delen - uitbetaling via PayPal/Stripe, desktop-/Android-app"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "Geen Docker-image beschikbaar. Alleen Windows-desktopapp en Android-app."
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "20% van de inkomsten uit verkeer van doorverwezen gebruikers"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "Welkomstbonus van $1 (10,000 Coins)"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "Volgens de Google Play-pagina van de app bedient je verkeer web-intelligence-verzoeken van klanten van Infatica, zonder te zeggen wie dat zijn of hoe ze worden gecontroleerd."
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "De Android-app verdween in april 2026 na 17 maanden uit Google Play."
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "CashPilot draait ByteBenefit niet: je gebruikt de eigen app van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Met Bytelixir verdien je passief inkomen door ongebruikte internetbandbreedte te delen. Ondersteunt alleen Windows en Android — volgens de officiële FAQ is er geen Linux- of Docker-client gepland, wordt iOS niet ondersteund en is macOS niet beschikbaar. De inkomsten hangen sterk af van je locatie. Webdashboard op dash.bytelixir.com om alles te volgen. Geen Docker-image beschikbaar.\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "Bandbreedte delen - alleen Windows + Android"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "Sessiecookie"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "Remember-web-cookie"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "XSRF-token"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "Log in op <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a>, druk op F12 → Application → klap <b>Cookies</b> open in de linkerzijbalk → klik op het subitem <code>https://dash.bytelixir.com</code> → zoek in de cookielijst rechts <code>bytelixir_session</code> → kopieer de Value (een lange JWT die begint met eyJ)"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "Op dezelfde plek (Cookies → <code>https://dash.bytelixir.com</code>) → zoek de cookie met de naam <code>remember_web_...</code> → kopieer de Value (optioneel, verlengt de levensduur van de sessie)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "Op dezelfde plek → zoek <code>XSRF-TOKEN</code> → kopieer de Value (optioneel)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "De inkomsten verschillen per locatie ($2-50/maand). Geen Docker-image. Desktopapp of Android-app vereist."
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "Alleen crypto. Het minimum hangt af van de munt: USDT $5, USDC $5, TON $8, LTC $10, ETH $40, BTC $250. Je typt het adres bij elke aanvraag in. Aanvragen worden tijdens kantooruren verwerkt, binnen 24 uur."
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "Het saldo wordt door Bytelixir aangehouden; het walletadres typ je bij elke uitbetalingsaanvraag in en wordt nooit in de container opgeslagen."
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "Log in op <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> <b>met Remember Me aangevinkt</b>, druk op F12 → Application → klap <b>Cookies</b> open in de linkerzijbalk → klik op <code>https://dash.bytelixir.com</code> en kopieer dan drie waarden: <b>bytelixir_session</b>, <b>remember_web_…</b> (de lange die met dat voorvoegsel begint) en <b>XSRF-TOKEN</b>. De sessiecookie alleen verloopt ongeveer twee uur nadat je hem kopieert, waardoor het uitlezen dezelfde middag stopt; de remember_web-cookie blijft een jaar geldig en zorgt ervoor dat het blijft werken."
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "Levenslang 50% van hun winst"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "Welkomstbonus van $1"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "Alleen crypto, en het minimum hangt af van de munt, van $5 voor USDT tot $250 voor Bitcoin."
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "CashPilot draait Bytelixir niet: je gebruikt de eigen app van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "Trustpilot geeft een 4.6 op basis van 283 reviews, waarvan de meeste de crypto-uitbetalingen prijzen; een paar melden dat uitbetalingen niet aankomen."
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "Voor een uitbetaling is alleen een crypto-adres nodig dat je in de aanvraag typt."
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai is een peer-to-peer-marktplaats voor GPU's. Je biedt een Linux-machine met NVIDIA-GPU's aan, stelt je eigen spot- en on-demandprijzen in, en huurders draaien er hun eigen Docker-containers op. Je wordt alleen betaald voor de minuten dat hij verhuurd is, in CLORE, BTC, USDT of USDC. Voor hosting is een x86_64-machine nodig met Ubuntu 22.04 of nieuwer (of HiveOS), een werkende NVIDIA-driver en minstens 100 Mbps up en down. AMD-GPU's worden niet ondersteund.\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "GPU-marktplaats - verhuur NVIDIA-GPU's, betaald in CLORE, BTC of USD-stablecoins"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "Je wordt alleen betaald voor verhuurde minuten, tegen de prijs die je zelf instelt. De bovenkant van de marge, $490, is het eigen plafond van Clore voor één RTX 4090 die per minuut wordt aangeboden ('up to ~$490/month'); kleinere kaarten verdienen minder en een ongebruikte kaart verdient niets. Clore houdt 5% (on-demand) of 1.25% (spot) van elke verhuur in, plus 15% als de huurder in BTC, USDT of USDC betaalt in plaats van in CLORE."
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "Neem op via Account > Billing naar je eigen wallet: CLORE (ERC-20, minimum 200, kosten ongeveer $0.50), BTC (minimum 0.0001, kosten 0.00005 BTC) of USDT/USDC op Ethereum of BNB Chain (minimum $10, kosten $1)."
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "Clore houdt het saldo aan (CLORE, BTC en één USD-saldo voor USDT/USDC) totdat je opneemt. De chain kies je per opname: Ethereum voor CLORE, Bitcoin voor BTC, Ethereum of BNB Chain voor USDT/USDC."
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "15% (standaardniveau) van de platformkosten die de hosts en huurders die je doorverwijst betalen, bij elke verhuur; de code verloopt nooit; uitbetaald in de valuta van de verhuur (CLORE, BTC of USD)"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "100 Mbps up en down"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "GPU-rekentijd op je machine."
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "Ja. Huurders draaien hun eigen Docker-containers op je machine, en hun verkeer gaat via jouw verbinding naar buiten; SSH- en applicatiepoorten worden naar het internet doorgestuurd."
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "Het privacybeleid van Clore omvat accountgegevens en je IP-adres met een geschatte locatie; identiteitsdocumenten alleen als Clore om KYC vraagt."
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "Inkomende poorten moeten vanaf het internet bereikbaar zijn (standaard 22, 8080 en 3000-4000) en workloads van vreemden draaien op jouw lijn. Volgens de eigen netwerkhandleiding van Clore blokkeren sommige internetproviders hosting."
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "18 jaar of ouder, niet in een land onder sancties. Clore kan een account naar eigen goeddunken opschorten of sluiten, en verboden gebruik kan je het tegoed kosten."
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "Noch de voorwaarden noch het privacybeleid noemen een rechtspersoon, en de voorwaarden laten het toepasselijke rechtsgebied over aan een latere versie."
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Clore kan een account naar eigen goeddunken opschorten of sluiten, en verboden gebruik kan leiden tot verbeurdverklaring van het tegoed."
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "Uitbetalingen gaan alleen in crypto (CLORE, BTC, USDT of USDC), en Clore neemt 15% extra van een verhuur die de huurder in BTC, USDT of USDC betaalt, tenzij de host CLORE vastzet om dat te verlagen."
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "Een host wordt alleen betaald voor verhuurde minuten, en het bedrag dat Clore noemt voor een RTX 4090 is een plafond (\"up to ~$490/month\") voor één kaart."
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "Voor basisgebruik is geen KYC nodig, maar Clore kan om identiteitsverificatie vragen bij grote opnames of om nalevingsredenen."
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "Huurders draaien elke willekeurige openbare Docker-image op je machine. De voorwaarden noemen verboden gebruik (malware, DDoS, CSAM en meer), maar we vonden geen beschrijving van hoe huurders worden gecontroleerd."
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "CashPilot draait Clore.ai niet: je installeert de hostingagent van Clore op je eigen GPU-machine (Ubuntu 22.04 of nieuwer, of HiveOS), dus CashPilot kan die niet voor je uitrollen of bijwerken."
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "Clore houdt 5% van een on-demandverhuur in (1.25% bij spot) als de huurder in CLORE betaalt, zonder extra kosten."
+  source: "699adf0a2179"
+dawn.description:
+  text: "DAWN draait een validatornetwerk dat bandbreedte en dekking controleert voor de AI-infrastructuur die via het DAWN-protocol wordt gefinancierd. De browserextensie DAWN Validator neemt deel aan deze proof-of-bandwidth- en dekkingscontroles en verdient DAWN-beloningen zolang hij draait. De beloningen hebben nog geen vaste geldwaarde. Maak het account aan in de extensie en vul verwijzingscode 2QLQV97F in wanneer daarom wordt gevraagd.\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "DePIN-validator - browserextensie verdient DAWN-punten"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "Verdient Dawn Points vóór de tokenlancering. De werkelijke waarde hangt af van de toekomstige tokenprijs. Een hardwarebox verdient meer dan de browserextensie."
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "Token-airdrop (nog niet bekend)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "De extensie werkt, maar is nog niet af. Black Box-hardware is aangekondigd. Later opnieuw bekijken."
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "De extensie verdient punten; in oktober 2026 was er nog geen tokenverdeling aan node-operators bevestigd."
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "Punten hebben geen vaste waarde totdat er een token wordt gelanceerd en de omrekening wordt aangekondigd."
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "CashPilot draait Dawn niet: je gebruikt de eigen browserextensie van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network is een gedecentraliseerd VPN- en web3-infrastructuurproject. Vereist vooral eigen Deeper Connect-hardware. Moken is een verwant mining-/stakingplatform. Niet alleen software.\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "Gedecentraliseerde VPN - vereist eigen hardware van de aanbieder"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "Vereist Deeper Connect-hardware ($200-500). Moken-platform voor mining/staking. Niet alleen software."
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "Doorlopend"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "Commissie op de verkoop van het apparaat"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "5% korting op het Deeper Connect-apparaat met kortingscode SERGIO"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "Miningbeloningen zijn in DPR en hangen af van een kredietscore die langzaam groeit of door DPR te staken."
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "CashPilot draait Deeper Network niet: je gebruikt de eigen routerhardware van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "Met EarnApp van Bright Data verkoop je je ongebruikte bandbreedte voor passief inkomen. Bright Data is het grootste proxynetwerk ter wereld en verzorgt dataverzameling voor Fortune 500-bedrijven. CashPilot draait het vanuit een eigen image, die bij de eerste start de vastgepinde EarnApp-build van het CDN van Bright Data downloadt, de sha256 controleert en hem in lite-modus draait met alleen een UUID.\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "Bandbreedte delen - gesteund door Bright Data"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "Node-UUID"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "Je EarnApp-node-ID: sdk-node- gevolgd door 32 hexadecimale tekens in kleine letters, zoals 'earnapp showid' het toont. Koppel hem na het uitrollen één keer door https://earnapp.com/r/ gevolgd door deze UUID te openen terwijl je bij EarnApp bent ingelogd; een niet-gekoppelde node verdient wel, maar er komt niets op je saldo"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "EarnApp kan zijn servers steeds niet bereiken en herstart telkens, waardoor hij weinig of niets verdient. Herstart deze kopie; als het blijft gebeuren, controleer dan de internetverbinding van deze machine."
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "Open deze link terwijl je bij EarnApp bent ingelogd om de node aan je account toe te voegen. Tot je dat doet, verdient de node wel, maar komt er niets op je saldo."
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "Sterk afhankelijk van je locatie. IP-adressen in de VS/EU verdienen het meest. De inkomsten groeien mee met de verbruikte bandbreedte."
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "Op aanvraag (automatisch inwisselen mogelijk: PayPal min. $10, Wise min. $10, Amazon min. $50)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "Zet automatisch inwisselen één keer aan en EarnApp betaalt vanzelf uit zodra het saldo het minimum van de methode bereikt: PayPal $10, Wise $10, Amazon $50. PayPal-betalingen komen binnen van Bright Data Ltd. In oktober 2026 kwam een PayPal-betaling ongeveer 2% lager binnen dan het ingewisselde saldo."
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "Het saldo wordt door EarnApp aangehouden; ingewisseld via Amazon/Wise/PayPal."
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "Log in op <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, druk op F12 → Application → Cookies en kopieer de waarde van <b>oauth-refresh-token</b>."
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "Levenslang 10% van hun inkomsten, bovenop die van hen uitbetaald"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "Volgens het helpcentrum van EarnApp is installatie in Docker-containers, virtuele machines, hostingdiensten of thuisservers strikt verboden, en zo draait CashPilot het juist."
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "Hetzelfde helpartikel zegt dat een account dat zo wordt gebruikt zonder waarschuwing wordt beëindigd en dat de openstaande betalingen worden geannuleerd."
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "Onze PayPal-uitbetaling kwam in oktober 2026 binnen, ongeveer 2% lager dan het ingewisselde saldo."
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "Een minimum van $10 voor PayPal en Wise, met automatisch inwisselen dat vanzelf uitbetaalt."
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "EarnApp is van Bright Data, en de PayPal-betalingen komen binnen van Bright Data Ltd., een bedrijf met een naam."
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Earn.fm betaalt je voor het delen van je internetbandbreedte. De inkomstencollector gebruikt authenticatie met e-mailadres en wachtwoord via Supabase. Lichtgewicht Docker-image die eenvoudig uit te rollen is (de Docker-client gebruikt een apart UUID-token).\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "Bandbreedte delen - inloggen met e-mail/wachtwoord, lichtgewicht client"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "API-sleutel"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "Log in op <a href=\"https://app.earn.fm\">app.earn.fm</a> → klik op je profielpictogram (rechtsboven) → Account Settings → kopieer de API Key (UUID-formaat)"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "Relatief nieuw platform. De inkomsten verschillen per locatie en beschikbare bandbreedte."
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "Minimum $15. Methoden: USDT op BEP20 of Polygon ($1 kosten) of TRC20 ($3 kosten), PayPal, cadeaukaarten van Amazon of Starbucks vanaf $15, of een bankoverschrijving vanaf $1,000 waarbij de overboekingskosten worden ingehouden. Vóór de eerste uitbetaling vul je een factuurprofiel in (wettelijke naam en adres), dat wordt gebruikt voor de uitbetalingsbewijzen."
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "Het saldo wordt door Earn.fm aangehouden; opgenomen op aanvraag."
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "Gebruik het e-mailadres en wachtwoord van je Earn.fm-account (dezelfde als de login op <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a>)."
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "Levenslang 10% van hun inkomsten"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "$5 startsaldo"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "Een minimum van $15, $1 tot $3 kosten bij USDT, en een bankoverschrijving pas vanaf $1,000."
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "Vóór de eerste uitbetaling vul je een factuurprofiel in met je wettelijke naam en adres."
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "Reviewers melden in 2025 dat support via e-mail en Discord niet reageert; Trustpilot vermeldt dat Earn.fm niet op negatieve reviews heeft gereageerd."
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Earn.fm publiceert een eigen Docker-image, earnfm/earnfm-client."
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher is een platform voor verkeersuitwisseling waarop je credits verdient door websites te bezoeken via een geautomatiseerde surfbar. Draait als browserextensie/add-on. Geen traditionele dienst voor het delen van bandbreedte — het genereert verkeer door automatisch websites te bezoeken.\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "Surfbar voor verkeersuitwisseling - browserextensie"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "Inkomsten in BTP-punten die in EUR kunnen worden omgezet. Alleen browserextensie."
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "Uitbetaling in euro via PayPal of bankoverschrijving."
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "CashPilot draait eBesucher niet: het is een browserextensie, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "Uitbetalingen vanaf 2 euro via PayPal of SEPA, minstens wekelijks, zonder kosten."
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "eBesucher bestaat sinds 2002."
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "Het impressum noemt de exploitant, TurboAd GmbH, ingeschreven in Berlin-Charlottenburg (HRB 160730 B)."
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux is een wereldwijd gespreide rekeninfrastructuur. Node-operators staken FLUX-tokens en leveren serverresources. Drie niveaus: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Officiële Docker-images beschikbaar.\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "Gedecentraliseerde rekenkracht - vereist een inzet van FLUX-tokens"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "Vereist een inzet van 1,000+ FLUX (~$50-500, afhankelijk van de koers). Hogere niveaus vereisen meer onderpand, maar verdienen meer."
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "Blokbeloningen"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "Het kleinste node-niveau vereist 1,000 FLUX die als onderpand worden vastgezet."
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "De blokbeloning daalt elk jaar met 10%, en volgens een handleiding uit 2026 zijn de beloningen op het kleine niveau in dollars gemeten zwak."
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "CashPilot draait Flux niet: je gebruikt de eigen nodesoftware van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "De Flux-daemon is open source onder de MIT-licentie."
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network is een gedecentraliseerde marktplaats voor rekenkracht waarop je CPU- en GPU-resources deelt in ruil voor GLM-tokens. Aanbieders draaien de Yagna-agent, die de uitvoering van workloads in afgeschermde omgevingen (sandboxes) beheert. Een van de oudste gedecentraliseerde rekenprojecten (opgericht in 2016). Ondersteunt CPU-taken, GPU-rendering en rekenwerk voor algemene doeleinden. Betalingen via Polygon L2.\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "Gedecentraliseerde marktplaats voor rekenkracht - GLM-tokens via de Yagna-agent"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "De inkomsten hangen af van hardware, prijzen en de vraag naar taken. Nodes met alleen CPU verdienen minder. GPU-nodes verdienen meer, maar vereisen NVIDIA. Draai de Yagna-provideragent (geen Docker-image). Betalingen op Polygon in GLM-tokens."
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "Per voltooide taak"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "Je verdient GLM-tokens. Stel de uitbetalingswallet in bij de providerinstellingen."
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "CashPilot draait Golem niet: je installeert de provideragent zelf, dus CashPilot kan die niet voor je uitrollen of bijwerken. Golem documenteert hoe je de provider in een eigen Docker-image draait."
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "De provideragent, yagna, is open source onder de GPL-3.0."
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "Geen account: je stelt een uitbetalingswallet in bij de providerinstellingen."
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "Het netwerk draait al ongeveer tien jaar."
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "Het privacybeleid van Golem noemt de exploitant, Golem Factory GmbH in Zug, Zwitserland."
+  source: "bae79b651923"
+grass.description:
+  text: "Grass is een gedecentraliseerd netwerk waarmee je je ongebruikte bandbreedte verkoopt voor AI-trainingsdata. Het werkt als browserextensie en desktopapp en stuurt webscrapingverzoeken via je verbinding om gestructureerde datasets op te bouwen. Met 8.5M+ gebruikers is het een van de grootste DePIN-bandbreedtenetwerken. Verdient GRASS-tokens op de Solana-blockchain.\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "DePIN-bandbreedte delen voor AI-data - verdient GRASS-tokens"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "Toegangstoken"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "Log in op <a href=\"https://app.grass.io\">app.grass.io</a>, druk op F12 → Application → Local Storage → klik op <code>https://app.grass.io</code> → kopieer de waarde van <code>token</code>"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "Verdient Grass Points die via airdrops in GRASS-tokens kunnen worden omgezet. De werkelijke waarde in USD hangt af van de tokenprijs. Browserextensie of desktopapp vereist."
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "Airdrop per epoch"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "Beloningen komen als periodieke uitkeringen die je op het Grass-dashboard claimt. De Stage 2-uitkering (activiteit van oktober 2024 tot juni 2026) wordt in USDC betaald: claim die op app.grass.io/dashboard uiterlijk op 22 januari 2027, of eerder als alle toewijzingen al eerder zijn geclaimd. Grass houdt niet-geclaimde beloningen."
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "Bouwt PUNTEN op; GRASS wordt tijdens periodieke airdrops geclaimd via het Grass-dashboard."
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "Log in op <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, druk op F12 → Application → Local Storage en kopieer de waarde van <b>accessToken</b>."
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "20% van de uptimepunten van directe doorverwijzingen, 10% op het tweede niveau, 5% op het derde"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "Claim je Grass Stage 2-USDC"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "Grass houdt elke Stage 2-toewijzing die niet uiterlijk op 22 jan 2027 is geclaimd, en de periode kan eerder sluiten zodra alle toewijzingen zijn geclaimd."
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "Log in op app.grass.io met het account dat je in Stage 2 gebruikte, activeer de Grass Wallet, open het tabblad Allocation en bevestig. Claim alleen op app.grass.io. Geen Stage 2-punten? Kies Niet voor mij."
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "Beloningen komen alleen via airdrop-seizoenen. Node-operators die al lang meedraaien, meldden schattingen voor seizoen 2 van enkele tot een paar tientallen dollars."
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "Beloningen van seizoen 2 die niet uiterlijk op 22 januari 2027 zijn geclaimd, gaan voorgoed verloren."
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "De eerste airdrop leidde tot kritiek op de lage beloning per punt, verdeeld over meer dan twee miljoen gebruikers."
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "CashPilot draait Grass niet: je gebruikt de eigen app of extensie van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "De eerste airdrop bereikte bijna 1.5 miljoen claimende adressen."
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium is een gevestigd gedecentraliseerd draadloos netwerk. Oorspronkelijk LoRaWAN-hotspots, nu uitgebreid naar 5G. Vereist speciale hardware ($500+). Verdient HNT-/MOBILE-tokens. Het rendement is flink gedaald - meestal $4-8/maand.\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "Gedecentraliseerd draadloos netwerk - vereist hardware, HNT-tokens"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "Vereist de aankoop van hardware van $500+. Het rendement is flink gedaald. Goedkeuringsprocedure voor nieuwe operators."
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "Per epoch"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "HIP 149 heeft de Proof-of-Coverage-beloningen op 6 juli 2026 stopgezet; IoT-hotspots verdienen nu alleen nog voor data die ze doorgeven, en meer dan 114,000 ervan gaven helemaal niets door."
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "Het beloningsmodel van Helium is meerdere keren per stemming gewijzigd, de CEO is afgetreden en HNT is ongeveer 96% gedaald."
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "CashPilot draait Helium niet: je gebruikt de eigen hotspothardware van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "De gatewaysoftware van de hotspot is open source onder de Apache-2.0-licentie."
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "Volg het onbetaalde Kaspa-saldo dat HeroMiners aanhoudt voor je openbare uitbetalingsadres. Draai je eigen Kaspa-miner en laat die naar de pool wijzen. CashPilot leest het poolsaldo uit en vraagt je uitbetalingen te bevestigen wanneer het saldo daalt.\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "Kaspa-miningpool, gevolgd via je uitbetalingsadres"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS (aanpasbaar)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "De pool controleert je uitbetalingsdrempel elk uur"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "HeroMiners betaalt automatisch uit naar je adres zodra je je gekozen drempel bereikt. De laagste drempel is 1 KAS.\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "Het saldo wordt bij HeroMiners opgebouwd. Controleer in je wallet welk bedrag je hebt ontvangen voordat je een uitbetaling in CashPilot bevestigt.\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "Vul het volledige openbare Kaspa-uitbetalingsadres in dat je miner op HeroMiners gebruikt. Neem het voorvoegsel <b>kaspa:</b> mee en laat de workernaam weg.\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "Vereist een Kaspa-miner die naar HeroMiners wijst"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "rekenkracht"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "Nee. Je miner stuurt miningwerk naar de pool."
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "De openbare statistieken van de pool tonen elk uitbetalingsadres en de bijbehorende miningactiviteit."
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "De pool gebruikt je uitbetalingsadres in plaats van een account."
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "De pool rekent 0.9% kosten en houdt uitbetalingen vast tot je drempel is bereikt."
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "Deel je ongebruikte internetbandbreedte en verdien passief inkomen. Honeygain stuurt verkeer voor web intelligence, contentlevering en marktonderzoek via je verbinding. Een van de meest gevestigde platforms voor het delen van bandbreedte, met 12M+ gebruikers en meer dan 1M voltooide uitbetalingen.\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "Bandbreedte delen - het meest gevestigde platform"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "E-mailadres"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "Wachtwoord"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "Apparaatnaam"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "Het e-mailadres van je Honeygain-account"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "Het wachtwoord van je Honeygain-account"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "Naam die in je Honeygain-dashboard wordt getoond"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "Verschilt per locatie. IP-adressen in de VS/EU verdienen meer. Max. 10 apparaten per account."
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "Minimum $20 (20,000 credits). Twee opties: PayPal via Tipalti, met ongeveer 15% kosten, of JumpTask-credits zonder kosten, uitbetaald in een JumpTask-wallet. Voor een aanvraag is een 6-cijferige code nodig die per e-mail wordt verstuurd. De eerste PayPal-uitbetaling blijft op \"waiting for details\" staan totdat je je bij Tipalti registreert via de link die ze je mailen. Die link werkt maar één keer, dus open hem wanneer je alles in één keer kunt afronden en je telefoon bij de hand hebt: nadat je een wachtwoord hebt ingesteld, laat Tipalti je een mobiel nummer per sms bevestigen (de codes verlopen binnen enkele minuten), en daarna vraagt het om je naam, adres, land en geboortedatum, en je PayPal-adres. Tipalti rekent $2.02 per betaling; kies USD om de valutaomrekeningskosten van 1.9-3% te vermijden. De betaling volgt binnen 2 werkdagen. Het saldo verdwijnt van je account zodra je de aanvraag doet, ook terwijl de uitbetaling op Tipalti wacht. Bij elke volgende Tipalti-login wordt een nieuwe sms-code verstuurd, tenzij je de optie aanvinkt om het apparaat 30 dagen te onthouden. In oktober 2026 vroeg Tipalti een ontvanger in Spanje niet om een belastingformulier."
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "Het saldo wordt door Honeygain aangehouden; opgenomen op aanvraag."
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "Gebruik het e-mailadres en wachtwoord van je Honeygain-account (dezelfde als op <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>)."
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "Tot 25% van de inkomsten van elke doorverwezen vriend in Honeygain-modus"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "$3 aanmeldbonus met deze link"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "Neem je Honeygain-saldo op"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "Laat een Honeygain-apparaat delen, of vraag een uitbetaling aan"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "Inkomsten blijven 24 maanden geldig nadat ze het minimum van $20 hebben bereikt. Daarna kan Honeygain afboeken wat niet is uitbetaald."
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "Als de app langer dan 6 maanden niet wordt gebruikt, beschouwt Honeygain het onbetaalde saldo als verlopen, ook als het onder $20 is."
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "Laat een apparaat delen, of vraag een uitbetaling aan. In JumpTask-modus is een gelijkblijvend saldo normaal, dus kies dan Niet voor mij."
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "Volgens de voorwaarden mag Honeygain inkomsten afboeken die de drempel van $20 hebben bereikt en niet binnen 24 maanden zijn uitbetaald, en inkomsten na zes maanden zonder gebruik als verlopen beschouwen."
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "Het minimum is $20, en PayPal-uitbetalingen lopen via Tipalti, dat $2.02 per betaling rekent."
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "Volgens de voorwaarden mag Honeygain een account opschorten en inkomsten inhouden of afboeken waarvan het vindt dat ze onder valse voorwendselen zijn opgebouwd."
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "Vóór de eerste PayPal-uitbetaling laat Tipalti je een mobiel nummer per sms bevestigen en je naam, adres en geboortedatum opgeven."
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "Volgens de voorwaarden gebruiken zakelijke klanten het verkeer om openbaar beschikbare webdata te verzamelen, maar er wordt geen klant genoemd, en je kunt niet weten welke klant je verbinding gebruikt."
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "In de eigen reacties van Honeygain op reviews over lage inkomsten staat dat de inkomsten afhangen van de vraag op het netwerk en de locatie; reviewers melden dat het heel lang duurt om het minimum van $20 te bereiken."
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Honeygain publiceert een eigen Docker-image, honeygain/honeygain."
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "De voorwaarden noemen de exploitant, Honeygain UAB, ingeschreven in Vilnius, Litouwen."
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "Volgens de perspagina van Honeygain is het in 2019 opgericht."
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net is een gedecentraliseerd GPU-netwerk voor AI/ML-workloads. Het bundelt ongebruikte GPU's van consumenten en datacenters. Vereist een NVIDIA-GPU met 8GB+ VRAM voor noemenswaardige inkomsten. Uitrollen op basis van containers wordt ondersteund.\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "Gedecentraliseerd GPU-netwerk voor AI - NVIDIA-GPU vereist"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "Vereist een NVIDIA-GPU met 8GB+ VRAM. Er wordt beweerd dat een RTX 4090 $500-1000/maand oplevert (in de praktijk waarschijnlijk minder)."
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "Per epoch"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "Beloningen voor leveranciers werden betaald uit tokenuitgifte, ongeacht betaalde opdrachten, en GPU-eigenaren melden dat hun hardware meestal ongebruikt blijft."
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "Beloningen zijn in de IO-token, en het uitbetalingsmodel is in 2026 veranderd naar een systeem dat aan de dollar is gekoppeld."
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "In april 2024 probeerden ongeveer 1.8 miljoen nep-GPU's zich aan te sluiten via een uitgelekt authenticatietoken, en de CEO trad later af vóór de tokenlancering."
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "CashPilot draait io.net niet: je gebruikt de eigen workersoftware van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "Met IPRoyal Pawns verdien je door je ongebruikte bandbreedte te delen. IPRoyal is een gevestigde proxyaanbieder, en Pawns is hun tak voor het delen van residentiële bandbreedte. De CLI-Docker-image accepteert inloggegevens via opdrachtregelvlaggen. Een nieuwe gebruiker die zich via een verwijzingslink aanmeldt, krijgt $1 bij elk van de eerste drie uitbetalingen, tot $3. Elke uitbetaling moet binnen een periode van één tot drie weken vallen, afhankelijk van de locatie. De periode begint bij de aanmelding en begint opnieuw na elke uitbetaling. Als een periode eerder afloopt, vervallen de resterende bonussen.\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "Bandbreedte delen - tot $3 bonus op je eerste uitbetalingen"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "E-mailadres"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "Wachtwoord"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "Apparaatnaam"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "Apparaat-ID"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "Het e-mailadres van je IPRoyal Pawns-account (doorgegeven als vlag -email)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "Het wachtwoord van je IPRoyal Pawns-account (doorgegeven als vlag -password)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "Naam die in je Pawns-dashboard wordt getoond (doorgegeven als vlag -device-name)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "Unieke apparaat-ID (doorgegeven als vlag -device-id)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "IPRoyal Pawns heeft dit account uitgeschakeld."
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "Pawns ziet een ander actief apparaat op dit IP-adres en betaalt er maar één per IP-adres, dus deze kopie draait wel, maar deelt niets en verdient niets. Stop elke andere Pawns-app op dit IP-adres, op een andere machine, een pc of een telefoon. Is er geen, wacht dan tot Pawns het oude apparaat verwijdert, of vraag Pawns-support om het vrij te geven."
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "De inkomsten hangen af van de locatie en het bandbreedtegebruik. Residentiële IP-adressen in de VS/EU verdienen meer."
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "Minimum $5. Kies eerst je land; de methoden hangen daarvan af. Vanuit Spanje (oktober 2026): PayPal 4% met minimaal $0.25 kosten, betaald via Tremendous, dat een link mailt waar je je naam en PayPal-adres invult; USDT (BEP20, ERC20, TRC20) of USDC (BEP20, ERC20) met $1 netwerkkosten; Bitcoin met minimaal $2 kosten; cadeaukaarten zonder kosten. Voor de eerste uitbetaling is een eenmalige sms-controle van je telefoonnummer nodig: Withdraw opent die, en het nummer vul je in met landcode. Daarna vraagt elke uitbetaling om een code die naar het e-mailadres van je account wordt gestuurd, en wordt ze tot 72 uur beoordeeld voordat ze wordt verzonden."
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "Het saldo wordt door IPRoyal Pawns aangehouden; opgenomen op aanvraag."
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "Gebruik het e-mailadres en wachtwoord van je IPRoyal Pawns-account (dezelfde als op <a href='https://pawns.app' target='_blank'>pawns.app</a>)."
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "$1 bij elk van hun eerste drie uitbetalingen, tot $3, als elke uitbetaling binnen de periode van 1-3 weken valt"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "$1 bij elk van je eerste drie uitbetalingen, tot $3; mis je een periode van 1-3 weken, dan vervalt de rest"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "Volgens de voorwaarden kan een account zonder voorafgaande waarschuwing worden geblokkeerd bij misbruik van de opnamevoorwaarden of bij meerdere accounts, en worden de inkomsten dan mogelijk niet uitbetaald."
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "Volgens de voorwaarden staat Pawns geen servers, VPN's of proxydiensten toe voor het delen van verkeer, en maar één apparaat per IP-adres."
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "PayPal kost 4% (minstens $0.25) via Tremendous, en elke uitbetaling wordt tot 72 uur beoordeeld."
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "Voor de eerste uitbetaling is een sms-controle van je telefoonnummer nodig, en voor elke uitbetaling een code die per e-mail wordt verstuurd."
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "Het privacybeleid noemt de exploitant, Pawns.App Ltd (bedrijf 16043795 in Engeland en Wales), dat volgens Companies House op 28 oktober 2024 is opgericht, minder dan drie jaar geleden."
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "Volgens de voorwaarden sturen Pawns en zijn zakelijke klanten verkeer via je apparaat, en kun je niet nagaan welke klant het gebruikt."
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "Een minimum van $5, met cadeaukaarten zonder kosten."
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "Mine Pearl met KRig op één NVIDIA-GPU. Kryptex zet de beloningen om in Bitcoin en houdt het saldo op je account aan totdat je een opname aanvraagt."
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "Mine Pearl op een NVIDIA-GPU en krijg tegoed in Bitcoin op je account"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "E-mailadres Kryptex-account"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "Workernaam"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "Het geverifieerde e-mailadres van je Kryptex-account."
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "Geef elke machine een eigen naam in je Kryptex-account."
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "0.00001 BTC via Lightning (andere methoden verschillen)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kryptex zet Pearl-beloningen om in BTC en houdt het saldo op je account aan. Vraag een opname aan bij Kryptex. Elke methode heeft een eigen minimum en eigen kosten. Het minimum voor Bitcoin Lightning is 0.00001 BTC."
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "Kryptex houdt de omgezette Bitcoin op je account aan totdat je opneemt."
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "20% van de poolinkomsten van Kryptex uit doorverwezen gebruikers"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64, een NVIDIA-GPU vanaf Volta (sm_70) of nieuwer, en NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "Deze machine meldt een hostingverbinding. Controleer de voorwaarden van je provider voordat je gaat minen. Sommige providers, waaronder Hetzner Cloud, verbieden het. Controleer je werkelijke stroomkosten voordat je op een winstschatting vertrouwt."
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "KRig rekent 0% minerkosten op Kryptex Pool. Kryptex vermeldt aparte poolkosten van 3% voor Pearl PPS+. De opnamekosten verschillen per methode."
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "rekenkracht"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "Nee. KRig stuurt miningwerk naar Kryptex Pool."
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Kryptex ziet het e-mailadres van je account, de workernaam, de hashrate en je IP-adres."
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "Sommige netwerken en DNS-resolvers blokkeren verbindingen met miningpools."
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "Verifieer het e-mailadres van je Kryptex-account voordat je ernaar gaat minen."
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Kryptex kan inactieve accounts na zes maanden opschorten en na een jaar verwijderen."
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "Minimale opnamebedragen en kosten verschillen per methode."
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "De licentie van KRig staat toe dat je de release downloadt en vanuit miningsoftware draait."
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "KRig gebruikt een gepubliceerd TLS-eindpunt om Pearl-shares naar Kryptex Pool te sturen."
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes (Mysterium Network) is een gedecentraliseerd VPN- en proxynetwerk op basis van blockchaintechnologie. Je verdient MYST-tokens door een node te draaien die VPN-, proxy- en datascrapingdiensten aan gebruikers levert. Vereist de capabilities NET_ADMIN, SETUID en SETGID en een TUN-apparaat, dat het binnen een eigen netwerknamespace op de afgeschermde bridge voor verdien-apps gebruikt. Bevat een ingebouwde web-UI voor het beheer van de node. Werkt op zowel residentiële als VPS-verbindingen, maar de verwijzingsbonus wordt alleen betaald voor nodes op een residentieel IP-adres.\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "Gedecentraliseerde VPN-node - op basis van blockchain, werkt op VPS"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "WebUI-adres"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "UDP-poortbereik"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "De hostadressen waarop de WebUI van de node (poort 4449) wordt gepubliceerd. Met 127.0.0.1 blijft die op deze machine. Om hem via een reverse proxy te bereiken, voeg je het adres toe waarmee de proxy verbinding maakt, gescheiden door komma's zonder spaties: 127.0.0.1,172.18.0.1."
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "De UDP-poorten die de node voor VPN-sessies gebruikt, als start:end. Stuur ditzelfde bereik door op je router. Elke sessie neemt ongeveer twee poorten in, dus de standaard 30 poorten dragen ongeveer 15 sessies tegelijk, meer dan een thuisnode krijgt. Een groter bereik lost niets op en kost meer: elke gepubliceerde poort vertraagt het starten en verwijderen van de node (300 poorten kosten ongeveer 12 s om te starten), CashPilot accepteert er maximaal 300, en met de standaard userland-proxy van Docker neemt elke poort ook ongeveer 2.5 MB geheugen in. Als alle sessies mislukken, is dat een routerprobleem, geen tekort aan poorten: zie \"Routers that rewrite UDP source ports\" in de Mysterium-handleiding. Blijf onder 32768: poorten 32768-60999 zijn het ephemeral bereik van Linux, waar elk programma op de host er even een kan bezetten, en één bezette poort laat het starten van de node mislukken. Een node die al een bereik heeft, houdt dat."
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "Keystore met de identiteit van de node. Als je die vernietigt, ontstaat er een gloednieuwe identiteit: de node verliest zijn reputatie en alle inkomsten die nog op de oude identiteit staan."
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "De node kan in zijn container geen sudo uitvoeren, dus kan hij zijn VPN-interface of firewall niet configureren en mislukt elke sessie bij het opzetten: hij lijkt online, maar verdient niets. De container is aangemaakt zonder de capabilities SETUID en SETGID. Werk CashPilot en de worker waarop deze node draait bij en rol Mysterium daarna opnieuw uit vanaf het dashboard; de identiteit van de node staat in zijn datavolume en blijft behouden."
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "Geen enkele VPN-sessie in de afgelopen 6 uur bereikte deze node rechtstreeks. Elke sessie viel terug op hole punching, en veel kopers krijgen op die manier geen verbinding, dus de node verdient minder. De UDP-poorten zijn niet bereikbaar vanaf het internet. Stuur op je router het UDP-poortbereik ${UDP_PORTS} (start:end, aan beide kanten hetzelfde bereik) door naar ${HOST_ADDRESS}. Dit verdwijnt vanzelf zodra een sessie rechtstreeks verbinding maakt."
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "De monitoring van Mysterium markeert de node op ${WORKER_NAME} als mislukt, waardoor hij niet in de nodelijst staat waaruit de meeste kopers kiezen, zelfs als zijn eigen controle zegt dat elke poort bereikbaar is. Controleer eerst of de node /dev/net/tun en SETUID/SETGID heeft, want die laten hem op dezelfde manier mislukken: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 Als die in orde zijn, is een veelvoorkomende oorzaak dat de router vóór ${WORKER_NAME} de UDP-bronpoort van de antwoorden van de node herschrijft zodra een pakket van buitenaf die poort heeft bereikt. Zie de test in de handleiding: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "De laatste vijf VPN-sessies van de node op ${WORKER_NAME} eindigden elk na ongeveer een minuut zonder dat er data was verplaatst, dus hij verdient niets terwijl hij online lijkt. De waarschijnlijke oorzaak is de router vóór ${WORKER_NAME}: zodra een pakket van buitenaf een poort bereikt, herschrijft die de bronpoort van de latere antwoorden van de node vanaf die poort, en elke sessie begint met zo'n pakket (de eigen poortcontrole van de node), dus kopers negeren de antwoorden van de node. Een groter poortbereik helpt niet. Zie de test en de oplossingen in de handleiding: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports Dit verdwijnt zodra een sessie data overdraagt."
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "Inkomsten in MYST-tokens. Residentiële IP-adressen verdienen aanzienlijk meer. De WebUI van de node op poort 4449 is voor beheer en wordt standaard alleen gepubliceerd op de machine waarop hij draait (127.0.0.1); open vanaf een andere machine eerst een SSH-tunnel (ssh -L 14449:127.0.0.1:4449 gevolgd door het adres van de machine van de node, en ga dan naar http://127.0.0.1:14449; lokale poort 14449, zodat die niet botst met een node op je eigen machine), of voeg een adres toe aan UI_ADDRESS (zie WebUI-adres in de Mysterium-handleiding). VPS wordt geaccepteerd. Port forwarding van UDP 23000-23029 (de standaard van UDP_PORTS) wordt sterk aanbevolen -- zonder krijgen nodes de status Strict NAT en mislukken veel VPN-sessies, wat de inkomsten sterk verlaagt. Belangrijk: stel na de eerste start je beneficiary-wallet (settlement) in via de WebUI of de CLI van de node, zodat die overeenkomt met je mystnodes.com-account -- zo worden de on-chain inkomsten aan je clouddashboard gekoppeld."
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "Automatische on-chain afrekening telkens wanneer een node 5 MYST niet-afgerekend heeft staan"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "Er is geen knop om op te drukken. Elke node rekent zelf af op Polygon zodra hij 5 MYST niet-afgerekend heeft staan, en ongeveer 21% gaat op aan kosten (de Hermes-fee van 20% plus kleine transactiekosten), dus per afrekening komt er ongeveer 3.9 MYST in de beneficiary-wallet. De TequilAPI van elke node toont zijn afrekeningen op /transactor/settle/history. Het bedrag \"total earnings\" op MystNodes beslaat alleen de laatste 30 dagen; het is geen saldo en ook geen totaal over de hele looptijd. Bonus-MYST uit het beloningsprogramma van MystNodes wordt niet vanzelf afgerekend: claim die op de pagina Rewards, volgens het helpcentrum van MystNodes binnen 30 dagen na de verdeling."
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "De beneficiary-wallet wordt NA het uitrollen ingesteld, via TequilAPI of de WebUI van de node -- niet met een omgevingsvariabele, dus hij is niet uit de containerspecificatie af te lezen."
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "Gebruik het e-mailadres en wachtwoord van je MystNodes-account (dezelfde als op <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>)."
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "5 MYST per vriend wiens node 5 MYST verdient (alleen residentiële IP-adressen)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "5 MYST zodra je node zijn eerste 5 MYST verdient (residentieel IP-adres, node geclaimd op mystnodes.com)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "Claim de MystNodes-beloningen van vorige maand"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "Beloningen die niet binnen 30 dagen na de maandelijkse verdeling zijn geclaimd, vervallen en gaan terug naar de pool van de volgende maand."
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "Open de pagina Rewards en wissel je punten in voor MYST."
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "Bandbreedte. Je verbinding wordt gebruikt als exit-node voor het Mysterium-netwerk, dat VPN-, proxy- EN datascrapingdiensten verkoopt. Scrapingverkeer dat vanaf een residentieel IP-adres vertrekt, levert het vaakst klachten op, en je kunt niet kiezen welke van de drie je node doorgeeft."
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "Ja. Vreemden sturen hun verkeer via jouw IP-adres — dat is het product."
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "De identiteit van de node (een blockchainadres), je IP-adres en een globale locatie (land/stad/internetprovider), die de node op het netwerk publiceert zodat kopers hem kunnen kiezen."
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "Reëel en het is goed om dit te begrijpen. Verkeer van andere mensen verlaat je verbinding op jouw naam, dus alles wat zij doen lijkt van jouw lijn te komen. Veel contracten van consumentenproviders verbieden dit. Controleer het jouwe voordat je dit draait."
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "Onbeperkt aantal apparaten per account en per IP-adres."
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "Ongeveer 21% van elke afrekening gaat op aan kosten, de Hermes-fee van 20% plus transactiekosten, en de inkomsten worden betaald in de MYST-token."
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "Je node is een exit voor de VPN-, proxy- en datascrapingklanten van Mysterium, en je kunt niet kiezen van wie hij het verkeer doorgeeft."
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "De nodesoftware is open source onder de GPL-3.0."
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Mysterium publiceert een eigen Docker-image, mysteriumnetwork/myst."
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "De afrekening gaat naar een wallet die van jou is; er is geen telefoonnummer of identiteitsbewijs nodig."
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "Het nodeproject bestaat sinds 2017."
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "Volgens de site van Mysterium wordt het netwerk ontwikkeld door Blockdev AG, Zug, Zwitserland."
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay is een DePIN-netwerk dat gebruikers beloont voor het delen van bandbreedte via een browserextensie. Het platform zit achter Cloudflare-bescherming, wat geautomatiseerde toegang lastig kan maken. Gebruikers verdienen Nodepay Points door de extensie actief te houden. Het netwerk richt zich op infrastructuur voor AI-trainingsdata.\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "DePIN-bandbreedte delen voor AI - browserextensie"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "Verdient Nodepay Points; punten van gebruikers die door de geschiktheidscontroles van Nodepay komen, worden omgezet in de NC-token. Cloudflare-bescherming kan het geautomatiseerd uitlezen blokkeren. Browserextensie vereist."
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "Airdrop van NC-tokens (tijdstip niet bevestigd)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "Systeem op basis van punten. Punten van gebruikers die door de geschiktheidscontroles van Nodepay komen, worden omgezet in de NC-token, die in januari 2025 is gelanceerd."
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "Bij de evaluatie van het eerste seizoen verwijderde Nodepay meer dan 300,000 accounts die het als bots beschouwde en schrapte het 17 miljard punten."
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "Beloningen zijn punten die in de NC-token worden omgezet, dus hun waarde hangt af van de token."
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "CashPilot draait Nodepay niet: je gebruikt de eigen browserextensie van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes is het gratis instapniveau van het Noderr Protocol, een DeFi-project op Base L2. Een micronode is een kleine agent op een reserve-Android-telefoon, een Windows-pc, een Mac of een Chromium-browser. Op Android deelt hij de mobiele verbinding van de telefoon: ander Noderr-verkeer gaat naar buiten via het IP-adres van de provider van de telefoon, dus er is een simkaart met mobiele data nodig. Op een pc of in de browser voert hij met ongebruikte rekenkracht automatiseringstaken uit voor het protocol. Beloningen zijn bedoeld om in NODR te worden betaald, afhankelijk van een on-chain score voor uptime en betrouwbaarheid, maar tijdens de bèta draait het netwerk op het Base Sepolia-testnet: noderewards zijn niet gefinancierd en er is nog niets uitbetaald.\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "Gratis micronode (verbinding delen op Android, Windows, Mac, browser) - testnet, beloningen tot nu toe niet gefinancierd"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "Testnet-bèta: noderewards zijn niet gefinancierd en er is nog niets uitbetaald. De APY van 5-10% op de site is een ontwerpdoel. Opnieuw bekijken wanneer het netwerk Base Sepolia verlaat."
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "Beloningen worden opgebouwd in de eigen wallet van de node en worden geclaimd vanuit de app of de dApp. Tijdens de bèta zijn het Base Sepolia-testnettokens zonder marktwaarde."
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "De app maakt de nodewallet aan bij de eerste start en mint er een gratis soulbound Utility NFT naartoe. Maak vanuit de app een back-up van de wallet: als je het apparaat kwijtraakt, raak je de identiteit van de node kwijt. Tijdens de bèta staan beloningen op Base Sepolia (testnet)."
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Android vereist een simkaart met mobiele data; voor de desktop- en browserclients is geen IP-vereiste gepubliceerd."
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "Hangt af van het apparaat. Een Android-telefoon verkoopt zijn mobiele verbinding: ander Noderr-verkeer gaat naar buiten via het IP-adres van de provider van de telefoon en telt mee voor de databundel. Een Windows-pc, een Mac of een browser verkoopt ongebruikte rekenkracht voor wat de aanbieder automatiseringstaken voor sociale media en content noemt."
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "Ja. Op Android gaat ander Noderr-verkeer naar buiten via het mobiele IP-adres van je telefoon; de app vraagt om vastgelegde toestemming voordat het begint, en je kunt het delen op hetzelfde scherm stoppen. Voor de Windows-, Mac- en browserclients beschrijft de aanbieder automatiseringstaken en zegt niet of die verkeer voor andere mensen doorgeven."
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "Het walletadres van de node en de cijfers over uptime en voltooide taken komen on-chain als reputatiescore (de TrustFingerprint). Volgens de aanbieder worden taken geanonimiseerd, in een sandbox uitgevoerd en verlaten walletsleutels het apparaat nooit. Meer specifieke informatie is niet gepubliceerd."
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "Op Android is de gedeelde verbinding een mobiel abonnement van een provider: de eigen documentatie van de aanbieder waarschuwt dat delen onder het beleid voor redelijk gebruik van sommige providers mogelijk niet is toegestaan, en gedeeld verkeer gaat van de bundel af. Voor de desktop- en browserclients zegt de aanbieder niets over de voorwaarden van internetproviders."
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "Eén node per apparaat, elk met een eigen soulbound Utility NFT; meerdere apparaten draaien is toegestaan en wordt aangemoedigd. Er is geen limiet per IP-adres gepubliceerd. Er is geen account in de gebruikelijke zin: de identiteit is een wallet die de app bij de eerste start aanmaakt."
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "Noderewards zijn niet-gefinancierde testnettokens zonder marktwaarde, en er is nog niets uitbetaald; de APY van 5 tot 10% op de site is een ontwerpdoel."
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "Voor de desktop- en browserclients beschrijft Noderr automatiseringstaken en zegt het niet of die verkeer van andere mensen doorgeven."
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "Volgens de aanbieder worden taken geanonimiseerd en in een sandbox uitgevoerd, maar meer specifieke informatie publiceert hij niet."
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "Nog steeds een testnet-bèta op Base Sepolia."
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "CashPilot draait Noderr niet: je gebruikt de eigen app of extensie van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "Geen account: de app maakt bij de eerste start een wallet aan."
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Nodle gebruikt de Bluetooth van smartphones om IoT-infrastructuur op te bouwen. De app detecteert op de achtergrond IoT-apparaten in de buurt en geeft hun data door, en verdient daarmee NODL-tokens. Verschenen in Forbes, zakelijke partnerschappen met Vivendi en Hayden AI. Alleen mobiel (iOS en Android).\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "Bluetooth-IoT-relay - mobiele app, beloningen in NODL-tokens"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "Zeer lage inkomsten. Telefoonapp op de achtergrond die Bluetooth gebruikt. De walletkoppeling kan haperen."
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "Doorlopend"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "NODL staat in de eigen wallet van de app op ZKsync Era; controleer het in de app of in een blockexplorer voor ZKsync Era. Nodle heeft zijn Polkadot-parachain verlaten en de bridge van Polkadot naar ZKsync is op 31 december 2025 gesloten, dus NODL die nog aan de Polkadot-kant staat, kan niet meer naar ZKsync."
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+nodle.referral.bonus.referrer:
+  text: "Een NODL-beloning voor elke nieuwe actieve gebruiker die via de uitnodiging meedoet (Nodle publiceert het bedrag niet)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "Eén reviewer meldt ongeveer $3 verdiend in drie tot vier jaar; anderen melden dat de dagelijkse inkomsten sterk dalen."
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "CashPilot draait Nodle niet: je gebruikt de eigen telefoonapp van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana is een gedecentraliseerde marktplaats voor GPU-rekenkracht, gebouwd op Solana. Het brengt GPU-eigenaren in contact met de vraag naar AI-workloads en betaalt in NOS-tokens. Een RTX 3060 verdient ongeveer $0.048/uur. Het platform richt zich op AI-inferentieworkloads en gebruikt de Solana-blockchain voor het inplannen van opdrachten en het afrekenen van betalingen. Nodes draaien workloads in containers via de Nosana CLI.\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "GPU-rekenkracht op Solana - NOS-tokens, RTX 3060 ~$0.048/uur"
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 ~$0.048/uur, duurdere GPU's verdienen meer. De inkomsten hangen af van het aanbod aan opdrachten en het GPU-model. Vereist een NVIDIA-GPU, Linux, Docker en de Nosana CLI. Betalingen in de NOS-token op Solana."
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "Per voltooide opdracht"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "Je verdient NOS-tokens op Solana. Uitbetaling naar de ingestelde wallet."
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "Nosana maakt standaard een Solana-wallet aan, dus de meeste gebruikers hebben het adres ervan nooit gezien."
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "Elke host moet een NOS-inzet vastzetten die past bij de uurprijs van zijn GPU."
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "Hosts worden in NOS betaald, dus de inkomsten in dollars bewegen mee met de token en met de vraag naar hun kaart."
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "CashPilot draait Nosana niet: je gebruikt de eigen hostsoftware van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN is een Bitcoin-miningpool zonder account: je miner logt in met je Bitcoin-adres als gebruikersnaam, en de pool betaalt naar dat adres. CashPilot draait hier geen miner. Het leest het onbetaalde saldo uit dat OCEAN voor je adres aanhoudt, zodat je ziet wat je ASIC (een Bitaxe, een Antminer) heeft verdiend, naast je andere inkomsten. Het onbetaalde saldo is verdiend maar nog niet ontvangen: OCEAN betaalt het on-chain uit zodra het de uitbetalingsdrempel overschrijdt.\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "Bitcoin-miningpool, gevolgd via je uitbetalingsadres"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "Wanneer een blok je saldo over de drempel brengt"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "OCEAN betaalt on-chain uit naar je adres zodra je onbetaalde saldo de drempel bereikt. Lightning-uitbetalingen (opt-in, BOLT12) worden door CashPilot niet gedetecteerd."
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "Onbetaald is verdiend maar niet ontvangen totdat OCEAN het on-chain naar dit adres uitbetaalt, tenzij je Lightning-uitbetalingen hebt ingeschakeld."
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "Je BTC-uitbetalingsadres: de gebruikersnaam die je miner op OCEAN gebruikt, zonder het deel <b>.workername</b>. Het is openbaar en geeft geen toegang tot tegoed."
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "Vereist een Bitcoin-ASIC-miner (een Bitaxe, een Antminer) die naar mine.ocean.xyz:3334 wijst"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "rekenkracht"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "Nee. Je miner stuurt hashes naar de pool; niemand stuurt verkeer via je verbinding."
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "Je Bitcoin-adres, de workernamen die je kiest, je hashrate en het IP-adres van je miner zoals de pool dat ziet."
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "Een miner houdt één verbinding met de pool open en gebruikt weinig bandbreedte. De kosten waar je op moet letten zijn de stroomkosten, niet je internetprovider."
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "Er is geen account. Het adres is de identiteit, en iedereen kan de statistieken ervan op ocean.xyz bekijken."
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "Alleen uitbetaald in Bitcoin, en er wordt niets on-chain uitbetaald totdat je saldo 0.01048576 BTC bereikt."
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "Poolkosten van 2%, of 1% als je met DATUM je eigen blocktemplates bouwt."
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "CashPilot draait geen miner voor OCEAN: je laat je eigen hardware naar de pool wijzen, en CashPilot leest alleen het saldo uit."
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "Geen account en geen identiteitscontrole. OCEAN vraagt alleen om het Bitcoin-adres waarnaar het betaalt."
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream is een peer-to-peer-marktplaats voor bandbreedte waarop je je ongebruikte bandbreedte kunt verkopen. Het drijft een residentieel proxynetwerk aan dat wordt gebruikt voor marktonderzoek, SEO-monitoring en advertentieverificatie. Eenvoudige Docker-installatie waarvoor alleen een CID (Client ID) nodig is. Let op: een login met CAPTCHA-beveiliging kan het geautomatiseerd uitlezen van inkomsten lastig maken.\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "Bandbreedte delen - eenvoudige installatie met CID"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "Client-ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "Log in op <a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> → klik op Setup in de zijbalk → je CID staat in de Docker-opdracht"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "PacketStream weigert het IP-adres van deze kopie omdat het niet residentieel is, dus verdient hij niets. Draai hem op een machine met een internetverbinding via een thuislijn, of verwijder deze kopie."
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "PacketStream heeft al een andere client op dit IP-adres, en betaalt er maar één per IP-adres. Verwijder deze kopie, of de andere die hetzelfde IP-adres gebruikt."
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "Betaalt $0.10/GB voor gedeelde bandbreedte. De inkomsten hangen sterk af van de vraag naar de locatie van je IP-adres."
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "Alleen PayPal, minimum $5, 3% kosten die worden getoond voordat je bevestigt. Bij de eerste opname wordt je PayPal-e-mailadres opgeslagen; het later wijzigen vereist een bevestiging per e-mail en een wachttijd van 7 dagen, dus controleer het adres voordat je bevestigt. Aanvragen worden beoordeeld en binnen 7 dagen verzonden; je kunt een aanvraag annuleren zolang die wacht, en een nieuwe kan pas worden gedaan zodra de vorige is uitbetaald."
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "Het saldo wordt door PacketStream aangehouden; opgenomen op aanvraag."
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "Log in op <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, druk op F12 → Application → Cookies en kopieer de waarde van de cookie <b>auth</b> (het is een JWT)."
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "20% van hun bandbreedte-inkomsten (tijdelijke Packeter-bonus)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "10% bonustegoed op je eerste storting met kaart of PayPal (proxyklanten)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "Trustpilot-reviewers melden in 2025 en 2026 dat uitbetalingen te laat of helemaal niet aankomen, en een gebruiker die het al lang gebruikt, zegt dat uitbetalingen trager werden en daarna stopten; anderen melden in 2026 dat ze wel zijn betaald."
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "Alleen PayPal, met 3% uitbetalingskosten; gebruikers in landen waar PayPal niet beschikbaar is, hebben geen andere methode."
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "Volgens de voorwaarden mag PacketStream inkomsten inhouden, terugdraaien of ongeldig verklaren die het in verband brengt met fraude, manipulatie of verboden activiteiten."
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "Volgens de voorwaarden sturen proxyklanten en PacketStream zelf verkeer via je verbinding; ze beschrijven geen controle van gewone kopers."
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "Trustpilot vermeldt dat PacketStream niet op negatieve reviews heeft gereageerd; reviewers melden onbeantwoorde e-mails."
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "PacketStream publiceert een eigen Docker-image, packetstream/psclient."
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "De voorwaarden vereisen alleen een apparaat en een verbinding die van jou zijn of die je mag gebruiken."
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "De voorwaarden beschrijven geen identiteitscontrole; voor een uitbetaling is een PayPal-adres nodig."
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "De voorwaarden noemen PacketStream Inc., onder Californisch recht."
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "PacketStream bestaat sinds 2018."
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp is een DePIN-platform waarmee je crypto- en PayPal-beloningen verdient door ongebruikte bandbreedte en rekenkracht te delen. In de praktijk alleen Windows: de eigen downloadpagina van de leverancier vermeldt Android, iOS en Linux al sinds minstens februari 2025 ongewijzigd als \"coming soon\", en er bestaat geen macOS-versie — ondanks marketingteksten op dezelfde site die bredere ondersteuning beloven. Geen Docker-image.\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "DePIN-bandbreedte/rekenkracht - alleen Windows, uitbetaling in crypto en via PayPal"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "Alleen Windows-desktopapp (v1.0.x); Android/iOS/Linux zijn sinds begin 2025 door de leverancier als 'coming soon' aangekondigd en zijn nooit verschenen. Geen officiële Docker-image."
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "Levenslang 10% van hun inkomsten"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "CashPilot draait PassiveApp niet: je gebruikt de eigen desktopapp van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "De site van PassiveApp vermeldt PayPal, crypto en cadeaukaarten vanaf een minimum van $3."
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase is een platform voor het delen van bandbreedte dat gebruikers in cryptocurrency betaalt voor het delen van hun ongebruikte internetverbinding. Je authenticeert de peerclient met een toegangstoken uit je dashboard. Residentiële IP-adressen verdienen het meest, maar IP-adressen van datacenters worden ook ondersteund. Officiële multi-arch Docker-image (amd64/arm64/armv7).\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - bandbreedte delen, uitbetaling in crypto, authenticatie met toegangstoken. Er wordt geen wallet aangemaakt"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Toegangstoken"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "Apparaatnaam"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "Log in op <a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> → kopieer je Access Token (staat in de Docker-opdracht op de installatiepagina)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "Een willekeurige naam (zonder spaties) om dit apparaat in je ProxyBase-dashboard te herkennen"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "ProxyBase heeft zijn relay al minstens een halfuur niet bereikt, dus verdient hij niets. Een herstart lost dit op; blijft het na een herstart, controleer dan of deze machine het internet kan bereiken."
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "Uitbetalingen in crypto. De inkomsten hangen af van de locatie en het bandbreedtegebruik."
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "De site vermeldt een minimum van $0.20, en een aanvraag onder $1 kwam in oktober 2026 door. Een aanvraag neemt altijd het volledige saldo op, als USDC op Polygon, POL of Litecoin, naar een adres dat je intypt. ProxyBase betaalt de netwerkkosten."
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "Inkomsten worden opgebouwd op het ProxyBase-ACCOUNT waar het toegangstoken bij hoort, en worden op aanvraag via het dashboard opgenomen. De peerclient bevat geen wallet en de container bewaart geen status -- docker.volumes is leeg. Niet te verwarren met proxybase-xyz (ProxyBase Markets, dezelfde organisatie), dat wél een lokale wallet aanmaakt en die als kritiek volume aangeeft."
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "ProxyBase schreef in augustus 2025 zelf dat het nieuw is en nog niet de plek om zoveel mogelijk te verdienen."
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "ProxyBase is in 2026 overgestapt op andere peerclients en heeft de oude backend uitgeschakeld, waardoor containers met de oude image bleven draaien maar niets meer verdienden."
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "Alleen crypto, als USDC op Polygon, POL of Litecoin, zonder fiatmethode. Het minimum is $0.20 en ProxyBase betaalt de netwerkkosten."
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "Onze opname van minder dan $1 kwam in oktober 2026 door."
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "Voor een opname is alleen een adres nodig dat je in de aanvraag typt."
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "ProxyBase publiceert een eigen image voor de peerclient en ondersteunt IP-adressen van datacenters."
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets is een marktplaats voor SOCKS5-proxy's, gebouwd voor AI-agents. Verkopers draaien een lichtgewicht Rust-CLI-daemon die via WebSocket verbinding maakt om verkeer van kopers via hun internetverbinding door te sturen, en verdienen per verkochte GB USDC op Tempo Chain. Ondersteunt zowel de modus direct (eigen bandbreedte) als upstream (externe proxy's doorverkopen), met automatisch opnieuw verbinden. Kopers kopen proxysessies per land, internetprovider en bandbreedte. Betalingen lopen via het Machine Payments Protocol (MPP) op Tempo Chain. De verwijzingslink is voor kopers: een koper die de console via deze link opent, krijgt 10% extra op de eerste storting.\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - SOCKS5-marktplaats voor AI-agents, uitbetaling in USDC. Maakt een wallet aan waarvan het volume de enige kopie van de sleutel bevat"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "Backend-API-URL"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "Overschrijf de URL van de backend-API (standaard https://api.proxybase.xyz)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "De container richt zichzelf in bij de eerste start: hij maakt een secp256k1-wallet aan (BIP-39), authenticeert via ECDSA-challenge-response en begint bandbreedte te verkopen in de modus alleen direct. Alle status (wallet, sessietoken, verkopersconfiguratie) wordt bewaard in het volume <code>proxybase-data</code>. Bekijk bij de eerste start de containerlogboeken voor het walletadres. Gebruik <code>--upstream</code> om externe proxy's voor doorverkoop toe te voegen.\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "Het sleutelbestand van de aangemaakte wallet. Dit volume IS het geld: er is geen kopie op de server, dus als je het verwijdert, vernietig je het tegoed mee."
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "Inkomsten op basis van verkochte GB tegen marktprijzen. IP-adressen van VPS'en/datacenters verdienen minder dan residentiële. De modus met meerdere upstreams kan je eigen bandbreedte combineren met externe proxy's."
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "Zet inkomsten vast met <code>proxybase-cli seller payout create</code>; je ontvangt ze als USDC op Tempo Chain (Tempo MPP). Betaalt uit naar elk EVM-adres waarvan jij de sleutel hebt (Tempo is een EVM-chain), zonder dat je iets hoeft te ondertekenen; voeg het Tempo-netwerk aan de wallet toe om de USDC te zien. Toont een wallet het dan nog steeds niet, voeg dan de Tempo-USDC-token met de hand toe: importeer hem via het contractadres dat Proxybase opgeeft, en controleer dat adres voordat je het saldo vertrouwt."
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "De client maakt bij de eerste start een eigen wallet aan."
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "15% van elke storting die een doorverwezen koper doet, als tegoed voor je eigen proxysessies"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "+10% op de eerste storting van een koper"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "Bandbreedte, als SOCKS5-proxy die aan kopers op de ProxyBase-marktplaats wordt verkocht."
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "Ja. Kopers sturen hun verkeer via je verbinding — dat is precies wat er wordt verkocht."
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "Een walletadres dat op je machine wordt aangemaakt, plus de hoeveelheid verkeer die je doorstuurt."
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "Reëel, en het geldt direct voor thuisverbindingen. Proxyverkeer van onbekende kopers gaat naar buiten onder jouw IP-adres, dus misbruikklachten komen bij jou terecht. Niets in deze catalogus beperkt de dienst tot datacenteradressen, en residentiële IP-adressen verdienen meer, dus de prikkel wijst hier de verkeerde kant op: lees de voorwaarden van je internetprovider voordat je het thuis draait."
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "onbekend - de aanbieder publiceert geen apparaatlimiet per account of per IP-adres, en de catalogus vermeldt er ook geen."
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "Uitbetalingen zijn in USDC op Tempo Chain, naar elk EVM-adres waarvan jij de sleutel hebt."
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "Je verbinding wordt als SOCKS5-proxy aan kopers op de marktplaats verkocht; we vonden geen beschrijving van hoe kopers worden gecontroleerd."
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "Volgens de titel van de eigen verdienpagina is er geen KYC nodig, met een uitbetaling vanaf $1."
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "ProxyBase publiceert een eigen client-image en accepteert datacenterverbindingen."
+  source: "ae81d006093f"
+proxylite.description:
+  text: "ProxyLite laat je geld verdienen aan je internetverkeer door bandbreedte te delen met geverifieerde organisaties. Werkt op zowel residentiële als VPS-/datacenterverbindingen. Eenvoudige installatie waarvoor alleen een gebruikers-ID uit het dashboard nodig is. Biedt een royale levenslange verwijzingscommissie van 15%.\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "Bandbreedte delen - levenslang 15% voor doorverwijzingen, werkt op VPS"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "Gebruikers-ID"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "Log in op <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → je User ID staat op de hoofdpagina van het dashboard naast je e-mailadres. Nog geen account? Meld je aan via <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a>"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "Residentiële IP-adressen verdienen meer. VPS-/datacenterverbindingen worden geaccepteerd tegen lagere tarieven."
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "Levenslang 15% van hun inkomsten"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "De eigenaar van de site is verborgen in de domeinregistratie, en we vonden geen bedrijf met een naam erachter."
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "Een minimum van $5, via crypto of PayPal."
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "ProxyLite publiceert een Docker-image, proxylite/proxyservice, en accepteert datacenterverbindingen tegen een lager tarief."
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "Met het Peer-programma van ProxyRack verdien je door je bandbreedte te delen als onderdeel van hun proxynetwerk. Elk apparaat heeft een unieke hexadecimale UUID van 64 tekens nodig en optioneel een API-sleutel om het apparaat automatisch te registreren. Werkt op zowel residentiële als VPS-/datacenterverbindingen. Het dashboard zit achter Cloudflare, waardoor je de API-sleutel mogelijk handmatig via de browser moet ophalen.\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "Bandbreedte delen - UUID per apparaat, werkt op VPS"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "Apparaat-UUID"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "API-sleutel"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "Apparaatnaam"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "Unieke hexadecimale ID van 64 tekens per apparaat. Aanmaken met: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "Log in op <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → de API Key staat op de hoofdpagina van het dashboard (registreert het apparaat automatisch als je hem invult). Nog geen account? Meld je aan via <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "Herkenbare naam voor het apparaat in het dashboard"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "De client van Proxyrack is niet gedownload toen de container startte, dus de container draait wel, maar verdient niets. Bij een herstart wordt hij opnieuw gedownload; blijft dit na een herstart, controleer dan of deze machine het internet kan bereiken."
+  source: "b5143d72ce35"
+proxyrack.device_link.steps:
+  text: "Log in bij ProxyRack, open Devices, kies Add device en plak deze UUID. Zolang het apparaat niet op je account staat, verdient het voor niemand. Als je een API-sleutel hebt ingevuld, registreert de container zichzelf: controleer of het apparaat daar in de lijst staat."
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "Residentiële IP-adressen verdienen meer dan die van datacenters. Het dashboard achter Cloudflare kan geautomatiseerde toegang lastig maken."
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "Vraag de uitbetaling aan op het dashboard. ProxyRack beoordeelt die binnen 72 uur, waarna Tremendous je een beloning mailt die je kunt inwisselen als PayPal, een cadeaukaart of een bankoverschrijving. Er is geen crypto-optie."
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "Het saldo wordt door ProxyRack aangehouden; opgenomen op aanvraag."
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "Log in op <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, druk op F12 → Network, zoek een willekeurig API-verzoek en kopieer de waarde van de header <b>Api-Key</b>. Nog geen account? Meld je aan via <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>."
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Proxyrack documenteert een limiet van 500 apparaten per ACCOUNT en geen limiet per IP-adres. IP-adressen van datacenters worden geaccepteerd, maar ingedeeld in een lager tarief."
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "Volgens het helpcentrum van ProxyRack verdwijnen de inkomsten van een apparaat van je account als je dat apparaat verwijdert, en komen ze alleen terug als hetzelfde apparaat opnieuw wordt toegevoegd."
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "ProxyRack publiceert een eigen Docker-image, proxyrack/pop, en accepteert IP-adressen van datacenters tegen een lager tarief."
+  source: "278541f81053"
+repocket.description:
+  text: "Met Repocket verdien je passief inkomen door je ongebruikte internetbandbreedte te delen. Residentiële IP-adressen verdienen het meest; IP-adressen van VPS'en/datacenters worden geaccepteerd tegen lagere tarieven. Max. 5 apparaten en 5 actieve sessies per account. De Docker-container authenticeert met het e-mailadres van je account en een API-sleutel uit het Repocket-dashboard (niet je wachtwoord).\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "Bandbreedte delen - max. 5 apparaten, authenticatie met API-sleutel"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "E-mailadres"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "API-sleutel (UUIDv4, niet je wachtwoord)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "Het e-mailadres van je Repocket-account"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "Je Repocket-API-sleutel — log in op <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> en kopieer de API-sleutel die op de pagina bandwidth-earnings staat (dit is NIET het wachtwoord van je account). Nog geen account? Meld je aan via <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a>"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "Residentiële IP-adressen verdienen meer. IP-adressen van VPS'en/datacenters worden geaccepteerd, maar tegen lagere tarieven."
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4 ($2 na de eerste uitbetaling)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Repocket stelt het minimum per account vast: in oktober 2026 $4 vóór de eerste uitbetaling en $2 daarna, ver onder de $20 die het vroeger noemde. Methoden: Tremendous (naar je e-mailadres) of USDT op Polygon. Elke aanvraag bevestig je binnen 2 uur via een gemailde link, en er kan maar één aanvraag tegelijk openstaan. In oktober 2026 weigerde Repocket een Tremendous-aanvraag met \"Please, message support\", terwijl USDT op Polygon wel doorkwam."
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "Het saldo wordt door Repocket aangehouden; opgenomen op aanvraag."
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "Gebruik het e-mailadres en wachtwoord van je Repocket-account (dezelfde als op <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>). Nog geen account? Meld je aan via <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a>."
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "$2 zodra de doorverwezen gebruiker $7 heeft verdiend, daarna levenslang 5% van hun inkomsten"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "$2 walletbonus bij aanmelding"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Repocket documenteert een limiet van vijf apparaten per ACCOUNT, maar publiceert geen apparaatlimiet per IP-adres. Het getal '2 apparaten per IP-adres' dat op reviewsites wordt herhaald, heeft geen bron bij de aanbieder, dus CashPilot neemt het niet over."
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "Laat een Repocket-apparaat delen, of neem je saldo op"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "Na 12 maanden zonder login, uitbetaling of het delen van bandbreedte kan Repocket het onbetaalde saldo laten vervallen."
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "Laat een apparaat delen, log in, of neem op. Als je stopt met Repocket, neem dan eerst op."
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "Verschillende Trustpilot-reviewers melden geannuleerde uitbetalingen en saldi die op nul zijn gezet; één zegt dat support onregelmatige bandbreedte-inkomsten als reden gaf. De pagina geeft Repocket een 2.7 en vermeldt dat het niet op negatieve reviews heeft gereageerd."
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "Reviewers melden afgewezen opnames en dat ze achter hun betaling aan moesten."
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "Het betalingsbeleid van Repocket staat toe dat het inkomsten terugdraait, annuleert of definitief laat vervallen wanneer het vermoedt dat ze ongeldig zijn, en dat het de onbetaalde inkomsten van een slapend account laat vervallen."
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "Hetzelfde beleid staat Repocket toe om op elk moment zonder aankondiging uitbetalingsmethoden toe te voegen, te verwijderen of te vervangen; PayPal is verwijderd."
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "Volgens de voorwaarden kan Repocket op elk moment om verificatie van identiteit of account vragen, en hangt het recht op uitbetaling daarvan af."
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "Volgens de voorwaarden gebruiken Repocket en zijn partners de netwerkcapaciteit, maar er staat niet wie de partners zijn of hoe ze worden gecontroleerd."
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "Trustpilot vermeldt dat Repocket niet op negatieve reviews heeft gereageerd, en reviewers zeggen dat berichten worden genegeerd."
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "De huidige voorwaarden noemen Repocket Pte. Ltd. in Singapore; oudere voorwaarden noemden geen bedrijf."
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Repocket publiceert een eigen Docker-image, repocket/repocket, en de voorwaarden staan containers toe die van jou zijn."
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "Het minimum is laag: $4 vóór de eerste uitbetaling en $2 daarna."
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Met Salad.io deel je je GPU voor gespreide AI-workloads en verdien je Salad-saldo dat je kunt inwisselen voor cadeaukaarten, games of geld. Alleen Windows, met een native desktopapplicatie. Vereist een aparte GPU (NVIDIA of AMD). Het platform stuurt AI-inferentie, rendering en andere rekentaken naar je machine wanneer die niet in gebruik is. Een van de gebruiksvriendelijkere platforms voor het delen van GPU's.\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "GPU delen voor AI - alleen Windows, uitbetaling als cadeaukaart of geld"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "De inkomsten hangen af van het GPU-model en het beschikbare werk. RTX 3060 ~$1-3/dag. Alleen Windows. Native app, geen Docker-ondersteuning. In te wisselen voor cadeaukaarten, games of PayPal."
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "PayPal of cadeaukaarten via de Salad-winkel."
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "Alleen PayPal en cadeaukaarten, nooit crypto. Er bestaat geen walletadres, dus CashPilot heeft geen on-chain saldo om te tonen."
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "Log in op <a href='https://app.salad.io' target='_blank'>app.salad.io</a>, druk op F12 → Application → Cookies en kopieer de waarde van de cookie <b>auth</b>."
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "Verdien wat Salad Reward Points, of besteed je saldo"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "Als een account 12 maanden achter elkaar geen Reward Points verdient, kan het niet-ingewisselde saldo verlopen."
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "Laat de Salad-app draaien totdat hij verdient, of besteed het hele saldo in de Salad Storefront. Als je maar een deel uitgeeft, begint de periode van 12 maanden niet opnieuw."
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "CashPilot draait Salad niet: je gebruikt de eigen desktopapp van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "Verschillende Trustpilot-reviewers melden in oktober en november 2026 dat PayPal-uitbetalingen snel binnenkomen, bij sommigen meer dan eens; één reviewer zegt in dezelfde periode dat herhaalde pogingen tot uitbetaling mislukten."
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel is een Layer 1-blockchain op Cosmos voor gedecentraliseerde VPN. Node-operators verkopen bandbreedte aan VPN-gebruikers met flexibele prijzen (per GB of per uur). Er is een officiële handleiding voor uitrollen met Docker. Project dat al lang loopt, met een actieve community.\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "Gedecentraliseerde VPN op Cosmos - node-operators verkopen bandbreedte"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "Operators stellen hun eigen prijzen in, per GB of per uur. De inkomsten hangen af van de vraag van VPN-gebruikers in jouw regio."
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "Per sessie"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "Betalingen zijn in de P2P-token, en 20% van elke bandbreedtebetaling gaat naar stakers in plaats van naar de host van de node."
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "De token is in 2021 hernoemd van SENT naar DVPN en in 2025 van DVPN naar P2P."
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "CashPilot draait Sentinel niet: je gebruikt de eigen nodesoftware van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Sentinel publiceert de broncode van zijn node onder een eigen opensourcelicentie."
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia is een gedecentraliseerde marktplaats voor opslag, beheerd door de Sia Foundation (een Zwitserse non-profitorganisatie), die sinds 2015 actief is. Draai de officiële hostd-node van de Foundation om vrije schijfruimte te verhuren en Siacoin te verdienen met opslag- en bandbreedtecontracten. Je moet eerst wat Siacoin kopen voordat de node kan verdienen: hosts zetten onderpand vast voor elk contract en betalen kosten voor elk opslagbewijs. Het onderpand komt terug als een contract is afgerond en wordt verbrand als de node offline gaat of data kwijtraakt, dus er is een machine nodig die altijd aan staat (Sia noemt minstens 95% uptime). De inkomsten hangen af van hoeveel data huurders echt opslaan; Sia raadt een prijs aan van $1 per TB per maand voor opslag, dus het past bij machines met grote vrije schijven en niet bij kleine VPS'en.\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "Opslagnode van de Sia Foundation - officiële Docker-image, verdien Siacoin"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "Herstelzin van de wallet"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "Dashboardwachtwoord"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "Opslagmap"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "BIP-39-herstelzin die de Siacoin-wallet van de host beheert. Maak er een aan met `docker run --rm ghcr.io/siafoundation/hostd seed` en maak er een back-up van -- het is de ENIGE manier om bij de inkomsten te komen"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "Wachtwoord voor de web-UI en de lokale API van hostd (BasicAuth). Elke lange wachtwoordzin volstaat"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "Pad op de host, op je grootste schijf, waar de data van huurders wordt opgeslagen (bijv. /srv/sia). Er moet minstens 256GB vrij zijn"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "Bij het uitrollen maakt CashPilot een nieuwe wallet aan op de machine waarop de node draait en toont de herstelzin één keer: schrijf die op. Wil je een wallet gebruiken die je al hebt, plak dan in plaats daarvan de herstelzin daarvan. Stuur na het uitrollen wat Siacoin naar de wallet van de node voor onderpand en kosten, voeg daarna in het dashboard de opslagmap (/storage) toe, stel prijzen in en kondig de host aan.\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "De herstelzin van de wallet (hostd.yml), de walletdatabase, de hostinstellingen en de contractstatus. Als je die kwijtraakt, verlies je de identiteit van de node en het bijhouden van de contractopbrengsten; de herstelzin die je hebt opgeschreven is dan de enige manier om het tegoed terug te krijgen."
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "Opgeslagen data van huurders. Als je die kwijtraakt, mislukken de opslagbewijzen en verlies je het onderpand dat voor die contracten is vastgezet."
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "Hosts stellen hun eigen prijzen in. Sia raadt $1 per opgeslagen TB per maand aan en meer dan $5 per gedownloade TB, en 3.9% van elke contractuitbetaling gaat naar Siafund-houders. Het inkomen groeit met de hoeveelheid huurdersdata die op de node terechtkomt; die begint bij nul en groeit met uptime en prijs. Onderpand (Sia stelt 2x de opslagprijs voor) wordt per contract vastgezet en na een geslaagde afronding teruggegeven.\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "Inkomsten worden opgebouwd in de eigen Siacoin-wallet van de host (beheerd met de herstelzin). Wissel SC om op een exchange en neem van daaruit op naar je bank of kaart; er is geen uitbetalingsaanvraag bij de aanbieder.\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "Het tegoed staat in de Sia-wallet in de node, die met de herstelzin wordt beheerd. De herstelzin staat alleen in het datavolume van hostd op de machine waarop het draait; CashPilot slaat hem nooit op. De zin die je opschrijft wanneer de wallet wordt aangemaakt, is de enige manier om hem te herstellen.\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "Een stabiel openbaar adres met de poorten 9981 (TCP, consensus) en 9984 (TCP en UDP, huurderscontracten) doorgestuurd. Hosting in een datacenter of op een VPS is gebruikelijk op Sia. De wallet heeft Siacoin nodig voordat de node contracten kan aannemen."
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "Schijfruimte en de bandbreedte om die te leveren."
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "Nee. Huurders slaan versleutelde bestandsfragmenten op je schijf op en halen ze weer op. Andere mensen sturen geen willekeurig verkeer via je IP-adres."
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "Je Sia-walletadres, de openbare sleutel van de host en het openbare IP:poort dat de node aankondigt zodat huurders hem kunnen bereiken."
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "Langdurig upload- en downloadverkeer op de lijn, net als bij elke andere opslagserver; er wordt geen geanonimiseerd webverkeer van derden aan jou toegeschreven."
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "Vrij toegankelijk: geen aanmelding of account. Onderpand wordt verbrand als de node opslagbewijzen mist doordat hij offline gaat of data kwijtraakt."
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "Inkomsten zijn Siacoin in je eigen wallet: er is geen uitbetaling naar een bank, dus je verkoopt zelf op een exchange."
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "Onderpand wordt per contract vastgezet en verbrand als de host opslagbewijzen mist doordat hij offline gaat of data kwijtraakt."
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "Slechts ongeveer 30% van de opslag die op het netwerk wordt aangeboden, is in gebruik, dus een nieuwe host concurreert om weinig vraag."
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "Huurders slaan versleutelde bestandsfragmenten op en niemand stuurt verkeer via je IP-adres, maar we hebben niet gevonden waar Sia zegt wie de huurders zijn of hoe ze worden gecontroleerd."
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "hostd wordt sinds 2022 openlijk ontwikkeld door de Sia Foundation."
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd is open source onder de MIT-licentie."
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "De Sia Foundation publiceert hostd als container-image."
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "Vrij toegankelijk: geen aanmelding of account."
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide is een dienst voor het delen van bandbreedte waarmee je geld verdient aan ongebruikte internetbandbreedte. Gebruikt een optionele machine-ID om het apparaat te volgen. Beschikbaar via Docker-images uit de community van het project income-generator.\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "Bandbreedte delen - op basis van machine-ID"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "Machine-ID"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "Machine-ID van een bestaand apparaat dat al is geregistreerd (wordt automatisch aangemaakt als je dit leeg laat)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "Weinig informatie beschikbaar. De inkomsten hangen af van de locatie."
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "10% van hun inkomsten"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "$5 aanmeldbonus"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "Verkeer via één openbaar IP-adres wordt verdeeld over de apparaten die het delen, dus een tweede apparaat op dezelfde verbinding voegt niets toe."
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "CashPilot draait Spide niet: je gebruikt de eigen app van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "Mine Pearl, Zano of Ravencoin met één NVIDIA-GPU. CashPilot downloadt bij de eerste start de officiële release van SRBMiner-Multi en controleert de SHA-256. De pool die je kiest, betaalt uit naar je openbare uitbetalingsadres. SRBMiner-Multi houdt 2% van de hashtijd in bij Pearl en 0.85% bij de andere twee. De stroom kan meer kosten dan de munten die je verdient."
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "Mine Pearl en andere GPU-munten op een NVIDIA-GPU"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "Uitbetalingsadres"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "Workernaam"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "Algoritme"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "Pool (host:poort)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "Poolverbinding versleutelen (TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "Je openbare Pearl-adres (prl1...). Voor Zano of Ravencoin vul je het adres van die munt in en een pool daarvoor."
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "pearlhash voor Pearl, progpow_zano voor Zano, kawpow voor Ravencoin."
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "Bruto schatting vóór stroomkosten. Op 2026-11-25 schatte hashrate.no ongeveer $2.45 per dag op Pearl voor een RTX 4070 die ongeveer 142 W verbruikt. We hebben het niet gemeten. Pearl is een nieuwe munt, en de prijs en moeilijkheid veranderen snel. Controleer het stroomverbruik van je GPU en je stroomprijs om te zien of het loont."
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL (HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "Wanneer de pooldrempel is bereikt"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "De pool betaalt uit naar je adres wanneer je saldo je drempel bereikt. De pool houdt het saldo aan totdat hij je uitbetaalt."
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64, een NVIDIA-GPU en de NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "Deze machine meldt een hostingverbinding. Controleer de voorwaarden van je provider voordat je gaat minen. Sommige providers, waaronder Hetzner Cloud, verbieden het. Controleer je werkelijke stroomkosten voordat je op een winstschatting vertrouwt."
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "De minerkosten van 2% gelden voor pearlhash. SRBMiner-Multi houdt 0.85% in bij progpow_zano en kawpow. HeroMiners, de standaardpool voor Pearl, rekent 1% poolkosten. Het controleert uitbetalingen elk uur en betaalt vanaf 1 PRL. Andere pools hanteren hun eigen tarieven en drempels."
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "rekenkracht"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "Nee. De miner stuurt werk naar de pool die je kiest."
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "Je uitbetalingsadres, workernaam en IP-adres gaan naar de pool. Bij de eerste start wordt de miner van GitHub gedownload."
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "Sommige netwerken en DNS-resolvers blokkeren verbindingen met miningpools."
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "De meeste pools herkennen je aan je openbare uitbetalingsadres."
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "De miner houdt 2% van de hashtijd in bij Pearl en 0.85% bij Zano en Ravencoin."
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "Sommige hostingproviders verbieden het minen van cryptocurrency."
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "De miner is closed source, dus niemand buiten de ontwikkelaar kan controleren wat hij uitvoert."
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "De stroom voor de GPU kan meer kosten dan de verdiende munten, en de prijs van Pearl verandert snel."
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "De miner stuurt werk naar de pool en geeft geen verkeer van anderen door."
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "Je kunt Pearl minen op HeroMiners met een openbaar adres en zonder account."
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj is een gedecentraliseerd netwerk voor cloudopslag waarop je verdient door je ongebruikte schijfruimte te verhuren. Draai de storagenode via Docker en krijg $1.35/TB per maand betaald voor opslag plus $1/TB voor egress (tarieven sinds 1 september 2026). Uitbetalingen gebeuren maandelijks in USDC, een stablecoin gekoppeld aan de Amerikaanse dollar, op het Ethereum-mainnet naar een wallet die jij beheert, zodra het saldo boven een minimum uitkomt dat van de transactiekosten afhangt (STORJ-token tot en met de uitbetaling van september 2026). Vereist minstens 550GB beschikbare schijfruimte en een stabiele internetverbinding. Geen account of aanmelding nodig -- nodes zijn sinds medio 2025 vrij toegankelijk. LET OP (oktober 2026): Storj Labs heeft op 26 juli 2026 Chapter 11 aangevraagd (US Bankruptcy Court, Northern District of West Virginia, zaak 5:26-bk-00512) om oude schulden te herstructureren. Het netwerk blijft draaien en Storj blijft actieve nodes betalen, maar node-inkomsten van vóór de aanvraag zijn bevroren totdat de rechtbank erover beslist. De STORJ-token staat ongeveer 98% lager dan zijn piek in 2021. Binance heeft hem op 3 september 2026 van de lijst gehaald, en Coinbase heeft de handel erin op 28 september 2026 opgeschort. Een nieuwe node houdt in zijn eerste negen maanden een deel van zijn inkomsten in en raakt alleen gevuld voor zover de vraag van klanten dat toelaat, dus wie er nu een start, bindt een lange terugverdientijd aan een bedrijf in herstructurering dat nog steeds kan worden opgeheven.\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "Gedecentraliseerde opslagnode - $1.35/TB opgeslagen + $1/TB egress"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "Walletadres"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "E-mailadres"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "Extern adres"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "Toegewezen opslag"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "Identiteitsmap"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "Opslagmap"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "Ethereum-walletadres voor uitbetalingen in USDC (bijv. 0x1234...abcd). Moet een wallet in eigen beheer zijn (MetaMask, Ledger, enz.) -- gebruik nooit een adres van een exchange"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "E-mailadres voor meldingen aan de operator"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "DDNS-hostnaam met poort (bijv. mynode.ddns.net:28967) -- sterk aan te raden boven een vast IP-adres, waardoor de node onbereikbaar wordt op de dag dat je internetprovider je ongemerkt een nieuw adres geeft. Poort 28967 moet worden doorgestuurd (TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "Maximale schijfruimte om toe te wijzen (bijv. 2TB). Gebruik draaiende schijven (HDD), geen SSD"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "Pad op de host waar de identiteitsbestanden staan (moet ca.cert, ca.key, identity.cert en identity.key bevatten)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "Pad op de host, op een draaiende schijf (HDD), voor de opslag van Storj-data. Er moet minstens 550GB vrij zijn"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "Initialiseer vóór de eerste start de configuratie van de storagenode: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "De identiteit van de node. De ID is gebonden aan proof-of-work en het opnieuw aanmaken duurt uren, en hij kan niet uit een back-up van iets anders worden hersteld. Als je hem kwijtraakt, verlies je het ingehouden uitbetalingssaldo."
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "Opgeslagen klantdata en het ingehouden bedrag van de node. Als je die kwijtraakt, wordt de node gediskwalificeerd en verlies je het ingehouden saldo."
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "Het Storj-netwerk kan je node niet terugbellen op het opgegeven ADDRESS, dus satellieten tellen hem als offline: er komt geen nieuwe data meer binnen, de egress-inkomsten vallen stil en langdurige offline tijd leidt tot schorsing. Controleer of ADDRESS overeenkomt met je HUIDIGE openbare IP-adres (gebruik een DDNS-hostnaam, geen vast IP-adres, zodat een nieuw adres van je internetprovider de node niet onbereikbaar kan maken) en of poort 28967 TCP+UDP naar deze machine wordt doorgestuurd."
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "$1.35/TB opgeslagen + $1/TB egress + $1/TB audit/reparatie sinds 1 september 2026. De inkomsten groeien met de opgeslagen data en de leeftijd van de node. In de eerste 9 maanden wordt 75%, daarna 50% en daarna 25% van de inkomsten ingehouden; de helft van het ingehouden bedrag komt terug in maand 16 en de rest bij een graceful exit. Poort 28967 moet worden doorgestuurd."
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "4x de Ethereum-transactiekosten, kleinere saldi schuiven door"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "Maandelijks"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "Maandelijks uitbetaald in USDC op het Ethereum-mainnet zodra het walletsaldo minstens vier keer de actuele transactiekosten is; kleinere saldi schuiven door naar de volgende maand. STORJ-token tot en met de uitbetaling van september 2026. Dashboard op poort 14002."
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "Maandelijks uitbetaald in USDC op het Ethereum-mainnet naar het adres in WALLET zodra het saldo boven het minimum uitkomt dat van de transactiekosten afhangt. STORJ-token tot en met de uitbetaling van september 2026; uitbetalingen via zkSync Era zijn op 1 september 2026 gestopt."
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "De URL van het nodedashboard op poort 14002, met het LAN-IP-adres van de server in plaats van localhost, bijvoorbeeld <b>http://192.168.1.10:14002</b>. Bij meerdere nodes geef je hun URL's op, gescheiden door komma's: CashPilot telt ze bij elkaar op."
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "Storj-nodes in hetzelfde /24-subnet delen de datatoewijzing, wat de inkomsten per node verlaagt."
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "5 Mbps upload"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "Schijfruimte en de bandbreedte om die te leveren."
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "Nee. Je slaat versleutelde fragmenten van klantdata op, met erasure coding. Andere mensen sturen hun eigen verkeer niet via je IP-adres."
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "De identiteit van de node, je walletadres, het e-mailadres dat de node vereist voor meldingen aan de operator, en je IP-adres en poort, die bereikbaar moeten zijn zodat de node data kan leveren."
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "Vooral een kwestie van datalimieten, niet van aansprakelijkheid: een node levert en ontvangt voortdurend klantdata, wat echt langdurig verkeer op je lijn is. Anders dan bij een proxy of relay is het echter geen geanonimiseerd verkeer van derden dat aan jou als bron wordt toegeschreven, dus het trekt niet de misbruikklachten aan die die wel krijgen."
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "Onbeperkt aantal nodes, maar nodes in hetzelfde /24-subnet delen de toewijzing, dus meerdere nodes op één verbinding verdienen elk minder."
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "CoinDesk meldde op 27 juli 2026 dat Storj Labs faillissementsbescherming onder Chapter 11 had aangevraagd."
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "Betalingen aan node-operators van vóór de aanvraag zijn in de procedure voor faillissementsvorderingen terechtgekomen."
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "Bij een nieuwe node wordt in de eerste negen maanden 75%, daarna 50% en daarna 25% van de inkomsten ingehouden; de helft komt terug in maand 16 en de rest pas bij een graceful exit."
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "Klanten slaan versleutelde bestandsfragmenten op en niemand stuurt verkeer via je IP-adres, maar we hebben niet gevonden waar Storj zegt wie de klanten zijn of hoe ze worden gecontroleerd."
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "De software van de storagenode is open source onder de AGPL-3.0."
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Storj publiceert een eigen Docker-image, storjlabs/storagenode."
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "Geen account: een walletadres en een e-mailadres voor meldingen aan de operator."
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "Actieve nodes werden na de aanvraag gewoon verder betaald."
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR is een Monero-miningpool zonder account: je miner logt in met je Monero-adres als gebruikersnaam, en de pool betaalt naar dat adres. CashPilot draait hier geen miner. Het leest het saldo uit dat SupportXMR voor je adres aanhoudt, zodat je ziet wat je CPU-miner heeft verdiend, naast je andere inkomsten. Het saldo is verdiend maar nog niet ontvangen: de pool betaalt het uit zodra het je uitbetalingsdrempel overschrijdt.\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "Monero-miningpool, gevolgd via je uitbetalingsadres"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR (automatisch), 0.01 XMR op aanvraag"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "Wanneer je saldo je drempel overschrijdt, of op aanvraag"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "SupportXMR betaalt uit naar je adres zodra het saldo je drempel bereikt (standaard 0.1 XMR). Op de site kun je ook een directe uitbetaling aanvragen vanaf 0.01 XMR, tegen 0.001 XMR kosten."
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "Het saldo is verdiend maar niet ontvangen totdat SupportXMR het naar dit adres uitbetaalt. Monero-saldi zijn on-chain niet uit te lezen zonder een private view key, waar CashPilot nooit om vraagt, dus je bevestigt elke uitbetaling zelf."
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "Je Monero-uitbetalingsadres: de gebruikersnaam die je miner op SupportXMR gebruikt, zonder een eventueel deel <b>.workername</b> of <b>+difficulty</b>. Het is openbaar en geeft geen toegang tot tegoed."
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "Vereist een Monero-miner (XMRig) die naar pool.supportxmr.com wijst"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "rekenkracht"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "Nee. Je miner stuurt hashes naar de pool; niemand stuurt verkeer via je verbinding."
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "Je Monero-adres, de workernamen die je kiest, je hashrate en het IP-adres van je miner zoals de pool dat ziet."
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "Een miner houdt één verbinding met de pool open en gebruikt weinig bandbreedte. De kosten waar je op moet letten zijn de stroomkosten, niet je internetprovider."
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "Er is geen account. Het adres is de identiteit, en iedereen kan de statistieken ervan op supportxmr.com bekijken."
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "Alleen uitbetaald in Monero, met 0.6% poolkosten en een standaarddrempel van 0.1 XMR vóór een automatische uitbetaling."
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "CashPilot draait geen miner voor SupportXMR: je laat je eigen miner naar de pool wijzen, en CashPilot leest alleen het saldo uit."
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Teneo Protocol geeft AI-agents toegang tot het live web via een netwerk van Beacons. De Teneo Beacon is de eigen app van Teneo voor Android, iOS, macOS, Windows en Linux, met een opdrachtregelversie voor servers en een Raspberry Pi. Hij deelt je ongebruikte bandbreedte nadat je het toestemmingsscherm hebt geaccepteerd, en verdient Teneo Protocol Points en Fragments zolang hij online is. Fragments tellen mee voor seizoensgebonden trekkingen die in USDC worden uitbetaald (de Beacon Drop). Volgens Teneo verdient de Beacon twee keer zoveel punten als de oudere browserextensie. Per internetverbinding verdient één Beacon. Andere apparaten op dezelfde verbinding staan stand-by. Meld je aan in de Expedition Hub met de verwijzingslink of code PSA3BHPJ en log daarna in op de Beacon.\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "DePIN-bandbreedte-app (Beacon) - Fragments voor seizoenstrekkingen in USDC, +100 Fragments met een verwijzingslink"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "Verdient Teneo Points en Fragments. Fragments tellen mee voor seizoenstrekkingen in USDC, dus een seizoen levert een prijs op, geen vast tarief. Volgens Teneo verdient de Beacon twee keer zoveel punten als de browserextensie. Claim de boost elke 8 uur voor tot 3x Fragments; mis je een periode, dan daalt de vermenigvuldiger."
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "Seizoenstrekking (Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "Prijzen van de Beacon Drop worden in USDC uitbetaald naar een wallet die je in de Expedition Hub koppelt. De Hub toont hoeveel dagen je hebt om er een te koppelen; een prijs waarvoor niet op tijd een wallet is gekoppeld, vervalt."
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "Koppel een wallet in de Expedition Hub voordat de prijzen van een seizoen worden uitbetaald; de Hub laat een prijs vervallen als de wallet niet op tijd is gekoppeld."
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "8% van de Fragments van elke doorverwezen vriend en 2% van de Fragments van hun doorverwijzingen, zodra de vriend zich binnen 7 dagen aanmeldt en 480 Fragments verdient"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "+100 Fragments bij aanmelding, en nog eens +150 zodra je 480 Fragments bereikt"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "Per internetverbinding verdient één Beacon. Machines in een datacenter verdienen alleen bij hostingproviders die Teneo heeft toegelaten, met de helft van de Fragments en zonder punten of verwijzingsbonus. VPN-verbindingen verdienen nooit."
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "De Fragments van de Beacon leveren alleen USDC op als prijzen in seizoenstrekkingen, dus het draaien ervan levert geen vast bedrag op."
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Volgens Teneo worden punten samengevoegd tot $AGENTIC, een niet-overdraagbare beloningstoken, en niet tot de $TENEO-token."
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "In november 2026 was er nog geen lanceringsdatum, toewijzing of claimprocedure voor $TENEO bevestigd, nadat een eerder doel van het tweede kwartaal van 2026 was verstreken."
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "CashPilot draait Teneo niet: je installeert de eigen Beacon-app van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Volgens Teneo komt het verkeer van gecontroleerde zakelijke klanten en blokkeert het privéadressen en poorten die gevoelig zijn voor misbruik, maar het zegt niet hoe het die klanten controleert."
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network is een gevestigd gedecentraliseerd netwerk voor videolevering en AI-rekenkracht (sinds 2018). Gebruikers draaien Edge Nodes die bandbreedte, opslag en rekenkracht delen. Grote contentpartnerschappen. Verdient TFUEL-tokens.\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "Gedecentraliseerd CDN + AI-rekenkracht - beloningen in TFUEL, gevestigd project"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "Alleen desktopapp. De inkomsten hangen af van de resources en de locatie. Grote partnerschappen, genoteerd op alle exchanges."
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "Doorlopend"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "CashPilot draait Theta Edge niet: je gebruikt de eigen desktopapp van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network is een DePIN-platform dat je IP-adres, opslag en bandbreedte deelt in ruil voor beloningen in TNT-tokens. Beschikbaar voor Windows, Mac en Android. Nodes dragen bij aan een gedecentraliseerde CDN- en opslaglaag. Gangbare inkomsten liggen tussen $5-30/maand, afhankelijk van de gedeelde resources en de geografische locatie.\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "DePIN, deelt IP-adres, opslag, bandbreedte - $5-30/maand"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "Deelt IP-adres, opslag en bandbreedte. De inkomsten hangen af van de bijgedragen resources en de regio. Meer toegewezen opslag levert hogere beloningen op."
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "Per epoch"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "Volgens de eigen helppagina's van Titan garandeert een draaiende node geen inkomsten: zonder toegewezen taak verdient hij niets, en beloningen zijn in de TNT-token."
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "CashPilot draait Titan niet: je gebruikt de eigen app of extensie van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Traffmonetizer laat je geld verdienen aan je internetverkeer door bandbreedte te delen met geverifieerde bedrijven. Een van de weinige diensten voor het delen van bandbreedte die naast residentiële verbindingen ook goed werkt op IP-adressen van VPS'en en datacenters. Gebruikt een eenvoudige authenticatie met een token, doorgegeven via opdrachtregelargumenten. Ondersteunt ARM-architecturen voor Raspberry Pi en vergelijkbare apparaten.\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "Bandbreedte delen - werkt op VPS, authenticatie met token"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "Token"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "Apparaatnaam"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "Log in op <a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a>, druk op F12 → Application → Local Storage → klik op <code>https://app.traffmonetizer.io</code> → kopieer de waarde van <code>authToken</code> (ongeveer 54 tekens: cijfers, een <code>|</code>, en dan letters en cijfers)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "Naam die in het dashboard wordt getoond voor het beheer van apparaten"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "IP-adressen van VPS'en en datacenters verdienen minder dan residentiële. Locaties in de VS/EU verdienen meer. Meerdere IP-adressen worden ondersteund via Docker-netwerken."
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "Minimum $10. PayPal wordt niet meer aangeboden. Sla eerst één uitbetalingsmethode op in je profiel: USDT op Solana of TON (laagste kosten), Arbitrum (lage kosten) of Tron TRC20 (hoge netwerkkosten), of een bankoverschrijving vanaf $1,000. Het eerste adres dat je opslaat, geldt meteen; het later wijzigen vereist een bevestiging per e-mail. Het dashboard kan vóór de eerste opname om een contact via een messenger vragen (WhatsApp, Telegram of Skype). Een aanvraag betaalt hele dollars uit en de centen blijven in het saldo staan."
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "USDT op de chain die in de uitbetalingsinstellingen van het profiel is opgeslagen (Solana, TON, Arbitrum of Tron), of een bankoverschrijving. Het adres staat in de instellingen van Traffmonetizer, niet in de container."
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "Log in op <a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a>, druk op F12 → Application → Local Storage → waarde van <b>authToken</b> (ongeveer 54 tekens: cijfers, een <code>|</code>, en dan letters en cijfers)."
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "10% van elke uitbetaling die zij aanvragen"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "De gebruiksvoorwaarden van Traffmonetizer vereisen een residentieel IP-adres, maar in de praktijk worden VPS-nodes geaccepteerd."
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "Trustpilot geeft een 1.9; reviewers van 2023 tot november 2026 melden uitbetalingen die wekenlang in behandeling blijven, of die als voltooid zijn gemarkeerd zonder bijbehorende transactie."
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "Dezelfde reviewers melden dat support via livechat en e-mail niet reageert, soms wekenlang."
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "Alleen crypto of een bankoverschrijving vanaf $1,000; PayPal is verdwenen, en een aanvraag betaalt alleen hele dollars uit."
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "De voorwaarden van Traffmonetizer vereisen een residentieel IP-adres, dus een server op een hostingverbinding valt erbuiten."
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "Vier Trustpilot-reviewers melden van 2023 tot 2025 zeer trage inkomsten, zoals één cent per dag over vier apparaten, of bijna twee jaar om $10 te bereiken."
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "Voor een uitbetaling is alleen een opgeslagen crypto-adres nodig dat per e-mail is bevestigd; het dashboard kan om een contact via een messenger vragen."
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Traffmonetizer publiceert een eigen Docker-image, traffmonetizer/cli_v2."
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "Mine met je CPU en word betaald in de munt die je kiest, zoals SHIB, DOGE of XMR. CashPilot draait XMRig tegen de RandomX-pool van unMineable, en unMineable zet de Monero die je CPU minet om in jouw munt. Het betaalt uit naar je openbare adres zodra je saldo de betalingsdrempel van de munt bereikt. Elke worker die CashPilot uitrolt, bevat de unMineable-verwijzingscode van CashPilot, waardoor je platformkosten dalen van 1% naar 0.75%. De stroom kan meer kosten dan je verdient."
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "Mine met je CPU en word betaald in de munt die je kiest"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "Uitbetalingsmunt"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "Uitbetalingsadres"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "Workernaam"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "Max. CPU-threads (%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "RandomX-modus"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "Ticker van een munt die unMineable uitbetaalt, zoals SHIB, DOGE of XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "Je openbare adres voor die munt. Munten die een memo of tag nodig hebben, worden niet ondersteund."
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "Bruto schatting vóór stroomkosten, uitbetaald in jouw munt tegen de omrekenkoers van unMineable. Op 2026-11-25 was 1 kH/s RandomX ongeveer $1 per maand waard. Een desktop-CPU op de helft van zijn threads kan 30 tot 50 W extra verbruiken. Controleer je werkelijke verbruik en je stroomprijs om te zien of het loont."
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "Per munt vastgesteld door unMineable (0.03 XMR op 2026-11-26)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "Wanneer de betalingsdrempel van de munt is bereikt"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "unMineable betaalt uit naar je adres zodra je saldo de betalingsdrempel van de munt bereikt. De drempels verschillen per munt en netwerk; CashPilot leest de drempel uit die unMineable voor je adres opgeeft."
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "Het saldo is verdiend maar niet ontvangen totdat unMineable het naar dit adres uitbetaalt. De chain hangt af van de munt die je kiest."
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "Hetzelfde uitbetalingsadres en dezelfde ticker waarmee je de miner hebt uitgerold, bijvoorbeeld <b>XMR</b>. Vul alleen het adres in, zonder de munt, de workernaam of de verwijzingscode. Het is openbaar en geeft geen toegang tot tegoed."
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "0.25% van de miningbeloningen van elke doorverwezen miner"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "Platformkosten verlaagd van 1% naar 0.75%"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "Deze machine meldt een hostingverbinding. Controleer de voorwaarden van je provider voordat je gaat minen. Sommige providers, waaronder Hetzner Cloud, verbieden het. Controleer je werkelijke stroomkosten voordat je op een winstschatting vertrouwt."
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "unMineable rekent 1% platformkosten. CashPilot voegt zijn verwijzingscode (#awk6-j1z0) toe achter elke workernaam, waardoor je kosten dalen naar 0.75%. unMineable betaalt de maintainer van CashPilot dan 0.25% van je miningbeloningen; jij houdt 99.25%. Elke munt heeft een eigen betalingsdrempel, bijvoorbeeld 0.03 XMR."
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "rekenkracht"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "Nee. De miner stuurt werk naar de pool van unMineable."
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "Je uitbetalingsadres, munt, workernaam, hashrate en IP-adres gaan naar unMineable."
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "Sommige netwerken en DNS-resolvers blokkeren verbindingen met miningpools."
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "Er is geen account nodig. Het adres en de munt zijn de identiteit, en iedereen kan de statistieken ervan op unmineable.com bekijken."
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "unMineable houdt met de verwijzingscode 0.75% platformkosten in en betaalt pas uit vanaf de drempel van elke munt."
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "Sommige hostingproviders verbieden het minen van cryptocurrency."
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "De extra stroom kan meer kosten dan de verdiende munten."
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "De statistieken van een adres, inclusief het saldo, zijn openbaar voor iedereen die het adres kent."
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "De miner stuurt hashes naar de pool en geeft geen verkeer van anderen door."
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "Je kunt naar een openbaar adres minen in de munt die je kiest, zonder een account aan te maken."
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock is een DePIN-platform (Decentralized Physical Infrastructure Network) waarmee je cryptocurrency verdient door je internetverbinding te delen. Onderdeel van het bredere Web3-ecosysteem. Er zijn Docker-images uit de community beschikbaar, maar geen officiële image. De browserextensie is de belangrijkste interface.\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "DePIN, internet delen - uitbetaling in crypto, vooral via browserextensie"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "Inkomsten in crypto/tokens. Geen officiële Docker-image — de browserextensie is de belangrijkste client."
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "UPT-tokens, op te nemen naar een Solana-wallet vanaf 250 UPT, met tweestapsverificatie ingeschakeld. Er gelden opnamekosten."
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "Volgens het helpcentrum van UpRock zijn opnames UPT-tokens naar een Solana-wallet, met een minimum van 250 UPT."
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "Beloningen zijn UPT-tokens; reviewers en een review van een derde partij zeggen dat hun waarde zeer laag is."
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "CashPilot draait UpRock niet: je gebruikt de eigen app of extensie van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork is een gedecentraliseerd netwerk voor VPN en het delen van bandbreedte. Je verdient door als communityprovider bandbreedte te leveren. Het providerprogramma authenticeert zichzelf met het e-mailadres en wachtwoord van je account (het subcommando auth-provide) en bewaart de resulterende sessie-JWT in het datavolume. Officiële Docker-image van BringYour, Inc.\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "Gedecentraliseerde VPN/bandbreedte - inloggen met e-mail+wachtwoord, JWT-sessie in volume"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "E-mailadres"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "Wachtwoord"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "Het e-mailadres van je URnetwork-account (de login die je op <a href=\"https://ur.io\" target=\"_blank\">ur.io</a> gebruikt). Voor accounts die via inloggen met Google/Apple zijn aangemaakt, moet je eerst een wachtwoord instellen. Nog geen account? Meld je aan via <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a>"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "Het wachtwoord van je URnetwork-account (zonder spaties). Wordt gebruikt door de auth-provide-login van de provider; daarna blijft de sessie in het datavolume bewaard."
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "Werkt op VPS en residentieel. Sinds 2026-10-06 uitbetaald in SN25α (Bittensor-subnet 25) per wekelijkse epoch. Ondersteunt een proxymodus voor opstellingen met meerdere IP-adressen."
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "Per epoch"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "Stel een Bittensor-coldkey in op ur.io/app/account/earnings (ondertekend met Talisman, TAO.com of een WalletConnect-wallet) en claim daarna elke afgeronde epoch. Een claim betaalt gas in TAO vanuit een EVM-gassleutel. NIET-GECLAIMDE EPOCHS VERLOPEN, en de oude USDC-uitbetalingen werden geannuleerd als er niet binnen 30 dagen een wallet was gekoppeld."
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "3 GiB gratis UR-data per dag per vriend, tot 20 vrienden (data, geen geld)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "3 GiB gratis UR-data per dag zodra je binnen 90 dagen na aanmelding op 2 dagen minstens 10 MiB via de app gebruikt; anders vervalt de doorverwijzing"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "Niet-geclaimde epochs verlopen, en de oude USDC-uitbetalingen werden geannuleerd voor netwerken waaraan niet binnen 30 dagen een wallet was gekoppeld."
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "Sinds oktober 2026 worden beloningen betaald in SN25α, een token van een Bittensor-subnet, en elke claim kost gas in TAO."
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "URnetwork heette vroeger BringYour; de gearchiveerde whitepaper draagt nog de oude naam."
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "URnetwork publiceert de broncode van zijn providerclient."
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "URnetwork publiceert een eigen Docker-image, bringyour/community-provider, en werkt op VPS- en residentiële verbindingen."
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "Voor een claim is alleen een Bittensor-wallet nodig die jij beheert."
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai is een marktplaats voor GPU-cloud waarop je je NVIDIA-GPU verhuurt aan AI/ML-onderzoekers en -ontwikkelaars. Een platform dat volledig op Docker is gebouwd, waarop je je eigen uurprijzen instelt. Een RTX 3090 verdient bij verhuur meestal $0.20-0.40/uur. Vereist een NVIDIA-GPU met recente drivers en een stabiele internetverbinding. De opbrengst hangt sterk af van het GPU-model, je prijsstrategie en de vraag op de markt.\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "GPU-marktplaats - stel je eigen prijzen in, RTX 3090 ~$0.20-0.40/uur"
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "API-sleutel"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "Host-API-sleutel van Vast.ai uit het dashboard"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "RTX 3090 ~$0.20-0.40/uur, RTX 4090 ~$0.40-0.80/uur bij verhuur. De bezettingsgraad wisselt. Vereist een NVIDIA-GPU, een Linux-host, Docker en nvidia-container-toolkit. Stel je eigen prijzen in."
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "Wekelijks (vrijdag)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "Inkomsten worden opgebouwd in je Vast.ai-saldo. Opnemen via Wise, PayPal of Stripe."
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "3% van wat doorverwezen huurders uitgeven, zolang hun account bestaat, als verwijzingstegoed; tot 75% kan worden uitbetaald vanaf een apart verwijzingsaccount"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "Een host verdient alleen zolang hij verhuurd is, en de eigen cijfers van Vast voor een consumenten-GPU hangen af van het type verhuur en de betrouwbaarheidsscore."
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "CashPilot draait Vast.ai niet: je installeert de hostsoftware van Vast op je eigen GPU-machine, dus CashPilot kan die niet voor je uitrollen of bijwerken. Vast bouwt hosting rond Docker op een Linux-host."
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Volgens Vast is het tarief dat een host instelt ook het tarief dat hij ontvangt, zonder ingehouden kosten."
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "Uitbetalingen gaan via Wise, PayPal of Stripe vanaf een minimum van $20, wekelijks gefactureerd; een kleiner saldo schuift door naar de volgende week."
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter is een platform voor het delen van bandbreedte, beschikbaar voor Windows, Mac, Linux en Android. Het beweert tot $1/GB gedeelde bandbreedte te betalen, met een minimale uitbetalingsdrempel van $20. Het platform werkt vergelijkbaar met traditionele apps voor het delen van bandbreedte en stuurt legitiem verkeer via residentiële verbindingen.\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "Bandbreedte delen - beweert tot $1/GB, min. uitbetaling $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "Beweert tot $1/GB, maar de inkomsten in de praktijk zijn lager. Minimale uitbetaling $20. De inkomsten verschillen sterk per locatie en vraag."
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "Op aanvraag"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "Wipter heeft geen webdashboard. Open de desktop- of telefoonapp van Wipter, log in en vraag daar de uitbetaling aan zodra het saldo $20 bereikt. Wipter betaalt alleen in USDT op BNB Smart Chain (BEP20), naar de wallet die je in het onderdeel Payments van de app instelt; er is geen PayPal-optie."
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "10% van hun verkeersinkomsten zodra ze het uitbetalingsminimum bereiken, voor zoveel vrienden als je doorverwijst"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "$5 aanmeldbonus"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "CashPilot draait Wipter niet: je gebruikt de eigen desktop- of telefoonapp van de aanbieder, dus CashPilot kan die niet voor je uitrollen of bijwerken. De voorwaarden zijn niet gecontroleerd op containers."
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "Mine Monero met je CPU. CashPilot draait XMRig, en de pool die je kiest, betaalt Monero uit naar je openbare uitbetalingsadres. XMRig gebruikt 1% van de hashtijd om zijn ontwikkelaars te steunen. De stroom kan meer kosten dan de XMR die je verdient."
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "Mine Monero met je CPU en een pool naar keuze"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "Monero-adres"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "Pool"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "Workernaam"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "Max. CPU-threads (%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "RandomX-modus"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "Bruto schatting vóór stroomkosten. Op 2026-11-25 was 1 kH/s ongeveer $1 per maand waard, bij de waargenomen XMR-koers en netwerkmoeilijkheid. Een desktop-CPU op de helft van zijn threads kan 30 tot 50 W extra verbruiken. Controleer je werkelijke verbruik en je stroomprijs om te zien of het loont."
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR (MoneroOcean, nadat je de drempel verlaagt)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "Wanneer de pooldrempel is bereikt"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "De pool betaalt uit naar je Monero-adres wanneer je saldo je drempel bereikt. De pool houdt het saldo aan totdat hij je uitbetaalt."
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "Deze machine meldt een hostingverbinding. Controleer de voorwaarden van je provider voordat je gaat minen. Sommige providers, waaronder Hetzner Cloud, verbieden het. Controleer je werkelijke stroomkosten voordat je op een winstschatting vertrouwt."
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "MoneroOcean, de standaardpool, rekent 0% miningkosten. De standaarddrempel voor uitbetaling is 0.3 XMR, en je kunt die verlagen naar 0.003 XMR. Uitbetalingen onder 4 XMR kunnen tot 0.0004 XMR kosten. Andere pools hanteren hun eigen tarieven en drempels."
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "rekenkracht"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "Nee. De miner stuurt werk naar miningpools."
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "Je Monero-adres, workernaam en IP-adres gaan naar de pool."
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "Sommige netwerken en DNS-resolvers blokkeren verbindingen met miningpools."
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "De meeste Monero-pools herkennen je aan je openbare uitbetalingsadres."
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "Voor een uitbetaling heb je genoeg XMR nodig om de drempel van je pool te halen."
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "Sommige hostingproviders verbieden het minen van cryptocurrency."
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "De extra stroom kan meer kosten dan de verdiende XMR."
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "De miner stuurt hashes naar pools en geeft geen verkeer van anderen door."
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "De miner is open source en de image pint een ondertekende upstream-release."
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "Je kunt minen met een openbaar Monero-adres zonder je met je naam bekend te maken."
+  source: "752cbb728aac"

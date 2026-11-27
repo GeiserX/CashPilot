@@ -1,0 +1,2511 @@
+# Turkish translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/tr.yml --restamp '<key>'
+2miners-etc.description:
+  text: "2Miners'ın herkese açık ETC ödeme adresiniz için tuttuğu ödenmemiş Ethereum Classic bakiyesini takip edin. Kendi madencinizi çalıştırın ve havuza yönlendirin. CashPilot bakiyeyi okur ve bakiye düştüğünde ödemeleri onaylamanızı ister.\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "Ethereum Classic madencilik havuzu, ödeme adresinizle takip edilir"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC (ayarlanabilir)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "Havuz ödeme eşiğinizi iki saatte bir kontrol eder"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "2Miners, seçtiğiniz eşiğe ulaştığınızda adresinize otomatik olarak ödeme yapar. ETC ödemeleri için en düşük eşik 0.1 ETC'dir.\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "Ödenmemiş bakiye 2Miners'ta birikir. Cüzdan bakiyesi Ethereum Classic'ten ayrıca okunur. CashPilot'ta bir ödemeyi onaylamadan önce cüzdanınızda gelen tutarı kontrol edin.\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "Madencinizin 2Miners'ta kullandığı, <b>0x</b> ile başlayan herkese açık Ethereum Classic ödeme adresini girin. Worker adını eklemeyin.\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "2Miners'a yönlendirilmiş bir ETCHash madencisi gerekir"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "işlem gücü"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "Hayır. Madenciniz madencilik işini havuza gönderir."
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "Havuz ödeme adresinizi, seçtiğiniz worker adlarını ve madencinizin IP adresini kullanır."
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "Ödeme adresiyle herkes istatistikleri görüntüleyebilir. Havuz, eşiği değiştirmek için worker IP onayı ister."
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "Havuz %1 ücret alır ve eşiğinize ulaşılana kadar ödemeleri bekletir."
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol (eski adıyla ATOR), merkeziyetsiz bir onion yönlendirme gizlilik ağıdır. Düğüm operatörleri relay düğümleri çalıştırır ve sağladıkları bant genişliği için ANYONE token kazanır. \"Teşvikli Tor\" olarak düşünebilirsiniz. CashPilot bunu, projenin imzalı Debian paketinden amd64 ve arm64 için derlenen kendi imajıyla çalıştırır. Yapılandırma, konteynere bağlanan bir anonrc dosyasıyla yapılır (Nickname, ContactInfo, ORPort vb.). Bir relay, kendisi için en az 180 gün boyunca 100 ANYONE kilitlenene kadar hiçbir şey kazanmaz ve ödüller cüzdanınızda imza atılarak talep edilir. Relay ayrıca herkese açık IP'nizi ağın relay dizininde listeler; bu da ev bant genişliği uygulamalarının para ödediği IP itibarına zarar verebilir.\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "Merkeziyetsiz onion yönlendirme - teşvikli Tor relay düğümleri"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "Relay'in ed25519 kimlik anahtarı. Silinirse relay'in itibarı sona erer ve kazanç geçmişi sıfırdan başlar."
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "Yalnızca relay başına en az 180 gün boyunca 100 ANYONE kilitliyse ve cüzdanınızda imzalanmış bir ödül talebi varsa ödeme yapar. Stake olmadan bir relay hiçbir şey kazanmaz. Stake ile kazanç, sağlanan bant genişliğine ve çalışma süresine bağlıdır."
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "Dönem (epoch) bazlı"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "anonrc içinde ContactInfo olarak, başına '@anon:0x...' eklenerek ayarlanır."
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "Virgülle ayrılmış relay parmak izleri. Bu bilgi bir web panosunda yer almaz: relay'i çalıştıran ana makinede <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> komutunu çalıştırın.\n"
+  source: "9b5c068c9636"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "Bant genişliği, Anyone ağında (bir Tor çatallaması) relay olarak."
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "Evet. Başkalarının trafiğini aktarır. IP'nizin son atlama noktası olup olmadığı, relay'in çıkış (exit) olarak yapılandırılıp yapılandırılmadığına bağlıdır."
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "Relay'in herkese açık kimlik anahtarı, IP'niz ve portunuz ile çalışma süresi istatistikleri; bunların hepsi tasarım gereği ağ dizininde yayımlanır. anonrc dosyanızda ContactInfo ayarlarsanız o da orada yayımlanır ve kalıcı olarak, herkese açık şekilde dizinlenir. Genellikle bir e-posta adresidir; herkese açık olmasını istemiyorsanız boş bırakın."
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "Gerçek bir risk. Relay trafiği sizin bağlantınıza atfedilir. Özellikle çıkış relay'leri kötüye kullanım şikâyetleri çeker; birçok bireysel İSS bunları yasaklar."
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "Kaydolunacak bir hesap yoktur, dolayısıyla hesap başına sınırlanacak bir şey de yoktur. Yine de kazanmak için her relay için en az 180 gün boyunca 100 ANYONE kilitlenmiş bir Ethereum cüzdanına ihtiyacınız vardır ve CashPilot'un ödülleri okuyabilmesi için relay parmak izleri gerekir. Proje IP başına bir relay sınırı yayımlamaz ve katalog da bir sınır belirtmez."
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "Bir relay, kendisi için en az 180 gün boyunca 100 ANYONE kilitlenmedikçe hiçbir şey kazanmaz ve her ödül talebi cüzdanınızda imzalanır."
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "Tasarım gereği başkalarının trafiğini, kim olduklarını denetlemeden aktarır; çıkış relay'leri kötüye kullanım şikâyetleri çeker."
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "Relay'in kimliği, IP'si ve çalışma süresi ağ dizininde yayımlanır ve ayarladığınız her ContactInfo kalıcı olarak herkese açık olur."
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "Kaydolunacak bir hesap yoktur. Bir relay için yalnızca bir cüzdan gerekir, kimlik kontrolü yoktur."
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "Relay yazılımı, Tor'un lisansı altında yayımlanmış bir Tor çatallamasıdır."
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "CashPilot, Anyone'ın yayımladığı ve hesap gerektirmeyen relay yazılımından kendi imajını derler."
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping, bir düğüm çalıştırmanız için size ödeme yapan merkeziyetsiz bir ağ izleme platformudur. Düğümünüz, Bitping müşterileri için web sitesi izleme, gecikme testi ve ağ kalitesi kontrolleri yapar. Hem ev hem de VPS bağlantılarında çalışır. Docker imajı ilk başlatmada BITPING_EMAIL ve BITPING_PASSWORD ortam değişkenleriyle oturum açar (kendi günlüğünde \"Attempting login with environment variables\"), ardından oturumu birim bağlantısında saklar; böylece yeniden başlatmalarda tekrar kimlik doğrulaması yapmaz.\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "Bant genişliği paylaşımı - merkeziyetsiz ağ izleme, VPS'te çalışır"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "E-posta"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "Şifre"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "Bitping hesabınızın e-posta adresi (<a href='https://app.bitping.com' target='_blank'>app.bitping.com</a> ile aynı giriş bilgisi)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "Bitping hesabınızın şifresi. Düğüm oturumunu oluşturmak için bir kez kullanılır; oturum daha sonra veri biriminde saklanır."
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "Kazanç, ağ kalitesine ve bulunduğunuz konumdan izleme talebine bağlıdır. VPS düğümleri kabul edilir."
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "Düğüm kazançları nodes.bitping.com'da bulunur; app.bitping.com ise API müşteri panosudur. Para çekme yalnızca SOL iledir: ödenmemiş bakiye $0.05'i aştığında talebe Solana adresini yazın; talep 24 saat içinde işlenir. Yeni veya boş bir Solana cüzdanında, ağın kira minimumu için önce yaklaşık 0.001 SOL bulunması gerekir."
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "Artık yalnızca Solana; adres saklanmaz, PARA ÇEKME SIRASINDA yazılır."
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "Bitping hesabınızın e-posta adresini ve şifresini kullanın (<a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a> ile aynı)."
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "Bitping bakiyenizi çekin"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "Bitping, 12 aydan uzun süre talep edilmeyen kazançlara, e-postayla 30 gün önceden bildirimde bulunduktan sonra el koyabilir."
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "nodes.bitping.com'da bir SOL para çekme talebi oluşturun ve Solana adresinizi talebe yazın."
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "Para çekme işlemleri Solana (SOL) ile, her talebe yazdığınız bir adrese ödenir."
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "Bitping'in yardım sayfasına göre yeni ve boş bir Solana cüzdanına para çekme işlemi, o cüzdana kendiniz biraz SOL yükleyene kadar başarısız olabilir."
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "Bitping'in yardım sayfasına göre sunucular ve Docker konteynerleri desteklenir."
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "Para çekmek için talebe yalnızca bir Solana adresi yazmanız yeterlidir."
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit, PayPal ve Stripe üzerinden ödeme yapan bir bant genişliği paylaşım hizmetidir. Resmi bir Docker imajı yoktur; istemciler Windows masaüstü uygulaması ve Android uygulamasıdır. Hizmet bytebenefit.io adresindedir -- eski bytebenefit.com alan adı bırakıldı ve bir alan adı pazarında park edildi; bu yüzden burada bir zamanlar ölü olarak işaretlenmişti.\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "Bant genişliği paylaşımı - PayPal/Stripe ödemeleri, masaüstü/Android uygulaması"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "Docker imajı yoktur. Yalnızca Windows masaüstü ve Android uygulamaları."
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "Referans trafiği kazancının %20'si"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "$1 (10,000 Coin) hoş geldin bonusu"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "Uygulamanın Google Play sayfasına göre trafiğiniz, Infatica müşterilerinin web istihbaratı isteklerine hizmet eder; bu müşterilerin kim olduğu veya nasıl denetlendiği belirtilmez."
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "Android uygulaması 17 ay sonra, Nisan 2026'da Google Play'den kaldırıldı."
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "CashPilot, ByteBenefit'i çalıştırmaz: sağlayıcının kendi uygulamasını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Bytelixir, kullanılmayan internet bant genişliğinizi paylaşarak pasif gelir elde etmenizi sağlar. Yalnızca Windows ve Android desteklenir: resmi SSS'ye göre Linux veya Docker istemcisi planlanmamaktadır, iOS desteklenmez ve macOS sunulmaz. Kazanç büyük ölçüde konuma bağlıdır. Takip için web panosu dash.bytelixir.com adresindedir. Docker imajı yoktur.\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "Bant genişliği paylaşımı - yalnızca Windows + Android"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "Oturum Çerezi"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "Remember Web Çerezi"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "XSRF Token"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "<a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a> adresinde oturum açın, F12'ye basın → Application → sol kenar çubuğunda <b>Cookies</b> öğesini genişletin → <code>https://dash.bytelixir.com</code> alt öğesine tıklayın → sağdaki çerez listesinde <code>bytelixir_session</code> çerezini bulun → Value değerini kopyalayın (eyJ ile başlayan uzun bir JWT)"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "Aynı yerde (Cookies → <code>https://dash.bytelixir.com</code>) → <code>remember_web_...</code> adlı çerezi bulun → Value değerini kopyalayın (isteğe bağlı, oturum süresini uzatır)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "Aynı yerde → <code>XSRF-TOKEN</code> çerezini bulun → Value değerini kopyalayın (isteğe bağlı)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "Kazanç konuma göre değişir (ayda $2-50). Docker imajı yoktur. Masaüstü uygulaması veya Android uygulaması gerekir."
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "Yalnızca kripto. Minimum tutar coin'e bağlıdır: USDT $5, USDC $5, TON $8, LTC $10, ETH $40, BTC $250. Adresi her talepte yazarsınız. Talepler mesai saatlerinde, 24 saat içinde işlenir."
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "Bakiye Bytelixir'de tutulur; cüzdan adresi her ödeme talebine yazılır, konteynerde asla saklanmaz."
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "<a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> adresinde <b>Remember Me seçeneğini işaretleyerek</b> oturum açın, F12'ye basın → Application → sol kenar çubuğunda <b>Cookies</b> öğesini genişletin → <code>https://dash.bytelixir.com</code> öğesine tıklayın, ardından üç değeri kopyalayın: <b>bytelixir_session</b>, <b>remember_web_…</b> (bu önekle başlayan uzun olan) ve <b>XSRF-TOKEN</b>. Oturum çerezi tek başına, kopyaladıktan yaklaşık iki saat sonra sona erer; bu yüzden veri toplama aynı öğleden sonra durur. remember_web çerezi bir yıl geçerlidir ve çalışmaya devam etmesini sağlayan odur."
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "Kârlarının %50'si, ömür boyu"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "$1 karşılama bonusu"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "Yalnızca kripto ve minimum tutar coin'e bağlıdır: USDT için $5 ile Bitcoin için $250 arasında değişir."
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "CashPilot, Bytelixir'i çalıştırmaz: sağlayıcının kendi uygulamasını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "Trustpilot'ta 283 yorumdan 4.6 puanı var; çoğu kripto ödemelerini övüyor, birkaçı ise ödemelerin ulaşmadığını bildiriyor."
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "Bir ödeme için talebe yalnızca bir kripto adresi yazmanız yeterlidir."
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai, eşler arası bir GPU pazarıdır. NVIDIA GPU'lu bir Linux makineyi listelersiniz, kendi spot ve isteğe bağlı fiyatlarınızı belirlersiniz ve kiracılar üzerinde kendi Docker konteynerlerini çalıştırır. Yalnızca kiralandığı dakikalar için CLORE, BTC, USDT veya USDC olarak ödeme alırsınız. Barındırma için Ubuntu 22.04 veya daha yenisi (ya da HiveOS) çalıştıran bir x86_64 makine, çalışan bir NVIDIA sürücüsü ve indirme ile yüklemede en az 100 Mbps gerekir. AMD GPU'lar desteklenmez.\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "GPU pazarı - NVIDIA GPU'larınızı kiraya verin, ödeme CLORE, BTC veya USD stablecoin ile"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "Yalnızca kiralanan dakikalar için, belirlediğiniz fiyattan ödeme alırsınız. Aralığın üst ucu olan $490, Clore'un dakika bazında listelenen tek bir RTX 4090 için kendi verdiği üst sınırdır ('ayda ~$490'a kadar'); daha küçük kartlar daha az kazanır, boşta duran bir kart hiçbir şey kazanmaz. Clore her kiralamanın %5'ini (isteğe bağlı) veya %1.25'ini (spot) alır; kiracı CLORE yerine BTC, USDT veya USDC ile öderse buna ek olarak %15 daha alır."
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "Account > Billing bölümünden kendi cüzdanınıza çekin: CLORE (ERC-20, minimum 200, ücret yaklaşık $0.50), BTC (minimum 0.0001, ücret 0.00005 BTC) veya Ethereum ya da BNB Chain üzerinde USDT/USDC (minimum $10, ücret $1)."
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "Clore, siz çekene kadar bakiyeyi tutar (CLORE, BTC ve USDT/USDC için tek bir USD bakiyesi). Zincir her para çekmede seçilir: CLORE için Ethereum, BTC için Bitcoin, USDT/USDC için Ethereum veya BNB Chain."
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "Davet ettiğiniz ev sahiplerinin ve kiracıların her kiralamada ödediği platform ücretlerinin %15'i (standart seviye); kodun süresi hiç dolmaz; ödeme kiralamanın para biriminde yapılır (CLORE, BTC veya USD)"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "İndirme ve yüklemede 100 Mbps"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "Makinenizdeki GPU işlem süresi."
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "Evet. Kiracılar makinenizde kendi Docker konteynerlerini çalıştırır ve trafikleri sizin bağlantınızdan çıkar; SSH ve uygulama portları internete yönlendirilir."
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "Clore'un gizlilik politikası hesap verilerini ve IP adresinizi yaklaşık konumla birlikte kapsar; kimlik belgeleri yalnızca Clore KYC isterse toplanır."
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "Gelen portlara internetten erişilebilmelidir (varsayılan olarak 22, 8080 ve 3000-4000) ve yabancıların iş yükleri sizin hattınızda çalışır. Clore'un kendi ağ rehberine göre bazı İSS'ler barındırmayı engeller."
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "18 yaş veya üzeri olmalı, yaptırım uygulanan bir ülkede bulunmamalısınız. Clore tamamen kendi takdirine bağlı olarak bir hesabı askıya alabilir veya kapatabilir; yasaklanmış bir kullanım fonların kaybına yol açabilir."
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "Ne kullanım koşulları ne de gizlilik politikası bir tüzel kişiliğin adını verir; koşullar, geçerli yargı bölgesini sonraki bir sürüme bırakır."
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Clore tamamen kendi takdirine bağlı olarak bir hesabı askıya alabilir veya kapatabilir; yasaklanmış bir kullanım fonlara el konulmasına yol açabilir."
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "Ödemeler yalnızca kriptoyla yapılır (CLORE, BTC, USDT veya USDC) ve kiracının BTC, USDT veya USDC ile ödediği bir kiralamadan Clore ek olarak %15 alır; ev sahibi bunu azaltmak için CLORE kilitlerse bu durum değişir."
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "Ev sahibine yalnızca kiralanan dakikalar için ödeme yapılır ve Clore'un RTX 4090 için verdiği rakam tek bir kart için bir üst sınırdır (\"ayda ~$490'a kadar\")."
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "Temel kullanım için KYC gerekmez, ancak Clore büyük para çekme işlemlerinde veya uyum gerektiren durumlarda kimlik doğrulaması isteyebilir."
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "Kiracılar makinenizde herhangi bir herkese açık Docker imajını çalıştırabilir. Koşullar yasak kullanımları listeler (kötü amaçlı yazılım, DDoS, CSAM ve daha fazlası), ancak kiracıların nasıl denetlendiğine dair bir açıklama bulamadık."
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "CashPilot, Clore.ai'yi çalıştırmaz: Clore'un barındırma aracısını kendi GPU makinenize (Ubuntu 22.04 veya daha yenisi ya da HiveOS) kurarsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez."
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "Kiracı CLORE ile ödediğinde Clore, isteğe bağlı bir kiralamanın %5'ini (spot'ta %1.25) alır, ek ücret yoktur."
+  source: "699adf0a2179"
+dawn.description:
+  text: "DAWN, DAWN protokolü aracılığıyla finanse edilen yapay zekâ altyapısı için bant genişliğini ve kapsama alanını kontrol eden bir doğrulayıcı ağı çalıştırır. DAWN Validator tarayıcı eklentisi bu bant genişliği kanıtı ve kapsama kontrollerine katılır ve çalıştığı sürece DAWN ödülleri kazanır. Ödüllerin henüz belirlenmiş bir nakit değeri yoktur. Hesabı eklentide oluşturun ve istendiğinde 2QLQV97F referans kodunu girin.\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "DePIN doğrulayıcı - tarayıcı eklentisi DAWN puanı kazanır"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "Token lansmanı öncesinde Dawn Points kazanır. Gerçek değer gelecekteki token fiyatına bağlıdır. Donanım cihazı tarayıcı eklentisinden daha fazla kazanır."
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "Token airdrop'u (henüz duyurulmadı)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "Eklenti çalışıyor ama yarım yamalak. Black Box donanımı duyuruldu. İleride tekrar kontrol edin."
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "Eklenti puan kazanır; Ekim 2026 itibarıyla düğüm operatörlerine token dağıtımı doğrulanmamıştı."
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "Bir token piyasaya çıkıp dönüşüm oranı duyurulana kadar puanların belirlenmiş bir değeri yoktur."
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "CashPilot, Dawn'ı çalıştırmaz: sağlayıcının kendi tarayıcı eklentisini kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network, merkeziyetsiz bir VPN ve web3 altyapı projesidir. Öncelikle tescilli Deeper Connect donanım cihazları gerektirir. Moken, ilgili bir madencilik/staking platformudur. Yalnızca yazılımla çalışmaz.\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "Merkeziyetsiz VPN - tescilli bir donanım cihazı gerektirir"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "Deeper Connect donanımı gerektirir ($200-500). Madencilik/staking için Moken platformu. Yalnızca yazılımla çalışmaz."
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "Sürekli"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "Cihaz satışından komisyon"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "SERGIO kuponuyla Deeper Connect cihazında %5 indirim"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "Madencilik ödülleri DPR cinsindendir ve yavaş büyüyen ya da DPR stake edilerek artan bir kredi puanına bağlıdır."
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "CashPilot, Deeper Network'ü çalıştırmaz: sağlayıcının kendi yönlendirici donanımını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "Bright Data'nın EarnApp uygulaması, kullanılmayan bant genişliğinizi satarak pasif gelir elde etmenizi sağlar. Bright Data, Fortune 500 şirketlerinin veri toplama işlerine güç veren, dünyanın en büyük proxy ağıdır. CashPilot bunu kendi imajıyla çalıştırır: bu imaj ilk başlatmada sabitlenmiş EarnApp sürümünü Bright Data'nın CDN'inden indirir, sha256 değerini kontrol eder ve yalnızca bir UUID ile lite modunda çalıştırır.\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "Bant genişliği paylaşımı - Bright Data destekli"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "Düğüm UUID"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "EarnApp düğüm kimliğiniz: 'earnapp showid' komutunun yazdırdığı gibi, sdk-node- ve ardından 32 küçük harfli onaltılık karakter. Dağıttıktan sonra, EarnApp'te oturum açıkken https://earnapp.com/r/ ve ardından bu UUID'den oluşan adresi açarak bir kez bağlayın; bağlanmamış bir düğüm kazanır, ancak bakiyenize hiçbir şey ulaşmaz"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "EarnApp sunucularına ulaşmakta sürekli başarısız oluyor ve yeniden başlıyor, bu yüzden çok az kazanıyor ya da hiç kazanmıyor. Bu kopyayı yeniden başlatın; sorun devam ederse bu makinenin internet bağlantısını kontrol edin."
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "Düğümü hesabınıza eklemek için EarnApp'te oturum açıkken bu bağlantıyı açın. Bunu yapana kadar düğüm kazanır, ancak bakiyenize hiçbir şey ulaşmaz."
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "Büyük ölçüde konuma bağlıdır. En çok ABD/AB IP'leri kazanır. Kazanç, kullanılan bant genişliğiyle orantılı artar."
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "Talep üzerine (otomatik çekim mevcut: PayPal min. $10, Wise min. $10, Amazon min. $50)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "Otomatik çekimi bir kez açın; EarnApp, bakiye yöntemin minimum tutarına ulaştığında kendiliğinden ödeme yapar: PayPal $10, Wise $10, Amazon $50. PayPal ödemeleri Bright Data Ltd.'den gelir. Ekim 2026'da bir PayPal ödemesi, çekilen bakiyenin yaklaşık %2 altında geldi."
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "Bakiye EarnApp'te tutulur; Amazon/Wise/PayPal'a çekilir."
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "<a href='https://earnapp.com' target='_blank'>earnapp.com</a> adresinde oturum açın, F12'ye basın → Application → Cookies, <b>oauth-refresh-token</b> değerini kopyalayın."
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "Kazançlarının %10'u, ömür boyu, onların kazancına ek olarak ödenir"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "EarnApp'in yardım merkezine göre Docker konteynerlerine, sanal makinelere, barındırma hizmetlerine veya ev sunucularına kurulması kesinlikle yasaktır; CashPilot ise onu tam da bu şekilde çalıştırır."
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "Aynı yardım makalesine göre bu şekilde çalıştırıldığı tespit edilen bir hesap bildirimsiz olarak kapatılır ve bekleyen ödemeleri iptal edilir."
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "PayPal ödememiz Ekim 2026'da, çekilen bakiyenin yaklaşık %2 altında geldi."
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "PayPal ve Wise için $10 minimum ve kendiliğinden ödeme yapan otomatik çekim."
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "EarnApp, Bright Data'ya aittir ve PayPal ödemeleri adı belli bir şirket olan Bright Data Ltd.'den gelir."
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Earn.fm, internet bant genişliğinizi paylaşmanız için size ödeme yapar. Kazanç toplayıcı, Supabase üzerinden e-posta/şifre kimlik doğrulaması kullanır. Kolay dağıtılan hafif bir Docker imajı vardır (Docker istemcisi ayrı bir UUID token kullanır).\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "Bant genişliği paylaşımı - e-posta/şifre ile giriş, hafif istemci"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "API Anahtarı"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "<a href=\"https://app.earn.fm\">app.earn.fm</a> adresinde oturum açın → profil simgenize tıklayın (sağ üst) → Account Settings → API Key değerini kopyalayın (UUID biçiminde)"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "Görece yeni bir platform. Kazanç konuma ve bant genişliği kullanılabilirliğine göre değişir."
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "Minimum $15. Yöntemler: BEP20 veya Polygon üzerinde USDT ($1 ücret) ya da TRC20 ($3 ücret), PayPal, en az $15 değerinde Amazon veya Starbucks hediye kartları ya da transfer ücretleri düşülerek en az $1,000 tutarında banka havalesi. İlk ödemeden önce, ödeme makbuzlarında kullanılan bir fatura profili (yasal ad ve adres) doldurursunuz."
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "Bakiye Earn.fm'de tutulur; talep üzerine çekilir."
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "Earn.fm hesabınızın e-posta adresini ve şifresini kullanın (<a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> girişiyle aynı)."
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "Kazançlarının %10'u, ömür boyu"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "$5 başlangıç bakiyesi"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "$15 minimum, USDT'de $1 ile $3 arası ücret ve yalnızca $1,000 ve üzerinde banka havalesi."
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "İlk ödemeden önce yasal adınızı ve adresinizi içeren bir fatura profili doldurursunuz."
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "2025'teki değerlendirmelere göre e-posta ve Discord üzerindeki destek yanıt vermiyor; Trustpilot, Earn.fm'in olumsuz yorumlara yanıt vermediğini belirtiyor."
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Earn.fm kendi Docker imajını yayımlar: earnfm/earnfm-client."
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher, otomatik bir surfbar aracılığıyla web sitelerini ziyaret ederek kredi kazandığınız bir trafik değişim platformudur. Tarayıcı eklentisi olarak çalışır. Geleneksel bir bant genişliği paylaşım hizmeti değildir; web sitelerinde otomatik olarak gezinerek trafik oluşturur.\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "Trafik değişim surfbar'ı - tarayıcı eklentisi"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "Kazanç, EUR'ya çevrilebilen BTP puanları olarak elde edilir. Yalnızca tarayıcı eklentisi."
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "PayPal veya banka havalesiyle euro olarak ödeme."
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "CashPilot, eBesucher'i çalıştırmaz: bu bir tarayıcı eklentisidir, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "2 eurodan başlayan ödemeler PayPal veya SEPA ile, en az haftada bir ve ücretsiz yapılır."
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "eBesucher 2002'den beri faaliyette."
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "Künye, Berlin-Charlottenburg'da kayıtlı (HRB 160730 B) işletmeci TurboAd GmbH'nin adını verir."
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux, küresel olarak dağıtılmış bir işlem altyapısıdır. Düğüm operatörleri FLUX token stake eder ve sunucu kaynakları sağlar. Üç seviye vardır: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Resmi Docker imajları mevcuttur.\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "Merkeziyetsiz işlem gücü - FLUX token stake gerektirir"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "1,000+ FLUX stake gerektirir (fiyata bağlı olarak ~$50-500). Daha yüksek seviyeler daha fazla teminat gerektirir ama daha çok kazanır."
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "Blok ödülleri"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "En küçük düğüm seviyesi için teminat olarak 1,000 FLUX kilitlenmesi gerekir."
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "Blok ödülü her yıl %10 düşer ve 2026 tarihli bir rehber, küçük seviye ödüllerini dolar bazında zayıf buldu."
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "CashPilot, Flux'ı çalıştırmaz: sağlayıcının kendi düğüm yazılımını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "Flux daemon'ı MIT lisansı altında açık kaynaktır."
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network, GLM token karşılığında CPU ve GPU kaynaklarınızı paylaştığınız merkeziyetsiz bir işlem gücü pazarıdır. Sağlayıcılar, iş yüklerinin korumalı (sandbox) ortamlarda çalıştırılmasını yöneten Yagna aracısını çalıştırır. En eski merkeziyetsiz işlem gücü projelerinden biridir (2016'da kuruldu). CPU görevlerini, GPU render işlerini ve genel amaçlı işlem gücünü destekler. Ödemeler Polygon L2 üzerinden yapılır.\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "Merkeziyetsiz işlem gücü pazarı - Yagna aracısıyla GLM token"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "Kazanç donanıma, fiyatlandırmaya ve görev talebine bağlıdır. Yalnızca CPU'lu düğümler daha az kazanır. GPU düğümleri daha çok kazanır ama NVIDIA gerektirir. Yagna sağlayıcı aracısını çalıştırın (Docker imajı değil). Ödemeler Polygon üzerinde GLM token olarak yapılır."
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "Her görev tamamlandığında"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "GLM token kazanılır. Ödeme cüzdanını sağlayıcı kurulumunda yapılandırın."
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "CashPilot, Golem'i çalıştırmaz: sağlayıcı aracısını kendiniz kurarsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Golem, sağlayıcının kendi Docker imajında çalıştırılmasını belgeler."
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "Sağlayıcı aracısı yagna, GPL-3.0 altında açık kaynaktır."
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "Hesap yok: ödeme cüzdanını sağlayıcı kurulumunda ayarlarsınız."
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "Ağ yaklaşık on yıldır çalışıyor."
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "Golem'in gizlilik politikası işletmeciyi açıkça belirtir: İsviçre'nin Zug kentindeki Golem Factory GmbH."
+  source: "bae79b651923"
+grass.description:
+  text: "Grass, kullanılmayan bant genişliğinizi yapay zekâ eğitim verisi için satmanızı sağlayan merkeziyetsiz bir ağdır. Tarayıcı eklentisi ve masaüstü uygulaması olarak çalışır; yapılandırılmış veri kümeleri oluşturmak için web kazıma isteklerini sizin bağlantınız üzerinden yönlendirir. 8.5M+ kullanıcısıyla en büyük DePIN bant genişliği ağlarından biridir. Solana blokzincirinde GRASS token kazandırır.\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "Yapay zekâ verisi için DePIN bant genişliği paylaşımı - GRASS token kazandırır"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "Erişim Token'ı"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "<a href=\"https://app.grass.io\">app.grass.io</a> adresinde oturum açın, F12'ye basın → Application → Local Storage → <code>https://app.grass.io</code> öğesine tıklayın → <code>token</code> değerini kopyalayın"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "Airdrop'lar yoluyla GRASS token'a dönüştürülebilen Grass Points kazandırır. Gerçek USD değeri token fiyatına bağlıdır. Tarayıcı eklentisi veya masaüstü uygulaması gerekir."
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "Dönem (epoch) bazlı airdrop"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "Ödüller, Grass panosunda talep edilen dönemsel dağıtımlar olarak gelir. Stage 2 dağıtımı (Ekim 2024 ile Haziran 2026 arasındaki etkinlik) USDC olarak ödenir: en geç 22 Ocak 2027 tarihine kadar, ya da tüm paylar daha önce talep edilirse daha erken, app.grass.io/dashboard üzerinden talep edin. Talep edilmeyen ödüller Grass'ta kalır."
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "PUAN biriktirir; GRASS, dönemsel airdrop'lar sırasında Grass panosundan talep edilir."
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "<a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a> adresinde oturum açın, F12'ye basın → Application → Local Storage, <b>accessToken</b> değerini kopyalayın."
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "Doğrudan davet ettiklerinizin çalışma süresi puanlarının %20'si, ikinci seviyede %10, üçüncü seviyede %5"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "Grass Stage 2 USDC'nizi talep edin"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "En geç 22 Ocak 2027 tarihine kadar talep edilmeyen her Stage 2 payı Grass'ta kalır ve tüm paylar talep edildiğinde süre daha erken kapanabilir."
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "Stage 2'de kullandığınız hesapla app.grass.io'da oturum açın, Grass Wallet'ı etkinleştirin, Allocation sekmesini açın ve onaylayın. Yalnızca app.grass.io üzerinden talep edin. Stage 2 puanınız yok mu? Bana uygun değil seçeneğini seçin."
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "Ödüller yalnızca airdrop sezonları aracılığıyla gelir. Uzun süredir düğüm çalıştıran operatörler, 2. sezon tahminlerinin tek haneli ile düşük iki haneli dolar aralığında olduğunu bildirdi."
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "En geç 22 Ocak 2027 tarihine kadar talep edilmeyen 2. sezon ödülleri kalıcı olarak kaybedilir."
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "İlk airdrop, iki milyondan fazla kullanıcıya bölünen puan başına düşük ödüller nedeniyle tepki çekti."
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "CashPilot, Grass'ı çalıştırmaz: sağlayıcının kendi uygulamasını veya eklentisini kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "İlk airdrop'ta talepte bulunan adres sayısı yaklaşık 1.5 milyona ulaştı."
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium, köklü bir merkeziyetsiz kablosuz ağdır. Başlangıçta LoRaWAN hotspot'larıydı, şimdi 5G'ye genişledi. Özel donanım gerektirir ($500+). HNT/MOBILE token kazandırır. Yatırım getirisi önemli ölçüde düştü - tipik olarak ayda $4-8.\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "Merkeziyetsiz kablosuz ağ - donanım gerektirir, HNT token"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "$500+ donanım satın alımı gerektirir. Yatırım getirisi önemli ölçüde düştü. Yeni operatörler için onay süreci vardır."
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "Dönem (epoch) bazlı"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "HIP 149, 6 Temmuz 2026'da Proof-of-Coverage ödüllerini kaldırdı; IoT hotspot'ları artık yalnızca taşıdıkları veri için kazanıyor ve bunların 114,000'den fazlası hiç veri taşımadı."
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "Helium'un ödül modeli oylamayla birkaç kez değişti, CEO'su görevden ayrıldı ve HNT yaklaşık %96 değer kaybetti."
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "CashPilot, Helium'u çalıştırmaz: sağlayıcının kendi hotspot donanımını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "Hotspot ağ geçidi yazılımı Apache-2.0 lisansı altında açık kaynaktır."
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "HeroMiners'ın herkese açık ödeme adresiniz için tuttuğu ödenmemiş Kaspa bakiyesini takip edin. Kendi Kaspa madencinizi çalıştırın ve havuza yönlendirin. CashPilot havuz bakiyesini okur ve bakiye düştüğünde ödemeleri onaylamanızı ister.\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "Kaspa madencilik havuzu, ödeme adresinizle takip edilir"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS (ayarlanabilir)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "Havuz ödeme eşiğinizi saatte bir kontrol eder"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "HeroMiners, seçtiğiniz eşiğe ulaştığınızda adresinize otomatik olarak ödeme yapar. En düşük eşik 1 KAS'tır.\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "Bakiye HeroMiners'ta birikir. CashPilot'ta bir ödemeyi onaylamadan önce cüzdanınızda gelen tutarı kontrol edin.\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "Madencinizin HeroMiners'ta kullandığı herkese açık Kaspa ödeme adresinin tamamını girin. <b>kaspa:</b> önekini ekleyin ve worker adını yazmayın.\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "HeroMiners'a yönlendirilmiş bir Kaspa madencisi gerekir"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "işlem gücü"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "Hayır. Madenciniz madencilik işini havuza gönderir."
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "Havuzun herkese açık istatistikleri her ödeme adresini ve madencilik etkinliğini gösterir."
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "Havuz, hesap yerine ödeme adresinizi kullanır."
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "Havuz %0.9 ücret alır ve eşiğinize ulaşılana kadar ödemeleri bekletir."
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "Kullanılmayan internet bant genişliğinizi paylaşın ve pasif gelir elde edin. Honeygain, web istihbaratı, içerik dağıtımı ve pazar araştırması trafiğini sizin bağlantınız üzerinden yönlendirir. 12M+ kullanıcısı ve 1M'den fazla tamamlanmış ödemesiyle en köklü bant genişliği paylaşım platformlarından biridir.\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "Bant genişliği paylaşımı - en köklü platform"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "E-posta"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "Şifre"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "Cihaz adı"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "Honeygain hesabınızın e-posta adresi"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "Honeygain hesabınızın şifresi"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "Honeygain panonuzda gösterilen ad"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "Konuma göre değişir. ABD/AB IP'leri daha çok kazanır. Hesap başına en fazla 10 cihaz."
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "Minimum $20 (20,000 kredi). İki seçenek vardır: Tipalti aracılığıyla PayPal, yaklaşık %15 ücretle, ya da ücretsiz olarak bir JumpTask cüzdanına ödenen JumpTask kredileri. Bir talep için e-postayla gönderilen 6 haneli bir kod gerekir. İlk PayPal ödemesi, size e-postayla gönderilen bağlantıdan Tipalti'ye kaydolana kadar \"bilgiler bekleniyor\" durumunda kalır. Bu bağlantı yalnızca bir kez çalışır; bu yüzden tek seferde bitirebileceğiniz ve telefonunuz yanınızdayken açın: şifre belirledikten sonra Tipalti bir cep telefonu numarasını SMS ile onaylamanızı ister (kodların süresi birkaç dakika içinde dolar), ardından adınızı, adresinizi, ülkenizi, doğum tarihinizi ve PayPal adresinizi sorar. Tipalti ödeme başına $2.02 ücret alır; %1.9-3'lük döviz çevirme ücretinden kaçınmak için USD seçin. Ödeme 2 iş günü içinde yapılır. Bakiye, ödeme Tipalti'yi beklerken bile, talep ettiğiniz anda hesabınızdan düşer. Sonraki her Tipalti girişinde, cihazı 30 gün hatırlama seçeneğini işaretlemediğiniz sürece yeni bir SMS kodu gönderilir. Ekim 2026'da Tipalti, İspanya'daki bir alıcıdan vergi formu istemedi."
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "Bakiye Honeygain'de tutulur; talep üzerine çekilir."
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "Honeygain hesabınızın e-posta adresini ve şifresini kullanın (<a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a> ile aynı)."
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "Honeygain modunda davet edilen her arkadaşın kazancının %25'ine kadar"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "Bu bağlantıyla $3 kayıt bonusu"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "Honeygain bakiyenizi çekin"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "Bir Honeygain cihazında paylaşımı sürdürün veya ödeme alın"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "Kazançlar, $20 minimuma ulaştıktan sonra 24 ay geçerli kalır. Honeygain bu süreden sonra ödenmemiş olanı silebilir."
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "Uygulama 6 aydan uzun süre kullanılmazsa Honeygain ödenmemiş bakiyeyi, $20'ın altında olsa bile, süresi dolmuş sayar."
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "Bir cihazda paylaşımı sürdürün veya bir ödeme talep edin. JumpTask modunda bakiyenin değişmemesi normaldir, bu yüzden Bana uygun değil seçeneğini seçin."
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "Koşullar, Honeygain'in $20 eşiğine ulaşıp 24 ay içinde ödenmeyen kazançları silmesine ve altı ay kullanılmayan kazançları süresi dolmuş saymasına izin verir."
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "Minimum tutar $20'dır ve PayPal ödemeleri, ödeme başına $2.02 ücret alan Tipalti üzerinden yapılır."
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "Koşullar, Honeygain'in bir hesabı askıya almasına ve yanıltıcı yollarla biriktirildiğini düşündüğü kazançları alıkoymasına veya silmesine izin verir."
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "İlk PayPal ödemesinden önce Tipalti, bir cep telefonu numarasını SMS ile onaylamanızı ve adınızı, adresinizi ve doğum tarihinizi vermenizi ister."
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "Koşullara göre kurumsal müşteriler trafiği herkese açık web verilerini toplamak için kullanır, ancak hiçbir müşterinin adı verilmez ve bağlantınızı hangi müşterinin kullandığını bilemezsiniz."
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "Honeygain'in düşük kazanç yorumlarına verdiği yanıtlara göre kazanç ağ talebine ve konuma bağlıdır; yorumcular $20 minimuma ulaşmanın çok uzun sürdüğünü bildiriyor."
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Honeygain kendi Docker imajını yayımlar: honeygain/honeygain."
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "Koşullar işletmeciyi açıkça belirtir: Litvanya'nın Vilnius kentinde kayıtlı Honeygain UAB."
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "Honeygain'in basın sayfasına göre şirket 2019'da kuruldu."
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net, AI/ML iş yükleri için merkeziyetsiz bir GPU ağıdır. Kullanıcılardan ve veri merkezlerinden boşta duran GPU'ları bir araya getirir. Anlamlı bir kazanç için 8GB+ VRAM'li NVIDIA GPU gerektirir. Konteyner tabanlı dağıtımlar desteklenir.\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "Yapay zekâ için merkeziyetsiz GPU ağı - NVIDIA GPU gerekir"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "8GB+ VRAM'li NVIDIA GPU gerektirir. RTX 4090 için ayda $500-1000 iddia ediliyor (pratikte muhtemelen daha düşük)."
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "Dönem (epoch) bazlı"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "Tedarikçi ödülleri, ücretli işlerden bağımsız olarak token emisyonlarından ödendi ve GPU sahipleri çoğu zaman boşta beklediklerini bildiriyor."
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "Ödüller IO token cinsindendir ve ödeme modeli 2026'da dolara sabitlenmiş bir motora geçti."
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "Nisan 2024'te yaklaşık 1.8 milyon sahte GPU, sızdırılmış bir kimlik doğrulama token'ı aracılığıyla ağa katılmaya çalıştı; CEO da daha sonra token lansmanından önce görevden ayrıldı."
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "CashPilot, io.net'i çalıştırmaz: sağlayıcının kendi worker yazılımını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "IPRoyal Pawns, kullanılmayan bant genişliğinizi paylaşarak kazanmanızı sağlar. IPRoyal köklü bir proxy sağlayıcısıdır ve Pawns, onların ev bant genişliği paylaşım koludur. CLI Docker imajı kimlik bilgilerini komut satırı bayraklarıyla kabul eder. Bir referans bağlantısıyla kaydolan yeni kullanıcı, ilk üç ödemesinin her birinde $1, toplamda en fazla $3 alır. Her ödeme, konuma göre belirlenen bir ila üç haftalık bir süre içinde gelmelidir. Süre kayıtla başlar ve her ödemeden sonra yeniden başlar. Bir süre önce dolarsa kalan bonuslar kaybedilir.\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "Bant genişliği paylaşımı - ilk ödemelerinizde $3'a kadar bonus"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "E-posta"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "Şifre"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "Cihaz adı"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "Cihaz kimliği"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "IPRoyal Pawns hesabınızın e-posta adresi (-email bayrağıyla iletilir)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "IPRoyal Pawns hesabınızın şifresi (-password bayrağıyla iletilir)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "Pawns panonuzda gösterilen ad (-device-name bayrağıyla iletilir)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "Benzersiz cihaz tanımlayıcısı (-device-id bayrağıyla iletilir)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "IPRoyal Pawns bu hesabı devre dışı bıraktı."
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "Pawns bu IP adresinde etkin başka bir cihaz görüyor ve IP başına yalnızca birine ödeme yapıyor; bu yüzden bu kopya çalışıyor ama hiçbir şey paylaşmıyor ve hiçbir şey kazanmıyor. Bu IP'deki diğer Pawns uygulamalarını durdurun: başka bir makinede, bir PC'de veya bir telefonda olabilir. Hiçbiri yoksa Pawns'ın eski cihazı düşürmesini bekleyin veya Pawns desteğinden onu serbest bırakmasını isteyin."
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "Kazanç konuma ve bant genişliği kullanımına bağlıdır. ABD/AB ev IP'leri daha çok kazanır."
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "Minimum $5. Önce ülkenizi seçin; yöntemler ülkeye bağlıdır. İspanya'dan (Ekim 2026): PayPal %4, minimum $0.25 ücretle, Tremendous üzerinden ödenir; Tremendous, adınızı ve PayPal adresinizi gireceğiniz bir bağlantıyı e-postayla gönderir; $1 ağ ücretiyle USDT (BEP20, ERC20, TRC20) veya USDC (BEP20, ERC20); minimum $2 ücretle Bitcoin; ücretsiz hediye kartları. İlk ödeme için telefon numaranızın tek seferlik bir SMS doğrulaması gerekir: Withdraw bunu açar ve numara ülke koduyla birlikte girilir. Sonrasında her ödeme, hesabınızın e-posta adresine gönderilen bir kod ister ve gönderilmeden önce 72 saate kadar incelenir."
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "Bakiye IPRoyal Pawns'ta tutulur; talep üzerine çekilir."
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "IPRoyal Pawns hesabınızın e-posta adresini ve şifresini kullanın (<a href='https://pawns.app' target='_blank'>pawns.app</a> ile aynı)."
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "Her biri kendi 1-3 haftalık süresi içinde gelirse, ilk üç ödemelerinin her birinde $1, toplamda en fazla $3"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "İlk üç ödemenizin her birinde $1, toplamda en fazla $3; 1-3 haftalık bir süreyi kaçırırsanız kalanların süresi dolar"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "Koşullara göre bir hesap, para çekme koşullarının kötüye kullanılması veya birden fazla hesap nedeniyle önceden bildirilmeden engellenebilir ve kazançları bu durumda ödenmeyebilir."
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "Koşullara göre Pawns, trafik paylaşımı için hiçbir sunucuya, VPN'e veya proxy hizmetine izin vermez ve IP başına yalnızca bir cihaza izin verir."
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "PayPal, Tremendous üzerinden %4 (en az $0.25) maliyetlidir ve her ödeme 72 saate kadar incelenir."
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "İlk ödeme için telefon numaranızın SMS ile doğrulanması, her ödeme için de e-postayla gönderilen bir kod gerekir."
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "Gizlilik politikası işletmeciyi Pawns.App Ltd (İngiltere ve Galler'de 16043795 numaralı şirket) olarak belirtir; Companies House'a göre şirket 28 Ekim 2024'te, yani üç yıldan kısa süre önce kuruldu."
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "Koşullara göre Pawns ve kurumsal müşterileri trafiği cihazınız üzerinden yönlendirir ve onu hangi müşterinin kullandığını belirleyemezsiniz."
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "$5 minimum ve ücretsiz hediye kartları."
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "Tek bir NVIDIA GPU üzerinde KRig ile Pearl kazın. Kryptex ödülleri Bitcoin'e çevirir ve siz para çekme talebinde bulunana kadar bakiyeyi hesabınızda tutar."
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "NVIDIA GPU ile Pearl kazın, hesabınıza Bitcoin olarak bakiye alın"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "Kryptex hesap e-postası"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "Worker adı"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "Kryptex hesabınızdaki doğrulanmış e-posta adresi."
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "Kryptex hesabınızda her makineye farklı bir ad verin."
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "Lightning ile 0.00001 BTC (diğer yöntemler değişir)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kryptex, Pearl ödüllerini BTC'ye çevirir ve bakiyeyi hesabınızda tutar. Kryptex üzerinden para çekme talebinde bulunun. Her yöntemin kendi minimum tutarı ve ücreti vardır. Bitcoin Lightning için minimum 0.00001 BTC'dir."
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "Kryptex, çevrilen Bitcoin'i siz çekene kadar hesabınızda tutar."
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "Davet edilen kullanıcılardan Kryptex'in elde ettiği havuz gelirinin %20'si"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64, Volta (sm_70) veya daha yeni bir NVIDIA GPU ve NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "Bu makine bir barındırma bağlantısı bildiriyor. Madencilik yapmadan önce sağlayıcınızın koşullarını kontrol edin. Hetzner Cloud dahil bazı sağlayıcılar bunu yasaklar. Bir kâr tahminine güvenmeden önce gerçek elektrik maliyetlerinizi kontrol edin."
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "KRig, Kryptex Pool'da %0 madenci ücreti alır. Kryptex ayrıca %3'lük bir Pearl PPS+ havuz ücreti listeler. Para çekme ücretleri yönteme göre değişir."
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "işlem gücü"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "Hayır. KRig madencilik işini Kryptex Pool'a gönderir."
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Kryptex hesap e-posta adresinizi, worker adınızı, hash oranınızı ve IP adresinizi görür."
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "Bazı ağlar ve DNS çözümleyicileri madencilik havuzu bağlantılarını engeller."
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "Madencilik yapmadan önce Kryptex hesabınızın e-posta adresini doğrulayın."
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Kryptex etkin olmayan hesapları altı ayda askıya alabilir ve bir yılda silebilir."
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "Para çekme minimumları ve ücretleri yönteme göre değişir."
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "KRig'in lisansı, sürümün indirilmesine ve madencilik yazılımı içinden çalıştırılmasına izin verir."
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "KRig, Pearl share'lerini Kryptex Pool'a göndermek için yayımlanmış bir TLS uç noktası kullanır."
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes (Mysterium Network), blokzincir teknolojisi üzerine kurulu merkeziyetsiz bir VPN ve proxy ağıdır. Kullanıcılara VPN, proxy ve veri kazıma hizmetleri sunan bir düğüm çalıştırarak MYST token kazanırsınız. NET_ADMIN, SETUID ve SETGID yetkileri ile bir TUN cihazı gerektirir; bunları bariyerli kazanç uygulaması köprüsündeki kendi ağ ad alanı içinde kullanır. Düğüm yönetimi için yerleşik bir web arayüzü içerir. Hem ev hem de VPS bağlantılarında çalışır, ancak referans bonusu yalnızca ev IP'si üzerindeki düğümler için ödenir.\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "Merkeziyetsiz VPN düğümü - blokzincir tabanlı, VPS'te çalışır"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "WebUI adresi"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "UDP port aralığı"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "Düğümün WebUI'sinin (port 4449) yayımlandığı ana makine adresleri. 127.0.0.1 onu bu makinede tutar. Bir ters proxy üzerinden erişmek için proxy'nin bağlandığı adresi virgülle ayırarak ve boşluk bırakmadan ekleyin: 127.0.0.1,172.18.0.1."
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "Düğümün VPN oturumları için kullandığı UDP portları, start:end biçiminde. Aynı aralığı yönlendiricinizde de yönlendirin. Her oturum yaklaşık iki port kullanır; bu yüzden varsayılan 30 port aynı anda yaklaşık 15 oturum taşır, bu da bir ev düğümünün aldığından fazladır. Daha geniş bir aralık hiçbir şeyi düzeltmez ve maliyeti artırır: yayımlanan her port düğümün başlatılmasını ve kaldırılmasını yavaşlatır (300 portun başlatılması yaklaşık 12 s sürer), CashPilot en fazla 300 port kabul eder ve Docker'ın varsayılan userland proxy'si ile her port ayrıca yaklaşık 2.5 MB bellek kullanır. Tüm oturumların başarısız olması port azlığından değil, yönlendiriciden kaynaklanır: Mysterium rehberindeki \"Routers that rewrite UDP source ports\" bölümüne bakın. Aralığı 32768'in altında tutun: 32768-60999 portları Linux'un geçici port aralığıdır; ana makinedeki herhangi bir program bunlardan birini kısa süreliğine tutabilir ve tek bir dolu port düğümün başlatılmasını başarısız kılar. Zaten bir aralığı olan düğüm onu korur."
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "Düğüm kimliği anahtar deposu. Silinirse yepyeni bir kimlik oluşturulur: düğüm itibarını ve eski kimliğe bağlı olarak hâlâ tutulan kazançlarını kaybeder."
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "Düğüm konteyneri içinde sudo çalıştıramıyor; bu yüzden VPN arayüzünü veya güvenlik duvarını yapılandıramıyor ve her oturum kurulum aşamasında başarısız oluyor: çevrimiçi görünüyor ama hiçbir şey kazanmıyor. Konteyner SETUID ve SETGID yetkileri olmadan oluşturulmuş. CashPilot'u ve bu düğümü çalıştıran worker'ı güncelleyin, ardından Mysterium'u panodan yeniden dağıtın; düğüm kimliği veri biriminde durur ve korunur."
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "Son 6 saatte hiçbir VPN oturumu bu düğüme doğrudan ulaşmadı. Hepsi hole punching yöntemine geri döndü ve birçok alıcı bu yolla bağlanamıyor; bu yüzden düğüm daha az kazanıyor. Düğümün UDP portlarına internetten erişilemiyor. Yönlendiricinizde ${UDP_PORTS} UDP port aralığını (start:end, her iki tarafta aynı aralık) ${HOST_ADDRESS} adresine yönlendirin. Bir oturum doğrudan bağlandığında bu uyarı kendiliğinden kalkar."
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "Mysterium'un izleme sistemi ${WORKER_NAME} üzerindeki düğümü başarısız olarak işaretliyor; bu yüzden düğüm, kendi kontrolü tüm portlara erişilebildiğini söylese bile çoğu alıcının seçim yaptığı düğüm listesinin dışında kalıyor. Önce düğümde /dev/net/tun ve SETUID/SETGID olduğundan emin olun; bunların eksikliği de aynı şekilde başarısızlığa yol açar: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 Bunlar yerindeyse yaygın bir neden, ${WORKER_NAME} önündeki yönlendiricinin, dışarıdan bir paket o porta ulaştıktan sonra düğümün yanıtlarının UDP kaynak portunu değiştirmesidir. Rehberdeki teste bakın: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "${WORKER_NAME} üzerindeki düğümün son beş VPN oturumunun her biri, hiç veri aktarmadan yaklaşık bir dakika sonra sona erdi; bu yüzden düğüm çevrimiçi görünürken hiçbir şey kazanmıyor. Olası neden ${WORKER_NAME} önündeki yönlendiricidir: dışarıdan bir paket bir porta ulaştığında, düğümün o porttan verdiği sonraki yanıtların kaynak portunu değiştirir ve her oturum böyle bir paketle (düğümün kendi port kontrolüyle) başlar; bu yüzden alıcılar düğümün yanıtlarını düşürür. Daha geniş bir port aralığı işe yaramaz. Rehberdeki teste ve çözümlere bakın: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports Bir oturum veri taşıdığında bu uyarı kalkar."
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "Kazanç MYST token cinsindendir. Ev IP'leri belirgin şekilde daha çok kazanır. Yönetim için düğümün WebUI'si 4449 portundadır ve varsayılan olarak yalnızca çalıştığı makinede (127.0.0.1) yayımlanır; başka bir makineden erişmek için önce bir SSH tüneli açın (ssh -L 14449:127.0.0.1:4449 ve sonuna düğüm makinesinin adresi, ardından http://127.0.0.1:14449 adresine gidin; yerel port 14449'dur, böylece kendi makinenizdeki bir düğümle çakışmaz) ya da UI_ADDRESS'e bir adres ekleyin (Mysterium rehberindeki WebUI adresi bölümüne bakın). VPS kabul edilir. UDP 23000-23029 port yönlendirmesi (UDP_PORTS varsayılanı) şiddetle önerilir -- bu olmadan düğümler Strict NAT durumuna düşer ve birçok VPN oturumu başarısız olur, bu da geliri ciddi ölçüde azaltır. Önemli: ilk çalıştırmadan sonra, düğüm WebUI'si veya CLI üzerinden lehtar (settlement) cüzdanınızı mystnodes.com hesabınızla eşleşecek şekilde ayarlayın -- bu, zincir üstü kazançları bulut panonuza bağlar."
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "Bir düğümde her 5 MYST mutabakatı yapılmamış bakiye biriktiğinde otomatik zincir üstü mutabakat"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "Basılacak bir düğme yoktur. Her düğüm, 5 MYST mutabakatı yapılmamış bakiye biriktirdiğinde Polygon üzerinde kendiliğinden mutabakat yapar ve yaklaşık %21'i ücretlere gider (%20 Hermes ücreti artı küçük bir işlem ücreti); böylece her mutabakatta lehtar cüzdanına kabaca 3.9 MYST ulaşır. Her düğümün TequilAPI'si mutabakatlarını /transactor/settle/history altında listeler. MystNodes'taki \"total earnings\" rakamı yalnızca son 30 günü kapsar; ne bir bakiye ne de tüm zamanların toplamıdır. MystNodes ödül programından gelen bonus MYST kendiliğinden mutabakata girmez: MystNodes yardım merkezine göre dağıtımdan sonraki 30 gün içinde Rewards sayfasından talep edin."
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "Lehtar cüzdanı dağıtımdan SONRA, TequilAPI veya düğüm WebUI'si üzerinden ayarlanır -- bir ortam değişkeniyle değil; bu yüzden konteyner tanımından okunamaz."
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "MystNodes hesabınızın e-posta adresini ve şifresini kullanın (<a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a> ile aynı)."
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "Düğümü 5 MYST kazanan her arkadaş için 5 MYST (yalnızca ev IP'leri)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "Düğümünüz ilk 5 MYST'ini kazandığında 5 MYST (ev IP'si, düğüm mystnodes.com'da sahiplenilmiş olmalı)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "Geçen ayın MystNodes ödüllerini talep edin"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "Aylık dağıtımdan sonraki 30 gün içinde talep edilmeyen ödüller kaybedilir ve bir sonraki ayın havuzuna geri döner."
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "Rewards sayfasını açın ve puanlarınızı MYST ile takas edin."
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "Bant genişliği. Bağlantınız, VPN, proxy VE veri kazıma hizmetleri satan Mysterium ağı için çıkış düğümü olarak kullanılır. Bir ev IP'sinden çıkan kazıma trafiği, şikâyet çekme olasılığı en yüksek kullanımdır ve düğümünüzün bu üçünden hangisini taşıyacağını seçemezsiniz."
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "Evet. Yabancılar trafiklerini sizin IP adresiniz üzerinden yönlendirir; ürün tam olarak budur."
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "Düğüm kimliği (bir blokzincir adresi), IP'niz ve kaba konumunuz (ülke/şehir/İSS); düğüm, alıcıların onu seçebilmesi için bunları ağda yayımlar."
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "Gerçek bir risk ve anlaşılmaya değer. Başkalarının trafiği bağlantınızdan sizin adınıza çıkar; bu yüzden yaptıkları her şey sizin hattınızdan geliyormuş gibi görünür. Birçok bireysel İSS sözleşmesi bunu yasaklar. Çalıştırmadan önce kendi sözleşmenizi kontrol edin."
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "Hesap başına ve IP başına sınırsız cihaz."
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "Her mutabakatın yaklaşık %21'i ücretlere gider (%20 Hermes ücreti artı bir işlem ücreti) ve kazançlar MYST token ile ödenir."
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "Düğümünüz Mysterium'un VPN, proxy ve veri kazıma müşterileri için bir çıkış noktasıdır ve hangilerini taşıyacağını seçemezsiniz."
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "Düğüm yazılımı GPL-3.0 altında açık kaynaktır."
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Mysterium kendi Docker imajını yayımlar: mysteriumnetwork/myst."
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "Mutabakat size ait bir cüzdana yapılır; telefon numarası veya kimlik gerekmez."
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "Düğüm projesi 2017'den beri çalışıyor."
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "Mysterium'un sitesine göre ağ, İsviçre'nin Zug kentindeki Blockdev AG tarafından geliştiriliyor."
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay, kullanıcıları bir tarayıcı eklentisi aracılığıyla bant genişliği paylaştıkları için ödüllendiren bir DePIN ağıdır. Platform, otomatik erişimi zorlaştırabilen Cloudflare koruması arkasındadır. Kullanıcılar eklentiyi etkin tutarak Nodepay Points kazanır. Ağ, yapay zekâ eğitim verisi altyapısı sağlamaya odaklanır.\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "Yapay zekâ için DePIN bant genişliği paylaşımı - tarayıcı eklentisi"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "Nodepay Points kazandırır; Nodepay'in uygunluk kontrollerini geçen kullanıcıların puanları NC token'a dönüşür. Cloudflare koruması otomatik veri toplamayı engelleyebilir. Tarayıcı eklentisi gerekir."
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "NC token airdrop'u (zamanlama doğrulanmadı)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "Puan tabanlı sistem. Nodepay'in uygunluk kontrollerini geçen kullanıcıların puanları, Ocak 2025'te piyasaya çıkan NC token'a dönüşür."
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "Nodepay, ilk sezon incelemesinde bot olarak değerlendirdiği 300,000'den fazla hesabı kaldırdı ve 17 milyar puanı iptal etti."
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "Ödüller NC token'a dönüştürülen puanlardır, bu yüzden değerleri token'a bağlıdır."
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "CashPilot, Nodepay'i çalıştırmaz: sağlayıcının kendi tarayıcı eklentisini kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes, Base L2 üzerindeki bir DeFi projesi olan Noderr Protocol'ün ücretsiz giriş seviyesidir. Bir micronode; yedek bir Android telefonda, bir Windows PC'de, bir Mac'te veya bir Chromium tarayıcısında çalışan küçük bir aracıdır. Android'de telefonun mobil bağlantısını paylaşır: diğer Noderr trafiği telefonun operatör IP'si üzerinden çıkar, bu yüzden mobil verisi olan bir SIM kart gerekir. Bir PC'de veya tarayıcıda, boştaki işlem gücüyle protokol için otomasyon görevleri çalıştırır. Ödüllerin, zincir üstü bir çalışma süresi ve güvenilirlik puanına göre ölçeklenerek NODR ile ödenmesi planlanıyor, ancak ağ beta süresince Base Sepolia testnet'indedir: düğüm ödülleri için fon ayrılmamıştır ve şu ana kadar hiç ödeme yapılmamıştır.\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "Ücretsiz micronode (Android bağlantı paylaşımı, Windows, Mac, tarayıcı) - testnet, ödüller için henüz fon yok"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "Testnet betası: düğüm ödülleri için fon ayrılmamıştır ve şu ana kadar hiç ödeme yapılmamıştır. Sitedeki %5-10 APY bir tasarım hedefidir. Ağ Base Sepolia'dan çıktığında tekrar değerlendirin."
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "Ödüller düğümün kendi cüzdanında birikir ve uygulamadan veya dApp'ten talep edilir. Beta süresince bunlar piyasa değeri olmayan Base Sepolia testnet token'larıdır."
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "Uygulama ilk açılışta düğüm cüzdanını oluşturur ve ona ücretsiz, devredilemez (soulbound) bir Utility NFT basar. Cüzdanı uygulamadan yedekleyin: cihazı kaybetmek düğüm kimliğini de kaybetmek demektir. Beta süresince ödüller Base Sepolia (testnet) üzerindedir."
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Android için mobil verisi olan bir SIM kart gerekir; masaüstü ve tarayıcı istemcileri için yayımlanmış bir IP gereksinimi yoktur."
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "Cihaza bağlıdır. Bir Android telefon mobil bağlantısını satar: diğer Noderr trafiği telefonun operatör IP adresi üzerinden çıkar ve veri paketinden düşer. Bir Windows PC, bir Mac veya bir tarayıcı, boştaki işlem gücünü sağlayıcının sosyal medya ve içerik otomasyonu görevleri dediği işler için satar."
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "Evet. Android'de diğer Noderr trafiği telefonunuzun mobil IP adresi üzerinden çıkar; uygulama başlamadan önce kayıt altına alınan bir onay ister ve paylaşımı aynı ekrandan durdurabilirsiniz. Windows, Mac ve tarayıcı istemcileri için sağlayıcı otomasyon görevlerinden bahseder ve bunların başkaları adına trafik taşıyıp taşımadığını söylemez."
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "Düğümün cüzdan adresi ile çalışma süresi ve görev tamamlama rakamları, bir itibar puanı (TrustFingerprint) olarak zincire yazılır. Sağlayıcıya göre görevler anonimleştirilir, korumalı bir ortamda (sandbox) çalışır ve cüzdan anahtarları cihazdan asla çıkmaz. Bundan daha ayrıntılı bir bilgi yayımlanmamıştır."
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "Android'de paylaşılan bağlantı bir mobil operatör paketidir: sağlayıcının kendi belgeleri, bazı operatörlerin kabul edilebilir kullanım politikalarına göre paylaşıma izin verilmeyebileceği konusunda uyarır ve paylaşılan trafik paketin kotasından düşer. Masaüstü ve tarayıcı istemcileri için sağlayıcı İSS koşulları hakkında hiçbir şey söylemez."
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "Cihaz başına bir düğüm, her birinin kendi devredilemez (soulbound) Utility NFT'si vardır; birden fazla cihaz çalıştırmaya izin verilir ve teşvik edilir. Yayımlanmış bir IP başına sınır yoktur. Alışılmış anlamda bir hesap yoktur: kimlik, uygulamanın ilk açılışta oluşturduğu bir cüzdandır."
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "Düğüm ödülleri, fon ayrılmamış ve piyasa değeri olmayan testnet token'larıdır ve hiç ödeme yapılmamıştır; sitesindeki %5 ile %10 arası APY bir tasarım hedefidir."
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "Masaüstü ve tarayıcı istemcileri için Noderr otomasyon görevlerinden bahseder ve bunların başkalarının trafiğini taşıyıp taşımadığını söylemez."
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "Sağlayıcıya göre görevler anonimleştirilir ve korumalı bir ortamda çalışır, ancak bundan daha ayrıntılı bir bilgi yayımlanmamıştır."
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "Hâlâ Base Sepolia üzerinde bir testnet betası."
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "CashPilot, Noderr'ı çalıştırmaz: sağlayıcının kendi uygulamasını veya eklentisini kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "Hesap yok: uygulama ilk açılışta bir cüzdan oluşturur."
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Nodle, IoT altyapısı oluşturmak için akıllı telefonların Bluetooth'unu kullanır. Uygulama yakındaki IoT cihazlarını pasif olarak algılar ve onlardan gelen verileri aktararak NODL token kazanır. Forbes'ta yer aldı; Vivendi ve Hayden AI ile kurumsal ortaklıkları var. Yalnızca mobil (iOS ve Android).\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "Bluetooth IoT aktarımı - mobil uygulama, NODL token ödülleri"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "Çok düşük kazanç. Bluetooth kullanan, arka planda çalışan bir telefon uygulaması. Cüzdan bağlantısı sorunlu olabilir."
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "Sürekli"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "NODL, uygulamanın ZKsync Era üzerindeki kendi cüzdanında durur; uygulamadan veya bir ZKsync Era blok gezgininden kontrol edin. Nodle, Polkadot parachain'inden ayrıldı ve Polkadot-ZKsync köprüsü 31 Aralık 2025'te kapandı; bu yüzden hâlâ Polkadot tarafında olan NODL artık ZKsync'e taşınamaz."
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+nodle.referral.bonus.referrer:
+  text: "Davetle katılan her yeni etkin kullanıcı için bir NODL ödülü (Nodle tutarı yayımlamaz)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "Bir yorumcu üç-dört yılda yaklaşık $3 kazandığını bildiriyor; diğerleri günlük kazancın keskin şekilde düştüğünü bildiriyor."
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "CashPilot, Nodle'ı çalıştırmaz: sağlayıcının kendi telefon uygulamasını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana, Solana üzerine kurulu merkeziyetsiz bir GPU işlem gücü pazarıdır. GPU sahiplerini yapay zekâ iş yükü talebiyle buluşturur ve NOS token ile ödeme yapar. Bir RTX 3060 saatte yaklaşık $0.048 kazanır. Platform yapay zekâ çıkarım (inference) iş yüklerine odaklanır ve iş planlaması ile ödeme mutabakatı için Solana blokzincirini kullanır. Düğümler, konteynerleştirilmiş iş yüklerini Nosana CLI ile çalıştırır.\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "Solana üzerinde GPU işlem gücü - NOS token, RTX 3060 saatte ~$0.048"
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 saatte ~$0.048; daha üst seviye GPU'lar daha çok kazanır. Kazanç iş bulunabilirliğine ve GPU modeline bağlıdır. NVIDIA GPU, Linux, Docker ve Nosana CLI gerektirir. Ödemeler Solana üzerinde NOS token ile yapılır."
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "Her iş tamamlandığında"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "Solana üzerinde NOS token kazanılır. Ödeme yapılandırılmış cüzdana yapılır."
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "Nosana varsayılan olarak bir Solana cüzdanı oluşturur; bu yüzden çoğu kullanıcı adresini hiç görmemiştir."
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "Her ev sahibi, GPU'sunun saatlik fiyatına göre belirlenen bir NOS stake'i kilitlemelidir."
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "Ev sahiplerine NOS ile ödeme yapılır; bu yüzden dolar bazındaki kazanç token'a ve kartlarına olan talebe göre değişir."
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "CashPilot, Nosana'yı çalıştırmaz: sağlayıcının kendi barındırma yazılımını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN, hesap gerektirmeyen bir Bitcoin madencilik havuzudur: madenciniz kullanıcı adı olarak Bitcoin adresinizle oturum açar ve havuz o adrese ödeme yapar. CashPilot burada bir madenci çalıştırmaz. OCEAN'ın adresiniz için tuttuğu ödenmemiş bakiyeyi okur; böylece ASIC'inizin (bir Bitaxe, bir Antminer) ne kazandığını diğer gelirlerinizin yanında görürsünüz. Ödenmemiş bakiye kazanılmıştır ama henüz alınmamıştır: OCEAN, ödeme eşiğini geçtiğinde bunu zincir üstünde öder.\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "Bitcoin madencilik havuzu, ödeme adresinizle takip edilir"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "Bir blok bakiyenizi eşiğin üzerine çıkardığında"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "OCEAN, ödenmemiş bakiyeniz eşiğe ulaştığında adresinize zincir üstünde ödeme yapar. Lightning ödemeleri (isteğe bağlı, BOLT12) CashPilot tarafından algılanmaz."
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "Ödenmemiş tutar kazanılmıştır, ancak Lightning ödemelerini açmadıysanız OCEAN bunu bu adrese zincir üstünde ödeyene kadar alınmış sayılmaz."
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "BTC ödeme adresiniz: madencinizin OCEAN'da kullandığı kullanıcı adı, <b>.workername</b> kısmı olmadan. Herkese açıktır ve hiçbir fonun kilidini açmaz."
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "mine.ocean.xyz:3334 adresine yönlendirilmiş bir Bitcoin ASIC madencisi (bir Bitaxe, bir Antminer) gerekir"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "işlem gücü"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "Hayır. Madenciniz havuza hash gönderir; kimse bağlantınız üzerinden trafik yönlendirmez."
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "Bitcoin adresiniz, seçtiğiniz worker adları, hash oranınız ve madencinizin havuzun gördüğü IP adresi."
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "Bir madenci havuza tek bir bağlantı açık tutar ve az bant genişliği kullanır. Dikkat edilmesi gereken maliyet İSS'niz değil, elektriktir."
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "Hesap yoktur. Kimlik adrestir ve herkes onun istatistiklerini ocean.xyz üzerinde görebilir."
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "Yalnızca Bitcoin ile ödeme yapılır ve bakiyeniz 0.01048576 BTC'ye ulaşana kadar zincir üstünde hiçbir ödeme yapılmaz."
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "%2 havuz ücreti; DATUM ile kendi blok şablonlarınızı oluşturursanız %1."
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "CashPilot, OCEAN için madenci çalıştırmaz: kendi donanımınızı havuza yönlendirirsiniz, CashPilot yalnızca bakiyeyi okur."
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "Hesap ve kimlik kontrolü yok. OCEAN yalnızca ödeme yaptığı Bitcoin adresini ister."
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream, kullanılmayan bant genişliğinizi satabileceğiniz eşler arası bir bant genişliği pazarıdır. Pazar araştırması, SEO izleme ve reklam doğrulama için kullanılan bir ev proxy ağına güç verir. Yalnızca bir CID (Client ID) gerektiren basit bir Docker kurulumu vardır. CAPTCHA korumalı girişin, kazançların otomatik toplanmasını zorlaştırabileceğini unutmayın.\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "Bant genişliği paylaşımı - CID tabanlı basit kurulum"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "Client ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "<a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> adresinde oturum açın → kenar çubuğunda Setup'a tıklayın → CID'niz Docker komutunda gösterilir"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "PacketStream bu kopyanın IP adresini ev IP'si olmadığı gerekçesiyle reddediyor, bu yüzden hiçbir şey kazanmıyor. Bunu internet bağlantısı bir ev hattı olan bir makinede çalıştırın veya bu kopyayı kaldırın."
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "PacketStream'in bu IP adresinde zaten başka bir istemcisi var ve IP başına yalnızca birine ödeme yapıyor. Bu kopyayı veya aynı IP'yi paylaşan diğerini kaldırın."
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "Paylaşılan bant genişliği için GB başına $0.10 öder. Kazanç büyük ölçüde IP'nizin konumuna olan talebe bağlıdır."
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "Yalnızca PayPal, minimum $5, onaylamadan önce gösterilen %3 ücret. İlk para çekme işlemi PayPal e-posta adresinizi kaydeder; sonradan değiştirmek için e-posta onayı ve 7 günlük bekleme gerekir, bu yüzden onaylamadan önce adresi kontrol edin. Talepler incelenir ve 7 gün içinde gönderilir; bekleyen bir talebi iptal edebilirsiniz ve yeni bir talep ancak önceki ödendikten sonra oluşturulabilir."
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "Bakiye PacketStream'de tutulur; talep üzerine çekilir."
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "<a href='https://packetstream.io' target='_blank'>packetstream.io</a> adresinde oturum açın, F12'ye basın → Application → Cookies, <b>auth</b> çerezinin değerini kopyalayın (bir JWT'dir)."
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "Bant genişliği kazançlarının %20'si (sınırlı süreli Packeter bonusu)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "İlk kart veya PayPal yüklemenizde %10 bonus kredi (proxy müşterileri)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "2025 ve 2026'daki Trustpilot yorumcuları ödemelerin geç geldiğini veya hiç gelmediğini bildiriyor; uzun süreli bir kullanıcı ödemelerin yavaşladığını ve sonra durduğunu söylüyor; 2026'daki diğerleri ise ödeme aldıklarını bildiriyor."
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "Yalnızca PayPal, %3 para çekme ücretiyle; PayPal'ın hizmet vermediği ülkelerdeki kullanıcıların başka bir yöntemi yoktur."
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "Koşullar, PacketStream'in dolandırıcılık, manipülasyon veya yasaklanmış etkinlikle ilişkilendirdiği kazançları alıkoymasına, geri almasına veya geçersiz kılmasına izin verir."
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "Koşullara göre proxy müşterileri ve PacketStream'in kendisi trafiği bağlantınız üzerinden yönlendirir; sıradan alıcıların denetlenmesine dair bir şey anlatılmaz."
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "Trustpilot, PacketStream'in olumsuz yorumlara yanıt vermediğini belirtiyor; yorumcular e-postalarının yanıtsız kaldığını bildiriyor."
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "PacketStream kendi Docker imajını yayımlar: packetstream/psclient."
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "Koşullar yalnızca sahibi olduğunuz veya kullanma izniniz olan bir cihaz ve bağlantı gerektirir."
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "Koşullarda kimlik kontrolünden bahsedilmez; bir ödeme için PayPal adresi yeterlidir."
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "Koşullar, Kaliforniya yasalarına tabi PacketStream Inc. adını verir."
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "PacketStream 2018'den beri faaliyette."
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp, kullanılmayan bant genişliğini ve işlem kaynaklarını paylaşarak kripto ve PayPal ödülleri kazanmanızı sağlayan bir DePIN platformudur. Pratikte yalnızca Windows: aynı sitedeki tanıtım metinleri daha geniş destek iddia etse de satıcının kendi indirme sayfası Android, iOS ve Linux'u en az Şubat 2025'ten beri değişmeden \"yakında\" olarak listeliyor ve macOS sürümü yok. Docker imajı yoktur.\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "DePIN bant genişliği/işlem gücü - yalnızca Windows, kripto ve PayPal ödemeleri"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "Yalnızca Windows masaüstü uygulaması (v1.0.x); Android/iOS/Linux satıcı tarafından 2025 başından beri 'yakında' olarak duyuruluyor ve hiç yayımlanmadı. Resmi Docker imajı yoktur."
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "Kazançlarının %10'u, ömür boyu"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "CashPilot, PassiveApp'i çalıştırmaz: sağlayıcının kendi masaüstü uygulamasını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "PassiveApp'in sitesi $3 minimumdan başlayan PayPal, kripto ve hediye kartı seçeneklerini listeler."
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase, kullanılmayan internet bağlantılarını paylaşan kullanıcılara kripto para ile ödeme yapan bir bant genişliği paylaşım platformudur. Eş istemcisinin kimliğini panonuzdaki bir Access Token ile doğrularsınız. En çok ev IP'leri kazanır, ancak veri merkezi IP'leri de desteklenir. Resmi çok mimarili Docker imajı (amd64/arm64/armv7).\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - bant genişliği paylaşımı, kripto ödeme, Access Token ile kimlik doğrulama. Cüzdan oluşturulmaz"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Access Token"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "Cihaz Adı"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "<a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> adresinde oturum açın → Access Token'ınızı kopyalayın (kurulum sayfasındaki Docker komutunda gösterilir)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "Bu cihazı ProxyBase panonuzda tanımlamak için herhangi bir ad (boşluksuz)"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "ProxyBase en az yarım saattir relay'ine ulaşamadı, bu yüzden hiçbir şey kazanmıyor. Yeniden başlatmak bunu giderir; yeniden başlattıktan sonra da devam ederse bu makinenin internete erişebildiğini kontrol edin."
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "Kripto ödemeler. Kazanç konuma ve bant genişliği kullanımına bağlıdır."
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "Site $0.20 minimum belirtiyor ve Ekim 2026'da $1'ın altındaki bir talep sorunsuz gerçekleşti. Bir talep her zaman bakiyenin tamamını, Polygon üzerinde USDC, POL veya Litecoin olarak, yazdığınız bir adrese çeker. Ağ ücretini ProxyBase karşılar."
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "Kazançlar, Access Token'ın ait olduğu ProxyBase HESABINDA birikir ve talep üzerine panodan çekilir. Eş istemcisi cüzdan tutmaz ve konteyner hiçbir durum saklamaz -- docker.volumes boştur. Gerçekten yerel bir cüzdan oluşturan ve bunu kritik bir birim olarak bildiren proxybase-xyz (ProxyBase Markets, aynı kuruluş) ile karıştırılmamalıdır."
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "ProxyBase, Ağustos 2025'te kendisinin yeni olduğunu ve henüz kazancı en üst düzeye çıkarmak için doğru yer olmadığını yazdı."
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "ProxyBase 2026'da eş istemcisini değiştirdi ve eski arka ucu kapattı; bu yüzden eski imajdaki konteynerler çalışmaya devam etti ama kazanmayı bıraktı."
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "Yalnızca kripto: Polygon üzerinde USDC, POL veya Litecoin; itibari para yöntemi yoktur. Minimum $0.20'dir ve ağ ücretini ProxyBase öder."
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "$1'ın altındaki para çekme talebimiz Ekim 2026'da sorunsuz gerçekleşti."
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "Para çekmek için talebe yalnızca bir adres yazmanız yeterlidir."
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "ProxyBase kendi eş istemcisi imajını yayımlar ve veri merkezi IP'lerini destekler."
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets, yapay zekâ ajanları için oluşturulmuş bir SOCKS5 proxy pazarıdır. Satıcılar, alıcı trafiğini kendi internet bağlantıları üzerinden aktarmak için WebSocket ile bağlanan hafif bir Rust CLI daemon'ı çalıştırır ve satılan GB başına Tempo Chain üzerinde USDC kazanır. Otomatik yeniden bağlanmayla hem doğrudan (kendi bant genişliği) hem de upstream (harici proxy'leri yeniden satma) modlarını destekler. Alıcılar proxy oturumlarını ülkeye, İSS'ye ve bant genişliğine göre satın alır. Ödemeler Tempo Chain üzerindeki Machine Payments Protocol (MPP) aracılığıyla yapılır. Referans bağlantısı alıcılar içindir: konsolu bu bağlantıyla açan bir alıcı ilk yüklemesinde %10 ek kazanır.\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - yapay zekâ ajanları için SOCKS5 pazarı, USDC ödeme. Bir cüzdan oluşturur; anahtarın tek kopyası onun biriminde durur"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "Arka Uç API URL'si"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "Arka uç API URL'sini geçersiz kılın (varsayılan: https://api.proxybase.xyz)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "Konteyner ilk başlatmada kendini otomatik olarak kurar: bir secp256k1 cüzdanı (BIP-39) oluşturur, ECDSA sınama-yanıt yöntemiyle kimlik doğrular ve yalnızca doğrudan modda bant genişliği satmaya başlar. Tüm durum (cüzdan, oturum token'ı, satıcı yapılandırması) <code>proxybase-data</code> biriminde saklanır. Cüzdan adresi için ilk çalıştırmada konteyner günlüklerine bakın. Harici proxy yeniden satış yolları eklemek için <code>--upstream</code> kullanın.\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "Oluşturulan cüzdanın anahtar dosyası. Bu birim paranın KENDİSİDİR: sunucu tarafında bir kopyası yoktur, bu yüzden onu silmek fonları da yok eder."
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "Kazanç, piyasa fiyatlarından satılan GB miktarına dayanır. VPS/veri merkezi IP'leri ev IP'lerinden daha az kazanır. Çoklu upstream modu, kendi bant genişliğinizi harici proxy'lerle birleştirebilir."
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "Kazançları <code>proxybase-cli seller payout create</code> ile kilitleyin; Tempo Chain üzerinde USDC olarak alınır (Tempo MPP). Anahtarı sizde olan herhangi bir EVM adresine ödeme yapar (Tempo bir EVM zinciridir) ve imzalanacak bir şey yoktur; USDC'yi görmek için Tempo ağını cüzdana ekleyin. Hâlâ listelemeyen bir cüzdana Tempo USDC token'ını elle eklemeniz gerekir: Proxybase'in verdiği sözleşme adresiyle içe aktarın ve bakiyeye güvenmeden önce o adresi kontrol edin."
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "İstemci ilk çalıştırmada kendi cüzdanını oluşturur."
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "Davet edilen bir alıcının yaptığı her yüklemenin %15'i, kendi proxy oturumlarınız için kredi olarak"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "Bir alıcının ilk yüklemesinde +%10"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "Bant genişliği, ProxyBase pazarındaki alıcılara satılan bir SOCKS5 proxy olarak."
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "Evet. Alıcılar trafiklerini sizin bağlantınız üzerinden yönlendirir; satılan şey tam olarak budur."
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "Makinenizde oluşturulan bir cüzdan adresi ve aktardığınız trafik hacmi."
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "Gerçek bir risk ve doğrudan ev bağlantıları için geçerli. Bilinmeyen alıcıların proxy trafiği sizin IP'nizden çıkar, bu yüzden kötüye kullanım şikâyetleri size gelir. Bu katalogda hizmeti veri merkezi adresleriyle sınırlayan hiçbir şey yoktur ve ev IP'leri daha çok kazanır; yani teşvik burada yanlış yönü gösteriyor: evde çalıştırmadan önce İSS'nizin koşullarını okuyun."
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "bilinmiyor - sağlayıcı hesap başına veya IP başına bir cihaz sınırı yayımlamaz ve katalog da bir sınır belirtmez."
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "Ödemeler, anahtarı sizde olan herhangi bir EVM adresine, Tempo Chain üzerinde USDC olarak yapılır."
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "Bağlantınız pazar alıcılarına bir SOCKS5 proxy olarak satılır; alıcıların nasıl denetlendiğine dair bir açıklama bulamadık."
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "Kendi kazanç sayfasının başlığı KYC gerekmediğini ve $1 ödeme yapıldığını belirtiyor."
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "ProxyBase kendi istemci imajını yayımlar ve veri merkezi bağlantılarını kabul eder."
+  source: "ae81d006093f"
+proxylite.description:
+  text: "ProxyLite, bant genişliğini doğrulanmış kuruluşlarla paylaşarak internet trafiğinizden gelir elde etmenizi sağlar. Hem ev hem de VPS/veri merkezi bağlantılarında çalışır. Panodan yalnızca bir kullanıcı kimliği gerektiren basit bir kurulumu vardır. Cömert bir %15 ömür boyu referans komisyonu sunar.\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "Bant genişliği paylaşımı - ömür boyu %15 referans, VPS'te çalışır"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "Kullanıcı Kimliği"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "<a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> adresinde oturum açın → User ID'niz ana pano sayfasında e-posta adresinizin yanında gösterilir. Hesabınız yok mu? <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a> ile kaydolun"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "Ev IP'leri daha çok kazanır. VPS/veri merkezi bağlantıları daha düşük ücretlerle kabul edilir."
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "Kazançlarının %15'i, ömür boyu"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "Sitenin sahibi alan adı kayıtlarında gizlenmiş ve arkasında adı belli bir şirket bulamadık."
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "Kripto veya PayPal ile $5 minimum."
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "ProxyLite bir Docker imajı yayımlar (proxylite/proxyservice) ve veri merkezi bağlantılarını daha düşük bir ücretle kabul eder."
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "ProxyRack'in Peer programı, bant genişliğinizi onların proxy ağının bir parçası olarak paylaşarak kazanmanızı sağlar. Her cihaz için benzersiz, 64 karakterlik onaltılık bir UUID ve cihazı otomatik kaydetmek için isteğe bağlı olarak bir API anahtarı gerekir. Hem ev hem de VPS/veri merkezi bağlantılarında çalışır. Pano Cloudflare arkasındadır; bu, API anahtarını tarayıcıdan elle almayı gerektirebilir.\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "Bant genişliği paylaşımı - cihaz başına UUID, VPS'te çalışır"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "Cihaz UUID"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "API Anahtarı"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "Cihaz adı"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "Cihaz başına benzersiz, 64 karakterlik onaltılık kimlik. Şu komutla oluşturun: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "<a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> adresinde oturum açın → API Key ana pano sayfasında gösterilir (girilirse cihazı otomatik kaydeder). Hesabınız yok mu? <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a> ile kaydolun"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "Panoda cihaz için kolay anlaşılır bir ad"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "Proxyrack istemcisi konteyner başlarken indirilemedi; bu yüzden konteyner çalışıyor ama hiçbir şey kazanmıyor. Yeniden başlatmak istemciyi tekrar indirir; yeniden başlattıktan sonra da devam ederse bu makinenin internete erişebildiğini kontrol edin."
+  source: "b5143d72ce35"
+proxyrack.device_link.steps:
+  text: "ProxyRack'te oturum açın, Devices'ı açın, Add device'ı seçin ve bu UUID'yi yapıştırın. Cihaz hesabınıza eklenene kadar kimse için kazanmaz. Bir API anahtarı girdiyseniz konteyner kendini kaydeder: cihazın orada listelendiğini kontrol edin."
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "Ev IP'leri veri merkezi IP'lerinden daha çok kazanır. Panonun Cloudflare arkasında olması otomatik erişimi zorlaştırabilir."
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "Ödemeyi panodan talep edin. ProxyRack talebi 72 saat içinde inceler, ardından Tremendous size PayPal, hediye kartı veya banka havalesi olarak kullanabileceğiniz bir ödülü e-postayla gönderir. Kripto seçeneği yoktur."
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "Bakiye ProxyRack'te tutulur; talep üzerine çekilir."
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "<a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a> adresinde oturum açın, F12'ye basın → Network, herhangi bir API isteğini bulun ve <b>Api-Key</b> başlığının değerini kopyalayın. Hesabınız yok mu? <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a> ile kaydolun."
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Proxyrack, HESAP başına 500 cihaz sınırı belgeler ve IP başına bir sınır belirtmez. Veri merkezi IP'leri kabul edilir ancak daha düşük bir ücret sınıfına alınır."
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "ProxyRack'in yardım merkezine göre bir cihazı kaldırmak o cihazın kazançlarını hesabınızdan düşürür ve bunlar ancak aynı cihaz tekrar eklenirse geri gelir."
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "ProxyRack kendi Docker imajını yayımlar (proxyrack/pop) ve veri merkezi IP'lerini daha düşük bir ücretle kabul eder."
+  source: "278541f81053"
+repocket.description:
+  text: "Repocket, kullanılmayan internet bant genişliğinizi paylaşarak pasif gelir elde etmenizi sağlar. En çok ev IP'leri kazanır; VPS/veri merkezi IP'leri daha düşük ücretlerle kabul edilir. Hesap başına en fazla 5 cihaz ve 5 etkin oturum. Docker konteyneri, hesabınızın e-posta adresi ve Repocket panosundan alınan bir API anahtarıyla kimlik doğrular (şifrenizle değil).\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "Bant genişliği paylaşımı - en fazla 5 cihaz, API anahtarıyla kimlik doğrulama"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "E-posta"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "API Anahtarı (UUIDv4, şifreniz değil)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "Repocket hesabınızın e-posta adresi"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "Repocket API anahtarınız: <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> adresinde oturum açın ve bandwidth-earnings sayfasında gösterilen API anahtarını kopyalayın (bu, hesap şifreniz DEĞİLDİR). Hesabınız yok mu? <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a> ile kaydolun"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "Ev IP'leri daha çok kazanır. VPS/veri merkezi IP'leri kabul edilir ancak daha düşük ücretlerle."
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4 (ilk ödemeden sonra $2)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Repocket minimum tutarı hesap başına belirler: Ekim 2026'da ilk ödemeden önce $4, sonrasında $2 idi; bu, eskiden duyurduğu $20'ın çok altındadır. Yöntemler: Tremendous (e-postanıza) veya Polygon üzerinde USDT. Her talep, e-postayla gönderilen bir bağlantıdan 2 saat içinde onaylanır ve aynı anda yalnızca bir talep beklemede olabilir. Ekim 2026'da Repocket bir Tremendous talebini \"Please, message support\" mesajıyla reddetti, Polygon üzerinde USDT ise sorunsuz gerçekleşti."
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "Bakiye Repocket'te tutulur; talep üzerine çekilir."
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "Repocket hesabınızın e-posta adresini ve şifresini kullanın (<a href='https://app.repocket.com' target='_blank'>app.repocket.com</a> ile aynı). Hesabınız yok mu? <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a> ile kaydolun."
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "Davet edilen kişi $7 kazandığında $2, ardından ömür boyu kazancının %5'i"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "Kayıtta $2 cüzdan bonusu"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Repocket HESAP başına beş cihaz sınırı belgeler, ancak IP başına bir cihaz sınırı yayımlamaz. İnceleme sitelerinde tekrarlanan 'IP başına 2 cihaz' rakamının sağlayıcıya dayanan bir kaynağı yoktur, bu yüzden CashPilot bunu öne sürmez."
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "Bir Repocket cihazında paylaşımı sürdürün veya bakiyenizi çekin"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "Giriş, ödeme veya bant genişliği paylaşımı olmadan geçen 12 ayın ardından Repocket ödenmemiş bakiyeye el koyabilir."
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "Bir cihazda paylaşımı sürdürün, oturum açın veya para çekin. Repocket'i kullanmayı bırakacaksanız önce paranızı çekin."
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "Birkaç Trustpilot yorumcusu iptal edilen ödemeler ve sıfırlanan bakiyeler bildiriyor; biri desteğin düzensiz bant genişliği kazançlarını gerekçe gösterdiğini söylüyor. Sayfa Repocket'e 2.7 puan veriyor ve olumsuz yorumlara yanıt vermediğini belirtiyor."
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "Yorumcular reddedilen para çekme taleplerini ve ödemenin peşinden koşmak zorunda kaldıklarını bildiriyor."
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "Repocket'in ödeme politikası, kazançların geçersiz olduğundan şüphelendiği her durumda onları geri almasına, iptal etmesine veya kalıcı olarak el koymasına ve etkin olmayan bir hesabın ödenmemiş kazançlarına el koymasına izin verir."
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "Aynı politika, Repocket'in ödeme yöntemlerini istediği zaman bildirimsiz olarak eklemesine, kaldırmasına veya değiştirmesine izin verir; PayPal kaldırıldı."
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "Koşullara göre Repocket istediği zaman kimlik veya hesap doğrulaması isteyebilir ve ödeme uygunluğu buna bağlıdır."
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "Koşullara göre Repocket ve ortakları ağ kapasitesini kullanır, ancak ortakların kim olduğu veya nasıl denetlendiği belirtilmez."
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "Trustpilot, Repocket'in olumsuz yorumlara yanıt vermediğini belirtiyor ve yorumcular mesajların görmezden gelindiğini söylüyor."
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "Güncel koşullar Singapur'daki Repocket Pte. Ltd. adını verir; eski koşullarda hiçbir şirket adı yoktu."
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Repocket kendi Docker imajını yayımlar (repocket/repocket) ve koşulları sahibi olduğunuz konteynerlere izin verir."
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "Minimum tutar düşüktür: ilk ödemeden önce $4, sonrasında $2."
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Salad.io, GPU'nuzu dağıtık yapay zekâ iş yükleri için paylaşmanızı ve hediye kartı, oyun veya nakit olarak kullanılabilen Salad bakiyesi kazanmanızı sağlar. Yalnızca Windows, yerel bir masaüstü uygulamasıyla. Ayrı bir GPU gerektirir (NVIDIA veya AMD). Platform, makineniz boştayken yapay zekâ çıkarımı, render ve diğer işlem görevlerini ona yönlendirir. Kullanımı en kolay GPU paylaşım platformlarından biridir.\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "Yapay zekâ için GPU paylaşımı - yalnızca Windows, hediye kartı veya nakit ödeme"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "Kazanç GPU modeline ve iş bulunabilirliğine bağlıdır. RTX 3060 günde ~$1-3. Yalnızca Windows. Yerel uygulama, Docker desteği yok. Hediye kartı, oyun veya PayPal olarak kullanılabilir."
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "Salad mağazası üzerinden PayPal veya hediye kartları."
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "Yalnızca PayPal ve hediye kartları, asla kripto değil. Cüzdan adresi yoktur, bu yüzden CashPilot'un gösterebileceği zincir üstü bir bakiye yoktur."
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "<a href='https://app.salad.io' target='_blank'>app.salad.io</a> adresinde oturum açın, F12'ye basın → Application → Cookies, <b>auth</b> çerezinin değerini kopyalayın."
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "Biraz Salad Reward Points kazanın veya bakiyenizi harcayın"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "Bir hesap art arda 12 ay boyunca hiç Reward Points kazanmazsa, kullanılmamış bakiyesinin süresi dolabilir."
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "Salad uygulamasını kazanç sağlayana kadar çalıştırın veya bakiyenin tamamını Salad Storefront'ta harcayın. Yalnızca bir kısmını harcamak 12 aylık süreyi sıfırlamaz."
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "CashPilot, Salad'ı çalıştırmaz: sağlayıcının kendi masaüstü uygulamasını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "Ekim ve Kasım 2026'daki birkaç Trustpilot yorumcusu PayPal ile para çekme işlemlerinin hızlı ulaştığını, bazıları bunu birden fazla kez yaşadığını bildiriyor; aynı dönemde bir yorumcu ise tekrarlanan para çekme denemelerinin başarısız olduğunu söylüyor."
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel, merkeziyetsiz VPN için bir Layer 1 Cosmos blokzinciridir. Düğüm operatörleri bant genişliğini VPN kullanıcılarına esnek fiyatlandırmayla (GB başına veya saatlik) satar. Resmi bir Docker dağıtım rehberi mevcuttur. Etkin bir topluluğa sahip, uzun süredir devam eden bir projedir.\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "Cosmos üzerinde merkeziyetsiz VPN - düğüm operatörleri bant genişliği satar"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "Operatörler kendi fiyatlarını GB başına veya saatlik olarak belirler. Kazanç, bölgenizdeki VPN kullanıcı talebine bağlıdır."
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "Oturum başına"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "Ödemeler P2P token ile yapılır ve her bant genişliği ödemesinin %20'si düğüm sahibine değil, stake edenlere gider."
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "Token'ın adı 2021'de SENT'ten DVPN'e, 2025'te de DVPN'den P2P'ye değiştirildi."
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "CashPilot, Sentinel'i çalıştırmaz: sağlayıcının kendi düğüm yazılımını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Sentinel, düğüm kaynak kodunu kendi açık kaynak lisansı altında yayımlar."
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia, 2015'ten beri faaliyette olan ve Sia Foundation (İsviçreli kâr amacı gütmeyen bir kuruluş) tarafından yürütülen merkeziyetsiz bir depolama pazarıdır. Boş disk alanınızı kiraya vermek ve depolama ile bant genişliği sözleşmelerinden Siacoin kazanmak için Vakfın resmi hostd düğümünü çalıştırın. Düğümün kazanabilmesi için önce biraz Siacoin satın almanız gerekir: ev sahipleri her sözleşme için teminat kilitler ve her depolama kanıtı için bir ücret öder. Teminat, sözleşme tamamlandığında geri gelir; düğüm çevrimdışı kalırsa veya veri kaybederse yakılır. Bu yüzden sürekli açık bir makine gerekir (Sia en az %95 çalışma süresi diyor). Kazanç, kiracıların gerçekte ne kadar veri depoladığına bağlıdır; Sia depolamanın ayda TB başına $1 olarak fiyatlandırılmasını önerir, bu yüzden küçük VPS dilimlerinden çok büyük boş diskleri olan makinelere uygundur.\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "Sia Foundation depolama düğümü - resmi Docker imajı, Siacoin kazanın"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "Cüzdan kurtarma ifadesi"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "Pano şifresi"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "Depolama dizini"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "Ev sahibinin Siacoin cüzdanını kontrol eden BIP-39 kurtarma ifadesi. `docker run --rm ghcr.io/siafoundation/hostd seed` ile bir tane oluşturun ve yedekleyin -- kazançlara ulaşmanın TEK yolu budur"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "hostd web arayüzü ve yerel API için şifre (BasicAuth). Herhangi bir uzun parola"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "Kiracı verilerinin depolandığı, en büyük diskinizdeki ana makine yolu (ör. /srv/sia). En az 256GB boş alan gerekir"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "Dağıtım sırasında CashPilot, düğümü çalıştıran makinede yeni bir cüzdan oluşturur ve kurtarma ifadesini bir kez gösterir: bunu bir yere yazın. Zaten sahip olduğunuz bir cüzdanı kullanmak için bunun yerine onun kurtarma ifadesini yapıştırın. Dağıtımdan sonra teminat ve ücretler için düğümün cüzdanına biraz Siacoin gönderin, ardından panoda depolama klasörünü (/storage) ekleyin, fiyatları belirleyin ve ev sahibini duyurun.\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "Cüzdan kurtarma ifadesi (hostd.yml), cüzdan veritabanı, ev sahibi ayarları ve sözleşme durumu. Bunu kaybetmek düğümün kimliğini ve sözleşme gelirinin takibini kaybettirir; bu durumda fonlar için tek kurtarma yolu yazdığınız kurtarma ifadesidir."
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "Depolanan kiracı verileri. Bunları kaybetmek depolama kanıtlarının başarısız olmasına ve o sözleşmeler için kilitlenen teminatın kaybedilmesine yol açar."
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "Ev sahipleri kendi fiyatlarını belirler. Sia, depolanan TB başına ayda $1 ve indirilen TB başına $5'ın üzerinde fiyat önerir; her sözleşme ödemesinin %3.9'u Siafund sahiplerine gider. Gelir, düğüme ne kadar kiracı verisi geldiğine göre artar; bu sıfırdan başlar ve çalışma süresi ile fiyata göre büyür. Teminat (Sia depolama fiyatının 2 katını önerir) sözleşme başına kilitlenir ve başarılı tamamlanmada iade edilir.\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "Kazançlar ev sahibinin kendi Siacoin cüzdanında (kurtarma ifadesiyle kontrol edilen) birikir. SC'yi bir borsada dönüştürün ve oradan bankaya/karta çekin; sağlayıcı tarafında bir ödeme talebi yoktur.\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "Fonlar, düğümün içindeki kurtarma ifadesiyle kontrol edilen Sia cüzdanında durur. Kurtarma ifadesi yalnızca, hostd'yi çalıştıran makinedeki veri biriminde bulunur; CashPilot onu asla saklamaz. Cüzdan oluşturulurken yazdığınız ifade tek kurtarma yoludur.\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "9981 (TCP, konsensüs) ve 9984 (TCP ve UDP, kiracı sözleşmeleri) portları yönlendirilmiş, sabit bir herkese açık adres. Sia'da veri merkezi/VPS barındırma yaygındır. Düğümün sözleşme alabilmesi için cüzdanda Siacoin bulunmalıdır."
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "Disk alanı ve onu sunmak için gereken bant genişliği."
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "Hayır. Kiracılar şifrelenmiş dosya parçalarını diskinizde depolar ve geri alır. Başkaları IP'niz üzerinden rastgele trafik yönlendirmez."
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "Sia cüzdan adresiniz, ev sahibi açık anahtarınız ve düğümün, kiracıların ona ulaşabilmesi için duyurduğu herkese açık IP:port."
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "Herhangi bir depolama sunucusu çalıştırmaya benzer şekilde hatta sürekli yükleme/indirme trafiği olur; anonimleştirilmiş üçüncü taraf web trafiği size atfedilmez."
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "İzin gerektirmez: kayıt veya hesap yoktur. Düğüm çevrimdışı kalarak veya veri kaybederek depolama kanıtlarını kaçırırsa teminat yakılır."
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "Kazançlar kendi cüzdanınızda Siacoin olarak birikir: bankaya ödeme yoktur, bu yüzden bir borsada kendiniz satarsınız."
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "Teminat sözleşme başına kilitlenir ve ev sahibi çevrimdışı kalarak veya veri kaybederek depolama kanıtlarını kaçırırsa yakılır."
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "Ağda sunulan depolamanın yalnızca yaklaşık %30'u kullanımdadır, bu yüzden yeni bir ev sahibi az bir talep için rekabet eder."
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "Kiracılar şifrelenmiş dosya parçaları depolar ve kimse IP'niz üzerinden trafik yönlendirmez, ancak Sia'nın kiracıların kim olduğunu veya nasıl denetlendiğini nerede açıkladığını bulamadık."
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "hostd, 2022'den beri Sia Foundation tarafından açık şekilde geliştiriliyor."
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd, MIT lisansı altında açık kaynaktır."
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "Sia Foundation, hostd'yi bir konteyner imajı olarak yayımlar."
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "İzin gerektirmez: kayıt veya hesap yoktur."
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide, kullanılmayan internet bant genişliğinizden gelir elde etmenizi sağlayan bir bant genişliği paylaşım hizmetidir. Cihaz takibi için isteğe bağlı bir makine kimliği kullanır. income-generator projesindeki topluluk Docker imajlarıyla kullanılabilir.\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "Bant genişliği paylaşımı - makine kimliği tabanlı"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "Makine Kimliği"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "Zaten kayıtlı mevcut bir cihazın makine kimliği (boş bırakılırsa otomatik oluşturulur)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "Sınırlı bilgi mevcut. Kazanç konuma bağlıdır."
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "Kazançlarının %10'u"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "$5 kayıt bonusu"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "Tek bir herkese açık IP üzerinden geçen trafik, onu paylaşan cihazlar arasında bölünür; bu yüzden aynı bağlantıdaki ikinci bir cihaz hiçbir şey eklemez."
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "CashPilot, Spide'ı çalıştırmaz: sağlayıcının kendi uygulamasını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "Tek bir NVIDIA GPU ile Pearl, Zano veya Ravencoin kazın. CashPilot ilk başlatmada resmi SRBMiner-Multi sürümünü indirir ve SHA-256 değerini kontrol eder. Seçtiğiniz havuz herkese açık ödeme adresinize ödeme yapar. SRBMiner-Multi, hash süresinin Pearl'de %2'sini, diğer ikisinde %0.85'ini alır. Elektrik, kazandığınız coin'lerden daha pahalıya gelebilir."
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "NVIDIA GPU ile Pearl ve diğer GPU coin'lerini kazın"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "Ödeme adresi"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "Worker adı"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "Algoritma"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "Havuz (host:port)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "Havuz bağlantısını şifrele (TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "Herkese açık Pearl adresiniz (prl1...). Zano veya Ravencoin için o coin'in adresini ve ona uygun bir havuz girin."
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "Pearl için pearlhash, Zano için progpow_zano, Ravencoin için kawpow."
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "Elektrik öncesi brüt tahmin. 2026-11-25 tarihinde hashrate.no, yaklaşık 142 W çeken bir RTX 4070 için Pearl'de günde yaklaşık $2.45 tahmin etti. Bunu biz ölçmedik. Pearl yeni bir coin'dir; fiyatı ve zorluğu hızla değişir. Kârlı olup olmadığını görmek için GPU'nuzun güç tüketimini ve elektrik fiyatınızı kontrol edin."
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL (HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "Havuz eşiğine ulaşıldığında"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "Bakiyeniz eşiğinize ulaştığında havuz adresinize ödeme yapar. Havuz size ödeme yapana kadar bakiyeyi tutar."
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64, bir NVIDIA GPU ve NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "Bu makine bir barındırma bağlantısı bildiriyor. Madencilik yapmadan önce sağlayıcınızın koşullarını kontrol edin. Hetzner Cloud dahil bazı sağlayıcılar bunu yasaklar. Bir kâr tahminine güvenmeden önce gerçek elektrik maliyetlerinizi kontrol edin."
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "%2 madenci ücreti pearlhash içindir. SRBMiner-Multi, progpow_zano ve kawpow için %0.85 alır. Varsayılan Pearl havuzu HeroMiners %1 havuz ücreti alır. Ödemeleri saatte bir kontrol eder ve 1 PRL'den itibaren öder. Diğer havuzlar kendi oranlarını ve eşiklerini belirler."
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "işlem gücü"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "Hayır. Madenci, işi seçtiğiniz havuza gönderir."
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "Ödeme adresiniz, worker adınız ve IP adresiniz havuza gider. İlk başlatmada madenci GitHub'dan indirilir."
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "Bazı ağlar ve DNS çözümleyicileri madencilik havuzu bağlantılarını engeller."
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "Çoğu havuz sizi herkese açık ödeme adresinizle tanımlar."
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "Madenci, hash süresinin Pearl'de %2'sini, Zano ve Ravencoin'de %0.85'ini alır."
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "Bazı barındırma sağlayıcıları kripto para madenciliğini yasaklar."
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "Madenci kapalı kaynaktır, bu yüzden geliştiricisi dışında kimse ne çalıştırdığını denetleyemez."
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "GPU'nun elektriği kazanılan coin'lerden daha pahalıya gelebilir ve Pearl'ün fiyatı hızla değişir."
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "Madenci işi havuza gönderir ve başkasının trafiğini aktarmaz."
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "HeroMiners'ta herkese açık bir adresle ve hesap olmadan Pearl kazabilirsiniz."
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj, kullanılmayan disk alanınızı kiraya vererek kazandığınız merkeziyetsiz bir bulut depolama ağıdır. Depolama düğümünü Docker ile çalıştırın; depolanan TB başına ayda $1.35 ve çıkış trafiği için TB başına $1 kazanın (1 Eylül 2026'dan beri geçerli ücretler). Ödemeler, bakiye ücrete dayalı bir minimumu aştığında, sizin kontrol ettiğiniz bir cüzdana Ethereum ana ağında USDC (ABD dolarına sabitlenmiş bir stablecoin) olarak aylık yapılır (Eylül 2026 ödemesine kadar STORJ token ile yapılıyordu). En az 550GB kullanılabilir disk alanı ve sabit bir internet bağlantısı gerektirir. Hesap veya kayıt gerekmez -- düğümler 2025 ortasından beri izin gerektirmez. DİKKAT (Ekim 2026): Storj Labs, eski borçlarını yeniden yapılandırmak için 26 Temmuz 2026'da Chapter 11 başvurusunda bulundu (ABD İflas Mahkemesi, Batı Virginia Kuzey Bölgesi, dava 5:26-bk-00512). Ağ çalışmaya devam ediyor ve Storj etkin düğümlere ödeme yapmayı sürdürüyor, ancak başvurudan önceki düğüm kazançları mahkeme bunlar hakkında karar verene kadar dondurulmuş durumda. STORJ token'ı 2021'deki zirvesinden yaklaşık %98 düştü. Binance onu 3 Eylül 2026'da listeden çıkardı ve Coinbase 28 Eylül 2026'da işlemlerini askıya aldı. Yeni bir düğüm ilk dokuz ayında kazancının bir kısmını alıkoyar ve yalnızca müşteri talebinin izin verdiği ölçüde dolar; bu yüzden şimdi bir düğüm başlatmak, uzun bir geri ödeme süresini hâlâ tasfiye edilebilecek, yeniden yapılandırma sürecindeki bir şirkete bağlamak demektir.\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "Merkeziyetsiz depolama düğümü - depolanan TB başına $1.35 + çıkış trafiği TB başına $1"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "Cüzdan adresi"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "E-posta"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "Harici adres"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "Depolama tahsisi"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "Kimlik dizini"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "Depolama dizini"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "USDC ödemeleri için Ethereum cüzdan adresi (ör. 0x1234...abcd). Kendi kontrolünüzdeki bir cüzdan olmalıdır (MetaMask, Ledger vb.) -- asla bir borsa adresi kullanmayın"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "Operatör bildirimleri için e-posta adresi"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "Portlu DDNS ana makine adı (ör. mynode.ddns.net:28967) -- doğrudan IP yerine kesinlikle tercih edilir; doğrudan IP, İSS'niz onu sessizce değiştirdiği gün düğümü ulaşılamaz bırakır. 28967 portu yönlendirilmelidir (TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "Ayrılacak en fazla disk alanı (ör. 2TB). SSD değil, dönen diskler (HDD) kullanın"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "Kimlik dosyalarının depolandığı ana makine yolu (ca.cert, ca.key, identity.cert, identity.key dosyalarını içermelidir)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "Storj veri depolaması için dönen bir diskteki (HDD) ana makine yolu. En az 550GB boş alan gerekir"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "İlk çalıştırmadan önce depolama düğümü yapılandırmasını başlatın: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "Düğüm kimliği. Kimliği iş kanıtına (proof-of-work) bağlıdır ve yeniden oluşturulması saatler sürer; başka hiçbir şeyin yedeğinden yeniden oluşturulamaz. Kaybedilirse tutulan ödeme bakiyesi de kaybedilir."
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "Depolanan müşteri verileri ve düğümün tutulan tutarı. Kaybedilirse düğüm diskalifiye olur ve tutulan bakiye kaybedilir."
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "Storj ağı, düğümünüze bildirdiği ADDRESS üzerinden geri bağlanamıyor, bu yüzden uydular onu çevrimdışı sayıyor: yeni veri gelmesi durur, çıkış trafiği geliri durma noktasına gelir ve uzun süre çevrimdışı kalmak askıya almaya yol açar. ADDRESS değerinin ŞU ANKİ herkese açık IP'nizle eşleştiğini (İSS değişikliğinin düğümü ulaşılamaz bırakmaması için doğrudan IP değil, bir DDNS ana makine adı kullanın) ve 28967 TCP+UDP portunun bu makineye yönlendirildiğini kontrol edin."
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "1 Eylül 2026'dan beri depolanan TB başına $1.35 + çıkış trafiği TB başına $1 + denetim/onarım TB başına $1. Kazanç, depolanan veriye ve düğümün yaşına göre artar. İlk 9 ayda kazançların önce %75'i, sonra %50'si, sonra %25'i alıkonur; alıkonan tutarın yarısı 16. ayda, kalanı düzgün çıkışta (graceful exit) iade edilir. 28967 portu yönlendirilmelidir."
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "Ethereum işlem ücretinin 4 katı; daha küçük bakiyeler devreder"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "Aylık"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "Cüzdan bakiyesi güncel işlem ücretinin en az dört katı olduğunda Ethereum ana ağında USDC olarak aylık ödenir; daha küçük bakiyeler bir sonraki aya devreder. Eylül 2026 ödemesine kadar STORJ token ile ödeniyordu. Pano 14002 portundadır."
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "Bakiye ücrete dayalı minimumu aştığında, WALLET'taki adrese Ethereum ana ağında USDC olarak aylık ödenir. Eylül 2026 ödemesine kadar STORJ token ile ödeniyordu; zkSync Era ödemeleri 1 Eylül 2026'da sona erdi."
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "Düğüm panosunun 14002 portundaki URL'si; localhost yerine sunucunun LAN IP'siyle, örneğin <b>http://192.168.1.10:14002</b>. Birden fazla düğüm için URL'lerini virgülle ayırarak listeleyin: CashPilot bunları toplar."
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "Aynı /24 alt ağındaki Storj düğümleri veri tahsisini paylaşır, bu da düğüm başına kazancı azaltır."
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "5 Mbps yükleme"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "Disk alanı ve onu sunmak için gereken bant genişliği."
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "Hayır. Müşteri verilerinin şifrelenmiş, silme kodlamalı (erasure-coded) parçalarını depolarsınız. Başkaları kendi trafiklerini IP'niz üzerinden yönlendirmez."
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "Düğüm kimliği, cüzdan adresiniz, düğümün operatör bildirimleri için istediği e-posta adresi ve düğümün veri sunabilmesi için erişilebilir olması gereken IP ve portunuz."
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "Bu, sorumluluktan çok bir veri kotası meselesidir: bir düğüm sürekli olarak müşteri verisi sunar ve alır; bu da hattınızda gerçek ve sürekli bir trafik demektir. Ancak bir proxy veya relay'den farklı olarak, kaynağı sizmişsiniz gibi size atfedilen anonimleştirilmiş üçüncü taraf trafiği değildir; bu yüzden onların çektiği kötüye kullanım şikâyetlerini çekmez."
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "Sınırsız düğüm; ancak aynı /24 alt ağındaki düğümler tahsisi paylaşır, bu yüzden tek bir bağlantıdaki birden fazla düğümün her biri daha az kazanır."
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "CoinDesk, 27 Temmuz 2026'da Storj Labs'in Chapter 11 iflas koruması başvurusunda bulunduğunu bildirdi."
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "Başvuru öncesine ait düğüm operatörü ödemeleri iflas alacak süreci kapsamına girdi."
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "Yeni bir düğümün ilk dokuz ayında kazancının önce %75'i, sonra %50'si, sonra %25'i alıkonur; yarısı 16. ayda, kalanı ise yalnızca düzgün çıkışta geri gelir."
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "Müşteriler şifrelenmiş dosya parçaları depolar ve kimse IP'niz üzerinden trafik yönlendirmez, ancak Storj'un müşterilerin kim olduğunu veya nasıl denetlendiğini nerede açıkladığını bulamadık."
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "Depolama düğümü yazılımı AGPL-3.0 altında açık kaynaktır."
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Storj kendi Docker imajını yayımlar: storjlabs/storagenode."
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "Hesap yok: bir cüzdan adresi ve operatör bildirimleri için bir e-posta yeterlidir."
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "Etkin düğümlere başvurudan sonra da ödeme yapılmaya devam edildi."
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR, hesap gerektirmeyen bir Monero madencilik havuzudur: madenciniz kullanıcı adı olarak Monero adresinizle oturum açar ve havuz o adrese ödeme yapar. CashPilot burada bir madenci çalıştırmaz. SupportXMR'ın adresiniz için tuttuğu bakiyeyi okur; böylece CPU madencinizin ne kazandığını diğer gelirlerinizin yanında görürsünüz. Bakiye kazanılmıştır ama henüz alınmamıştır: havuz, ödeme eşiğinizi geçtiğinde bunu öder.\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "Monero madencilik havuzu, ödeme adresinizle takip edilir"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR (otomatik), talep üzerine 0.01 XMR"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "Bakiyeniz eşiğinizi geçtiğinde veya talep üzerine"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "SupportXMR, bakiye eşiğinize (varsayılan olarak 0.1 XMR) ulaştığında adresinize ödeme yapar. Sitesinde 0.001 XMR ücret karşılığında 0.01 XMR'dan itibaren anında ödeme de talep edebilirsiniz."
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "Bakiye kazanılmıştır, ancak SupportXMR bunu bu adrese ödeyene kadar alınmış sayılmaz. Monero bakiyeleri, CashPilot'un asla istemediği özel bir görüntüleme anahtarı (view key) olmadan zincir üstünde okunamaz; bu yüzden her ödemeyi kendiniz onaylarsınız."
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "Monero ödeme adresiniz: madencinizin SupportXMR'da kullandığı kullanıcı adı, herhangi bir <b>.workername</b> veya <b>+difficulty</b> kısmı olmadan. Herkese açıktır ve hiçbir fonun kilidini açmaz."
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "pool.supportxmr.com adresine yönlendirilmiş bir Monero madencisi (XMRig) gerekir"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "işlem gücü"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "Hayır. Madenciniz havuza hash gönderir; kimse bağlantınız üzerinden trafik yönlendirmez."
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "Monero adresiniz, seçtiğiniz worker adları, hash oranınız ve madencinizin havuzun gördüğü IP adresi."
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "Bir madenci havuza tek bir bağlantı açık tutar ve az bant genişliği kullanır. Dikkat edilmesi gereken maliyet İSS'niz değil, elektriktir."
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "Hesap yoktur. Kimlik adrestir ve herkes onun istatistiklerini supportxmr.com üzerinde görebilir."
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "Yalnızca Monero ile ödeme yapılır; %0.6 havuz ücreti vardır ve otomatik ödemeden önceki varsayılan eşik 0.1 XMR'dır."
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "CashPilot, SupportXMR için madenci çalıştırmaz: kendi madencinizi havuza yönlendirirsiniz, CashPilot yalnızca bakiyeyi okur."
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Teneo Protocol, bir Beacon ağı aracılığıyla yapay zekâ ajanlarına canlı web erişimi sağlar. Teneo Beacon, Teneo'nun Android, iOS, macOS, Windows ve Linux için kendi uygulamasıdır; sunucular ve Raspberry Pi için bir komut satırı sürümü de vardır. Onay ekranını kabul ettikten sonra kullanılmayan bant genişliğinizi paylaşır ve çevrimiçi olduğu sürece Teneo Protocol Points ve Fragments kazanır. Fragments, USDC ile ödenen sezonluk çekilişlere (Beacon Drop) sayılır. Teneo'ya göre Beacon, eski tarayıcı eklentisinin iki katı puan kazanır. İnternet bağlantısı başına bir Beacon kazanır. Aynı bağlantıdaki diğer cihazlar beklemede kalır. Expedition Hub'da referans bağlantısıyla veya PSA3BHPJ koduyla kaydolun, ardından Beacon'da oturum açın.\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "DePIN bant genişliği uygulaması (Beacon) - sezonluk USDC çekilişleri için Fragments, referans bağlantısıyla +100 Fragments"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "Teneo Points ve Fragments kazandırır. Fragments sezonluk USDC çekilişlerine sayılır; yani bir sezon sabit bir oran değil, bir ödül öder. Teneo'ya göre Beacon, tarayıcı eklentisinin iki katı puan kazanır. 3 kata kadar Fragments için takviyeyi her 8 saatte bir talep edin; kaçırılan bir süre çarpanı düşürür."
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "Sezonluk çekiliş (Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "Beacon Drop ödülleri, Expedition Hub'da bağladığınız bir cüzdana USDC olarak ödenir. Hub, cüzdan bağlamak için kaç gününüz kaldığını gösterir; zamanında cüzdan bağlanmayan bir ödül kaybedilir."
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "Bir sezonun ödülleri ödenmeden önce Expedition Hub'da bir cüzdan bağlayın; Hub, cüzdanı zamanında bağlanmayan ödülü iptal eder."
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "Arkadaş 7 gün içinde kaydolup 480 Fragments kazandığında, davet edilen her arkadaşın Fragments'ının %8'i ve onların davet ettiklerinin Fragments'ının %2'si"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "Kayıtta +100 Fragments ve 480 Fragments'a ulaştığınızda +150 daha"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "İnternet bağlantısı başına bir Beacon kazanır. Veri merkezi makineleri yalnızca Teneo'nun etkinleştirdiği barındırma sağlayıcılarında, yarı Fragments ile ve puan veya referans bonusu olmadan kazanır. VPN bağlantıları asla kazanmaz."
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "Beacon'ın Fragments'ı yalnızca sezonluk çekilişlerde ödül olarak USDC öder, bu yüzden çalıştırmak belirli bir tutar kazandırmaz."
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Teneo'ya göre puanlar $TENEO token'ında değil, devredilemeyen bir ödül token'ı olan $AGENTIC'te birleştirilecek."
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "Daha önceki 2026'nın ikinci çeyreği hedefi geçtikten sonra, Kasım 2026 itibarıyla $TENEO için bir lansman tarihi, dağıtım payı veya talep süreci doğrulanmamıştı."
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "CashPilot, Teneo'yu çalıştırmaz: sağlayıcının kendi Beacon uygulamasını kurarsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Teneo'ya göre trafik denetlenmiş kurumsal müşterilerden gelir ve özel adresler ile kötüye kullanıma açık portlar engellenir, ancak bu müşterileri nasıl denetlediği belirtilmez."
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network, köklü bir merkeziyetsiz video dağıtım ve yapay zekâ işlem gücü ağıdır (2018'den beri). Kullanıcılar bant genişliği, depolama ve işlem gücü paylaşan Edge Node'lar çalıştırır. Büyük içerik ortaklıkları vardır. TFUEL token kazandırır.\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "Merkeziyetsiz CDN + yapay zekâ işlem gücü - TFUEL ödülleri, köklü proje"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "Yalnızca masaüstü uygulaması. Kazanç kaynaklara ve konuma bağlıdır. Büyük ortaklıkları var, tüm borsalarda listelenir."
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "Sürekli"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "CashPilot, Theta Edge'i çalıştırmaz: sağlayıcının kendi masaüstü uygulamasını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network, TNT token ödülleri karşılığında IP adresinizi, depolama alanınızı ve bant genişliğinizi paylaşan bir DePIN platformudur. Windows, Mac ve Android'de kullanılabilir. Düğümler merkeziyetsiz bir CDN'e ve depolama katmanına katkıda bulunur. Tipik kazanç, paylaşılan kaynaklara ve coğrafi konuma bağlı olarak ayda $5-30 arasındadır.\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "IP, depolama, bant genişliği paylaşan DePIN - ayda $5-30"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "IP, depolama ve bant genişliği paylaşır. Kazanç, sağlanan kaynaklara ve bölgeye bağlıdır. Daha fazla depolama tahsisi daha yüksek ödül getirir."
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "Dönem (epoch) bazlı"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "Titan'ın kendi yardım sayfasına göre çalışan bir düğüm kazanç garantisi vermez: atanmış görev yoksa hiçbir şey kazanmaz ve ödüller TNT token cinsindendir."
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "CashPilot, Titan'ı çalıştırmaz: sağlayıcının kendi uygulamasını veya eklentisini kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Traffmonetizer, bant genişliğini doğrulanmış işletmelerle paylaşarak internet trafiğinizden gelir elde etmenizi sağlar. Ev bağlantılarının yanı sıra VPS ve veri merkezi IP'lerinde de iyi çalışan az sayıdaki bant genişliği paylaşım hizmetinden biridir. Komut satırı argümanlarıyla iletilen basit, token tabanlı bir kimlik doğrulama kullanır. Raspberry Pi ve benzeri cihazlar için ARM mimarilerini destekler.\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "Bant genişliği paylaşımı - VPS'te çalışır, token tabanlı kimlik doğrulama"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "Token"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "Cihaz adı"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "<a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a> adresinde oturum açın, F12'ye basın → Application → Local Storage → <code>https://app.traffmonetizer.io</code> öğesine tıklayın → <code>authToken</code> değerini kopyalayın (yaklaşık 54 karakter: rakamlar, bir <code>|</code>, ardından harfler ve rakamlar)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "Cihaz yönetimi için panoda gösterilen ad"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "VPS ve veri merkezi IP'leri ev IP'lerinden daha az kazanır. ABD/AB konumları daha çok kazanır. Docker ağlarıyla birden fazla IP desteklenir."
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "Minimum $10. PayPal artık sunulmuyor. Önce profilde bir ödeme yöntemi kaydedin: Solana veya TON üzerinde USDT (en düşük ücretler), Arbitrum (düşük ücretler) veya Tron TRC20 (yüksek ağ ücretleri) ya da en az $1,000 tutarında banka havalesi. Kaydettiğiniz ilk adres hemen geçerli olur; sonradan değiştirmek için e-posta onayı gerekir. Pano, ilk para çekmeden önce bir mesajlaşma iletişim bilgisi (WhatsApp, Telegram veya Skype) isteyebilir. Bir talep tam dolar olarak öder ve sentler bakiyede kalır."
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "Profilin ödeme ayarlarında kaydedilen zincirde (Solana, TON, Arbitrum veya Tron) USDT ya da banka havalesi. Adres konteynerde değil, Traffmonetizer'ın ayarlarında durur."
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "<a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a> adresinde oturum açın, F12'ye basın → Application → Local Storage → <b>authToken</b> değeri (yaklaşık 54 karakter: rakamlar, bir <code>|</code>, ardından harfler ve rakamlar)."
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "Talep ettikleri her ödemenin %10'u"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "Traffmonetizer kullanım koşulları ev IP'si gerektirir, ancak pratikte VPS düğümleri kabul edilir."
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "Trustpilot'ta 1.9 puanı var; 2023'ten Kasım 2026'ya kadarki yorumcular haftalarca bekleyen veya eşleşen bir işlem olmadan tamamlandı olarak işaretlenen ödemeler bildiriyor."
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "Aynı yorumcular canlı sohbet ve e-posta desteğinin, bazen haftalarca, yanıt vermediğini bildiriyor."
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "Yalnızca kripto veya en az $1,000 tutarında banka havalesi; PayPal kaldırıldı ve bir talep yalnızca tam dolar öder."
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "Traffmonetizer'ın koşulları ev IP'si gerektirir, bu yüzden barındırma bağlantısındaki bir sunucu koşulların dışında kalır."
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "2023-2025 arasındaki dört Trustpilot yorumcusu çok yavaş kazanç bildiriyor; örneğin dört cihazda günde bir sent veya $10'a ulaşmak için neredeyse iki yıl."
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "Bir ödeme için yalnızca e-postayla onaylanmış, kaydedilmiş bir kripto adresi gerekir; pano bir mesajlaşma iletişim bilgisi isteyebilir."
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Traffmonetizer kendi Docker imajını yayımlar: traffmonetizer/cli_v2."
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "CPU'nuzla madencilik yapın ve seçtiğiniz coin ile, örneğin SHIB, DOGE veya XMR ile ödeme alın. CashPilot, XMRig'i unMineable'ın RandomX havuzuna karşı çalıştırır ve unMineable, CPU'nuzun kazdığı Monero'yu sizin coin'inize çevirir. Bakiyeniz coin'in ödeme eşiğine ulaştığında herkese açık adresinize ödeme yapar. CashPilot'un dağıttığı her worker, CashPilot'un unMineable referans kodunu taşır; bu da platform ücretinizi %1'den %0.75'e düşürür. Elektrik, kazandığınızdan daha pahalıya gelebilir."
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "CPU'nuzla madencilik yapın, seçtiğiniz coin ile ödeme alın"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "Ödeme coin'i"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "Ödeme adresi"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "Worker adı"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "En fazla CPU iş parçacığı (%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "RandomX modu"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "unMineable'ın ödeme yaptığı bir coin'in kısaltması, örneğin SHIB, DOGE veya XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "O coin için herkese açık adresiniz. Memo veya etiket gerektiren coin'ler desteklenmez."
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "Elektrik öncesi brüt tahmin; unMineable'ın dönüşüm oranıyla sizin coin'inizde ödenir. 2026-11-25 tarihinde 1 kH/s RandomX ayda yaklaşık $1 değerindeydi. İş parçacıklarının yarısını kullanan bir masaüstü CPU 30 ila 50 W ek güç çekebilir. Kârlı olup olmadığını görmek için gerçek tüketiminizi ve elektrik fiyatınızı kontrol edin."
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "unMineable tarafından coin başına belirlenir (2026-11-26 tarihinde 0.03 XMR)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "Coin'in ödeme eşiğine ulaşıldığında"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "unMineable, bakiyeniz coin'in ödeme eşiğine ulaştığında adresinize ödeme yapar. Eşikler coin'e ve ağa göre farklıdır; CashPilot, unMineable'ın adresiniz için bildirdiği eşiği okur."
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "Bakiye kazanılmıştır, ancak unMineable bunu bu adrese ödeyene kadar alınmış sayılmaz. Zincir, seçtiğiniz coin'e bağlıdır."
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "Madenciyi dağıtırken kullandığınız aynı ödeme adresi ve coin kısaltması, örneğin <b>XMR</b>. Adresi tek başına girin; coin, worker adı veya referans kodu eklemeyin. Herkese açıktır ve hiçbir fonun kilidini açmaz."
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "Davet edilen her madencinin madencilik ödüllerinin %0.25'i"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "Platform ücreti %1'den %0.75'e düşer"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "Bu makine bir barındırma bağlantısı bildiriyor. Madencilik yapmadan önce sağlayıcınızın koşullarını kontrol edin. Hetzner Cloud dahil bazı sağlayıcılar bunu yasaklar. Bir kâr tahminine güvenmeden önce gerçek elektrik maliyetlerinizi kontrol edin."
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "unMineable %1 platform ücreti alır. CashPilot her worker adının sonuna referans kodunu (#awk6-j1z0) ekler; bu da ücretinizi %0.75'e düşürür. Ardından unMineable, madencilik ödüllerinizin %0.25'ini CashPilot'un geliştiricisine öder; %99.25'i sizde kalır. Her coin'in kendi ödeme eşiği vardır, örneğin 0.03 XMR."
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "işlem gücü"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "Hayır. Madenci işi unMineable'ın havuzuna gönderir."
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "Ödeme adresiniz, coin'iniz, worker adınız, hash oranınız ve IP adresiniz unMineable'a gider."
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "Bazı ağlar ve DNS çözümleyicileri madencilik havuzu bağlantılarını engeller."
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "Hesap gerekmez. Kimlik, adres ve coin'dir; herkes bunların istatistiklerini unmineable.com üzerinde görebilir."
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "unMineable, referans koduyla %0.75 platform ücreti alır ve yalnızca her coin'in eşiğinden itibaren ödeme yapar."
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "Bazı barındırma sağlayıcıları kripto para madenciliğini yasaklar."
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "Ek elektrik, kazanılan coin'lerden daha pahalıya gelebilir."
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "Bakiye dahil adres istatistikleri, adresi bilen herkese açıktır."
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "Madenci havuza hash gönderir ve başkasının trafiğini aktarmaz."
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "Hesap oluşturmadan, seçtiğiniz coin'de herkese açık bir adrese madencilik yapabilirsiniz."
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock, internet bağlantınızı paylaşarak kripto para kazanmanızı sağlayan bir DePIN (Merkeziyetsiz Fiziksel Altyapı Ağı) platformudur. Daha geniş Web3 ekosisteminin bir parçasıdır. Topluluk Docker imajları mevcuttur ancak resmi bir imaj yoktur. Ana arayüz tarayıcı eklentisidir.\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "DePIN internet paylaşımı - kripto ödeme, ana istemci tarayıcı eklentisi"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "Kripto/token tabanlı kazanç. Resmi Docker imajı yoktur; ana istemci tarayıcı eklentisidir."
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "UPT token'ları, iki faktörlü kimlik doğrulama açıkken, 250 UPT'den itibaren bir Solana cüzdanına çekilir. Bir para çekme ücreti uygulanır."
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "UpRock'ın yardım merkezine göre para çekme işlemleri, 250 UPT minimumla, bir Solana cüzdanına UPT token olarak yapılır."
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "Ödüller UPT token'larıdır; yorumcular ve üçüncü taraf bir inceleme değerlerinin çok düşük olduğunu söylüyor."
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "CashPilot, UpRock'ı çalıştırmaz: sağlayıcının kendi uygulamasını veya eklentisini kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork, merkeziyetsiz bir VPN ve bant genişliği paylaşım ağıdır. Topluluk sağlayıcısı olarak bant genişliği sunarak kazanırsınız. Sağlayıcı programı, hesabınızın e-posta adresi ve şifresiyle kendi kimliğini doğrular (auth-provide alt komutu) ve ortaya çıkan oturum JWT'sini veri biriminde saklar. BringYour, Inc.'in resmi Docker imajı.\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "Merkeziyetsiz VPN/bant genişliği - e-posta+şifre ile giriş, JWT oturumu birimde"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "E-posta"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "Şifre"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "URnetwork hesabınızın e-posta adresi (<a href=\"https://ur.io\" target=\"_blank\">ur.io</a> adresinde kullandığınız giriş bilgisi). Google/Apple ile oturum açılarak oluşturulan hesapların önce bir şifre belirlemesi gerekir. Hesabınız yok mu? <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a> ile kaydolun"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "URnetwork hesabınızın şifresi (boşluksuz). Sağlayıcının auth-provide girişi tarafından kullanılır; oturum daha sonra veri biriminde saklanır."
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "VPS'te ve ev bağlantılarında çalışır. 2026-10-06'dan beri haftalık dönem (epoch) başına SN25α (Bittensor subnet 25) ile ödenir. Çoklu IP kurulumları için proxy modunu destekler."
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "Dönem (epoch) bazlı"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "ur.io/app/account/earnings sayfasında bir Bittensor coldkey ayarlayın (Talisman, TAO.com veya bir WalletConnect cüzdanıyla imzalanır), ardından sonuçlanan her dönemi talep edin. Bir talep, gas ücretini bir EVM gas anahtarından TAO ile öder. TALEP EDİLMEYEN DÖNEMLERİN SÜRESİ DOLAR; eski USDC ödemeleri ise 30 gün içinde cüzdan bağlanmadığında iptal edildi."
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "Arkadaş başına günde 3 GiB ücretsiz UR verisi, en fazla 20 arkadaş (para değil, veri)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "Katıldıktan sonraki 90 gün içinde 2 gün boyunca uygulama üzerinden en az 10 MiB kullandığınızda günde 3 GiB ücretsiz UR verisi; aksi halde referans sona erer"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "Talep edilmeyen dönemlerin süresi dolar ve eski USDC ödemeleri, 30 gün içinde cüzdan bağlanmayan ağlar için iptal edildi."
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "Ekim 2026'dan beri ödüller bir Bittensor subnet token'ı olan SN25α ile ödenir ve her talep TAO cinsinden gas ücretine mal olur."
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "URnetwork'ün eski adı BringYour'dı; arşivlenmiş teknik belgesi (whitepaper) eski adı taşıyor."
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "URnetwork, sağlayıcı istemcisinin kaynak kodunu yayımlar."
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "URnetwork kendi Docker imajını yayımlar (bringyour/community-provider) ve VPS ile ev bağlantılarında çalışır."
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "Bir talep için yalnızca kontrolünüzdeki bir Bittensor cüzdanı gerekir."
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai, NVIDIA GPU'nuzu AI/ML araştırmacılarına ve geliştiricilerine kiraya verdiğiniz bir GPU bulut pazarıdır. Saatlik fiyatlarınızı kendiniz belirlediğiniz, Docker tabanlı bir platformdur. Bir RTX 3090 kiralandığında tipik olarak saatte $0.20-0.40 kazanır. Güncel sürücülere sahip bir NVIDIA GPU ve sabit bir internet bağlantısı gerektirir. Gelir büyük ölçüde GPU modeline, fiyatlandırma stratejisine ve piyasa talebine bağlıdır.\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "GPU pazarı - fiyatlarınızı kendiniz belirleyin, RTX 3090 saatte ~$0.20-0.40"
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "API Anahtarı"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "Panodan alınan Vast.ai ev sahibi API anahtarı"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "Kiralandığında RTX 3090 saatte ~$0.20-0.40, RTX 4090 saatte ~$0.40-0.80. Kullanım oranı değişkendir. NVIDIA GPU, Linux ana makine, Docker ve nvidia-container-toolkit gerektirir. Fiyatlarınızı kendiniz belirleyin."
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "Haftalık (cuma günleri)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "Kazançlar Vast.ai bakiyesinde birikir. Wise, PayPal veya Stripe ile çekin."
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "Davet edilen kiracıların harcamalarının %3'ü, hesapları var olduğu sürece, referans kredisi olarak; %75'e kadarı özel bir referans hesabından nakde çevrilebilir"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "Bir ev sahibi yalnızca kiralandığı sürece kazanır ve Vast'ın bir tüketici GPU'su için verdiği rakamlar kiralama türüne ve güvenilirlik puanına bağlıdır."
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "CashPilot, Vast.ai'yi çalıştırmaz: Vast'ın barındırma yazılımını kendi GPU makinenize kurarsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Vast, barındırmayı bir Linux ana makinede Docker üzerine kurar."
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Vast'a göre ev sahibinin belirlediği ücret, hiçbir ücret kesilmeden aldığı ücrettir."
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "Ödemeler, $20 minimumdan itibaren Wise, PayPal veya Stripe ile yapılır ve haftalık faturalandırılır; daha küçük bir bakiye bir sonraki haftaya devreder."
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter, Windows, Mac, Linux ve Android'de kullanılabilen bir bant genişliği paylaşım platformudur. Paylaşılan bant genişliği için GB başına $1'a kadar ödeme yaptığını ve minimum ödeme eşiğinin $20 olduğunu iddia eder. Platform, geleneksel bant genişliği paylaşım uygulamalarına benzer şekilde çalışır ve meşru trafiği ev bağlantıları üzerinden yönlendirir.\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "Bant genişliği paylaşımı - GB başına $1'a kadar iddiası, minimum ödeme $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "GB başına $1'a kadar ödediğini iddia eder, ancak gerçek kazançlar daha düşüktür. Minimum ödeme $20. Kazanç konuma ve talebe göre büyük ölçüde değişir."
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "Talep üzerine"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "Wipter'ın web panosu yoktur. Wipter masaüstü veya telefon uygulamasını açın, oturum açın ve bakiye $20'a ulaştığında ödemeyi oradan talep edin. Wipter yalnızca BNB Smart Chain (BEP20) üzerinde USDT ile, uygulamanın Payments bölümünde ayarladığınız cüzdana ödeme yapar; PayPal seçeneği yoktur."
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "Minimum ödeme tutarına ulaştıklarında trafik kazançlarının %10'u; davet ettiğiniz arkadaş sayısında sınır yok"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "$5 kayıt bonusu"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "CashPilot, Wipter'ı çalıştırmaz: sağlayıcının kendi masaüstü veya telefon uygulamasını kullanırsınız, bu yüzden CashPilot onu sizin için dağıtamaz veya güncelleyemez. Kullanım koşulları konteyner kullanımı açısından incelenmedi."
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "CPU'nuzla Monero kazın. CashPilot XMRig'i çalıştırır ve seçtiğiniz havuz herkese açık ödeme adresinize Monero öder. XMRig, geliştiricilerini desteklemek için hash süresinin %1'ini kullanır. Elektrik, kazandığınız XMR'dan daha pahalıya gelebilir."
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "CPU'nuzla ve seçtiğiniz havuzla Monero kazın"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "Monero adresi"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "Havuz"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "Worker adı"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "En fazla CPU iş parçacığı (%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "RandomX modu"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "Elektrik öncesi brüt tahmin. 2026-11-25 tarihinde, gözlenen XMR fiyatı ve ağ zorluğuyla 1 kH/s ayda yaklaşık $1 değerindeydi. İş parçacıklarının yarısını kullanan bir masaüstü CPU 30 ila 50 W ek güç çekebilir. Kârlı olup olmadığını görmek için gerçek tüketiminizi ve elektrik fiyatınızı kontrol edin."
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR (MoneroOcean, siz düşürdükten sonra)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "Havuz eşiğine ulaşıldığında"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "Bakiyeniz eşiğinize ulaştığında havuz Monero adresinize ödeme yapar. Havuz size ödeme yapana kadar bakiyeyi tutar."
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "Bu makine bir barındırma bağlantısı bildiriyor. Madencilik yapmadan önce sağlayıcınızın koşullarını kontrol edin. Hetzner Cloud dahil bazı sağlayıcılar bunu yasaklar. Bir kâr tahminine güvenmeden önce gerçek elektrik maliyetlerinizi kontrol edin."
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "Varsayılan havuz MoneroOcean %0 madencilik ücreti alır. Varsayılan ödeme eşiği 0.3 XMR'dır ve bunu 0.003 XMR'a düşürebilirsiniz. 4 XMR'ın altındaki ödemeler 0.0004 XMR'a kadar ücrete mal olabilir. Diğer havuzlar kendi oranlarını ve eşiklerini belirler."
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "işlem gücü"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "Hayır. Madenci işi madencilik havuzlarına gönderir."
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "Monero adresiniz, worker adınız ve IP adresiniz havuza gider."
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "Bazı ağlar ve DNS çözümleyicileri madencilik havuzu bağlantılarını engeller."
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "Çoğu Monero havuzu sizi herkese açık ödeme adresinizle tanımlar."
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "Bir ödeme için havuz eşiğinizi karşılayacak kadar XMR gerekir."
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "Bazı barındırma sağlayıcıları kripto para madenciliğini yasaklar."
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "Ek elektrik, kazanılan XMR'dan daha pahalıya gelebilir."
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "Madenci havuzlara hash gönderir ve başkasının trafiğini aktarmaz."
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "Madenci açık kaynaktır ve imaj, imzalı bir upstream sürümüne sabitlenmiştir."
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "Kendinizi adınızla tanıtmadan, herkese açık bir Monero adresiyle madencilik yapabilirsiniz."
+  source: "752cbb728aac"

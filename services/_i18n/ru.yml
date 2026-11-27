@@ -1,0 +1,2511 @@
+# Russian translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/ru.yml --restamp '<key>'
+2miners-etc.description:
+  text: "Отслеживайте невыплаченный баланс Ethereum Classic, который 2Miners хранит для вашего публичного адреса выплат ETC. Запустите собственный майнер и направьте его на пул. CashPilot считывает баланс и просит вас подтвердить выплаты, когда баланс уменьшается.\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "Майнинг-пул Ethereum Classic, отслеживается по адресу выплат"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC (настраивается)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "Пул проверяет ваш порог выплаты каждые два часа"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "2Miners автоматически платит на ваш адрес, как только вы достигнете выбранного порога. Минимальный порог для выплат ETC — 0.1 ETC.\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "Невыплаченный баланс накапливается на 2Miners. Баланс кошелька считывается отдельно из сети Ethereum Classic. Прежде чем подтвердить выплату в CashPilot, проверьте в кошельке полученную сумму.\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "Введите публичный адрес выплат Ethereum Classic, который ваш майнер использует на 2Miners; он начинается с <b>0x</b>. Имя воркера не указывайте.\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "Нужен майнер ETCHash, направленный на 2Miners"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "вычисления"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "Нет. Ваш майнер отправляет пулу результаты майнинга."
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "Пул использует ваш адрес выплат, выбранные вами имена воркеров и IP-адрес вашего майнера."
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "Статистику по адресу выплат может посмотреть кто угодно. Чтобы изменить порог, пул просит подтвердить IP воркера."
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "Пул берёт комиссию 1% и не выплачивает средства, пока не достигнут ваш порог."
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol (ранее ATOR) — децентрализованная приватная сеть с луковой маршрутизацией. Операторы узлов запускают ретрансляторы и получают токены ANYONE за предоставленный трафик. По сути, это «Tor с вознаграждением». CashPilot запускает его из собственного образа, собранного из подписанного Debian-пакета проекта, для amd64 и arm64. Настройка задаётся файлом anonrc, который монтируется в контейнер (Nickname, ContactInfo, ORPort и т. д.). Ретранслятор ничего не зарабатывает, пока за ним не заблокировано 100 ANYONE как минимум на 180 дней, а вознаграждения получают, подписав транзакцию в кошельке. Кроме того, ретранслятор вносит ваш публичный IP в каталог ретрансляторов сети, что может испортить репутацию IP, за которую платят приложения для заработка на домашнем трафике.\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "Децентрализованная луковая маршрутизация — ретрансляторы Tor с вознаграждением"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "Ключ идентификатора ed25519 ретранслятора. Если его уничтожить, репутация ретранслятора пропадёт, а история заработка начнётся с нуля."
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "Платит, только если за каждым ретранслятором заблокировано 100 ANYONE как минимум на 180 дней и запрос на вознаграждение подписан в вашем кошельке. Без стейка ретранслятор ничего не зарабатывает. Со стейком заработок зависит от предоставленного трафика и времени работы."
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "По эпохам"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "Указывается как ContactInfo в anonrc с префиксом '@anon:0x...'."
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "Отпечатки ретрансляторов через запятую. Их нет в веб-панели: выполните <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> на хосте, где работает ретранслятор.\n"
+  source: "9b5c068c9636"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "Трафик: в роли ретранслятора в сети Anyone (форк Tor)."
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "Да. Он передаёт трафик других людей. Будет ли ваш IP последним узлом, зависит от того, настроен ли ретранслятор как выходной."
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "Публичный ключ идентификатора ретранслятора, ваш IP и порт, а также статистика времени работы — всё это по замыслу публикуется в каталоге сети. Если вы укажете ContactInfo в anonrc, он тоже будет опубликован там и навсегда останется в открытом индексе. Обычно это адрес электронной почты, поэтому оставьте поле пустым, если не хотите, чтобы он стал публичным."
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "Реальный. Трафик ретранслятора приписывается вашему подключению. Выходные ретрансляторы особенно часто вызывают жалобы на злоупотребления; многие домашние интернет-провайдеры их запрещают."
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "Регистрировать аккаунт не нужно, поэтому и ограничивать на аккаунт нечего. Но чтобы зарабатывать, вам всё равно нужен Ethereum-кошелёк, в котором за каждым ретранслятором заблокировано 100 ANYONE как минимум на 180 дней, а CashPilot нужны отпечатки ретрансляторов, чтобы считывать вознаграждения. Проект не публикует лимит ретрансляторов на один IP, и в каталоге он тоже не указан."
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "Ретранслятор ничего не зарабатывает, пока за ним не заблокировано 100 ANYONE как минимум на 180 дней, а каждый запрос на вознаграждение подписывается в вашем кошельке."
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "Он по замыслу передаёт трафик других людей и никак не проверяет, кто они; выходные ретрансляторы вызывают жалобы на злоупотребления."
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "Идентификатор, IP и время работы ретранслятора публикуются в каталоге сети, а любой указанный вами ContactInfo становится публичным навсегда."
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "Регистрировать аккаунт не нужно. Ретранслятору нужен только кошелёк, без проверки личности."
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "Программа ретранслятора — опубликованный форк Tor под лицензией Tor."
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "CashPilot собирает собственный образ из опубликованной программы ретранслятора Anyone, для которой не нужен аккаунт."
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping — децентрализованная платформа мониторинга сетей, которая платит вам за работу узла. Ваш узел выполняет мониторинг сайтов, измерение задержек и проверку качества сети для клиентов Bitping. Работает и на домашних подключениях, и на VPS. При первом запуске Docker-образ входит в аккаунт с помощью переменных окружения BITPING_EMAIL и BITPING_PASSWORD («Attempting login with environment variables» в его собственном логе), а затем сохраняет сессию в смонтированном томе, поэтому после перезапуска повторный вход не нужен.\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "Обмен трафиком — децентрализованный мониторинг сетей, работает на VPS"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "Эл. почта"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "Пароль"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "Эл. почта вашего аккаунта Bitping (тот же логин, что и на <a href='https://app.bitping.com' target='_blank'>app.bitping.com</a>)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "Пароль вашего аккаунта Bitping. Используется один раз для создания сессии узла, которая затем сохраняется в томе данных."
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "Заработок зависит от качества сети и спроса на мониторинг из вашего региона. Узлы на VPS принимаются."
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "Заработок узлов находится на nodes.bitping.com; app.bitping.com — это панель для клиентов API. Вывод возможен только в SOL: когда невыплаченный баланс превысит $0.05, введите в запросе адрес Solana; запрос обрабатывается в течение 24 часов. На новом или пустом кошельке Solana сначала должно быть около 0.001 SOL — это минимальная рента сети."
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "Теперь только Solana, и адрес вводится В МОМЕНТ ВЫВОДА, а не хранится."
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "Используйте эл. почту и пароль аккаунта Bitping (те же, что и на <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)."
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "Выведите баланс Bitping"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "Bitping может аннулировать заработок, не выведенный более 12 месяцев, предупредив по эл. почте за 30 дней."
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "Запросите вывод в SOL на nodes.bitping.com и введите в запросе свой адрес Solana."
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "Вывод выплачивается в Solana (SOL) на адрес, который вы вводите в каждом запросе."
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "В справке Bitping сказано, что вывод на новый пустой кошелёк Solana может не пройти, пока вы сами не пополните этот кошелёк небольшим количеством SOL."
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "В справке Bitping сказано, что серверы и Docker-контейнеры поддерживаются."
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "Для вывода нужен только адрес Solana, введённый в запросе."
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit — сервис обмена трафиком с выплатами через PayPal и Stripe. Официального Docker-образа нет; клиентами служат десктопное приложение для Windows и приложение для Android. Сервис работает на bytebenefit.io — старый домен bytebenefit.com заброшен и выставлен на продажу на торговой площадке, поэтому когда-то он был отмечен здесь как неработающий.\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "Обмен трафиком — выплаты через PayPal/Stripe, приложение для ПК/Android"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "Docker-образа нет. Только десктопное приложение для Windows и приложение для Android."
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "20% заработка с трафика рефералов"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "Приветственный бонус $1 (10,000 Coins)"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "В описании приложения в Google Play сказано, что ваш трафик обслуживает запросы веб-аналитики клиентов Infatica, но не сказано, кто они и как их проверяют."
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "Приложение для Android исчезло из Google Play в апреле 2026 года, пробыв там 17 месяцев."
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "CashPilot не запускает ByteBenefit: вы пользуетесь собственным приложением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Bytelixir позволяет получать пассивный доход, делясь неиспользуемым интернет-трафиком. Поддерживаются только Windows и Android — в официальном FAQ сказано, что клиент для Linux или Docker не планируется, iOS не поддерживается, а для macOS приложения нет. Заработок сильно зависит от местоположения. Для отслеживания есть веб-панель на dash.bytelixir.com. Docker-образа нет.\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "Обмен трафиком — только Windows + Android"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "Cookie сессии"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "Cookie Remember Web"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "Токен XSRF"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "Войдите на <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a>, нажмите F12 → Application → разверните <b>Cookies</b> на левой боковой панели → нажмите на подпункт <code>https://dash.bytelixir.com</code> → в списке cookie справа найдите <code>bytelixir_session</code> → скопируйте его Value (длинный JWT, начинающийся с eyJ)"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "Там же (Cookies → <code>https://dash.bytelixir.com</code>) → найдите cookie с именем <code>remember_web_...</code> → скопируйте его Value (необязательно, продлевает срок жизни сессии)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "Там же → найдите <code>XSRF-TOKEN</code> → скопируйте его Value (необязательно)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "Заработок зависит от местоположения ($2-50 в месяц). Docker-образа нет. Нужно десктопное приложение или приложение для Android."
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "Только криптовалюта. Минимум зависит от монеты: USDT $5, USDC $5, TON $8, LTC $10, ETH $40, BTC $250. Адрес вы вводите в каждом запросе. Запросы обрабатываются в рабочее время, в течение 24 часов."
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "Баланс хранится у Bytelixir; адрес кошелька вводится в каждом запросе на выплату и никогда не хранится в контейнере."
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "Войдите на <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a>, <b>отметив Remember Me</b>, нажмите F12 → Application → разверните <b>Cookies</b> на левой боковой панели → нажмите <code>https://dash.bytelixir.com</code>, затем скопируйте три значения: <b>bytelixir_session</b>, <b>remember_web_…</b> (длинное, начинающееся с этого префикса) и <b>XSRF-TOKEN</b>. Один только cookie сессии истекает примерно через два часа после копирования, и сбор данных прекращается в тот же день; cookie remember_web действует год, и именно он обеспечивает работу."
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "50% их прибыли пожизненно"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "Приветственный бонус $1"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "Только криптовалюта, и минимум зависит от монеты: от $5 для USDT до $250 для Bitcoin."
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "CashPilot не запускает Bytelixir: вы пользуетесь собственным приложением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "На Trustpilot у него оценка 4.6 по 283 отзывам; большинство хвалит криптовыплаты, несколько человек сообщают, что выплаты не пришли."
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "Для выплаты нужен только криптоадрес, введённый в запросе."
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai — одноранговая площадка аренды GPU. Вы размещаете Linux-машину с GPU NVIDIA, сами задаёте спотовую цену и цену по запросу, а арендаторы запускают на ней собственные Docker-контейнеры. Вам платят только за минуты аренды, в CLORE, BTC, USDT или USDC. Для хостинга нужна машина x86_64 на Ubuntu 22.04 или новее (или HiveOS), рабочий драйвер NVIDIA и не менее 100 Mbps на загрузку и отдачу. GPU AMD не поддерживаются.\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "Площадка GPU — сдавайте в аренду GPU NVIDIA с оплатой в CLORE, BTC или долларовых стейблкоинах"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "Оплачиваются только минуты аренды по цене, которую вы назначили. Верхняя граница диапазона, $490, — собственный потолок Clore для одной RTX 4090 с поминутной арендой («до ~$490/месяц»); карты попроще зарабатывают меньше, а простаивающая карта не зарабатывает ничего. Clore оставляет себе 5% (по запросу) или 1.25% (спот) от каждой аренды, плюс ещё 15%, если арендатор платит в BTC, USDT или USDC, а не в CLORE."
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "Выводите в разделе Account > Billing на собственный кошелёк: CLORE (ERC-20, минимум 200, комиссия около $0.50), BTC (минимум 0.0001, комиссия 0.00005 BTC) или USDT/USDC в Ethereum или BNB Chain (минимум $10, комиссия $1)."
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "Clore хранит баланс (CLORE, BTC и один долларовый баланс для USDT/USDC), пока вы его не выведете. Сеть выбирается при каждом выводе: Ethereum для CLORE, Bitcoin для BTC, Ethereum или BNB Chain для USDT/USDC."
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "15% (стандартный уровень) от комиссий платформы, которые платят приглашённые вами хосты и арендаторы, с каждой аренды; код бессрочный; выплачивается в валюте аренды (CLORE, BTC или USD)"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "100 Mbps на загрузку и отдачу"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "Время вычислений на GPU вашей машины."
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "Да. Арендаторы запускают на вашей машине собственные Docker-контейнеры, и их трафик выходит через ваше подключение; порты SSH и приложений пробрасываются в интернет."
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "Политика конфиденциальности Clore охватывает данные аккаунта и ваш IP-адрес с приблизительным местоположением; документы, удостоверяющие личность, — только если Clore запросит KYC."
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "Входящие порты должны быть доступны из интернета (по умолчанию 22, 8080 и 3000-4000), а на вашей линии работают задачи посторонних людей. В собственном руководстве Clore по сети сказано, что некоторые интернет-провайдеры блокируют хостинг."
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "Возраст от 18 лет, страна не под санкциями. Clore может приостановить или закрыть аккаунт исключительно по своему усмотрению, а запрещённое использование может стоить вам средств."
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "Ни в условиях, ни в политике конфиденциальности не указано юридическое лицо, а применимая юрисдикция в условиях отложена до следующей версии."
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Clore может приостановить или закрыть аккаунт исключительно по своему усмотрению, а запрещённое использование может привести к конфискации средств."
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "Выплаты только в криптовалюте (CLORE, BTC, USDT или USDC), и Clore берёт дополнительные 15% с аренды, оплаченной арендатором в BTC, USDT или USDC, если только хост не заблокирует CLORE, чтобы снизить эту комиссию."
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "Хосту платят только за минуты аренды, а цифра Clore для RTX 4090 — это потолок («до ~$490/месяц») для одной карты."
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "Для обычного использования KYC не нужен, но при крупных выводах или проверках на соответствие требованиям Clore может запросить подтверждение личности."
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "Арендаторы запускают на вашей машине любой публичный Docker-образ. В условиях перечислены запрещённые виды использования (вредоносное ПО, DDoS, CSAM и другие), но описания того, как проверяют арендаторов, мы не нашли."
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "CashPilot не запускает Clore.ai: вы устанавливаете агент хостинга Clore на собственную машину с GPU (Ubuntu 22.04 или новее, или HiveOS), поэтому CashPilot не может развернуть или обновить его за вас."
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "Если арендатор платит в CLORE, Clore оставляет себе 5% от аренды по запросу (1.25% на споте) без дополнительной комиссии."
+  source: "699adf0a2179"
+dawn.description:
+  text: "DAWN управляет сетью валидаторов, которая проверяет трафик и покрытие для ИИ-инфраструктуры, финансируемой через протокол DAWN. Браузерное расширение DAWN Validator участвует в этих проверках трафика (proof-of-bandwidth) и покрытия и, пока работает, зарабатывает вознаграждения DAWN. У этих вознаграждений пока нет устоявшейся денежной стоимости. Создайте аккаунт в расширении и, когда оно попросит, введите реферальный код 2QLQV97F.\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "Валидатор DePIN — браузерное расширение зарабатывает очки DAWN"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "До запуска токена начисляются Dawn Points. Реальная стоимость зависит от будущей цены токена. Аппаратное устройство зарабатывает больше, чем браузерное расширение."
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "Аирдроп токенов (дата будет объявлена)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "Расширение работает, но сырое. Анонсировано устройство Black Box. Проверьте позже."
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "Расширение зарабатывает очки; к октябрю 2026 года распределение токенов операторам узлов подтверждено не было."
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "У очков нет устоявшейся стоимости, пока не запущен токен и не объявлен курс их обмена."
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "CashPilot не запускает Dawn: вы пользуетесь собственным браузерным расширением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network — проект децентрализованного VPN и web3-инфраструктуры. В основном требует фирменных аппаратных устройств Deeper Connect. Moken — связанная с ним платформа для майнинга и стейкинга. Работать только программно нельзя.\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "Децентрализованный VPN — нужно фирменное устройство"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "Нужно устройство Deeper Connect ($200-500). Платформа Moken для майнинга и стейкинга. Работать только программно нельзя."
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "Непрерывно"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "Комиссия с продажи устройства"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "Скидка 5% на устройство Deeper Connect по купону SERGIO"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "Вознаграждения за майнинг начисляются в DPR и зависят от кредитного рейтинга, который растёт медленно или за счёт стейкинга DPR."
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "CashPilot не запускает Deeper Network: вы пользуетесь собственным роутером провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "EarnApp от Bright Data позволяет продавать неиспользуемый трафик и получать пассивный доход. Bright Data — крупнейшая в мире прокси-сеть, которая обеспечивает сбор данных для компаний из Fortune 500. CashPilot запускает его из собственного образа: при первом запуске тот скачивает закреплённую сборку EarnApp с CDN Bright Data, проверяет её sha256 и запускает в облегчённом режиме, которому нужен только UUID.\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "Обмен трафиком — при поддержке Bright Data"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "UUID узла"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "ID вашего узла EarnApp: sdk-node- и затем 32 шестнадцатеричных символа в нижнем регистре, как его выводит 'earnapp showid'. После развёртывания один раз привяжите его, открыв https://earnapp.com/r/ и добавив к нему этот UUID, под своим аккаунтом EarnApp; непривязанный узел зарабатывает, но на ваш баланс ничего не поступает"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "EarnApp постоянно не может связаться со своими серверами и перезапускается, поэтому зарабатывает мало или ничего. Перезапустите эту копию; если это повторяется, проверьте интернет-подключение этой машины."
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "Откройте эту ссылку под своим аккаунтом EarnApp, чтобы добавить узел в аккаунт. Пока вы этого не сделаете, узел зарабатывает, но на ваш баланс ничего не поступает."
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "Сильно зависит от местоположения. Больше всего зарабатывают IP из США и ЕС. Заработок растёт с объёмом использованного трафика."
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "По запросу (доступен автовывод: PayPal от $10, Wise от $10, Amazon от $50)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "Один раз включите автовывод, и EarnApp будет сам платить каждый раз, когда баланс достигает минимума для выбранного способа: PayPal $10, Wise $10, Amazon $50. Платежи PayPal приходят от Bright Data Ltd. В октябре 2026 года платёж PayPal пришёл примерно на 2% меньше выведенного баланса."
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "Баланс хранится у EarnApp; выводится на Amazon/Wise/PayPal."
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "Войдите на <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, нажмите F12 → Application → Cookies и скопируйте значение <b>oauth-refresh-token</b>."
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "10% их заработка пожизненно, сверх их собственного"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "В справочном центре EarnApp сказано, что устанавливать его в Docker-контейнерах, виртуальных машинах, на хостинге или домашних серверах строго запрещено, а CashPilot запускает его именно так."
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "В той же статье справки сказано, что аккаунт, замеченный в такой работе, закрывается без предупреждения, а его ожидающие выплаты отменяются."
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "Наша выплата через PayPal пришла в октябре 2026 года, примерно на 2% меньше выведенного баланса."
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "Минимум $10 для PayPal и Wise, есть автовывод, который выплачивает сам."
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "EarnApp принадлежит Bright Data, и его платежи PayPal приходят от Bright Data Ltd., названной компании."
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Earn.fm платит вам за то, что вы делитесь интернет-трафиком. Сборщик заработка входит по эл. почте и паролю через Supabase. Лёгкий Docker-образ и простое развёртывание (Docker-клиент использует отдельный UUID-токен).\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "Обмен трафиком — вход по эл. почте и паролю, лёгкий клиент"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "API-ключ"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "Войдите на <a href=\"https://app.earn.fm\">app.earn.fm</a> → нажмите на значок профиля (справа вверху) → Account Settings → скопируйте API Key (в формате UUID)"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "Относительно новая платформа. Заработок зависит от местоположения и доступности трафика."
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "Минимум $15. Способы: USDT в BEP20 или Polygon (комиссия $1) или TRC20 (комиссия $3), PayPal, подарочные карты Amazon или Starbucks от $15 или банковский перевод от $1,000 за вычетом комиссий за перевод. Перед первой выплатой вы заполняете платёжный профиль (полное имя и адрес), который используется для квитанций о выплатах."
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "Баланс хранится у Earn.fm; выводится по запросу."
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "Используйте эл. почту и пароль аккаунта Earn.fm (те же, что для входа на <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a>)."
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "10% их заработка пожизненно"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "Стартовый баланс $5"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "Минимум $15, комиссия от $1 до $3 на USDT, а банковский перевод — только от $1,000."
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "Перед первой выплатой вы заполняете платёжный профиль, указав полное имя и адрес."
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "Обозреватели в 2025 году сообщают, что поддержка по эл. почте и в Discord не отвечает; на Trustpilot отмечено, что Earn.fm не отвечает на негативные отзывы."
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Earn.fm публикует собственный Docker-образ, earnfm/earnfm-client."
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher — платформа обмена трафиком, где вы зарабатываете кредиты, посещая сайты через автоматический сёрфбар. Работает как браузерное расширение (аддон). Это не обычный сервис обмена трафиком (bandwidth sharing): он создаёт трафик, автоматически просматривая сайты.\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "Сёрфбар для обмена трафиком — браузерное расширение"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "Заработок начисляется в очках BTP, которые можно обменять на EUR. Только браузерное расширение."
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "Выплата в евро через PayPal или банковский перевод."
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "CashPilot не запускает eBesucher: это браузерное расширение, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "Выплаты от 2 евро через PayPal или SEPA, не реже раза в неделю, без комиссии."
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "eBesucher работает с 2002 года."
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "В выходных данных (Impressum) указан оператор — TurboAd GmbH, зарегистрированная в Berlin-Charlottenburg (HRB 160730 B)."
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux — глобально распределённая вычислительная инфраструктура. Операторы узлов стейкают токены FLUX и предоставляют ресурсы серверов. Три уровня: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Есть официальные Docker-образы.\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "Децентрализованные вычисления — нужен стейк токенов FLUX"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "Нужен стейк от 1,000 FLUX (~$50-500 в зависимости от цены). Более высоким уровням нужен больший залог, но и зарабатывают они больше."
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "Вознаграждения за блоки"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "Самому маленькому уровню узла нужно 1,000 FLUX, заблокированных в качестве залога."
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "Вознаграждение за блок каждый год снижается на 10%, а в руководстве 2026 года вознаграждения на младшем уровне в долларах названы слабыми."
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "CashPilot не запускает Flux: вы пользуетесь собственной программой узла от провайдера, поэтому CashPilot не может развернуть или обновить её за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "Демон Flux — открытое ПО под лицензией MIT."
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network — децентрализованная площадка вычислений, где вы делитесь ресурсами CPU и GPU в обмен на токены GLM. Провайдеры запускают агент Yagna, который выполняет задачи в изолированных средах (песочницах). Один из старейших проектов децентрализованных вычислений (основан в 2016 году). Поддерживает задачи на CPU, рендеринг на GPU и вычисления общего назначения. Платежи через Polygon L2.\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "Децентрализованная площадка вычислений — токены GLM через агент Yagna"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "Заработок зависит от оборудования, цен и спроса на задачи. Узлы только с CPU зарабатывают меньше. Узлы с GPU зарабатывают больше, но им нужна NVIDIA. Запускайте агент провайдера Yagna (не Docker-образ). Платежи в Polygon в токенах GLM."
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "По завершении каждой задачи"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "Начисляются токены GLM. Кошелёк для выплат настраивается при настройке провайдера."
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "CashPilot не запускает Golem: вы сами устанавливаете агент провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Golem описывает запуск провайдера в собственном Docker-образе."
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "Агент провайдера, yagna, — открытое ПО под лицензией GPL-3.0."
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "Аккаунт не нужен: кошелёк для выплат указывается при настройке провайдера."
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "Сеть работает около десяти лет."
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "В политике конфиденциальности Golem указан оператор — Golem Factory GmbH в Цуге, Швейцария."
+  source: "bae79b651923"
+grass.description:
+  text: "Grass — децентрализованная сеть, через которую вы продаёте неиспользуемый трафик для данных обучения ИИ. Работает как браузерное расширение и десктопное приложение, пропуская через ваше подключение запросы веб-скрейпинга для сбора структурированных датасетов. С 8.5M+ пользователей это одна из крупнейших DePIN-сетей обмена трафиком. Зарабатывает токены GRASS в блокчейне Solana.\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "DePIN-обмен трафиком для данных ИИ — зарабатывает токены GRASS"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "Токен доступа"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "Войдите на <a href=\"https://app.grass.io\">app.grass.io</a>, нажмите F12 → Application → Local Storage → нажмите <code>https://app.grass.io</code> → скопируйте значение <code>token</code>"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "Начисляются Grass Points, которые обмениваются на токены GRASS через аирдропы. Реальная стоимость в USD зависит от цены токена. Нужно браузерное расширение или десктопное приложение."
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "Аирдроп по эпохам"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "Вознаграждения приходят периодическими распределениями, которые нужно получить в панели Grass. Распределение Stage 2 (активность с октября 2024 по июнь 2026 года) выплачивается в USDC: получите его на app.grass.io/dashboard не позднее 22 января 2027 года или раньше, если все доли будут разобраны до этого срока. Неполученные вознаграждения Grass оставляет себе."
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "Начисляются ОЧКИ; GRASS получают в панели Grass во время периодических аирдропов."
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "Войдите на <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, нажмите F12 → Application → Local Storage и скопируйте значение <b>accessToken</b>."
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "20% очков за время работы от прямых рефералов, 10% на втором уровне, 5% на третьем"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "Получите свои USDC за Grass Stage 2"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "Grass оставляет себе каждую долю Stage 2, не полученную не позднее 22 янв. 2027 года, а окно может закрыться и раньше, если все доли будут разобраны."
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "Войдите на app.grass.io под аккаунтом, который вы использовали в Stage 2, активируйте Grass Wallet, откройте вкладку Allocation и подтвердите. Получайте только на app.grass.io. Нет очков Stage 2? Выберите «Не для меня»."
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "Вознаграждения приходят только через сезоны аирдропов. Давние операторы узлов сообщали, что оценки за второй сезон составляли от нескольких долларов до пары десятков."
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "Вознаграждения второго сезона, не полученные не позднее 22 января 2027 года, теряются навсегда."
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "Первый аирдроп вызвал волну недовольства из-за маленьких вознаграждений за очко, размытых между более чем двумя миллионами пользователей."
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "CashPilot не запускает Grass: вы пользуетесь собственным приложением или расширением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "В первом аирдропе награду получили почти 1.5 миллиона адресов."
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium — давно существующая децентрализованная беспроводная сеть. Изначально это были хотспоты LoRaWAN, теперь сеть расширилась до 5G. Нужно специальное оборудование ($500+). Зарабатывает токены HNT/MOBILE. Окупаемость сильно упала — обычно $4-8 в месяц.\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "Децентрализованная беспроводная сеть — нужно оборудование, токены HNT"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "Нужно купить оборудование за $500+. Окупаемость сильно упала. Для новых операторов есть процедура одобрения."
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "По эпохам"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "HIP 149 отменил вознаграждения Proof-of-Coverage 6 июля 2026 года; IoT-хотспоты теперь зарабатывают только за передаваемые данные, а более 114,000 из них не передали ничего."
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "Модель вознаграждений Helium несколько раз менялась голосованием, его CEO ушёл в отставку, а HNT упал примерно на 96%."
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "CashPilot не запускает Helium: вы пользуетесь собственным хотспотом провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "Программа шлюза хотспота — открытое ПО под лицензией Apache-2.0."
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "Отслеживайте невыплаченный баланс Kaspa, который HeroMiners хранит для вашего публичного адреса выплат. Запустите собственный майнер Kaspa и направьте его на пул. CashPilot считывает баланс пула и просит вас подтвердить выплаты, когда баланс уменьшается.\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "Майнинг-пул Kaspa, отслеживается по адресу выплат"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS (настраивается)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "Пул проверяет ваш порог выплаты каждый час"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "HeroMiners автоматически платит на ваш адрес, как только вы достигнете выбранного порога. Минимальный порог — 1 KAS.\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "Баланс накапливается на HeroMiners. Прежде чем подтвердить выплату в CashPilot, проверьте в кошельке полученную сумму.\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "Введите полный публичный адрес выплат Kaspa, который ваш майнер использует на HeroMiners. Укажите префикс <b>kaspa:</b> и не указывайте имя воркера.\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "Нужен майнер Kaspa, направленный на HeroMiners"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "вычисления"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "Нет. Ваш майнер отправляет пулу результаты майнинга."
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "В публичной статистике пула видны все адреса выплат и их майнинговая активность."
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "Вместо аккаунта пул использует ваш адрес выплат."
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "Пул берёт комиссию 0.9% и не выплачивает средства, пока не достигнут ваш порог."
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "Делитесь неиспользуемым интернет-трафиком и получайте пассивный доход. Honeygain пропускает через ваше подключение трафик веб-аналитики, доставки контента и маркетинговых исследований. Одна из самых давних платформ обмена трафиком: 12M+ пользователей и более 1M проведённых выплат.\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "Обмен трафиком — самая давняя платформа"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "Эл. почта"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "Пароль"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "Имя устройства"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "Эл. почта вашего аккаунта Honeygain"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "Пароль вашего аккаунта Honeygain"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "Имя, которое отображается в вашей панели Honeygain"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "Зависит от местоположения. IP из США и ЕС зарабатывают больше. Не более 10 устройств на аккаунт."
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "Минимум $20 (20,000 кредитов). Два варианта: PayPal через Tipalti с комиссией около 15% или кредиты JumpTask без комиссии, которые зачисляются на кошелёк JumpTask. Для запроса нужен 6-значный код, отправленный по эл. почте. Первая выплата через PayPal остаётся в статусе «waiting for details», пока вы не зарегистрируетесь в Tipalti по ссылке из их письма. Ссылка срабатывает только один раз, поэтому открывайте её, когда сможете закончить за один подход и телефон будет под рукой: после установки пароля Tipalti попросит подтвердить номер мобильного по SMS (коды истекают за несколько минут), затем запросит имя, адрес, страну, дату рождения и ваш адрес PayPal. Tipalti берёт $2.02 за каждый платёж; выберите USD, чтобы избежать комиссии за конвертацию валюты 1.9-3%. Платёж поступает в течение 2 рабочих дней. Баланс списывается с вашего аккаунта сразу после запроса, даже пока выплата ждёт Tipalti. При каждом следующем входе в Tipalti приходит новый SMS-код, если вы не отметите опцию запомнить устройство на 30 дней. В октябре 2026 года Tipalti не запросил налоговую форму у получателя в Испании."
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "Баланс хранится у Honeygain; выводится по запросу."
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "Используйте эл. почту и пароль аккаунта Honeygain (те же, что и на <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>)."
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "До 25% заработка каждого приглашённого друга в режиме Honeygain"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "Бонус за регистрацию $3 по этой ссылке"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "Выведите баланс Honeygain"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "Держите устройство Honeygain в работе или сделайте выплату"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "Заработок остаётся действительным 24 месяца после того, как достигнет минимума $20. После этого Honeygain может списать то, что не было выплачено."
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "Если приложение не используется более 6 месяцев, Honeygain считает невыплаченный баланс просроченным, даже если он меньше $20."
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "Держите устройство в работе или запросите выплату. В режиме JumpTask баланс, который не меняется, — это нормально, поэтому выберите «Не для меня»."
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "Условия позволяют Honeygain списывать заработок, который достиг порога $20 и не был выплачен в течение 24 месяцев, и считать заработок просроченным после шести месяцев без использования."
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "Минимум — $20, а выплаты PayPal идут через Tipalti, который берёт $2.02 за каждый платёж."
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "Условия позволяют Honeygain заблокировать аккаунт и удержать или списать заработок, который, по его мнению, накоплен обманным путём."
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "Перед первой выплатой через PayPal Tipalti просит подтвердить номер мобильного по SMS и указать имя, адрес и дату рождения."
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "В условиях сказано, что бизнес-клиенты используют трафик для сбора общедоступных веб-данных, но ни один клиент не назван, и вы не можете знать, какой клиент использует ваше подключение."
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "В собственных ответах Honeygain на отзывы о низком заработке сказано, что заработок зависит от спроса в сети и местоположения; авторы отзывов сообщают, что минимума $20 приходится достигать очень долго."
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Honeygain публикует собственный Docker-образ, honeygain/honeygain."
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "В условиях указан оператор — Honeygain UAB, зарегистрированная в Вильнюсе, Литва."
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "На странице для прессы Honeygain сказано, что компания основана в 2019 году."
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net — децентрализованная сеть GPU для задач ИИ/ML. Объединяет простаивающие GPU пользователей и дата-центров. Для заметного заработка нужен GPU NVIDIA с 8GB+ VRAM. Поддерживается развёртывание в контейнерах.\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "Децентрализованная сеть GPU для ИИ — нужен GPU NVIDIA"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "Нужен GPU NVIDIA с 8GB+ VRAM. Для RTX 4090 заявляют $500-1000 в месяц (на практике, скорее всего, меньше)."
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "По эпохам"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "Вознаграждения поставщикам выплачивались из эмиссии токенов независимо от оплаченных задач, а владельцы GPU сообщают, что их карты большую часть времени простаивают."
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "Вознаграждения начисляются в токене IO, а в 2026 году модель выплат сменилась на механизм с привязкой к доллару."
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "В апреле 2024 года около 1.8 миллиона поддельных GPU пытались подключиться через утёкший токен аутентификации, а позже, перед запуском токена, CEO ушёл в отставку."
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "CashPilot не запускает io.net: вы пользуетесь собственной программой воркера от провайдера, поэтому CashPilot не может развернуть или обновить её за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "IPRoyal Pawns позволяет зарабатывать, делясь неиспользуемым трафиком. IPRoyal — давно известный прокси-провайдер, а Pawns — его подразделение по обмену домашним трафиком. CLI Docker-образ принимает учётные данные через флаги командной строки. Новый пользователь, зарегистрировавшийся по реферальной ссылке, получает по $1 к каждой из первых трёх выплат, всего до $3. Каждая выплата должна произойти в пределах окна от одной до трёх недель, которое зависит от местоположения. Окно начинается при регистрации и начинается заново после каждой выплаты. Если окно закроется раньше, оставшиеся бонусы пропадают.\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "Обмен трафиком — бонус до $3 к первым выплатам"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "Эл. почта"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "Пароль"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "Имя устройства"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "ID устройства"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "Эл. почта вашего аккаунта IPRoyal Pawns (передаётся флагом -email)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "Пароль вашего аккаунта IPRoyal Pawns (передаётся флагом -password)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "Имя, которое отображается в вашей панели Pawns (передаётся флагом -device-name)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "Уникальный идентификатор устройства (передаётся флагом -device-id)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "IPRoyal Pawns отключил этот аккаунт."
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "Pawns видит на этом IP-адресе другое активное устройство и платит только за одно на IP, поэтому эта копия работает, но ничего не передаёт и ничего не зарабатывает. Остановите все остальные приложения Pawns на этом IP — на другой машине, ПК или телефоне. Если таких нет, подождите, пока Pawns отключит старое устройство, или попросите поддержку Pawns освободить его."
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "Заработок зависит от местоположения и использования трафика. Домашние IP из США и ЕС зарабатывают больше."
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "Минимум $5. Сначала выберите страну: от неё зависят способы вывода. Из Испании (октябрь 2026 года): PayPal 4% с минимальной комиссией $0.25, выплата через Tremendous, который присылает по эл. почте ссылку, где вы вводите имя и адрес PayPal; USDT (BEP20, ERC20, TRC20) или USDC (BEP20, ERC20) с сетевой комиссией $1; Bitcoin с минимальной комиссией $2; подарочные карты без комиссии. Для первой выплаты нужна разовая проверка номера телефона по SMS: её открывает кнопка Withdraw, а номер вводится с кодом страны. После этого каждая выплата запрашивает код, отправленный на эл. почту аккаунта, и до 72 часов проходит проверку перед отправкой."
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "Баланс хранится у IPRoyal Pawns; выводится по запросу."
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "Используйте эл. почту и пароль аккаунта IPRoyal Pawns (те же, что и на <a href='https://pawns.app' target='_blank'>pawns.app</a>)."
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "$1 к каждой из их первых трёх выплат, всего до $3, если каждая приходится на своё окно в 1-3 недели"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "$1 к каждой из ваших первых трёх выплат, всего до $3; если пропустить окно в 1-3 недели, остальные сгорают"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "В условиях сказано, что аккаунт могут заблокировать без предупреждения за злоупотребление условиями вывода или несколько аккаунтов, и тогда его заработок могут не выплатить."
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "В условиях сказано, что Pawns не разрешает использовать для обмена трафиком любые серверы, VPN или прокси-сервисы и допускает только одно устройство на IP."
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "PayPal стоит 4% (не менее $0.25) через Tremendous, и каждая выплата до 72 часов проходит проверку."
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "Для первой выплаты нужна проверка номера телефона по SMS, а для каждой выплаты — код, отправленный по эл. почте."
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "В политике конфиденциальности указан оператор — Pawns.App Ltd (компания 16043795 в Англии и Уэльсе); по данным Companies House, она зарегистрирована 28 октября 2024 года, то есть менее трёх лет назад."
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "В условиях сказано, что Pawns и его бизнес-клиенты пропускают трафик через ваше устройство и что вы не можете узнать, какой клиент его использует."
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "Минимум $5, подарочные карты без комиссии."
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "Майните Pearl с помощью KRig на одном GPU NVIDIA. Kryptex конвертирует вознаграждения в Bitcoin и хранит баланс в вашем аккаунте, пока вы не запросите вывод."
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "Майнинг Pearl на GPU NVIDIA с зачислением на аккаунт в Bitcoin"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "Эл. почта аккаунта Kryptex"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "Имя воркера"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "Подтверждённая эл. почта вашего аккаунта Kryptex."
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "Дайте каждой машине отдельное имя в аккаунте Kryptex."
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "0.00001 BTC через Lightning (для других способов по-разному)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kryptex конвертирует вознаграждения Pearl в BTC и хранит баланс в вашем аккаунте. Запросите вывод на Kryptex. У каждого способа свой минимум и своя комиссия. Минимум для Bitcoin Lightning — 0.00001 BTC."
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "Kryptex хранит сконвертированные Bitcoin в вашем аккаунте, пока вы их не выведете."
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "20% дохода пула Kryptex от приглашённых пользователей"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64, GPU NVIDIA поколения Volta (sm_70) или новее и NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "Эта машина сообщает о подключении через хостинг. Прежде чем майнить, проверьте условия своего провайдера. Некоторые провайдеры, в том числе Hetzner Cloud, это запрещают. Прежде чем полагаться на оценку прибыли, проверьте свои реальные расходы на электричество."
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "KRig берёт 0% комиссии майнера на Kryptex Pool. Kryptex указывает отдельную комиссию пула Pearl PPS+ в 3%. Комиссии за вывод зависят от способа."
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "вычисления"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "Нет. KRig отправляет результаты майнинга в Kryptex Pool."
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Kryptex видит эл. почту вашего аккаунта, имя воркера, хешрейт и IP-адрес."
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "Некоторые сети и DNS-резолверы блокируют подключения к майнинг-пулам."
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "Подтвердите эл. почту аккаунта Kryptex, прежде чем майнить на него."
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Kryptex может приостановить неактивные аккаунты через шесть месяцев и удалить их через год."
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "Минимумы и комиссии за вывод зависят от способа."
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "Лицензия KRig разрешает скачивать релиз и запускать его из майнингового ПО."
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "KRig отправляет шары Pearl в Kryptex Pool через опубликованную TLS-точку подключения."
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes (Mysterium Network) — децентрализованная сеть VPN и прокси на основе технологии блокчейн. Вы зарабатываете токены MYST, запуская узел, который предоставляет пользователям услуги VPN, прокси и сбора данных. Нужны возможности (capabilities) NET_ADMIN, SETUID и SETGID и устройство TUN, которое он использует внутри собственного сетевого пространства имён на огороженном барьером мосту приложений для заработка. Есть встроенный веб-интерфейс для управления узлом. Работает и на домашних подключениях, и на VPS, но реферальный бонус выплачивается только за узлы на домашнем IP.\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "Узел децентрализованного VPN — на основе блокчейна, работает на VPS"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "Адрес WebUI"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "Диапазон портов UDP"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "Адреса хоста, на которых публикуется WebUI узла (порт 4449). 127.0.0.1 оставляет его доступным только на этой машине. Чтобы открывать его через обратный прокси, добавьте адрес, к которому подключается прокси, через запятую без пробелов: 127.0.0.1,172.18.0.1."
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "UDP-порты, которые узел использует для VPN-сессий, в формате start:end. Пробросьте на роутере этот же диапазон. Каждая сессия занимает около двух портов, поэтому 30 портов по умолчанию выдерживают около 15 сессий одновременно — больше, чем получает домашний узел. Более широкий диапазон ничего не исправит и обойдётся дороже: каждый опубликованный порт замедляет запуск и удаление узла (300 портов запускаются около 12 с), CashPilot принимает не более 300, а со стандартным userland proxy Docker каждый порт ещё и занимает около 2.5 MB памяти. Если все сессии завершаются ошибкой, дело в роутере, а не в нехватке портов: см. «Routers that rewrite UDP source ports» в руководстве по Mysterium. Держите диапазон ниже 32768: порты 32768-60999 — это эфемерный диапазон Linux, где любая программа на хосте может ненадолго занять порт, а один занятый порт срывает запуск узла. Узел, у которого диапазон уже задан, сохраняет его."
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "Хранилище ключей идентификатора узла. Если его уничтожить, будет создан совершенно новый идентификатор: узел потеряет репутацию и весь заработок, который ещё числится за старым."
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "Узел не может выполнить sudo внутри своего контейнера, поэтому не может настроить VPN-интерфейс и файрвол, и каждая сессия срывается на этапе настройки: узел выглядит работающим, но ничего не зарабатывает. Контейнер был создан без возможностей SETUID и SETGID. Обновите CashPilot и воркер, на котором работает этот узел, затем переразверните Mysterium из панели; идентификатор узла хранится в его томе данных и сохранится."
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "За последние 6 часов ни одна VPN-сессия не подключилась к этому узлу напрямую. Все перешли на hole punching, а многим покупателям так подключиться не удаётся, поэтому узел зарабатывает меньше. Его UDP-порты недоступны из интернета. На роутере пробросьте диапазон UDP-портов ${UDP_PORTS} (start:end, один и тот же диапазон с обеих сторон) на ${HOST_ADDRESS}. Предупреждение исчезнет само, как только какая-нибудь сессия подключится напрямую."
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "Мониторинг Mysterium помечает узел на ${WORKER_NAME} как неработающий, поэтому его нет в списке узлов, из которого выбирает большинство покупателей, даже если собственная проверка узла говорит, что все порты доступны. Сначала убедитесь, что у узла есть /dev/net/tun и SETUID/SETGID: без них он ломается так же: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 Если с этим всё в порядке, частая причина — роутер перед ${WORKER_NAME}, который переписывает UDP-порт источника в ответах узла, как только на этот порт пришёл пакет извне. См. тест в руководстве: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "Каждая из последних пяти VPN-сессий узла на ${WORKER_NAME} завершилась примерно через минуту, не передав данных, поэтому узел ничего не зарабатывает, хотя выглядит работающим. Вероятная причина — роутер перед ${WORKER_NAME}: как только пакет извне доходит до порта, роутер переписывает порт источника в последующих ответах узла с этого порта, а каждая сессия начинается именно с такого пакета (собственной проверки портов узла), поэтому покупатели отбрасывают ответы узла. Более широкий диапазон портов не поможет. См. тест и способы исправления в руководстве: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports Предупреждение исчезнет, когда какая-нибудь сессия передаст данные."
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "Заработок в токенах MYST. Домашние IP зарабатывают значительно больше. Для управления есть WebUI узла на порту 4449; по умолчанию он опубликован только на той машине, где работает узел (127.0.0.1). С другой машины сначала откройте SSH-туннель (ssh -L 14449:127.0.0.1:4449 и адрес машины узла, затем откройте в браузере http://127.0.0.1:14449; локальный порт 14449 выбран, чтобы не конфликтовать с узлом на вашей собственной машине) или добавьте адрес в UI_ADDRESS (см. «WebUI address» в руководстве по Mysterium). VPS принимаются. Настоятельно рекомендуется проброс портов UDP 23000-23029 (значение UDP_PORTS по умолчанию) — без него узлы получают статус Strict NAT, и многие VPN-сессии срываются, что сильно снижает доход. Важно: после первого запуска укажите через WebUI узла или CLI кошелёк получателя (для расчётов), совпадающий с вашим аккаунтом mystnodes.com, — так ончейн-заработок будет привязан к вашей облачной панели."
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "Автоматический ончейн-расчёт каждый раз, когда у узла накапливается 5 MYST без расчёта"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "Нажимать ничего не нужно. Каждый узел сам проводит расчёт в Polygon, как только у него накапливается 5 MYST без расчёта, и около 21% уходит на комиссии (комиссия Hermes 20% плюс небольшая комиссия за транзакцию), так что за один расчёт на кошелёк получателя приходит примерно 3.9 MYST. TequilAPI каждого узла показывает его расчёты по адресу /transactor/settle/history. Цифра «total earnings» на MystNodes охватывает только последние 30 дней; это не баланс и не заработок за всё время. Бонусные MYST из программы вознаграждений MystNodes сами не зачисляются: получите их на странице Rewards в течение 30 дней после распределения, как сказано в справочном центре MystNodes."
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "Кошелёк получателя указывается ПОСЛЕ развёртывания, через TequilAPI или WebUI узла, — не через переменную окружения, поэтому его нельзя прочитать из спецификации контейнера."
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "Используйте эл. почту и пароль аккаунта MystNodes (те же, что и на <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>)."
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "5 MYST за каждого друга, чей узел заработает 5 MYST (только домашние IP)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "5 MYST, когда ваш узел заработает первые 5 MYST (домашний IP, узел привязан на mystnodes.com)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "Получите вознаграждения MystNodes за прошлый месяц"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "Вознаграждения, не полученные в течение 30 дней после ежемесячного распределения, сгорают и возвращаются в пул следующего месяца."
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "Откройте страницу Rewards и обменяйте свои очки на MYST."
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "Трафик. Ваше подключение используется как выходной узел сети Mysterium, которая продаёт услуги VPN, прокси И сбора данных (скрейпинга). Трафик скрейпинга с домашнего IP чаще всего вызывает жалобы, и вы не можете выбрать, какой из трёх видов трафика проходит через ваш узел."
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "Да. Посторонние люди пропускают свой трафик через ваш IP-адрес — в этом и состоит продукт."
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "Идентификатор узла (адрес в блокчейне), ваш IP и приблизительное местоположение (страна/город/интернет-провайдер), которые узел публикует в сети, чтобы покупатели могли его выбрать."
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "Реальный, и его стоит понимать. Трафик других людей выходит через ваше подключение и приписывается вам, поэтому всё, что они делают, выглядит так, будто исходит с вашей линии. Многие договоры с домашними интернет-провайдерами это запрещают. Проверьте свой, прежде чем запускать."
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "Без ограничения числа устройств на аккаунт и на IP."
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "Около 21% каждого расчёта уходит на комиссии (комиссия Hermes 20% плюс комиссия за транзакцию), а заработок выплачивается в токене MYST."
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "Ваш узел служит выходом для клиентов Mysterium, покупающих VPN, прокси и сбор данных, и вы не можете выбрать, чей трафик он передаёт."
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "Программа узла — открытое ПО под лицензией GPL-3.0."
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Mysterium публикует собственный Docker-образ, mysteriumnetwork/myst."
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "Расчёты идут на ваш собственный кошелёк; номер телефона или документы не нужны."
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "Проект узла работает с 2017 года."
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "На сайте Mysterium сказано, что сеть разрабатывает Blockdev AG, Цуг, Швейцария."
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay — DePIN-сеть, которая вознаграждает пользователей за обмен трафиком через браузерное расширение. Платформа защищена Cloudflare, что может затруднять автоматический доступ. Пользователи зарабатывают Nodepay Points, пока расширение активно. Сеть ориентирована на инфраструктуру данных для обучения ИИ.\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "DePIN-обмен трафиком для ИИ — браузерное расширение"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "Начисляются Nodepay Points; очки пользователей, прошедших проверки соответствия Nodepay, конвертируются в токен NC. Защита Cloudflare может блокировать автоматический сбор. Нужно браузерное расширение."
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "Аирдроп токена NC (сроки не подтверждены)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "Система на очках. Очки пользователей, прошедших проверки соответствия Nodepay, конвертируются в токен NC, запущенный в январе 2025 года."
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "По итогам первого сезона Nodepay удалил более 300,000 аккаунтов, которые счёл ботами, и аннулировал 17 миллиардов очков."
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "Вознаграждения — это очки, конвертируемые в токен NC, поэтому их стоимость зависит от токена."
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "CashPilot не запускает Nodepay: вы пользуетесь собственным браузерным расширением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes — бесплатный начальный уровень Noderr Protocol, DeFi-проекта в Base L2. Микроузел — это небольшой агент на запасном телефоне Android, ПК с Windows, Mac или в браузере Chromium. На Android он делится мобильным подключением телефона: чужой трафик Noderr выходит через IP мобильного оператора, поэтому нужна SIM-карта с мобильным интернетом. На ПК или в браузере он выполняет задачи автоматизации для протокола, используя свободные вычислительные ресурсы. По замыслу вознаграждения выплачиваются в NODR с учётом ончейн-оценки времени работы и надёжности, но на время беты сеть работает в тестнете Base Sepolia: вознаграждения узлам не обеспечены средствами, и пока ни одно не выплачено.\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "Бесплатный микроузел (обмен подключением на Android, Windows, Mac, браузер) — тестнет, вознаграждения пока не обеспечены"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "Бета в тестнете: вознаграждения узлам не обеспечены средствами, и пока ни одно не выплачено. 5-10% APY на сайте — это целевой показатель по замыслу. Вернитесь к этому, когда сеть уйдёт из Base Sepolia."
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "Вознаграждения начисляются на собственный кошелёк узла, и их получают в приложении или dApp. Во время беты это тестовые токены Base Sepolia без рыночной стоимости."
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "При первом запуске приложение создаёт кошелёк узла и выпускает на него бесплатный soulbound Utility NFT. Сделайте резервную копию кошелька в приложении: потеряв устройство, вы потеряете идентификатор узла. Во время беты вознаграждения начисляются в Base Sepolia (тестнет)."
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Для Android нужна SIM-карта с мобильным интернетом; для десктопного и браузерного клиентов требования к IP не опубликованы."
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "Зависит от устройства. Телефон Android продаёт своё мобильное подключение: чужой трафик Noderr выходит через IP-адрес мобильного оператора телефона и расходует его тарифный пакет. ПК с Windows, Mac или браузер продают свободные вычислительные ресурсы для задач, которые провайдер называет автоматизацией соцсетей и контента."
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "Да. На Android чужой трафик Noderr выходит через мобильный IP-адрес вашего телефона; перед запуском приложение запрашивает согласие и сохраняет его, а прекратить обмен можно на том же экране. Для клиентов Windows, Mac и браузера провайдер описывает задачи автоматизации и не говорит, передают ли они трафик других людей."
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "Адрес кошелька узла и показатели времени работы и выполнения задач записываются в блокчейн как оценка репутации (TrustFingerprint). Провайдер утверждает, что задачи анонимизированы и выполняются в песочнице, а ключи кошелька никогда не покидают устройство. Ничего более конкретного не опубликовано."
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "На Android общим подключением служит мобильный тариф оператора: в собственной документации провайдера предупреждается, что правила допустимого использования некоторых операторов могут запрещать обмен, а передаваемый трафик расходует пакет тарифа. О условиях интернет-провайдеров для десктопного и браузерного клиентов провайдер ничего не говорит."
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "Один узел на устройство, у каждого свой soulbound Utility NFT; запускать несколько устройств разрешено и даже поощряется. Лимит на IP не опубликован. Аккаунта в обычном смысле нет: идентификатор — это кошелёк, который приложение создаёт при первом запуске."
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "Вознаграждения узлам — тестовые токены без обеспечения и без рыночной стоимости, и ни одно ещё не выплачено; 5-10% APY на сайте — это целевой показатель по замыслу."
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "Для десктопного и браузерного клиентов Noderr описывает задачи автоматизации и не говорит, передают ли они трафик других людей."
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "Провайдер утверждает, что задачи анонимизированы и выполняются в песочнице, но ничего более конкретного не публикует."
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "Всё ещё бета в тестнете Base Sepolia."
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "CashPilot не запускает Noderr: вы пользуетесь собственным приложением или расширением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "Аккаунт не нужен: приложение создаёт кошелёк при первом запуске."
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Nodle использует Bluetooth смартфона для создания IoT-инфраструктуры. Приложение в фоне обнаруживает ближайшие IoT-устройства и передаёт их данные, зарабатывая токены NODL. О нём писал Forbes, есть корпоративные партнёрства с Vivendi и Hayden AI. Только для мобильных (iOS и Android).\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "Ретранслятор Bluetooth IoT — мобильное приложение, вознаграждения в токенах NODL"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "Очень низкий заработок. Фоновое приложение для телефона, использующее Bluetooth. Подключение кошелька может работать нестабильно."
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "Непрерывно"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "NODL хранятся в собственном кошельке приложения в ZKsync Era; проверить их можно в приложении или в обозревателе блоков ZKsync Era. Nodle ушёл со своего парачейна Polkadot, а мост Polkadot-ZKsync закрылся 31 декабря 2025 года, поэтому NODL, оставшиеся на стороне Polkadot, больше нельзя перевести в ZKsync."
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+nodle.referral.bonus.referrer:
+  text: "Вознаграждение в NODL за каждого нового активного пользователя, присоединившегося по приглашению (Nodle не публикует сумму)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "Один из авторов отзывов сообщает, что заработал около $3 за три-четыре года; другие сообщают о резком падении дневного заработка."
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "CashPilot не запускает Nodle: вы пользуетесь собственным мобильным приложением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana — децентрализованная площадка вычислений на GPU, построенная на Solana. Она связывает владельцев GPU со спросом на задачи ИИ и платит в токенах NOS. RTX 3060 зарабатывает примерно $0.048/ч. Платформа ориентирована на задачи инференса ИИ и использует блокчейн Solana для планирования задач и расчётов по платежам. Узлы выполняют задачи в контейнерах через Nosana CLI.\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "Вычисления на GPU в Solana — токены NOS, RTX 3060 ~$0.048/ч"
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 ~$0.048/ч, более мощные GPU зарабатывают больше. Заработок зависит от наличия задач и модели GPU. Нужны GPU NVIDIA, Linux, Docker и Nosana CLI. Платежи в токене NOS в Solana."
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "По завершении каждой задачи"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "Заработанные токены NOS в Solana. Выплата на настроенный кошелёк."
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "По умолчанию Nosana создаёт кошелёк Solana, поэтому большинство пользователей ни разу не видели его адреса."
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "Каждый хост должен заблокировать стейк NOS, размер которого зависит от почасовой цены его GPU."
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "Хостам платят в NOS, поэтому заработок в долларах меняется вместе с токеном и спросом на их карту."
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "CashPilot не запускает Nosana: вы пользуетесь собственной программой хоста от провайдера, поэтому CashPilot не может развернуть или обновить её за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN — майнинг-пул Bitcoin без аккаунта: ваш майнер входит, указывая ваш адрес Bitcoin в качестве имени пользователя, и пул платит на этот адрес. CashPilot здесь не запускает майнер. Он считывает невыплаченный баланс, который OCEAN хранит для вашего адреса, чтобы вы видели заработок своего ASIC (Bitaxe, Antminer) рядом с другими доходами. Невыплаченный баланс заработан, но не получен: OCEAN выплачивает его ончейн, как только он превысит порог выплаты.\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "Майнинг-пул Bitcoin, отслеживается по адресу выплат"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "Когда очередной блок поднимает ваш баланс выше порога"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "OCEAN платит ончейн на ваш адрес, как только невыплаченный баланс достигает порога. Выплаты через Lightning (включаются по желанию, BOLT12) CashPilot не обнаруживает."
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "Невыплаченное заработано, но не получено, пока OCEAN не выплатит его ончейн на этот адрес, если только вы не включили выплаты через Lightning."
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "Ваш адрес выплат BTC: имя пользователя, которое ваш майнер использует на OCEAN, без части <b>.workername</b>. Он публичный и не даёт доступа к средствам."
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "Нужен ASIC-майнер Bitcoin (Bitaxe, Antminer), направленный на mine.ocean.xyz:3334"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "вычисления"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "Нет. Ваш майнер отправляет хеши в пул; никто не пропускает трафик через ваше подключение."
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "Ваш адрес Bitcoin, выбранные вами имена воркеров, ваш хешрейт и IP-адрес майнера, каким его видит пул."
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "Майнер держит одно открытое подключение к пулу и расходует мало трафика. Следить стоит за расходами на электричество, а не за интернет-провайдером."
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "Аккаунта нет. Идентификатором служит адрес, и его статистику на ocean.xyz может посмотреть кто угодно."
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "Выплаты только в Bitcoin, и ончейн ничего не выплачивается, пока баланс не достигнет 0.01048576 BTC."
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "Комиссия пула 2% или 1%, если вы сами собираете шаблоны блоков с помощью DATUM."
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "CashPilot не запускает майнер для OCEAN: вы сами направляете своё оборудование на пул, а CashPilot только считывает баланс."
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "Ни аккаунта, ни проверки личности. OCEAN спрашивает только адрес Bitcoin, на который платит."
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream — одноранговая площадка, где можно продавать неиспользуемый трафик. На ней работает сеть домашних прокси, которую используют для маркетинговых исследований, мониторинга SEO и проверки рекламы. Простая настройка Docker: нужен только CID (Client ID). Учтите, что вход с CAPTCHA может затруднять автоматический сбор заработка.\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "Обмен трафиком — простая настройка по CID"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "Client ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "Войдите на <a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> → нажмите Setup на боковой панели → ваш CID показан в команде Docker"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "PacketStream не принимает IP-адрес этой копии, считая его не домашним, поэтому она ничего не зарабатывает. Запустите её на машине, подключённой к интернету через домашнюю линию, или удалите эту копию."
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "У PacketStream уже есть другой клиент на этом IP-адресе, а платит он только за одного на IP. Удалите эту копию или другую, которая использует тот же IP."
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "Платит $0.10/GB за переданный трафик. Заработок сильно зависит от спроса на местоположение вашего IP."
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "Только PayPal, минимум $5, комиссия 3% показывается перед подтверждением. Первый вывод сохраняет ваш адрес эл. почты PayPal; чтобы потом изменить его, нужно подтверждение по эл. почте и ожидание 7 дней, поэтому проверьте адрес перед подтверждением. Запросы проверяются и отправляются в течение 7 дней; пока запрос ждёт, его можно отменить, а новый можно создать только после того, как предыдущий выплачен."
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "Баланс хранится у PacketStream; выводится по запросу."
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "Войдите на <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, нажмите F12 → Application → Cookies и скопируйте значение cookie <b>auth</b> (это JWT)."
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "20% их заработка на трафике (временный бонус Packeter)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "Бонус 10% к первому пополнению картой или через PayPal (для клиентов прокси)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "Авторы отзывов на Trustpilot в 2025 и 2026 годах сообщают, что выплаты приходят с опозданием или не приходят вовсе, а один давний пользователь пишет, что выплаты сначала замедлились, а потом прекратились; другие в 2026 году сообщают, что получили деньги."
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "Только PayPal с комиссией за вывод 3%; у пользователей в странах, где PayPal не работает, другого способа нет."
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "Условия позволяют PacketStream удерживать, отменять или аннулировать заработок, который он связывает с мошенничеством, манипуляциями или запрещённой деятельностью."
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "В условиях сказано, что клиенты прокси и сам PacketStream пропускают трафик через ваше подключение; проверка обычных покупателей не описана."
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "На Trustpilot отмечено, что PacketStream не отвечает на негативные отзывы; авторы отзывов сообщают, что их письма остаются без ответа."
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "PacketStream публикует собственный Docker-образ, packetstream/psclient."
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "Условия требуют только устройство и подключение, которые принадлежат вам или которыми вы вправе пользоваться."
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "Проверка личности в условиях не описана; для выплаты нужен адрес PayPal."
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "В условиях указана компания PacketStream Inc., право Калифорнии."
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "PacketStream работает с 2018 года."
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp — DePIN-платформа, на которой можно получать вознаграждения в криптовалюте и через PayPal, делясь неиспользуемым трафиком и вычислительными ресурсами. На практике только Windows: на собственной странице загрузки разработчика Android, iOS и Linux значатся как «coming soon» без изменений как минимум с февраля 2025 года, а версии для macOS нет — хотя рекламные тексты на том же сайте заявляют более широкую поддержку. Docker-образа нет.\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "DePIN-трафик/вычисления — только Windows, выплаты в криптовалюте и через PayPal"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "Только десктопное приложение для Windows (v1.0.x); Android/iOS/Linux разработчик анонсирует как «coming soon» с начала 2025 года, и они так и не вышли. Официального Docker-образа нет."
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "10% их заработка пожизненно"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "CashPilot не запускает PassiveApp: вы пользуетесь собственным десктопным приложением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "На сайте PassiveApp указаны PayPal, криптовалюта и подарочные карты с минимумом от $3."
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase — платформа обмена трафиком, которая платит пользователям криптовалютой за неиспользуемое интернет-подключение. Вы входите в клиент с помощью Access Token из своей панели. Больше всего зарабатывают домашние IP, но IP дата-центров тоже поддерживаются. Официальный мультиархитектурный Docker-образ (amd64/arm64/armv7).\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org — обмен трафиком, выплаты в криптовалюте, вход по Access Token. Кошелёк не создаётся"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Access Token"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "Имя устройства"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "Войдите на <a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> → скопируйте свой Access Token (он показан в команде Docker на странице настройки)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "Любое имя (без пробелов), по которому вы узнаете это устройство в панели ProxyBase"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "ProxyBase не может связаться со своим ретранслятором как минимум полчаса, поэтому ничего не зарабатывает. Перезапуск это исправляет; если после перезапуска проблема остаётся, проверьте, есть ли у этой машины доступ в интернет."
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "Выплаты в криптовалюте. Заработок зависит от местоположения и использования трафика."
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "На сайте указан минимум $0.20, а в октябре 2026 года запрос меньше $1 прошёл успешно. Запрос всегда выводит весь баланс — в USDC в Polygon, POL или Litecoin, на адрес, который вы вводите. Сетевую комиссию оплачивает ProxyBase."
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "Заработок начисляется на АККАУНТ ProxyBase, которому принадлежит Access Token, и выводится из панели по запросу. Клиент не хранит кошелька, а контейнер не хранит состояния — docker.volumes пуст. Не путайте с proxybase-xyz (ProxyBase Markets, та же организация), который действительно создаёт локальный кошелёк и объявляет его критически важным томом."
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "Сам ProxyBase в августе 2025 года писал, что он новый и пока не лучшее место, чтобы зарабатывать по максимуму."
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "В 2026 году ProxyBase сменил клиент и отключил старый бэкенд, поэтому контейнеры на старом образе продолжали работать, но перестали зарабатывать."
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "Только криптовалюта — USDC в Polygon, POL или Litecoin, без фиатных способов. Минимум $0.20, сетевую комиссию оплачивает ProxyBase."
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "Наш вывод на сумму меньше $1 прошёл в октябре 2026 года."
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "Для вывода нужен только адрес, введённый в запросе."
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "ProxyBase публикует собственный образ клиента и поддерживает IP дата-центров."
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets — площадка SOCKS5-прокси для ИИ-агентов. Продавцы запускают лёгкий демон на Rust (CLI), который подключается по WebSocket и передаёт трафик покупателей через их интернет-подключение, зарабатывая USDC в Tempo Chain за каждый проданный GB. Поддерживаются режимы direct (собственный трафик) и upstream (перепродажа внешних прокси) с автоматическим переподключением. Покупатели приобретают прокси-сессии по стране, интернет-провайдеру и объёму трафика. Платежи проходят через Machine Payments Protocol (MPP) в Tempo Chain. Реферальная ссылка предназначена для покупателей: покупатель, открывший по ней консоль, получает 10% сверху к первому пополнению.\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz — площадка SOCKS5 для ИИ-агентов, выплаты в USDC. Создаёт кошелёк, единственная копия ключа которого хранится в томе"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "URL API бэкенда"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "Переопределяет URL API бэкенда (по умолчанию https://api.proxybase.xyz)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "При первом запуске контейнер настраивается сам: создаёт кошелёк secp256k1 (BIP-39), проходит аутентификацию по схеме ECDSA challenge-response и начинает продавать трафик в режиме direct-only. Всё состояние (кошелёк, токен сессии, настройки продавца) сохраняется в томе <code>proxybase-data</code>. При первом запуске посмотрите адрес кошелька в логах контейнера. Используйте <code>--upstream</code>, чтобы добавить пути перепродажи внешних прокси.\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "Файл ключа созданного кошелька. Этот том — и есть деньги: копии на сервере нет, поэтому, удалив его, вы уничтожите и средства."
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "Заработок зависит от проданных GB по рыночным ставкам. IP VPS и дата-центров зарабатывают меньше домашних. Режим multi-upstream позволяет совмещать собственный трафик с внешними прокси."
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "Зафиксируйте заработок командой <code>proxybase-cli seller payout create</code>; он приходит в USDC в Tempo Chain (Tempo MPP). Выплата возможна на любой EVM-адрес, ключом от которого вы владеете (Tempo — EVM-сеть), подписывать ничего не нужно; чтобы увидеть USDC, добавьте сеть Tempo в кошелёк. Если кошелёк всё равно его не показывает, добавьте токен Tempo USDC вручную: импортируйте его по адресу контракта, который даёт Proxybase, и проверьте этот адрес, прежде чем доверять балансу."
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "При первом запуске клиент сам создаёт кошелёк."
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "15% от каждого пополнения приглашённого покупателя в виде кредита на ваши собственные прокси-сессии"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "+10% к первому пополнению покупателя"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "Трафик: в виде SOCKS5-прокси, который продаётся покупателям на площадке ProxyBase."
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "Да. Покупатели пропускают свой трафик через ваше подключение — именно это и продаётся."
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "Адрес кошелька, созданный на вашей машине, и объём передаваемого вами трафика."
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "Реальный, и он напрямую касается домашних подключений. Прокси-трафик неизвестных покупателей выходит под вашим IP, поэтому жалобы на злоупотребления придут к вам. В этом каталоге ничто не ограничивает сервис адресами дата-центров, а домашние IP зарабатывают больше, так что стимулы здесь работают против вас: прочитайте условия своего интернет-провайдера, прежде чем запускать его дома."
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "неизвестно — провайдер не публикует лимит устройств на аккаунт или на IP, и в каталоге он тоже не указан."
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "Выплаты в USDC в Tempo Chain на любой EVM-адрес, ключом от которого вы владеете."
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "Ваше подключение продаётся покупателям на площадке как SOCKS5-прокси; описания того, как проверяют покупателей, мы не нашли."
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "Собственная страница заработка в заголовке обещает отсутствие KYC и выплату от $1."
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "ProxyBase публикует собственный образ клиента и принимает подключения из дата-центров."
+  source: "ae81d006093f"
+proxylite.description:
+  text: "ProxyLite монетизирует ваш интернет-трафик, делясь им с проверенными организациями. Работает и на домашних подключениях, и на VPS или в дата-центрах. Простая настройка: нужен только ID пользователя из панели. Предлагает щедрую пожизненную реферальную комиссию 15%.\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "Обмен трафиком — пожизненная реферальная комиссия 15%, работает на VPS"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "ID пользователя"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "Войдите на <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → ваш ID пользователя показан на главной странице панели рядом с эл. почтой. Нужен аккаунт? Зарегистрируйтесь по ссылке <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a>"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "Домашние IP зарабатывают больше. Подключения VPS и дата-центров принимаются по более низким ставкам."
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "15% их заработка пожизненно"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "Владелец сайта скрыт в записях домена, и компании, которая стоит за ним, мы не нашли."
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "Минимум $5, в криптовалюте или через PayPal."
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "ProxyLite публикует Docker-образ, proxylite/proxyservice, и принимает подключения из дата-центров по более низкой ставке."
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "Программа Peer от ProxyRack позволяет зарабатывать, делясь трафиком в составе их прокси-сети. Каждому устройству нужен уникальный 64-символьный шестнадцатеричный UUID и, по желанию, API-ключ для автоматической регистрации устройства. Работает и на домашних подключениях, и на VPS или в дата-центрах. Панель защищена Cloudflare, поэтому API-ключ может понадобиться получать вручную через браузер.\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "Обмен трафиком — UUID на каждое устройство, работает на VPS"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "UUID устройства"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "API-ключ"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "Имя устройства"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "Уникальный 64-символьный шестнадцатеричный ID для каждого устройства. Сгенерировать: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "Войдите на <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → API-ключ показан на главной странице панели (если он указан, устройство регистрируется автоматически). Нужен аккаунт? Зарегистрируйтесь по ссылке <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "Понятное имя устройства в панели"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "Клиент Proxyrack не скачался при запуске контейнера, поэтому контейнер работает, но ничего не зарабатывает. При перезапуске он скачается снова; если после перезапуска проблема остаётся, проверьте, есть ли у этой машины доступ в интернет."
+  source: "b5143d72ce35"
+proxyrack.device_link.steps:
+  text: "Войдите в ProxyRack, откройте Devices, выберите Add device и вставьте этот UUID. Пока устройство не добавлено в ваш аккаунт, оно ни для кого не зарабатывает. Если вы указали API-ключ, контейнер регистрируется сам: проверьте, что устройство есть в списке."
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "Домашние IP зарабатывают больше, чем IP дата-центров. Панель за Cloudflare может затруднять автоматический доступ."
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "Запросите выплату в панели. ProxyRack проверяет её в течение 72 часов, затем Tremendous присылает вам по эл. почте вознаграждение, которое можно получить через PayPal, подарочной картой или банковским переводом. Варианта с криптовалютой нет."
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "Баланс хранится у ProxyRack; выводится по запросу."
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "Войдите на <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, нажмите F12 → Network, найдите любой запрос к API и скопируйте значение заголовка <b>Api-Key</b>. Нужен аккаунт? Зарегистрируйтесь по ссылке <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>."
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Proxyrack указывает лимит в 500 устройств на АККАУНТ и не указывает лимит на IP. IP дата-центров принимаются, но переводятся на более низкую ставку."
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "В справочном центре ProxyRack сказано, что при удалении устройства его заработок списывается с вашего аккаунта и возвращается, только если то же устройство добавят снова."
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "ProxyRack публикует собственный Docker-образ, proxyrack/pop, и принимает IP дата-центров по более низкой ставке."
+  source: "278541f81053"
+repocket.description:
+  text: "Repocket позволяет получать пассивный доход, делясь неиспользуемым интернет-трафиком. Больше всего зарабатывают домашние IP; IP VPS и дата-центров принимаются по более низким ставкам. Не более 5 устройств и 5 активных сессий на аккаунт. Docker-контейнер проходит аутентификацию по эл. почте аккаунта и API-ключу из панели Repocket (не по паролю).\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "Обмен трафиком — не более 5 устройств, вход по API-ключу"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "Эл. почта"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "API-ключ (UUIDv4, не пароль)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "Эл. почта вашего аккаунта Repocket"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "Ваш API-ключ Repocket — войдите на <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> и скопируйте API-ключ со страницы bandwidth-earnings (это НЕ пароль от аккаунта). Нужен аккаунт? Зарегистрируйтесь по ссылке <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a>"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "Домашние IP зарабатывают больше. IP VPS и дата-центров принимаются, но по более низким ставкам."
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4 ($2 после первой выплаты)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Repocket устанавливает минимум для каждого аккаунта: в октябре 2026 года это было $4 до первой выплаты и $2 после неё, намного меньше прежде рекламируемых $20. Способы: Tremendous (на вашу эл. почту) или USDT в Polygon. Каждый запрос подтверждается по ссылке из письма в течение 2 часов, и одновременно может ожидать только один запрос. В октябре 2026 года Repocket отклонил запрос через Tremendous с сообщением «Please, message support», а USDT в Polygon прошёл."
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "Баланс хранится у Repocket; выводится по запросу."
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "Используйте эл. почту и пароль аккаунта Repocket (те же, что и на <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>). Нужен аккаунт? Зарегистрируйтесь по ссылке <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a>."
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "$2, когда приглашённый заработает $7, затем 5% его заработка пожизненно"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "Бонус $2 на кошелёк при регистрации"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Repocket указывает лимит в пять устройств на АККАУНТ, но не публикует лимит устройств на IP. Цифра «2 устройства на IP», которую повторяют сайты с обзорами, не подтверждена провайдером, поэтому CashPilot её не утверждает."
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "Держите устройство Repocket в работе или выведите баланс"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "После 12 месяцев без входа, выплат или обмена трафиком Repocket может аннулировать невыплаченный баланс."
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "Держите устройство в работе, войдите в аккаунт или выведите средства. Если перестаёте пользоваться Repocket, сначала выведите баланс."
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "Несколько авторов отзывов на Trustpilot сообщают об отменённых выплатах и обнулённых балансах; один пишет, что поддержка сослалась на нерегулярный заработок на трафике. Страница даёт Repocket оценку 2.7 и отмечает, что он не отвечает на негативные отзывы."
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "Авторы отзывов сообщают об отклонённых выводах и о том, что за выплатой приходится побегать."
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "Платёжная политика Repocket позволяет ему отменять, аннулировать или навсегда изымать заработок всякий раз, когда он подозревает, что заработок недействителен, а также изымать невыплаченный заработок неактивного аккаунта."
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "Та же политика позволяет Repocket в любое время без предупреждения добавлять, убирать или заменять способы выплаты; PayPal уже убран."
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "В условиях сказано, что Repocket может в любой момент потребовать подтверждения личности или аккаунта, и от этого зависит право на выплату."
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "В условиях сказано, что Repocket и его партнёры используют сетевые ресурсы, но не сказано, кто эти партнёры и как их проверяют."
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "На Trustpilot отмечено, что Repocket не отвечает на негативные отзывы, а авторы отзывов пишут, что их сообщения игнорируют."
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "В текущих условиях указана компания Repocket Pte. Ltd. в Сингапуре; в прежних условиях компания не указывалась."
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Repocket публикует собственный Docker-образ, repocket/repocket, и его условия разрешают контейнеры, которые принадлежат вам."
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "Минимум низкий: $4 до первой выплаты и $2 после неё."
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Salad.io позволяет предоставлять ваш GPU для распределённых задач ИИ и зарабатывать баланс Salad, который можно обменять на подарочные карты, игры или деньги. Только Windows, с нативным десктопным приложением. Нужен дискретный GPU (NVIDIA или AMD). Когда машина простаивает, платформа направляет на неё задачи инференса ИИ, рендеринга и другие вычисления. Одна из самых удобных для пользователя платформ обмена ресурсами GPU.\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "Обмен ресурсами GPU для ИИ — только Windows, выплаты подарочными картами или деньгами"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "Заработок зависит от модели GPU и наличия задач. RTX 3060 ~$1-3 в день. Только Windows. Нативное приложение, Docker не поддерживается. Можно обменять на подарочные карты, игры или PayPal."
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "PayPal или подарочные карты через магазин Salad."
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "Только PayPal и подарочные карты, никогда не криптовалюта. Адреса кошелька нет, поэтому у CashPilot нет ончейн-баланса для отображения."
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "Войдите на <a href='https://app.salad.io' target='_blank'>app.salad.io</a>, нажмите F12 → Application → Cookies и скопируйте значение cookie <b>auth</b>."
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "Заработайте немного Salad Reward Points или потратьте баланс"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "Если аккаунт 12 месяцев подряд не зарабатывает Reward Points, его неиспользованный баланс может сгореть."
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "Запустите приложение Salad, чтобы оно что-нибудь заработало, или потратьте весь баланс в Salad Storefront. Если потратить только часть, отсчёт 12 месяцев не сбрасывается."
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "CashPilot не запускает Salad: вы пользуетесь собственным десктопным приложением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "Несколько авторов отзывов на Trustpilot в октябре и ноябре 2026 года сообщают, что выводы через PayPal приходят быстро, у некоторых — не один раз; один автор за тот же период пишет, что повторные попытки вывода не удались."
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel — блокчейн первого уровня (Layer 1) на Cosmos для децентрализованного VPN. Операторы узлов продают трафик пользователям VPN по гибким ценам (за GB или почасово). Есть официальное руководство по развёртыванию в Docker. Давний проект с активным сообществом.\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "Децентрализованный VPN на Cosmos — операторы узлов продают трафик"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "Операторы сами назначают цену за GB или почасовую. Заработок зависит от спроса пользователей VPN в вашем регионе."
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "За каждую сессию"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "Платежи идут в токене P2P, и 20% каждого платежа за трафик достаётся стейкерам, а не хосту узла."
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "Токен переименовали из SENT в DVPN в 2021 году и из DVPN в P2P в 2025 году."
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "CashPilot не запускает Sentinel: вы пользуетесь собственной программой узла от провайдера, поэтому CashPilot не может развернуть или обновить её за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Sentinel публикует исходный код узла под собственной открытой лицензией."
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia — децентрализованная площадка хранения данных, которой управляет Sia Foundation (швейцарская некоммерческая организация); она работает с 2015 года. Запустите официальный узел hostd от Foundation, чтобы сдавать в аренду свободное место на диске и зарабатывать Siacoin по контрактам на хранение и трафик. Прежде чем узел сможет зарабатывать, вам нужно купить немного Siacoin: хосты блокируют залог под каждый контракт и платят комиссию за каждое доказательство хранения. Залог возвращается, когда контракт завершён, и сжигается, если узел уходит офлайн или теряет данные, поэтому нужна машина, работающая без перерывов (Sia говорит как минимум о 95% времени работы). Заработок зависит от того, сколько данных арендаторы действительно хранят; Sia рекомендует цену хранения $1 за TB в месяц, поэтому сервис подходит машинам с большими свободными дисками, а не маленьким VPS.\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "Узел хранения Sia Foundation — официальный Docker-образ, заработок в Siacoin"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "Сид-фраза кошелька"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "Пароль панели"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "Каталог хранилища"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "Сид-фраза BIP-39, которая управляет кошельком Siacoin хоста. Сгенерируйте её командой `docker run --rm ghcr.io/siafoundation/hostd seed` и сделайте резервную копию — это ЕДИНСТВЕННЫЙ способ получить доступ к заработку"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "Пароль для веб-интерфейса hostd и локального API (BasicAuth). Любая длинная парольная фраза"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "Путь на хосте, на вашем самом большом диске, где хранятся данные арендаторов (например, /srv/sia). Нужно не менее 256GB свободного места"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "При развёртывании CashPilot создаёт новый кошелёк на машине, где работает узел, и один раз показывает его сид-фразу: запишите её. Чтобы использовать уже имеющийся кошелёк, вставьте вместо этого его сид-фразу. После развёртывания отправьте немного Siacoin на кошелёк узла для залога и комиссий, затем в панели добавьте папку хранилища (/storage), задайте цены и объявите хост.\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "Сид-фраза кошелька (hostd.yml), база данных кошелька, настройки хоста и состояние контрактов. Потеряв их, вы потеряете идентификатор узла и учёт доходов по контрактам; тогда единственным способом восстановить средства останется записанная вами сид-фраза."
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "Хранимые данные арендаторов. Если их потерять, доказательства хранения не пройдут, и залог, заблокированный под эти контракты, будет потерян."
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "Хосты сами назначают цены. Sia рекомендует $1 за TB хранения в месяц и более $5 за скачанный TB, а 3.9% каждой выплаты по контракту достаётся держателям Siafund. Доход растёт с объёмом данных арендаторов на узле: он начинается с нуля и растёт вместе со временем работы и в зависимости от цены. Залог (Sia советует 2x от цены хранения) блокируется под каждый контракт и возвращается при успешном завершении.\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "Заработок начисляется на собственный кошелёк Siacoin хоста (управляется сид-фразой). Обменяйте SC на бирже и выводите оттуда на банковский счёт или карту; запроса на выплату у провайдера нет.\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "Средства хранятся в кошельке Sia внутри узла, которым управляет сид-фраза. Сид-фраза хранится только в томе данных hostd на машине, где он работает; CashPilot её никогда не сохраняет. Фраза, которую вы записываете при создании кошелька, — единственный способ восстановления.\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "Стабильный публичный адрес с проброшенными портами 9981 (TCP, консенсус) и 9984 (TCP и UDP, контракты арендаторов). Хостинг в дата-центрах и на VPS для Sia — обычное дело. Прежде чем узел сможет брать контракты, на кошельке должны быть Siacoin."
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "Место на диске и трафик для его обслуживания."
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "Нет. Арендаторы хранят на вашем диске зашифрованные фрагменты файлов и скачивают их обратно. Посторонние люди не пропускают произвольный трафик через ваш IP."
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "Адрес вашего кошелька Sia, публичный ключ хоста и публичный IP:порт, который узел объявляет, чтобы арендаторы могли к нему подключиться."
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "Постоянный трафик загрузки и отдачи на линии, как у любого сервера хранения; анонимизированный чужой веб-трафик вам не приписывается."
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "Без разрешений: ни регистрации, ни аккаунта. Залог сжигается, если узел пропускает доказательства хранения, уходя офлайн или теряя данные."
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "Заработок — это Siacoin на вашем собственном кошельке: выплаты на банковский счёт нет, продавать на бирже вы будете сами."
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "Залог блокируется под каждый контракт и сжигается, если хост пропускает доказательства хранения, уходя офлайн или теряя данные."
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "Используется лишь около 30% места, предлагаемого в сети, поэтому новому хосту приходится бороться за небольшой спрос."
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "Арендаторы хранят зашифрованные фрагменты файлов, и никто не пропускает трафик через ваш IP, но мы не нашли, где Sia сообщает, кто такие арендаторы и как их проверяют."
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "hostd открыто разрабатывается Sia Foundation с 2022 года."
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd — открытое ПО под лицензией MIT."
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "Sia Foundation публикует hostd в виде образа контейнера."
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "Без разрешений: ни регистрации, ни аккаунта."
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide — сервис обмена трафиком, позволяющий монетизировать неиспользуемый интернет-трафик. Для учёта устройств использует необязательный ID машины. Доступен через Docker-образы сообщества из проекта income-generator.\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "Обмен трафиком — на основе ID машины"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "ID машины"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "ID машины для уже зарегистрированного устройства (если пусто, создаётся автоматически)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "Информации мало. Заработок зависит от местоположения."
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "10% их заработка"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "Бонус за регистрацию $5"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "Трафик через один публичный IP делится между устройствами, которые его используют, поэтому второе устройство на том же подключении ничего не добавляет."
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "CashPilot не запускает Spide: вы пользуетесь собственным приложением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "Майните Pearl, Zano или Ravencoin на одном GPU NVIDIA. При первом запуске CashPilot скачивает официальный релиз SRBMiner-Multi и проверяет его SHA-256. Выбранный вами пул платит на ваш публичный адрес выплат. SRBMiner-Multi оставляет себе 2% времени хеширования на Pearl и 0.85% на двух других монетах. Электричество может стоить больше, чем монеты, которые вы заработаете."
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "Майнинг Pearl и других GPU-монет на GPU NVIDIA"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "Адрес выплат"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "Имя воркера"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "Алгоритм"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "Пул (host:port)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "Шифровать подключение к пулу (TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "Ваш публичный адрес Pearl (prl1...). Для Zano или Ravencoin введите адрес этой монеты и пул для неё."
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "pearlhash для Pearl, progpow_zano для Zano, kawpow для Ravencoin."
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "Валовая оценка без учёта электричества. 2026-11-25 hashrate.no оценивал заработок на Pearl для RTX 4070, потребляющей около 142 W, примерно в $2.45 в день. Мы это не измеряли. Pearl — новая монета, её цена и сложность быстро меняются. Проверьте энергопотребление своего GPU и цену электричества, чтобы понять, окупится ли это."
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL (HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "Когда достигнут порог пула"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "Пул платит на ваш адрес, когда баланс достигает вашего порога. До выплаты баланс хранится у пула."
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64, GPU NVIDIA и NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "Эта машина сообщает о подключении через хостинг. Прежде чем майнить, проверьте условия своего провайдера. Некоторые провайдеры, в том числе Hetzner Cloud, это запрещают. Прежде чем полагаться на оценку прибыли, проверьте свои реальные расходы на электричество."
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "Комиссия майнера 2% относится к pearlhash. На progpow_zano и kawpow SRBMiner-Multi оставляет себе 0.85%. HeroMiners, пул Pearl по умолчанию, берёт комиссию пула 1%. Он проверяет выплаты каждый час и платит от 1 PRL. Другие пулы устанавливают свои ставки и пороги."
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "вычисления"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "Нет. Майнер отправляет результаты работы в выбранный вами пул."
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "Ваш адрес выплат, имя воркера и IP-адрес передаются пулу. При первом запуске майнер скачивается с GitHub."
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "Некоторые сети и DNS-резолверы блокируют подключения к майнинг-пулам."
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "Большинство пулов идентифицирует вас по публичному адресу выплат."
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "Майнер оставляет себе 2% времени хеширования на Pearl и 0.85% на Zano и Ravencoin."
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "Некоторые хостинг-провайдеры запрещают майнинг криптовалют."
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "У майнера закрытый исходный код, поэтому никто, кроме его разработчика, не может проверить, что он выполняет."
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "Электричество для GPU может стоить больше заработанных монет, а цена Pearl быстро меняется."
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "Майнер отправляет результаты работы в пул и не передаёт чужой трафик."
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "Майнить Pearl на HeroMiners можно с публичным адресом и без аккаунта."
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj — децентрализованная сеть облачного хранения, где вы зарабатываете, сдавая в аренду неиспользуемое место на диске. Запустите узел хранения через Docker и получайте $1.35/TB за хранение в месяц плюс $1/TB за исходящий трафик (ставки с 1 сентября 2026 года). Выплаты ежемесячные, в USDC (стейблкоин, привязанный к доллару США), в основной сети Ethereum на кошелёк, которым вы управляете, как только баланс превысит минимум, зависящий от комиссий (до выплаты за сентябрь 2026 года — в токене STORJ). Нужно не менее 550GB свободного места на диске и стабильное интернет-подключение. Аккаунт и регистрация не нужны — с середины 2025 года узлы работают без разрешений. ВНИМАНИЕ (октябрь 2026 года): 26 июля 2026 года Storj Labs подала заявление о банкротстве по главе 11 (Chapter 11; Суд по делам о банкротстве США, Северный округ Западной Вирджинии, дело 5:26-bk-00512), чтобы реструктурировать старые долги. Сеть продолжает работать, и Storj продолжает платить активным узлам, но заработок узлов до подачи заявления заморожен, пока суд не вынесет по нему решение. Токен STORJ упал примерно на 98% от пика 2021 года. Binance исключила его из листинга 3 сентября 2026 года, а Coinbase приостановила торги им 28 сентября 2026 года. Новый узел удерживает часть заработка в первые девять месяцев и заполняется только по мере спроса клиентов, поэтому, запуская его сейчас, вы привязываете долгую окупаемость к компании в процессе реструктуризации, которая ещё может прекратить работу.\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "Децентрализованный узел хранения — $1.35/TB хранения + $1/TB исходящего трафика"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "Адрес кошелька"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "Эл. почта"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "Внешний адрес"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "Выделенное место"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "Каталог идентификатора"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "Каталог хранилища"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "Адрес кошелька Ethereum для выплат в USDC (например, 0x1234...abcd). Кошелёк должен быть некастодиальным (MetaMask, Ledger и т. п.) — никогда не используйте адрес на бирже"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "Адрес эл. почты для уведомлений оператору"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "Имя хоста DDNS с портом (например, mynode.ddns.net:28967) — гораздо лучше, чем IP-адрес, с которым узел окажется недоступен в тот день, когда интернет-провайдер без предупреждения сменит вам IP. Порт 28967 должен быть проброшен (TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "Максимальный объём выделяемого места на диске (например, 2TB). Используйте жёсткие диски (HDD), а не SSD"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "Путь на хосте, где хранятся файлы идентификатора (должен содержать ca.cert, ca.key, identity.cert, identity.key)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "Путь на хосте на жёстком диске (HDD) для хранения данных Storj. Нужно не менее 550GB свободного места"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "Перед первым запуском инициализируйте конфигурацию узла хранения: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "Идентификатор узла. Его ID привязан к proof-of-work, на его повторное создание уходят часы, и его нельзя воссоздать из резервной копии чего-либо другого. Потеряв его, вы потеряете удерживаемый баланс выплат."
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "Хранимые данные клиентов и удерживаемая сумма узла. Если их потерять, узел будет дисквалифицирован, а удерживаемый баланс пропадёт."
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "Сеть Storj не может подключиться к вашему узлу по объявленному ADDRESS, поэтому сателлиты считают его офлайн: новые данные перестают поступать, доход от исходящего трафика замирает, а длительное время офлайн приводит к приостановке узла. Проверьте, что ADDRESS соответствует вашему ТЕКУЩЕМУ публичному IP (используйте имя хоста DDNS, а не IP-адрес, чтобы смена IP у провайдера не сделала узел недоступным) и что порт 28967 TCP+UDP проброшен на эту машину."
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "$1.35/TB хранения + $1/TB исходящего трафика + $1/TB аудита/восстановления с 1 сентября 2026 года. Заработок растёт с объёмом хранимых данных и возрастом узла. В первые 9 месяцев удерживается 75%, затем 50%, затем 25% заработка; половина удержанной суммы возвращается на 16-й месяц, остальное — при корректном выходе из сети (graceful exit). Порт 28967 должен быть проброшен."
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "4x комиссии за транзакцию Ethereum, меньшие балансы переносятся"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "Ежемесячно"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "Выплачивается ежемесячно в USDC в основной сети Ethereum, как только баланс кошелька составит не менее четырёх текущих комиссий за транзакцию; меньшие балансы переносятся на следующий месяц. До выплаты за сентябрь 2026 года — в токене STORJ. Панель на порту 14002."
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "Выплачивается ежемесячно в USDC в основной сети Ethereum на адрес из WALLET, как только баланс превысит минимум, зависящий от комиссий. До выплаты за сентябрь 2026 года — в токене STORJ; выплаты в zkSync Era прекращены 1 сентября 2026 года."
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "URL панели узла на порту 14002, с LAN IP сервера, а не localhost, например <b>http://192.168.1.10:14002</b>. Для нескольких узлов перечислите их URL через запятую: CashPilot их суммирует."
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "Узлы Storj в одной подсети /24 делят между собой выделяемые данные, что снижает заработок каждого узла."
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "5 Mbps на отдачу"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "Место на диске и трафик для его обслуживания."
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "Нет. Вы храните зашифрованные фрагменты данных клиентов с кодированием стирания (erasure coding). Посторонние люди не пропускают свой трафик через ваш IP."
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "Идентификатор узла, адрес вашего кошелька, адрес эл. почты, который узел требует для уведомлений оператору, а также ваш IP и порт, которые должны быть доступны, чтобы узел мог отдавать данные."
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "В основном это вопрос лимита трафика, а не ответственности: узел постоянно отдаёт и принимает данные клиентов, а это реальный длительный трафик на вашей линии. Но, в отличие от прокси или ретранслятора, это не анонимизированный чужой трафик, источником которого считаетесь вы, поэтому он не вызывает таких жалоб на злоупотребления."
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "Без ограничения числа узлов, но узлы в одной подсети /24 делят выделяемые данные, поэтому несколько узлов на одном подключении зарабатывают меньше каждый."
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "CoinDesk 27 июля 2026 года сообщил, что Storj Labs подала заявление о защите от банкротства по главе 11 (Chapter 11)."
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "Платежи операторам узлов за период до подачи заявления попали в процедуру требований кредиторов в рамках банкротства."
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "У нового узла в первые девять месяцев удерживается 75%, затем 50%, затем 25% заработка; половина возвращается на 16-й месяц, а остальное — только при корректном выходе из сети."
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "Клиенты хранят зашифрованные фрагменты файлов, и никто не пропускает трафик через ваш IP, но мы не нашли, где Storj сообщает, кто такие клиенты и как их проверяют."
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "Программа узла хранения — открытое ПО под лицензией AGPL-3.0."
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Storj публикует собственный Docker-образ, storjlabs/storagenode."
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "Аккаунт не нужен: только адрес кошелька и эл. почта для уведомлений оператору."
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "Активным узлам продолжали платить и после подачи заявления."
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR — майнинг-пул Monero без аккаунта: ваш майнер входит, указывая ваш адрес Monero в качестве имени пользователя, и пул платит на этот адрес. CashPilot здесь не запускает майнер. Он считывает баланс, который SupportXMR хранит для вашего адреса, чтобы вы видели заработок своего CPU-майнера рядом с другими доходами. Баланс заработан, но не получен: пул выплачивает его, как только он превысит ваш порог выплаты.\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "Майнинг-пул Monero, отслеживается по адресу выплат"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR (автоматически), 0.01 XMR по запросу"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "Когда баланс превышает ваш порог или по запросу"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "SupportXMR платит на ваш адрес, как только баланс достигает вашего порога (по умолчанию 0.1 XMR). На его сайте можно также запросить мгновенную выплату от 0.01 XMR с комиссией 0.001 XMR."
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "Баланс заработан, но не получен, пока SupportXMR не выплатит его на этот адрес. Балансы Monero нельзя прочитать ончейн без приватного ключа просмотра (view key), а CashPilot его никогда не запрашивает, поэтому каждую выплату вы подтверждаете сами."
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "Ваш адрес выплат Monero: имя пользователя, которое ваш майнер использует на SupportXMR, без частей <b>.workername</b> или <b>+difficulty</b>. Он публичный и не даёт доступа к средствам."
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "Нужен майнер Monero (XMRig), направленный на pool.supportxmr.com"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "вычисления"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "Нет. Ваш майнер отправляет хеши в пул; никто не пропускает трафик через ваше подключение."
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "Ваш адрес Monero, выбранные вами имена воркеров, ваш хешрейт и IP-адрес майнера, каким его видит пул."
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "Майнер держит одно открытое подключение к пулу и расходует мало трафика. Следить стоит за расходами на электричество, а не за интернет-провайдером."
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "Аккаунта нет. Идентификатором служит адрес, и его статистику на supportxmr.com может посмотреть кто угодно."
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "Выплаты только в Monero, комиссия пула 0.6%, а порог автоматической выплаты по умолчанию — 0.1 XMR."
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "CashPilot не запускает майнер для SupportXMR: вы сами направляете свой майнер на пул, а CashPilot только считывает баланс."
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Teneo Protocol даёт ИИ-агентам доступ к живому вебу через сеть Beacon-узлов. Teneo Beacon — собственное приложение Teneo для Android, iOS, macOS, Windows и Linux, с версией для командной строки для серверов и Raspberry Pi. Оно делится вашим неиспользуемым трафиком после того, как вы примете экран согласия, и, пока находится в сети, зарабатывает Teneo Protocol Points и Fragments. Fragments учитываются в сезонных розыгрышах с призами в USDC (Beacon Drop). Teneo утверждает, что Beacon зарабатывает вдвое больше очков, чем его прежнее браузерное расширение. На одно интернет-подключение зарабатывает один Beacon. Остальные устройства на том же подключении находятся в режиме ожидания. Зарегистрируйтесь в Expedition Hub по реферальной ссылке или с кодом PSA3BHPJ, затем войдите в Beacon.\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "DePIN-приложение для обмена трафиком (Beacon) — Fragments для сезонных розыгрышей USDC, +100 Fragments по реферальной ссылке"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "Начисляются Teneo Points и Fragments. Fragments учитываются в сезонных розыгрышах USDC, поэтому сезон приносит приз, а не фиксированную ставку. Teneo утверждает, что Beacon зарабатывает вдвое больше очков, чем браузерное расширение. Каждые 8 часов забирайте буст, чтобы получать до 3x Fragments; пропущенное окно снижает множитель."
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "Сезонный розыгрыш (Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "Призы Beacon Drop выплачиваются в USDC на кошелёк, который вы привязываете в Expedition Hub. Hub показывает, сколько дней у вас есть, чтобы его привязать; приз, к которому кошелёк не привязан вовремя, сгорает."
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "Привяжите кошелёк в Expedition Hub до того, как будут выплачены призы сезона; Hub аннулирует приз, если кошелёк не привязан вовремя."
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "8% Fragments каждого приглашённого друга и 2% Fragments его рефералов, если друг зарегистрируется в течение 7 дней и заработает 480 Fragments"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "+100 Fragments при регистрации и ещё +150, когда вы наберёте 480 Fragments"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "На одно интернет-подключение зарабатывает один Beacon. Машины в дата-центрах зарабатывают только у хостинг-провайдеров, которых включила Teneo, — вдвое меньше Fragments и без очков и реферального бонуса. Подключения через VPN не зарабатывают никогда."
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "Fragments от Beacon приносят USDC только в виде призов в сезонных розыгрышах, поэтому его работа не даёт фиксированного заработка."
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Teneo говорит, что очки будут объединены в $AGENTIC — непереводимый токен вознаграждения, а не в токен $TENEO."
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "К ноябрю 2026 года не были подтверждены ни дата запуска $TENEO, ни распределение, ни порядок получения, а прежний ориентир — второй квартал 2026 года — уже прошёл."
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "CashPilot не запускает Teneo: вы устанавливаете собственное приложение Beacon от провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Teneo утверждает, что трафик поступает от проверенных бизнес-клиентов, и блокирует частные адреса и порты, склонные к злоупотреблениям, но не говорит, как проверяет этих клиентов."
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network — давно существующая децентрализованная сеть доставки видео и вычислений для ИИ (с 2018 года). Пользователи запускают Edge Nodes, предоставляя трафик, хранилище и вычислительные мощности. Крупные партнёрства с владельцами контента. Зарабатывает токены TFUEL.\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "Децентрализованная CDN + вычисления для ИИ — вознаграждения в TFUEL, давний проект"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "Только десктопное приложение. Заработок зависит от ресурсов и местоположения. Крупные партнёрства, торгуется на всех биржах."
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "Непрерывно"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "CashPilot не запускает Theta Edge: вы пользуетесь собственным десктопным приложением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network — DePIN-платформа, которая предоставляет ваш IP-адрес, хранилище и трафик в обмен на вознаграждения в токенах TNT. Доступна для Windows, Mac и Android. Узлы участвуют в децентрализованной CDN и слое хранения. Типичный заработок — $5-30 в месяц в зависимости от предоставленных ресурсов и географического местоположения.\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "DePIN: IP, хранилище, трафик — $5-30 в месяц"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "Предоставляет IP, хранилище и трафик. Заработок зависит от предоставленных ресурсов и региона. Чем больше выделено места для хранения, тем выше вознаграждения."
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "По эпохам"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "В собственной справке Titan сказано, что работающий узел не гарантирует заработка: без назначенной задачи он ничего не зарабатывает, а вознаграждения начисляются в токене TNT."
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "CashPilot не запускает Titan: вы пользуетесь собственным приложением или расширением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Traffmonetizer позволяет монетизировать интернет-трафик, делясь им с проверенными компаниями. Один из немногих сервисов обмена трафиком, который хорошо работает не только на домашних подключениях, но и на IP VPS и дата-центров. Использует простую аутентификацию по токену, который передаётся в аргументах командной строки. Поддерживает архитектуры ARM для Raspberry Pi и подобных устройств.\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "Обмен трафиком — работает на VPS, вход по токену"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "Токен"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "Имя устройства"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "Войдите на <a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a>, нажмите F12 → Application → Local Storage → нажмите <code>https://app.traffmonetizer.io</code> → скопируйте значение <code>authToken</code> (около 54 символов: цифры, затем <code>|</code>, затем буквы и цифры)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "Имя, которое отображается в панели для управления устройствами"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "IP VPS и дата-центров зарабатывают меньше домашних. Местоположения в США и ЕС зарабатывают больше. Несколько IP поддерживаются через сети Docker."
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "Минимум $10. PayPal больше не предлагается. Сначала сохраните в профиле один способ выплаты: USDT в Solana или TON (самые низкие комиссии), Arbitrum (низкие комиссии) или Tron TRC20 (высокие сетевые комиссии) либо банковский перевод от $1,000. Первый сохранённый адрес начинает действовать сразу; чтобы изменить его позже, нужно подтверждение по эл. почте. Перед первым выводом панель может запросить контакт в мессенджере (WhatsApp, Telegram или Skype). Запрос выплачивает целые доллары, а центы остаются на балансе."
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "USDT в сети, сохранённой в настройках выплат профиля (Solana, TON, Arbitrum или Tron), или банковский перевод. Адрес хранится в настройках Traffmonetizer, а не в контейнере."
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "Войдите на <a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a>, нажмите F12 → Application → Local Storage → значение <b>authToken</b> (около 54 символов: цифры, затем <code>|</code>, затем буквы и цифры)."
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "10% от каждой запрошенной ими выплаты"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "Условия Traffmonetizer требуют домашний IP, но на практике узлы на VPS принимаются."
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "На Trustpilot у него оценка 1.9; авторы отзывов с 2023 по ноябрь 2026 года сообщают, что выплаты неделями висят в ожидании или помечаются как выполненные без соответствующей транзакции."
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "Те же авторы отзывов сообщают, что поддержка в чате и по эл. почте не отвечает, иногда неделями."
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "Только криптовалюта или банковский перевод от $1,000; PayPal больше нет, а запрос выплачивает только целые доллары."
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "Условия Traffmonetizer требуют домашний IP, поэтому сервер на хостинговом подключении им не соответствует."
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "Четыре автора отзывов на Trustpilot с 2023 по 2025 год сообщают об очень медленном заработке, например один цент в день на четырёх устройствах или почти два года до $10."
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "Для выплаты нужен только сохранённый криптоадрес, подтверждённый по эл. почте; панель может запросить контакт в мессенджере."
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Traffmonetizer публикует собственный Docker-образ, traffmonetizer/cli_v2."
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "Майните на CPU и получайте оплату в выбранной монете, например SHIB, DOGE или XMR. CashPilot запускает XMRig на пуле RandomX от unMineable, а unMineable конвертирует добытые вашим CPU Monero в вашу монету. Он платит на ваш публичный адрес, как только баланс достигает порога выплаты для этой монеты. Каждый воркер, который разворачивает CashPilot, содержит реферальный код CashPilot для unMineable, который снижает вашу комиссию платформы с 1% до 0.75%. Электричество может стоить больше, чем вы заработаете."
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "Майните на CPU и получайте оплату в выбранной монете"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "Монета выплаты"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "Адрес выплат"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "Имя воркера"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "Макс. потоков CPU (%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "Режим RandomX"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "Тикер монеты, в которой платит unMineable, например SHIB, DOGE или XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "Ваш публичный адрес для этой монеты. Монеты, которым нужен memo или тег, не поддерживаются."
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "Валовая оценка без учёта электричества, выплата в вашей монете по курсу конвертации unMineable. На 2026-11-25 1 kH/s на RandomX приносил около $1 в месяц. Настольный CPU на половине потоков может потреблять дополнительно 30-50 W. Проверьте своё реальное потребление и цену электричества, чтобы понять, окупится ли это."
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "Устанавливается unMineable для каждой монеты (0.03 XMR на 2026-11-26)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "Когда достигнут порог выплаты для монеты"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "unMineable платит на ваш адрес, как только баланс достигает порога выплаты для монеты. Пороги зависят от монеты и сети; CashPilot считывает тот, который unMineable сообщает для вашего адреса."
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "Баланс заработан, но не получен, пока unMineable не выплатит его на этот адрес. Сеть зависит от выбранной монеты."
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "Тот же адрес выплат и тикер монеты, с которыми вы развернули майнер, например <b>XMR</b>. Введите только адрес, без монеты, имени воркера или реферального кода. Он публичный и не даёт доступа к средствам."
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "0.25% вознаграждений за майнинг каждого приглашённого майнера"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "Комиссия платформы снижена с 1% до 0.75%"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "Эта машина сообщает о подключении через хостинг. Прежде чем майнить, проверьте условия своего провайдера. Некоторые провайдеры, в том числе Hetzner Cloud, это запрещают. Прежде чем полагаться на оценку прибыли, проверьте свои реальные расходы на электричество."
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "unMineable берёт комиссию платформы 1%. CashPilot добавляет свой реферальный код (#awk6-j1z0) после имени каждого воркера, что снижает вашу комиссию до 0.75%. Затем unMineable платит мейнтейнеру CashPilot 0.25% ваших вознаграждений за майнинг; вы сохраняете 99.25%. У каждой монеты свой порог выплаты, например 0.03 XMR."
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "вычисления"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "Нет. Майнер отправляет результаты работы в пул unMineable."
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "Ваш адрес выплат, монета, имя воркера, хешрейт и IP-адрес передаются unMineable."
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "Некоторые сети и DNS-резолверы блокируют подключения к майнинг-пулам."
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "Аккаунт не нужен. Идентификатором служат адрес и монета, и их статистику на unmineable.com может посмотреть кто угодно."
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "С реферальным кодом unMineable берёт комиссию платформы 0.75% и платит только начиная с порога каждой монеты."
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "Некоторые хостинг-провайдеры запрещают майнинг криптовалют."
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "Дополнительное электричество может стоить больше заработанных монет."
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "Статистика адреса, включая баланс, открыта любому, кто знает адрес."
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "Майнер отправляет хеши в пул и не передаёт чужой трафик."
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "Можно майнить на публичный адрес в выбранной монете, не создавая аккаунт."
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock — DePIN-платформа (Decentralized Physical Infrastructure Network, децентрализованная сеть физической инфраструктуры), которая позволяет зарабатывать криптовалюту, делясь интернет-подключением. Часть более широкой экосистемы Web3. Есть Docker-образы сообщества, но официального образа нет. Основной интерфейс — браузерное расширение.\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "DePIN-обмен интернет-подключением — выплаты в криптовалюте, в основном браузерное расширение"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "Заработок в криптовалюте/токенах. Официального Docker-образа нет — основной клиент браузерное расширение."
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "Токены UPT, вывод на кошелёк Solana от 250 UPT при включённой двухфакторной аутентификации. Взимается комиссия за вывод."
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "В справочном центре UpRock сказано, что вывод производится в токенах UPT на кошелёк Solana, минимум 250 UPT."
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "Вознаграждения — токены UPT; авторы отзывов и сторонний обзор говорят, что их стоимость очень низкая."
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "CashPilot не запускает UpRock: вы пользуетесь собственным приложением или расширением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork — децентрализованная сеть VPN и обмена трафиком. Вы зарабатываете, предоставляя трафик в роли провайдера сообщества. Бинарный файл провайдера сам проходит аутентификацию по эл. почте и паролю вашего аккаунта (подкоманда auth-provide) и сохраняет полученный JWT сессии в томе данных. Официальный Docker-образ от BringYour, Inc.\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "Децентрализованный VPN/трафик — вход по эл. почте и паролю, JWT сессии в томе"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "Эл. почта"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "Пароль"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "Эл. почта вашего аккаунта URnetwork (логин, который вы используете на <a href=\"https://ur.io\" target=\"_blank\">ur.io</a>). Для аккаунтов, созданных через вход Google/Apple, сначала нужно задать пароль. Нужен аккаунт? Зарегистрируйтесь по ссылке <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a>"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "Пароль вашего аккаунта URnetwork (без пробелов). Используется для входа провайдера через auth-provide; затем сессия сохраняется в томе данных."
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "Работает на VPS и домашних подключениях. С 2026-10-06 выплаты в SN25α (подсеть Bittensor 25) за каждую недельную эпоху. Поддерживает режим прокси для конфигураций с несколькими IP."
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "По эпохам"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "Укажите coldkey Bittensor на ur.io/app/account/earnings (подписав в Talisman, TAO.com или кошельке через WalletConnect), затем получайте вознаграждение за каждую завершённую эпоху. Получение оплачивает газ в TAO с EVM-ключа для газа. НЕПОЛУЧЕННЫЕ ЭПОХИ СГОРАЮТ, а старые выплаты в USDC отменялись, если кошелёк не был привязан в течение 30 дней."
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "3 GiB бесплатных данных UR в день за каждого друга, до 20 друзей (данные, а не деньги)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "3 GiB бесплатных данных UR в день, если в течение 90 дней после регистрации вы в 2 разных дня используете через приложение не менее 10 MiB; иначе реферальная программа для вас заканчивается"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "Неполученные эпохи сгорают, а старые выплаты в USDC были отменены для сетей, к которым кошелёк не был привязан в течение 30 дней."
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "С октября 2026 года вознаграждения выплачиваются в SN25α, токене подсети Bittensor, и каждое получение стоит газа в TAO."
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "Раньше URnetwork назывался BringYour; в его архивном whitepaper указано старое название."
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "URnetwork публикует исходный код своего клиента провайдера."
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "URnetwork публикует собственный Docker-образ, bringyour/community-provider, и работает на VPS и домашних подключениях."
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "Для получения нужен только кошелёк Bittensor, которым вы управляете."
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai — облачная площадка GPU, где вы сдаёте в аренду свой GPU NVIDIA исследователям и разработчикам в области ИИ/ML. Платформа изначально построена на Docker, и почасовые цены вы задаёте сами. RTX 3090 при аренде обычно зарабатывает $0.20-0.40/ч. Нужен GPU NVIDIA со свежими драйверами и стабильное интернет-подключение. Доход сильно зависит от модели GPU, ценовой стратегии и рыночного спроса.\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "Площадка GPU — цены задаёте сами, RTX 3090 ~$0.20-0.40/ч"
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "API-ключ"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "API-ключ хоста Vast.ai из панели"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "RTX 3090 ~$0.20-0.40/ч, RTX 4090 ~$0.40-0.80/ч при аренде. Загрузка бывает разной. Нужны GPU NVIDIA, хост на Linux, Docker и nvidia-container-toolkit. Цены задаёте сами."
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "Еженедельно (по пятницам)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "Заработок накапливается на балансе Vast.ai. Вывод через Wise, PayPal или Stripe."
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "3% от трат приглашённых арендаторов на всё время существования их аккаунта, в виде реферальных кредитов; до 75% можно вывести с отдельного реферального аккаунта"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "Хост зарабатывает только во время аренды, а собственные цифры Vast для потребительского GPU зависят от типа аренды и оценки надёжности."
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "CashPilot не запускает Vast.ai: вы устанавливаете программу хоста Vast на собственную машину с GPU, поэтому CashPilot не может развернуть или обновить её за вас. Хостинг у Vast построен на Docker на хосте с Linux."
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Vast утверждает, что хост получает ровно ту ставку, которую назначил, без вычета комиссии."
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "Выплаты через Wise, PayPal или Stripe от минимума $20, счёт выставляется еженедельно; меньший баланс переносится на следующую неделю."
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter — платформа обмена трафиком для Windows, Mac, Linux и Android. Она заявляет, что платит до $1/GB переданного трафика, с минимальным порогом выплаты $20. Платформа работает так же, как обычные приложения для обмена трафиком, пропуская легитимный трафик через домашние подключения.\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "Обмен трафиком — заявлено до $1/GB, минимальная выплата $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "Заявлено до $1/GB, но реальный заработок ниже. Минимальная выплата $20. Заработок сильно зависит от местоположения и спроса."
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "По запросу"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "У Wipter нет веб-панели. Откройте десктопное или мобильное приложение Wipter, войдите и запросите выплату там, когда баланс достигнет $20. Wipter платит только в USDT в BNB Smart Chain (BEP20) на кошелёк, указанный в разделе Payments приложения; варианта с PayPal нет."
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "Пока не определено: CashPilot ещё не проверил, где этот сервис хранит ваш заработок."
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "10% их заработка на трафике после того, как они достигнут минимальной выплаты, за любое число приглашённых друзей"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "Бонус за регистрацию $5"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "CashPilot не запускает Wipter: вы пользуетесь собственным десктопным или мобильным приложением провайдера, поэтому CashPilot не может развернуть или обновить его за вас. Условия сервиса на предмет контейнеров не проверялись."
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "Майните Monero на CPU. CashPilot запускает XMRig, а выбранный вами пул платит Monero на ваш публичный адрес выплат. XMRig отдаёт 1% времени хеширования на поддержку своих разработчиков. Электричество может стоить больше, чем XMR, которые вы заработаете."
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "Майнинг Monero на CPU в выбранном вами пуле"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "Адрес Monero"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "Пул"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "Имя воркера"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "Макс. потоков CPU (%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "Режим RandomX"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "Валовая оценка без учёта электричества. На 2026-11-25 1 kH/s приносил около $1 в месяц при наблюдаемой цене XMR и сложности сети. Настольный CPU на половине потоков может потреблять дополнительно 30-50 W. Проверьте своё реальное потребление и цену электричества, чтобы понять, окупится ли это."
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR (MoneroOcean, после того как вы его снизите)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "Когда достигнут порог пула"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "Пул платит на ваш адрес Monero, когда баланс достигает вашего порога. До выплаты баланс хранится у пула."
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "Эта машина сообщает о подключении через хостинг. Прежде чем майнить, проверьте условия своего провайдера. Некоторые провайдеры, в том числе Hetzner Cloud, это запрещают. Прежде чем полагаться на оценку прибыли, проверьте свои реальные расходы на электричество."
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "MoneroOcean, пул по умолчанию, берёт 0% комиссии за майнинг. Порог выплаты по умолчанию — 0.3 XMR, и его можно снизить до 0.003 XMR. Выплаты меньше 4 XMR могут стоить до 0.0004 XMR. Другие пулы устанавливают свои ставки и пороги."
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "вычисления"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "Нет. Майнер отправляет результаты работы в майнинг-пулы."
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "Ваш адрес Monero, имя воркера и IP-адрес передаются пулу."
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "Некоторые сети и DNS-резолверы блокируют подключения к майнинг-пулам."
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "Большинство пулов Monero идентифицирует вас по публичному адресу выплат."
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "Для выплаты нужно накопить достаточно XMR, чтобы достичь порога пула."
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "Некоторые хостинг-провайдеры запрещают майнинг криптовалют."
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "Дополнительное электричество может стоить больше заработанных XMR."
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "Майнер отправляет хеши в пулы и не передаёт чужой трафик."
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "Майнер — открытое ПО, а образ закрепляет подписанный релиз из основного репозитория."
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "Можно майнить с публичным адресом Monero, не называя своего имени."
+  source: "752cbb728aac"
