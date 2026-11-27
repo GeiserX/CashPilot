@@ -2223,6 +2223,8 @@ const CP = (() => {
     // The Instances box appears only where the service detail said how many
     // copies one worker may run (the setup wizard's list has no such answer).
     const maxInstances = svc.max_instances;
+    // A single box is the only choice, so it starts ticked: Deploy works on the first click.
+    const onlyChoice = onlineWorkers.length === 1;
     for (const w of onlineWorkers) {
       const copies = workerCopies(w, svc.slug).length;
       const deployed = copies > 0;
@@ -2245,7 +2247,7 @@ const CP = (() => {
       }
       rows += `
       <label class="worker-pick">
-        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}"${routed ? ' data-routed="1"' : ''} ${deployed ? 'disabled checked' : ''}>
+        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}"${routed ? ' data-routed="1"' : ''} ${deployed ? 'disabled checked' : (onlyChoice ? 'checked' : '')}>
         <span class="worker-pick-name${deployed ? ' is-deployed' : ''}">${escapeHtml(w.name)}</span>
         ${isDesktopWorker(w) ? '<span class="badge" title="CashPilot Desktop: it runs the image its own catalog pins, one copy per service">Desktop</span>' : ''}
         ${proxiedOnly ? '<span class="badge" title="This box runs services only through a proxy">proxy only</span>' : ''}
