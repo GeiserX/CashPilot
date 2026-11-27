@@ -20,19 +20,22 @@ its `lang`, `dir` and UI strings from `theme.language`. So each locale is its ow
     stale: it still builds, with a note that links the newer English page.
 
 `check` fails on a broken translation: no `source_hash`, no English page, a locale with no
-locale.toml, or a fresh page whose code blocks, inline code or link targets differ from
-the English page (they are never translated, and referral links must stay byte for byte).
-Stale pages are listed, never an error: a lane updates them in batches.
+locale.toml, or a fresh page whose code blocks, inline code, link targets or heading ids
+differ from the English page. Code and links are never translated, and referral links must
+stay byte for byte. Links into a page (`faq.md#some-heading`) use the English ids, so a
+translated heading keeps the English id with `{ #id }`; `anchors` prints them. Stale pages
+are listed, never an error: a lane updates them in batches.
 
-`build` also fails when a fresh translated page's heading ids differ from the English
-page's, because links into the page (`faq.md#some-heading`) use the English ids. A
-translated heading keeps the English id with `{ #id }`; `anchors` prints them.
+`build` compares the heading ids again on the built pages, of every fresh translation and
+every English fallback page, so the check's Markdown reading cannot drift from Zensical's.
 
-Stdlib only, like site-check.py.
+Stdlib only, like site-check.py, except that the heading id check needs Python-Markdown,
+which Zensical installs. Without it the check says so, and fails under CI.
 """
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -151,6 +154,41 @@ def parts(body: str) -> tuple[list[str], set[str], set[str]]:
     return blocks, code, links
 
 
+def heading_ids_md(body: str) -> list[str] | None:
+    """Heading ids as Python-Markdown's toc extension makes them, which is what Zensical
+    renders with: an explicit `{ #id }` wins, else the slug of the heading text, with
+    `_1`, `_2` for repeats. None when Python-Markdown is not installed."""
+    try:
+        import markdown
+    except ImportError:
+        return None
+    # Without the fence extension a `# comment` in an indented code block reads as a
+    # heading, so blank every fenced block first.
+    lines, fence = [], None
+    for line in body.split("\n"):
+        m = FENCE.match(line)
+        if fence is None and m:
+            fence = m.group(2)
+            lines.append("")
+        elif fence is not None:
+            if line.strip().startswith(fence[0] * len(fence)) and not line.strip().strip(fence[0]):
+                fence = None
+            lines.append("")
+        else:
+            lines.append(line)
+    md = markdown.Markdown(extensions=["toc", "attr_list", "md_in_html"])
+    md.convert("\n".join(lines))
+    ids: list[str] = []
+
+    def walk(tokens):
+        for t in tokens:
+            ids.append(t["id"])
+            walk(t["children"])
+
+    walk(md.toc_tokens)
+    return ids
+
+
 def page_url(rel: str) -> str:
     """The directory URL of a page, relative to the site root ('guides/grass/')."""
     stem = rel[:-3]
@@ -167,6 +205,7 @@ def check() -> int:
     english = set(english_pages(cfg))
     only = set(i18n_config().get("english_only", []))
     errors, stale = [], []
+    markdown_missing = False
     for name in only - english:
         errors.append(f"docs/i18n/config.toml: english_only lists {name}, which is not a published page")
     codes = {loc["code"] for loc in locs}
@@ -225,10 +264,25 @@ def check() -> int:
                     errors.append(f"{where}: {label} {item!r} of the English page is missing")
                 for item in sorted(t - e)[:5]:
                     errors.append(f"{where}: {label} {item!r} is not in the English page")
+            e_ids, t_ids = heading_ids_md(split_front(src)[1]), heading_ids_md(body)
+            if e_ids is None:
+                markdown_missing = True
+            elif sorted(e_ids) != sorted(t_ids):
+                missing, extra = sorted(set(e_ids) - set(t_ids)), sorted(set(t_ids) - set(e_ids))
+                errors.append(
+                    f"{where}: heading ids differ from the English page: missing {missing[:5]}, extra {extra[:5]}"
+                    " (keep each English id with { #id })"
+                )
         total = len(english - only)
         print(
             f"{code}: {fresh} fresh, {translated - fresh} stale, {total - translated} not translated, of {total} pages"
         )
+    if markdown_missing:
+        msg = "heading ids not compared: python-markdown is not installed (pip install -r docs/requirements-docs.txt)"
+        if os.environ.get("CI"):
+            errors.append(msg)  # CI installs it with Zensical: a check that silently skips is no check
+        else:
+            print("NOTE", msg + "; the build still compares them")
     for s in stale:
         print(f"STALE {s}: the English page changed after this translation")
     for e in errors:
