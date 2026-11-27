@@ -3431,12 +3431,9 @@ async def forget_reported_service(worker_id: int, slug: str, reported: str | Non
         row = await cursor.fetchone()
         if not row or row["containers"] != reported:
             return
-        try:
-            containers = json.loads(row["containers"] or "[]")
-        except (TypeError, ValueError):
-            return
-        if not isinstance(containers, list):
-            return
+        # upsert_worker stores a JSON list; anything else raises or matches no
+        # entry, so the row is never rewritten from it.
+        containers = json.loads(row["containers"] or "[]")
         kept = [c for c in containers if not (isinstance(c, dict) and c.get("slug") == slug)]
         if len(kept) == len(containers):
             return

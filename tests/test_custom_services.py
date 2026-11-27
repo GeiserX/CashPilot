@@ -418,6 +418,23 @@ class TestTheRoutes:
         assert done == {"status": "deleted"}
         assert left == [{"slug": "honeygain", "status": "running"}], "the other service must stay listed"
 
+    @pytest.mark.parametrize("stored", ["not json", '{"slug": "x"}', "5"], ids=["broken", "object", "number"])
+    def test_a_stored_list_this_server_never_wrote_is_left_as_it_is(self, db, stored):
+        """The removal happened, so it still answers removed; the row it cannot read stays untouched."""
+
+        async def go():
+            slug = (await _create())["slug"]
+            wid = await database.upsert_worker("cid-a", "box-a", "http://box-a:8081", containers=stored)
+            with (
+                patch.object(main, "_require_writer", lambda r: None),
+                patch.object(main, "_proxy_worker_command", AsyncMock(return_value={"status": "removed"})),
+            ):
+                done = await main._svc_remove(MagicMock(), slug, wid, False)
+            return done, (await database.get_worker(wid))["containers"]
+
+        done, left = _run(go)
+        assert done == {"status": "removed"} and left == stored
+
     def test_a_heartbeat_after_the_removal_keeps_its_list(self, db):
         """A deploy of the same slug can start and report while the removal is still bookkeeping."""
 
