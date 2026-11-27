@@ -204,6 +204,20 @@ class TestARefusedChoiceTouchesNothing:
             client.containers.run.assert_not_called()
             old.stop.assert_not_called()
 
+    def test_a_choice_that_disagrees_with_the_named_runtime_is_refused(self):
+        with (
+            patch.object(layers, "daemon_runtimes", return_value=FACTS),
+            pytest.raises(orchestrator.ContainerRuntimeError, match="the deploy names the 'runc' runtime"),
+        ):
+            orchestrator.container_runtime("honeygain", None, "runc", "gvisor")
+
+    def test_a_choice_that_agrees_with_the_named_runtime_is_used(self):
+        with (
+            patch.object(layers, "daemon_runtimes", return_value=FACTS),
+            patch.object(orchestrator, "_proxy_allows_runtime", side_effect=lambda slug, r: r),
+        ):
+            assert orchestrator.container_runtime("honeygain", None, "runsc-hostnet", "gvisor") == "runsc-hostnet"
+
     def test_an_unknown_choice(self):
         with pytest.raises(orchestrator.ContainerRuntimeError) as err:
             orchestrator.container_runtime("honeygain", None, None, "kata")
@@ -239,6 +253,27 @@ class TestTheWorkerApi:
             pins = orchestrator.runtime_pins()
         assert pins["overrides"] == {}
         assert "slug=runtime" in pins["error"]
+
+    @pytest.mark.parametrize("runtimes", [None, "runc", ["runc"]])
+    def test_an_unreadable_runtime_list_is_unknown_not_empty(self, runtimes):
+        info = {"DefaultRuntime": "runc"} if runtimes is None else {"Runtimes": runtimes}
+        with patch.object(layers, "docker_info", return_value=info), patch.object(layers, "kvm", return_value=None):
+            assert layers.report({"default": None, "overrides": {}}, None)["runtimes"] is None
+            assert layers.daemon_runtimes() is None
+
+    def test_a_readable_empty_list_is_empty(self):
+        with patch.object(layers, "docker_info", return_value={"Runtimes": {}}):
+            assert layers.daemon_runtimes() == []
+
+    def test_a_routed_copy_refuses_a_runtime_choice(self):
+        body = {
+            "earner": {"image": "honeygain/honeygain", "runtime_choice": "gvisor"},
+            "proxy": {"kind": "socks5", "host": "203.0.113.9", "port": 1080},
+        }
+        with patch.object(worker_api, "_verify_api_key"):
+            resp = TestClient(worker_api.app).post("/api/proxied/honeygain/3/deploy", json=body)
+        assert resp.status_code == 400, resp.text
+        assert "routed through a proxy" in resp.json()["detail"]
 
     def test_the_report_lists_the_runtimes(self):
         info = {"Runtimes": RUNTIMES, "DefaultRuntime": "runc"}
