@@ -1,0 +1,13 @@
+# Site strings for the fil docs build (.github/scripts/docs-i18n.py).
+
+[notices]
+# On an English page shown in this locale because it has no translation yet.
+untranslated = "Hindi pa naisasalin ang pahinang ito. Ang binabasa mo ay ang bersyong Ingles."
+# On a page that stays English on purpose (docs/i18n/config.toml).
+english_only = "Sa Ingles lang available ang pahinang ito."
+# On a translation made from an older English page. {url} is the English page.
+stale = "Mas bago ang bersyong Ingles ng pahinang ito. [Basahin ang bersyong Ingles]({url})."
+
+# Navigation labels: English label = label in this language. A label not listed
+# here stays in English (provider names do).
+[nav]
