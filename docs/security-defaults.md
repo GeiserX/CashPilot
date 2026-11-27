@@ -338,7 +338,8 @@ A worker still receives the logins of the services you deploy to it, so a
 compromised worker leaks those, but not the rest. That holds only while
 `CASHPILOT_ADMIN_API_KEY` differs from `CASHPILOT_API_KEY`: every worker host
 holds the shared key, and the same value would give it the owner role. A worker
-that has not enrolled yet, or lost its own key, still accepts the shared key,
+that has not enrolled yet, that has just enrolled and waits for the UI to
+confirm its own key, or that lost its own key, still accepts the shared key,
 so until then a compromised worker that can reach it can stop or remove its
 services. Commands and heartbeats both travel over plain HTTP, carrying the
 worker's key and those logins, so keep both directions on a LAN you trust or

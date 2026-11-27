@@ -3415,6 +3415,37 @@ async def upsert_worker(
         await db.close()
 
 
+async def forget_reported_service(worker_id: int, slug: str, reported: str | None) -> None:
+    """Drop ``slug`` from the containers this worker last reported, once it has removed them.
+
+    Without this the removed service counted as running on that box until its
+    next heartbeat, up to a minute, and deleting a custom service was refused
+    as still deployed. ``reported`` is the stored list as read when the worker
+    confirmed the removal. Written only if no heartbeat replaced that list
+    since: a newer list is the worker's own word and wins, even when it lists
+    ``slug`` again because a new deploy started it.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT containers FROM workers WHERE id = ?", (worker_id,))
+        row = await cursor.fetchone()
+        if not row or row["containers"] != reported:
+            return
+        # upsert_worker stores a JSON list; anything else raises or matches no
+        # entry, so the row is never rewritten from it.
+        containers = json.loads(row["containers"] or "[]")
+        kept = [c for c in containers if not (isinstance(c, dict) and c.get("slug") == slug)]
+        if len(kept) == len(containers):
+            return
+        await db.execute(
+            "UPDATE workers SET containers = ? WHERE id = ? AND containers = ?",
+            (json.dumps(kept), worker_id, row["containers"]),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
 async def get_worker(worker_id: int) -> dict[str, Any] | None:
     db = await _get_db()
     try:
