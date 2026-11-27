@@ -358,9 +358,8 @@ class TestEveryScreenShowsIt:
         assert _bell() == []
 
     def test_dashboard_and_bell_draw_it_without_a_credential_button(self):
-        from pathlib import Path
 
-        js = (Path(main.__file__).parent / "static" / "js" / "app.js").read_text()
+        js = english_source("app/static/js/app.js")
         assert "a.kind === 'docker'" in js, "the attention list has a card for it"
         assert "|| a.kind === 'docker')" in js, "a change redraws the attention list"
         assert "!isProxied && !isDocker;" in js, "no credential fixes Docker"
@@ -378,18 +377,16 @@ class TestEveryScreenShowsIt:
 
         The interleavings run for real in scripts/attention_race_check.mjs.
         """
-        from pathlib import Path
 
-        js = (Path(main.__file__).parent / "static" / "js" / "app.js").read_text()
+        js = english_source("app/static/js/app.js")
         assert "alerts.slice(), ++_attentionDrawSeq);" in js
 
     def test_the_doc_link_is_a_button_because_the_message_is_cut(self):
         """The 200-character cap always cuts the link off the end of the message."""
-        from pathlib import Path
 
         _, message = main._docker_alert_text("a-worker-name-of-thirty-chars", _worker(access=None), datetime.now(UTC))
         assert main.DOCKER_LOST_DOC not in message[: main._MAX_ALERT_ERROR_LEN]
-        js = (Path(main.__file__).parent / "static" / "js" / "app.js").read_text()
+        js = english_source("app/static/js/app.js")
         assert f"const DOCKER_LOST_DOC = '{main.DOCKER_LOST_DOC}';" in js
         assert js.count('href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>') == 2, (
             "the attention card and the bell"

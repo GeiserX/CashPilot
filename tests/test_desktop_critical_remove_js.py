@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import NODE_T
+
 APP_JS = Path(__file__).resolve().parent.parent / "app/static/js/app.js"
 
 _HARNESS = r"""
@@ -63,6 +65,7 @@ def _remove(device_type: str | None, first: str | None = None, leftover: str | N
     out = subprocess.run(
         [
             node,
+            *NODE_T,
             "-e",
             _HARNESS,
             str(APP_JS),

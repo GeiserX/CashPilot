@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app import main
+from tests.i18n_source import NODE_T, english_source
 
 
 @pytest.fixture(autouse=True)
@@ -398,7 +399,7 @@ class TestTheDashboardSaysSo:
         bell = {"alerts": [{"kind": "proxied", "platform": "cashpilot-tunnel-p3", "error": "The tunnel is gone"}]}
         svc = {"slug": "earnfm", "name": "EarnFM", "instance_details": []}
         out = subprocess.run(
-            [node, "-e", harness, str(ROOT / "app/static/js/app.js"), json.dumps(svc)],
+            [node, *NODE_T, "-e", harness, str(ROOT / "app/static/js/app.js"), json.dumps(svc)],
             capture_output=True,
             text=True,
             check=True,
@@ -451,7 +452,7 @@ const tagsNow = () => [...els['attention-list'].innerHTML.matchAll(/class="attn-
         )
         svc = {"slug": "earnfm", "name": "EarnFM", "instance_details": []}
         out = subprocess.run(
-            [node, "-e", harness, str(ROOT / "app/static/js/app.js"), json.dumps(svc)],
+            [node, *NODE_T, "-e", harness, str(ROOT / "app/static/js/app.js"), json.dumps(svc)],
             capture_output=True,
             text=True,
             check=True,
@@ -463,9 +464,8 @@ const tagsNow = () => [...els['attention-list'].innerHTML.matchAll(/class="attn-
         assert "Proxied copy down" not in result["cleared"]
 
     def test_the_bell_poll_hands_its_alerts_to_that_check(self):
-        from tests.test_account_disabled import ROOT
 
-        src = (ROOT / "app/static/js/app.js").read_text()
+        src = english_source("app/static/js/app.js")
         poll = src[src.index("  async function loadCollectorAlerts() {") :]
         body = poll[: poll.index("\n  }\n")]
         assert "refreshAttentionOnAlertChange(alerts, read);" in body

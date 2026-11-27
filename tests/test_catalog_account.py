@@ -24,6 +24,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import catalog
+from tests.i18n_source import NODE_T
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -164,7 +165,14 @@ def _render(catalog_client, slug: str, deployed: bool) -> dict:
     detail = _get(client, f"/api/services/{slug}")
     assert setup["deployed"] is detail["deployed"] is deployed
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), json.dumps({"setup": setup, "detail": detail})],
+        [
+            node,
+            *NODE_T,
+            "-e",
+            _HARNESS,
+            str(ROOT / "app/static/js/app.js"),
+            json.dumps({"setup": setup, "detail": detail}),
+        ],
         capture_output=True,
         text=True,
         check=True,

@@ -16,9 +16,10 @@ import pytest
 
 from app import catalog
 from scripts.new_service_stub import referral_note
+from tests.i18n_source import english_source
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+APP_JS = english_source("app/static/js/app.js")
 
 
 def _referral_services() -> list[dict]:

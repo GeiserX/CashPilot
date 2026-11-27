@@ -10,6 +10,7 @@
 //   node scripts/critical_delete_review_check.mjs
 //
 // Exits non-zero on any mismatch.
+import './i18n_stub.mjs';
 import {readFileSync} from 'node:fs';
 
 const src = readFileSync('app/static/js/app.js', 'utf8');

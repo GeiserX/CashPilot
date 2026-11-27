@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 SETUP_HTML = ROOT / "app" / "templates" / "setup.html"
@@ -42,13 +44,13 @@ class TestTheWizardSaysWhatActuallyHappened:
         assert 'id="wizard-done-text"' in html
 
     def test_the_outcome_is_rendered_from_what_deployed(self):
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         assert "function renderWizardOutcome()" in source
         assert "wizardState.deployed" in source[source.index("function renderWizardOutcome()") :][:1400]
 
     def test_it_runs_when_the_wizard_reaches_the_last_step(self):
         """A renderer nothing calls is the same as no renderer."""
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         idx = source.index("if (wizardState.step === 4)")
         assert "renderWizardOutcome()" in source[idx : idx + 300]
 
@@ -63,27 +65,27 @@ class TestTheWizardSaysWhatActuallyHappened:
         The distinction is whether a deploy was ATTEMPTED, which is why
         deployService now records it.
         """
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         assert "deployAttempted" in source, "the attempt is not tracked at all"
         block = source[source.index("function renderWizardOutcome()") :][:1600]
         assert "!wizardState.deployAttempted" in block, "the skip case is not distinguished"
 
     def test_the_attempt_is_recorded_where_deploying_happens(self):
         """A flag nothing sets is worse than no flag — it is always false."""
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         block = source[source.index("async function deployService(") :][:400]
         assert "wizardState.deployAttempted = true" in block
 
     def test_the_flag_starts_false_on_a_fresh_wizard(self):
         """Otherwise a second run of the wizard inherits the first run's state."""
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         assert source.count("deployAttempted: false") >= 2, (
             "deployAttempted must be initialised in both the declaration and the reset"
         )
 
     def test_deployed_is_now_read_not_just_written(self):
         """The bead's core evidence: the field had no reader at all."""
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         reads = [
             line
             for line in source.splitlines()
@@ -106,7 +108,7 @@ class TestTheCredentialModalShowsWhatItRecommends:
     """
 
     def _modal(self) -> str:
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         start = source.index("function openCredentialModal")
         return source[start : start + 3000]
 
@@ -138,5 +140,5 @@ class TestTheCredentialModalShowsWhatItRecommends:
 
     def test_the_health_panel_still_recommends_them(self):
         """The recommendation is what made hiding the field a dead end."""
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         assert "A longer-lived credential exists for this service" in source

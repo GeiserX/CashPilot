@@ -20,6 +20,7 @@ import requests
 
 from app import catalog, constants, drift, lan_fence, orchestrator
 from tests import test_mysterium_fenced as fenced
+from tests.i18n_source import english_source
 from tests.test_mysterium_fenced import (
     BIND_REFUSED,
     MYST,
@@ -334,9 +335,8 @@ class TestAHeldNodeSaysWhy:
         assert "Redeploy it from the CashPilot dashboard" in message
 
     def test_the_dashboard_offers_a_redeploy_for_a_held_copy(self):
-        from pathlib import Path
 
-        js = (Path(__file__).resolve().parent.parent / "app/static/js/app.js").read_text()
+        js = english_source("app/static/js/app.js")
         block = js[js.index("if (inst.held) {") : js.index("continue;", js.index("if (inst.held) {"))]
         assert "Held stopped" in block and 'data-action="redeployOnWorker"' in block
 

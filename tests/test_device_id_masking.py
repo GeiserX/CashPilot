@@ -33,6 +33,7 @@ from app import main, notify  # noqa: E402
 from app.collectors.base import EarningsResult  # noqa: E402
 from app.collectors.earnapp import EarnAppCollector  # noqa: E402
 from app.collectors.proxyrack import ProxyRackCollector  # noqa: E402
+from tests.i18n_source import NODE_T
 
 ROOT = Path(__file__).resolve().parent.parent
 EARNAPP_ID = "sdk-node-" + "0123456789abcdef" * 2
@@ -292,7 +293,7 @@ def _render(alert: dict, role: str) -> str:
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), role, json.dumps(alert)],
+        [node, *NODE_T, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), role, json.dumps(alert)],
         capture_output=True,
         text=True,
         check=True,
