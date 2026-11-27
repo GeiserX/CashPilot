@@ -11,7 +11,10 @@
 //   waits on credential health is drawn once that response commits (it was
 //   lost: the first poll only recorded its alerts, and the list stayed empty);
 // - a poll sent before a services read is older: its alerts do not overwrite
-//   that read's list, whichever answers first.
+//   that read's list, whichever answers first;
+// - a services refresh that read its alerts before a bell redraw drew newer
+//   ones writes the newer alerts with its own services: the list never goes
+//   back to the older alerts, not even while a corrective redraw waits.
 //
 //   node scripts/attention_race_check.mjs
 //
@@ -32,7 +35,13 @@ function grab(sig) {
 
 const escapeHtml = s =>
   String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
-const list = {innerHTML: ''};
+// Every write to the list is kept, so a check can see a state that a later write hid.
+const writes = [];
+const list = {
+  _html: '',
+  get innerHTML() { return this._html; },
+  set innerHTML(v) { this._html = v; writes.push(v); },
+};
 const document = {getElementById: id => (id === 'attention-list' ? list : null)};
 
 // Every request waits until the test answers it, in the order the test picks.
@@ -125,7 +134,7 @@ check('the services response read the docker alert, so the list shows it', list.
 check('and the list records the alerts it was drawn with', run.drawn() === JSON.stringify([['docker', 'nas', 'cannot reach Docker']]));
 
 // 1b. Same, but the services response read older alerts than the redraw: it
-// commits, then draws again at once with the alerts the bell saw last.
+// commits with the alerts the bell saw last, so no second draw is needed.
 await start();
 const fresh2 = run.services(NEW, workers);
 await settle();
@@ -137,10 +146,9 @@ await answer(0, {alerts: []});
 await answer(0, []);
 await fresh2;
 await settle();
-// pending: [the follow-up redraw's credentials]
-check('a services response that read older alerts asks for a redraw', pending.length === 1);
-if (pending.length) await answer(0, []);
-check('the redraw draws the alerts the bell saw last on the newer services', run.snapshot() === NEW
+check('a services response that read older alerts needs no second draw', pending.length === 0);
+while (pending.length) await answer(0, []);
+check('it draws the alerts the bell saw last on the newer services', run.snapshot() === NEW
   && !list.innerHTML.includes('OLD-STATE') && list.innerHTML.includes('Docker unreachable'));
 
 // 2. Two bell redraws; the older answers last and does not write.
@@ -263,6 +271,56 @@ await blind;
 await settle();
 while (pending.length) await answer(0, []);
 check('a services draw that could not read the alerts draws the ones the bell saw last', list.innerHTML.includes('Docker unreachable'));
+
+// 10. The services refresh starts and reads its alerts. A bell redraw with
+// newer alerts finishes while the refresh waits on credential health. Then the
+// refresh writes: it keeps its new services and the bell's newer alerts, and no
+// write after the redraw shows the older alerts. Run for an alert that appears,
+// one that changes and one that clears.
+const NEWER = [{kind: 'docker', platform: 'nas', error: 'NEWER-ALERT'}];
+const has = (html, alerts) => alerts.every(a => html.includes(a.error));
+const lacks = (html, alerts) => alerts.every(a => !html.includes(a.error));
+for (const [label, older, newer] of [
+  ['an alert that appeared', [], docker],
+  ['an alert that changed', docker, NEWER],
+  ['an alert that cleared', docker, []],
+]) {
+  console.log(`  (${label})`);
+  await start();
+  // The list shows the older alerts to begin with.
+  if (older.length) {
+    const shownOlder = run.refreshAttentionOnAlertChange(older);
+    await settle();
+    await answer(0, []);
+    await shownOlder;
+  }
+  const slow = run.services(NEW, workers);
+  await settle();
+  await answer(0, {alerts: older});
+  // pending: [services credentials]
+  const bellFirst = run.refreshAttentionOnAlertChange(newer);
+  await settle();
+  // pending: [services credentials, redraw credentials]
+  await answer(1, []);
+  await bellFirst;
+  check('the bell redraw drew the newer alerts', has(list.innerHTML, newer) && lacks(list.innerHTML, older));
+  const drawnBefore = writes.length;
+  // The refresh's own credential read finds an expiring credential.
+  await answer(0, [{service: 'honeygain', name: 'Honeygain', status: 'expiring_soon'}]);
+  await slow;
+  await settle();
+  const afterRedraw = writes.slice(drawnBefore);
+  check('the services refresh wrote the list', afterRedraw.length > 0);
+  check('its write keeps the newer alerts (the list never shows the older ones)',
+    afterRedraw.every(html => has(html, newer) && lacks(html, older)));
+  check('its write keeps the services data of the refresh', run.snapshot() === NEW
+    && afterRedraw.every(html => !html.includes('OLD-STATE')));
+  check('and the rows it read after the alerts (credential health)',
+    afterRedraw.every(html => html.includes('Expiring') && html.includes('Honeygain')));
+  while (pending.length) await answer(0, []);
+  check('the list ends on the newer services with the newer alerts', !list.innerHTML.includes('OLD-STATE')
+    && has(list.innerHTML, newer) && lacks(list.innerHTML, older));
+}
 
 if (bad) {
   console.error(`${bad} check(s) failed`);
