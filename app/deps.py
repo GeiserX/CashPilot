@@ -18,7 +18,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import auth, database, login_rate_limit, setup_token, themes, version
+from app import auth, database, i18n, login_rate_limit, setup_token, themes, version
 
 __all__ = [
     "templates",
@@ -67,6 +67,14 @@ templates.env.globals["worker_image"] = lambda: (
 templates.env.globals["themes"] = themes.THEME_LIST
 templates.env.globals["theme_default"] = themes.DEFAULT_THEME
 templates.env.globals["theme_config"] = themes.CONFIG
+# The page's language (app/i18n): t() looks a key up in it, lang() and
+# lang_dir() go on <html>, languages() fills the picker. All of them read the
+# request's current locale, which app.i18n.LocaleMiddleware sets from the
+# cookie and Accept-Language and a signed-in page replaces with the saved choice.
+templates.env.globals["t"] = i18n.t
+templates.env.globals["lang"] = i18n.current
+templates.env.globals["lang_dir"] = i18n.direction
+templates.env.globals["languages"] = i18n.languages
 
 
 def _login_redirect() -> RedirectResponse:

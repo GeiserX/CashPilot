@@ -2,7 +2,7 @@
 {# A signed-in page gets the theme saved on the account (app.routers.pages._page,
    an id from app/themes.json). The pre-paint script below then mirrors it into
    localStorage for the sign-in pages; with no attribute it falls back to that key. #}
-<html lang="en"{% if saved_theme in theme_config.ids %} data-theme="{{ saved_theme }}"{% endif %}>
+<html lang="{{ lang() }}" dir="{{ lang_dir() }}"{% if saved_theme in theme_config.ids %} data-theme="{{ saved_theme }}"{% endif %}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -124,11 +124,15 @@
             <div class="avatar-theme" role="group" aria-label="Theme">
               <span class="avatar-theme-title">Theme</span>
               <div class="avatar-theme-options">
-                {%- for t in themes %}
-                <button type="button" data-theme-choice="{{ t.id }}" aria-pressed="false"><span class="theme-swatch" data-swatch="{{ t.id }}" aria-hidden="true"></span>{{ t.label }}{% if t.id == theme_default %} <span class="avatar-theme-default">(default)</span>{% endif %}</button>
+                {%- for theme in themes %}
+                <button type="button" data-theme-choice="{{ theme.id }}" aria-pressed="false"><span class="theme-swatch" data-swatch="{{ theme.id }}" aria-hidden="true"></span>{{ theme.label }}{% if theme.id == theme_default %} <span class="avatar-theme-default">(default)</span>{% endif %}</button>
                 {%- endfor %}
               </div>
             </div>
+            {%- if languages() | length > 1 %}
+            <div class="avatar-dropdown-divider"></div>
+            {% include "_language_picker.html" %}
+            {%- endif %}
             <div class="avatar-dropdown-divider"></div>
             <button class="avatar-dropdown-item" id="change-password-btn" data-action="openChangePasswordModal">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
@@ -293,6 +297,7 @@
   <script nonce="{{ csp_nonce(request) }}">window._userRole = '{{ user.r }}';</script>
   {% endif %}
   <script async src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js" integrity="sha384-T/4KgSWuZEPozpPz7rnnp/5lDSnpY1VPJCojf1S81uTHS1E38qgLfMgVsAeRCWc4" crossorigin="anonymous"></script>
+  {% include "_i18n_scripts.html" %}
   <script src="/static/js/app.js?v={{ app_version() }}"></script>
   {% block scripts %}{% endblock %}
   <script src="/static/js/delegate.js?v={{ app_version() }}"></script>

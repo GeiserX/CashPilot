@@ -1,0 +1,18 @@
+{#- The language picker, each language in its own name (app/i18n). Shown only
+    when there is more than one language to pick. On a signed-in page the
+    choice is saved to the account and mirrored into the cp-lang cookie; on the
+    sign-in pages it is kept in the cookie alone. "Automatic" clears both, so
+    the browser's language applies again. -#}
+{%- set options = languages() %}
+{%- if options | length > 1 %}
+{%- set chosen = (saved_language if saved_language is defined else none) or request.cookies.get('cp-lang', '') %}
+<label class="lang-picker">
+  <span class="lang-picker-title">{{ t('lang.label') }}</span>
+  <select class="form-input lang-picker-select" data-lang-choice>
+    <option value="auto"{% if chosen not in options | map(attribute='code') %} selected{% endif %}>{{ t('lang.auto') }}</option>
+    {%- for option in options %}
+    <option value="{{ option.code }}" lang="{{ option.code }}" dir="{{ lang_dir(option.code) }}"{% if option.code == chosen %} selected{% endif %}>{{ option.name }}</option>
+    {%- endfor %}
+  </select>
+</label>
+{%- endif %}
