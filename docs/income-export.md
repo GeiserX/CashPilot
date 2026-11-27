@@ -65,6 +65,8 @@ Date,Sent Amount,Sent Currency,Received Amount,Received Currency
 
 Format Date as YYYY-MM-DD HH:mm:ss in UTC. Set Received Amount from amount and Received Currency from coin. Leave both Sent fields blank. For known values, map local_value and local_currency to the optional Net Worth Amount and Net Worth Currency. Use the Tag column for mining or reward where appropriate. Description and TxHash are optional. [Koinly Universal template](https://support.koinly.io/en/articles/9489976-how-to-create-a-custom-csv-file-with-your-data)
 
+No Koinly account yet? You can sign up here: https://koinly.io/?via=FFF185D5. It is a referral link, and it costs you nothing.
+
 ### CoinTracking
 
 Convert income rows to CoinTracking's regular CSV format. The Custom Importer requires trade fields on both sides, and an income row has only a buy side. [CoinTracking Custom Importer requirements](https://cointracking.freshdesk.com/en/support/solutions/articles/29000032507)
