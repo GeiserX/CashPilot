@@ -341,9 +341,11 @@ holds the shared key, and the same value would give it the owner role. A worker
 that has not enrolled yet, that has just enrolled and waits for the UI to
 confirm its own key, or that lost its own key, still accepts the shared key,
 so until then a compromised worker that can reach it can stop or remove its
-services. Commands and heartbeats both travel over plain HTTP, carrying the
-worker's key and those logins, so keep both directions on a LAN you trust or
-inside a VPN such as Tailscale, never on the open internet.
+services. Commands and heartbeats both travel over plain HTTP unless you give
+them `https://` addresses, carrying the worker's key and those logins, so keep
+both directions on a LAN you trust or inside a VPN such as Tailscale. Neither
+side sends the key over plain HTTP to a public address
+([the rule](fleet.md#plain-http-only-on-your-own-network)).
 
 **What owner isolation costs.** On the UI's host, the in-app update updates
 the worker only: the UI is not the worker's to recreate, so the dashboard is

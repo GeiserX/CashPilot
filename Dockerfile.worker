@@ -59,6 +59,8 @@ COPY --from=builder /build/.venv ./.venv
 COPY app/__init__.py ./app/
 COPY app/constants.py ./app/
 COPY app/fleet_key.py ./app/
+# The plain-http rule for the key on the heartbeat (CASHPILOT_UI_URL).
+COPY app/cleartext.py ./app/
 # Keeps secrets in request URLs (httpx logs every one) out of the log.
 COPY app/log_redaction.py ./app/
 # Egress identity: pure helpers, deliberately free of app-level imports so

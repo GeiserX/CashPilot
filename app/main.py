@@ -90,7 +90,7 @@ from app import (
     wallet_seed,
 )
 from app.collectors.base import REGISTER_PENDING
-from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
+from app.worker_proxy import _pin_url_to_ip, _validate_worker_url, plain_http_refusal
 
 logging.basicConfig(
     level=logging.INFO,
@@ -13467,6 +13467,9 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # so a worker still authenticating with the SHARED key looked identical
         # to a fully enrolled one on the fleet page.
         w["enrollment"] = enrollment_state(w.get("key_issued_at"), bool(w.get("key_confirmed")))
+        # Why this box gets no commands at all: its address is plain http to a
+        # public host (worker_proxy.plain_http_refusal). None when it is fine.
+        w["url_refused"] = plain_http_refusal(w["url"]) if w.get("url") else None
     return workers
 
 
