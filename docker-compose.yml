@@ -5,6 +5,12 @@
 #
 #   Start / update:  docker compose pull && docker compose up -d
 #
+# ONE CashPilot per Docker host. The container names in this file are fixed,
+# and a worker manages every container on its Docker engine that carries
+# CashPilot's labels, whichever install made it. A second install on the same
+# host would list, stop and replace the first one's earners. Put it on another
+# host or VM. docs/getting-started.md has the details.
+#
 # Images are PINNED to a major.minor tag, which is what the lines below say.
 # `docker compose pull && up -d` therefore gets the newest patch of that series,
 # not the newest release overall — to move to a newer series, edit the tags.

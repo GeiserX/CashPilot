@@ -6,6 +6,12 @@
 #
 #   docker compose -f docker-compose.build.yml up -d --build
 #
+# ONE CashPilot per Docker host. The container names in this file are fixed,
+# and a worker manages every container on its Docker engine that carries
+# CashPilot's labels, whichever install made it. A second install on the same
+# host would list, stop and replace the first one's earners. Put it on another
+# host or VM. docs/getting-started.md has the details.
+#
 # Regular users should use the default docker-compose.yml, which pulls the
 # published `latest` image (no build toolchain required).
 

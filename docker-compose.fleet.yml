@@ -7,6 +7,12 @@
 # UI: Full dashboard + earnings collection (no Docker socket needed)
 # Workers: Agents that manage containers through a Docker socket proxy and report to UI
 
+# ONE CashPilot per Docker host. The container names in this file are fixed,
+# and a worker manages every container on its Docker engine that carries
+# CashPilot's labels, whichever install made it. A second install on the same
+# host would list, stop and replace the first one's earners. Put it on another
+# host or VM. docs/getting-started.md has the details.
+#
 # === Deploy on main server (e.g., server-a) ===
 services:
   cashpilot-ui:
