@@ -1,0 +1,369 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2034 # the SHA512_* pins are read by indirection
+# cashpilot-gvisor: install, check or undo gVisor for CashPilot's earners on a
+# Linux host. The CashPilot web UI shows the exact command for this file, pinned
+# to a CashPilot release and checked with its sha256 (Fleet page, Security
+# layers). Run it as root:
+#
+#   sudo bash cashpilot-gvisor install   # asks before it changes anything
+#   sudo bash cashpilot-gvisor status
+#   sudo bash cashpilot-gvisor undo
+#
+# What install does:
+#   1. Downloads gVisor release GVISOR_RELEASE and checks it against the sha512
+#      written below (not one downloaded next to it).
+#   2. Puts it in /usr/local/lib/cashpilot-gvisor, so it never replaces a
+#      runsc you installed yourself.
+#   3. Backs up /etc/docker/daemon.json, then registers two runtimes in it:
+#      runsc-hostnet (--network=host, so Docker's DNS works on CashPilot's
+#      network) and runsc-hostnet-raw (also --net-raw, for Bitping).
+#   4. Reloads Docker's settings. Running containers keep running. Only if the
+#      reload does not pick the runtimes up does it offer a Docker restart,
+#      which stops every container on this host, and it asks first.
+# Then press "Check gVisor" in the UI: a probe must see gVisor's kernel and
+# resolve names on the earners' network.
+#
+# undo restores daemon.json from the backup (or removes only our two runtimes
+# if you edited it since), deletes the binaries and the state, reloads Docker
+# and proves that nothing is left. It refuses while a container still runs
+# under one of our runtimes: switch those earners to Standard first.
+#
+# Nothing here touches another runtime, Docker's default runtime, or a
+# container. It refuses on Unraid, Docker Desktop, rootless and snap Docker.
+
+set -euo pipefail
+
+GVISOR_RELEASE="20261123.1"
+# Read through ${!want_var} in cmd_install.
+# sha512 of gvisor.tar.zstd and gvisor.tar.bz2 for each architecture, copied
+# from the release's own .sha512 files when this script was written.
+SHA512_aarch64_zstd="2d3ebf8d9b819dd8155eca685e70ec60184770369cd49fd6c77913f74cc246f9e8b1168a1e699c5aea1b38e2cbf2e22c0ec22f1d490b1e6db3bca5c4838d30cc"
+SHA512_aarch64_bz2="930967c01eaa8c91a90903ba866070dd165c580d3197287747bb1444ee11dab7350db11d8f90bf00efb2cdcfb2318602d3f329c522c9e9436a86fe6a93c7b7fc"
+SHA512_x86_64_zstd="e8ed92b5a4287c33b03803cd936a68b094b3206e3f09e5d862d7aba7a9b1404b5511b8da59282d26171fe21e4ed63b5a266182ab03de088b923c467fb56eafdd"
+SHA512_x86_64_bz2="b8bcf8ebda5a0e3aa43026f26128759c3f74abc94d3f53839963fad01d152b8ec1c2c01cc0c84e8820aa5fb04fbc50df60332911f58884113a7984287737313a"
+
+PREFIX="/usr/local/lib/cashpilot-gvisor"
+STATE="/var/lib/cashpilot-gvisor"
+DAEMON_JSON="${CASHPILOT_DAEMON_JSON:-/etc/docker/daemon.json}"
+RUNTIMES=("runsc-hostnet" "runsc-hostnet-raw")
+DOCS="https://geiserx.github.io/CashPilot/security-layers/"
+VM_DOCS="https://geiserx.github.io/CashPilot/home-network-security/#4-dont-run-it-next-to-what-you-cannot-lose"
+
+ASSUME_YES=0
+TMP_DIR=""
+
+say() { printf '%s\n' "$*"; }
+fail() {
+  printf 'cashpilot-gvisor: %s\n' "$*" >&2
+  exit 1
+}
+
+confirm() {
+  # $1: the question. Reads the answer from the terminal, so it works when the
+  # script itself arrives on stdin.
+  if [ "$ASSUME_YES" = 1 ]; then return 0; fi
+  local answer=""
+  if [ -r /dev/tty ]; then
+    printf '%s [y/N] ' "$1" >/dev/tty
+    read -r answer </dev/tty || true
+  else
+    fail "cannot ask for confirmation without a terminal; run it again with --yes once you have read what it does"
+  fi
+  case "$answer" in y | Y | yes | YES) return 0 ;; *) return 1 ;; esac
+}
+
+sha256_of() { sha256sum "$1" | cut -d' ' -f1; }
+
+docker_runtimes() {
+  docker info --format '{{range $name, $_ := .Runtimes}}{{$name}} {{end}}' 2>/dev/null
+}
+
+has_runtime() {
+  # $1: a runtime name. True when Docker reports it now.
+  local name
+  for name in $(docker_runtimes); do
+    [ "$name" = "$1" ] && return 0
+  done
+  return 1
+}
+
+preflight() {
+  [ "$(id -u)" = 0 ] || fail "run it as root: sudo bash $0 $*"
+  [ "$(uname -s)" = Linux ] || fail "gVisor runs on Linux only."
+  if [ -e /etc/unraid-version ]; then
+    fail "this is Unraid, which cannot run gVisor: Unraid runs from its initial RAM filesystem, so gVisor cannot pivot_root out of it, and a chroot around that blocks the user namespace gVisor needs. Nothing was changed. Run the earners in a VM instead: $VM_DOCS"
+  fi
+  case "$(uname -m)" in
+    x86_64 | aarch64) ;;
+    *) fail "gVisor has no build for $(uname -m); it supports x86_64 and aarch64. Nothing was changed." ;;
+  esac
+  local major minor
+  major=$(uname -r | cut -d. -f1)
+  minor=$(uname -r | cut -d. -f2)
+  if [ "$major" -lt 5 ] || { [ "$major" -eq 5 ] && [ "$minor" -lt 6 ]; }; then
+    fail "gVisor needs Linux 5.6 or newer; this host runs $(uname -r). Nothing was changed."
+  fi
+  command -v docker >/dev/null || fail "the docker command is not installed here. Nothing was changed."
+  docker info >/dev/null 2>&1 || fail "Docker is not answering (is it running, and are you root?). Nothing was changed."
+  if [ "$(docker info --format '{{.OperatingSystem}}' 2>/dev/null)" = "Docker Desktop" ]; then
+    fail "this is Docker Desktop, which already runs every container inside its own VM. Nothing was changed."
+  fi
+  if docker info --format '{{json .SecurityOptions}}' 2>/dev/null | grep -q rootless; then
+    fail "this Docker runs rootless, where gVisor needs a setup this script does not do. Nothing was changed."
+  fi
+  if command -v snap >/dev/null && snap list docker >/dev/null 2>&1; then
+    fail "this Docker comes from a snap, which keeps its settings elsewhere and confines its runtimes. Nothing was changed. Install Docker from docker.com or your distribution's package to use gVisor."
+  fi
+}
+
+reload_docker() {
+  if command -v systemctl >/dev/null && systemctl is-active --quiet docker; then
+    systemctl reload docker
+  else
+    local pid
+    pid=$(pidof dockerd || true)
+    [ -n "$pid" ] || fail "cannot find dockerd to reload it."
+    kill -HUP "$pid"
+  fi
+}
+
+wait_for() {
+  # $1: "present" or "absent". Waits up to 20 s for every runtime of ours.
+  local want="$1" name ok
+  for _ in $(seq 1 20); do
+    ok=1
+    for name in "${RUNTIMES[@]}"; do
+      if [ "$want" = present ]; then has_runtime "$name" || ok=0; else ! has_runtime "$name" || ok=0; fi
+    done
+    [ "$ok" = 1 ] && return 0
+    sleep 1
+  done
+  return 1
+}
+
+restart_docker() {
+  say ""
+  say "Docker's reload did not pick the runtimes up. A Docker restart would."
+  say "WARNING: restarting Docker stops EVERY container on this host, CashPilot's and any other project's."
+  say "Containers with a restart policy come back by themselves; the others stay stopped."
+  # Asked even with --yes: --yes covers what the plan above listed, and a
+  # restart was not in it.
+  ASSUME_YES=0 confirm "Restart Docker now?" || fail "Docker was not restarted. The runtimes are written in $DAEMON_JSON and Docker uses them after its next restart; run 'sudo systemctl restart docker' when it suits you."
+  systemctl restart docker
+}
+
+our_containers() {
+  # Containers whose runtime is one of ours, running or not.
+  local ids
+  ids=$(docker ps -aq)
+  [ -n "$ids" ] || return 0
+  # shellcheck disable=SC2086
+  docker inspect --format '{{.Name}} {{.HostConfig.Runtime}}' $ids | while read -r name runtime; do
+    for ours in "${RUNTIMES[@]}"; do
+      if [ "$runtime" = "$ours" ]; then printf '%s\n' "${name#/}"; fi
+    done
+  done
+}
+
+cmd_install() {
+  preflight install
+  local arch dir url fmt want
+  arch=$(uname -m)
+  dir="$PREFIX/$GVISOR_RELEASE"
+
+  for name in "${RUNTIMES[@]}"; do
+    if has_runtime "$name" && [ ! -f "$STATE/installed" ]; then
+      fail "Docker already has a runtime named $name, which this script did not register. Nothing was changed. If it is gVisor with --network=host, press \"Check gVisor\" in the CashPilot UI; it tests what you have."
+    fi
+  done
+  if [ -f "$STATE/installed" ]; then
+    say "cashpilot-gvisor is already installed (release $(cat "$STATE/release")). Run '$0 status', or '$0 undo' first to reinstall."
+    exit 0
+  fi
+  if [ -f "$DAEMON_JSON" ] && command -v python3 >/dev/null; then
+    python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$DAEMON_JSON" 2>/dev/null ||
+      fail "$DAEMON_JSON is not valid JSON, so Docker would not load it either. Fix it first. Nothing was changed."
+  fi
+
+  if command -v zstd >/dev/null; then fmt=zstd; elif command -v bzip2 >/dev/null; then fmt=bz2; else
+    fail "neither zstd nor bzip2 is installed, and the gVisor release needs one of them. Install zstd (apt install zstd, or dnf install zstd). Nothing was changed."
+  fi
+  want_var="SHA512_${arch}_${fmt}"
+  want="${!want_var}"
+  url="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_RELEASE}/${arch}/gvisor.tar.${fmt}"
+
+  say "cashpilot-gvisor will:"
+  say "  1. download gVisor release ${GVISOR_RELEASE} for ${arch} and check its sha512;"
+  say "  2. put it in ${dir};"
+  say "  3. back up ${DAEMON_JSON} to ${STATE}/ and register the runtimes ${RUNTIMES[*]} in it;"
+  say "  4. reload Docker's settings. Running containers keep running."
+  say "     If the reload is not enough, it asks you again before restarting Docker,"
+  say "     because a Docker restart stops every container on this host."
+  say "Undo with: sudo bash $0 undo"
+  confirm "Go ahead?" || fail "nothing was changed."
+
+  TMP_DIR=$(mktemp -d)
+  trap 'rm -rf "$TMP_DIR"' EXIT
+  local tmp="$TMP_DIR"
+  say "Downloading $url"
+  if command -v curl >/dev/null; then curl -fsSL -o "$tmp/gvisor.tar" "$url"; else wget -qO "$tmp/gvisor.tar" "$url"; fi
+  [ "$(sha512sum "$tmp/gvisor.tar" | cut -d' ' -f1)" = "$want" ] ||
+    fail "the download does not match the sha512 this script pins. Nothing was installed."
+  say "Checksum OK."
+
+  mkdir -p "$dir" "$STATE"
+  chmod 700 "$STATE"
+  if [ "$fmt" = zstd ]; then tar --zstd -xf "$tmp/gvisor.tar" -C "$dir" runsc gvisor-bin; else tar -xjf "$tmp/gvisor.tar" -C "$dir" runsc gvisor-bin; fi
+  "$dir/runsc" --version >/dev/null || fail "the downloaded runsc does not run on this host. Run '$0 undo' to clean up."
+
+  if [ -f "$DAEMON_JSON" ]; then
+    cp -p "$DAEMON_JSON" "$STATE/daemon.json.orig"
+  else
+    : >"$STATE/daemon.json.absent"
+    mkdir -p "$(dirname "$DAEMON_JSON")"
+  fi
+  if [ ! -e "$DAEMON_JSON~" ]; then : >"$STATE/backup.absent"; fi
+  printf '%s\n' "$GVISOR_RELEASE" >"$STATE/release"
+  "$dir/runsc" install -download-sidecars NEVER -config_file "$DAEMON_JSON" -runtime runsc-hostnet -- --network=host
+  "$dir/runsc" install -download-sidecars NEVER -config_file "$DAEMON_JSON" -runtime runsc-hostnet-raw -- --network=host --net-raw
+  sha256_of "$DAEMON_JSON" >"$STATE/daemon.json.ours"
+  : >"$STATE/installed"
+
+  reload_docker
+  if ! wait_for present; then
+    restart_docker
+    wait_for present || fail "Docker still does not report the runtimes after the restart; see 'journalctl -u docker'."
+  fi
+  say ""
+  say "Docker now reports: $(docker_runtimes)"
+  say "Installed. Now press \"Check gVisor\" on the CashPilot Fleet page: it must show green."
+  say "Then choose gVisor per worker or per earner there. Nothing switches over by itself."
+}
+
+cmd_undo() {
+  preflight undo
+  [ -f "$STATE/installed" ] || [ -d "$PREFIX" ] || {
+    say "cashpilot-gvisor is not installed here; nothing to undo."
+    exit 0
+  }
+  local users
+  users=$(our_containers)
+  if [ -n "$users" ]; then
+    fail "these containers still use our gVisor runtimes: $(printf '%s' "$users" | tr '\n' ' '). Switch them to Standard in the CashPilot UI (it redeploys them), then run undo again. Nothing was changed."
+  fi
+  say "cashpilot-gvisor undo will:"
+  if [ -f "$STATE/daemon.json.ours" ] && [ -f "$DAEMON_JSON" ] && [ "$(sha256_of "$DAEMON_JSON")" = "$(cat "$STATE/daemon.json.ours")" ]; then
+    if [ -f "$STATE/daemon.json.absent" ]; then say "  1. remove ${DAEMON_JSON}, which did not exist before;"; else say "  1. restore ${DAEMON_JSON} from its backup;"; fi
+  else
+    say "  1. remove only the runtimes ${RUNTIMES[*]} from ${DAEMON_JSON}, which was edited since the install;"
+  fi
+  say "  2. delete ${PREFIX} and ${STATE};"
+  say "  3. reload Docker's settings. Running containers keep running."
+  confirm "Go ahead?" || fail "nothing was changed."
+
+  local runsc restored="" untouched=0
+  runsc=$(find "$PREFIX" -mindepth 2 -maxdepth 2 -name runsc -type f 2>/dev/null | head -n1 || true)
+  if [ -f "$STATE/daemon.json.ours" ] && [ -f "$DAEMON_JSON" ] && [ "$(sha256_of "$DAEMON_JSON")" = "$(cat "$STATE/daemon.json.ours")" ]; then
+    untouched=1
+  fi
+  # Step 1: take our two runtimes out and reload. A reload drops a runtime only
+  # when the file still has a "runtimes" key without it; a file with no such
+  # key keeps every runtime Docker has, so restoring the backup alone is not enough.
+  if [ -f "$DAEMON_JSON" ]; then
+    if [ -n "$runsc" ]; then
+      for name in "${RUNTIMES[@]}"; do
+        "$runsc" uninstall -config_file "$DAEMON_JSON" -runtime "$name" >/dev/null 2>&1 || true
+      done
+    elif grep -q cashpilot-gvisor "$DAEMON_JSON"; then
+      fail "the gVisor binary is gone, so it cannot edit $DAEMON_JSON; remove the entries ${RUNTIMES[*]} from it by hand, then run undo again."
+    fi
+  fi
+  reload_docker
+  if ! wait_for absent; then
+    restart_docker
+    wait_for absent || fail "Docker still reports a runtime of ours after the restart; see 'journalctl -u docker'."
+  fi
+  # Step 2: put the file back as it was. Docker's runtimes already match it.
+  if [ "$untouched" = 1 ]; then
+    if [ -f "$STATE/daemon.json.absent" ]; then
+      rm -f "$DAEMON_JSON"
+      restored="removed"
+    else
+      cp -p "$STATE/daemon.json.orig" "$DAEMON_JSON"
+      restored="restored"
+    fi
+  else
+    restored="edited"
+  fi
+  # runsc install and uninstall leave a copy of the file they edited next to it.
+  if [ -f "$STATE/backup.absent" ]; then rm -f "$DAEMON_JSON~"; fi
+  rm -rf "$PREFIX" "$STATE"
+
+  # The proof: each line must hold, or undo says what is left.
+  local left=0
+  for name in "${RUNTIMES[@]}"; do
+    if has_runtime "$name"; then
+      say "LEFT: Docker still reports $name"
+      left=1
+    fi
+  done
+  [ ! -e "$PREFIX" ] || {
+    say "LEFT: $PREFIX"
+    left=1
+  }
+  [ ! -e "$STATE" ] || {
+    say "LEFT: $STATE"
+    left=1
+  }
+  if [ -f "$DAEMON_JSON" ] && grep -q 'cashpilot-gvisor' "$DAEMON_JSON"; then
+    say "LEFT: $DAEMON_JSON still points at cashpilot-gvisor"
+    left=1
+  fi
+  [ "$left" = 0 ] || fail "undo did not finish; the lines above say what is left."
+  case "$restored" in
+    restored) say "daemon.json restored from the backup." ;;
+    removed) say "daemon.json removed; it did not exist before the install." ;;
+    edited) say "Our two runtimes removed from daemon.json; your other edits are kept." ;;
+  esac
+  say "Undone. Docker reports: $(docker_runtimes)"
+  say "Nothing of cashpilot-gvisor is left on this host."
+}
+
+cmd_status() {
+  if [ -f "$STATE/installed" ]; then
+    say "Installed: gVisor release $(cat "$STATE/release") in $PREFIX"
+    if [ -f "$DAEMON_JSON" ] && [ "$(sha256_of "$DAEMON_JSON")" = "$(cat "$STATE/daemon.json.ours")" ]; then
+      say "daemon.json: as the install left it"
+    else
+      say "daemon.json: edited since the install"
+    fi
+  else
+    say "Not installed by cashpilot-gvisor."
+  fi
+  if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
+    say "Docker reports the runtimes: $(docker_runtimes)"
+  fi
+  say "The real check is \"Check gVisor\" on the CashPilot Fleet page. More: $DOCS"
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+  for arg in "$@"; do
+    case "$arg" in
+      --yes | -y) ASSUME_YES=1 ;;
+      *) fail "unknown option $arg" ;;
+    esac
+  done
+  case "$cmd" in
+    install) cmd_install ;;
+    undo | uninstall) cmd_undo ;;
+    status) cmd_status ;;
+    *)
+      say "usage: sudo bash $0 install|status|undo [--yes]"
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"
