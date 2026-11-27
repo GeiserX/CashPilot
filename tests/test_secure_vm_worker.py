@@ -37,9 +37,11 @@ class TestTheHeartbeatSaysItIsASecureVM:
         fence.write_text(json.dumps({"state": "ok", "reason": "match", "checked_at": 1795816133}))
         monkeypatch.setattr(worker_api, "SECURE_VM_OF", "nas")
         monkeypatch.setattr(worker_api, "SECURE_VM_FENCE_FILE", fence)
+        monkeypatch.setattr(worker_api, "SECURE_VM_SELFTEST_FILE", tmp_path / "none.json")
         assert worker_api._secure_vm_info() == {
             "host": "nas",
             "fence": {"state": "ok", "checked_at": 1795816133, "reason": "match"},
+            "selftest": None,
         }
 
     @pytest.mark.parametrize(
@@ -59,7 +61,8 @@ class TestTheHeartbeatSaysItIsASecureVM:
             fence.write_text(content)
         monkeypatch.setattr(worker_api, "SECURE_VM_OF", "nas")
         monkeypatch.setattr(worker_api, "SECURE_VM_FENCE_FILE", fence)
-        assert worker_api._secure_vm_info() == {"host": "nas", "fence": None}
+        monkeypatch.setattr(worker_api, "SECURE_VM_SELFTEST_FILE", tmp_path / "none.json")
+        assert worker_api._secure_vm_info() == {"host": "nas", "fence": None, "selftest": None}
 
     def test_the_reason_is_capped(self, monkeypatch, tmp_path):
         fence = tmp_path / "fence.json"
@@ -67,6 +70,51 @@ class TestTheHeartbeatSaysItIsASecureVM:
         monkeypatch.setattr(worker_api, "SECURE_VM_OF", "nas")
         monkeypatch.setattr(worker_api, "SECURE_VM_FENCE_FILE", fence)
         assert len(worker_api._secure_vm_info()["fence"]["reason"]) == 200
+
+    def test_the_last_self_test(self, monkeypatch, tmp_path):
+        result = tmp_path / "selftest.json"
+        result.write_text(json.dumps({"ok": False, "checked_at": 5, "failed": ["FAIL  host 10.0.0.1:22 reached"] * 30}))
+        monkeypatch.setattr(worker_api, "SECURE_VM_OF", "nas")
+        monkeypatch.setattr(worker_api, "SECURE_VM_FENCE_FILE", tmp_path / "none.json")
+        monkeypatch.setattr(worker_api, "SECURE_VM_SELFTEST_FILE", result)
+        selftest = worker_api._secure_vm_info()["selftest"]
+        assert selftest["ok"] is False and selftest["checked_at"] == 5
+        assert len(selftest["failed"]) == 20
+
+    def test_a_pass_with_failed_lines_is_not_a_pass(self, monkeypatch, tmp_path):
+        result = tmp_path / "selftest.json"
+        result.write_text(json.dumps({"ok": True, "checked_at": 5, "failed": ["FAIL  ui"]}))
+        monkeypatch.setattr(worker_api, "SECURE_VM_OF", "nas")
+        monkeypatch.setattr(worker_api, "SECURE_VM_SELFTEST_FILE", result)
+        assert worker_api._secure_vm_info()["selftest"]["ok"] is False
+
+
+class TestTheUICanAskForASelfTest:
+    def test_it_leaves_a_request_for_the_host(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(worker_api, "SECURE_VM_OF", "nas")
+        monkeypatch.setattr(worker_api, "SECURE_VM_ASK_DIR", tmp_path)
+        monkeypatch.setattr(worker_api, "_verify_api_key", lambda request: None)
+        resp = TestClient(worker_api.app).post("/api/secure-vm/selftest")
+        assert resp.status_code == 200
+        assert (tmp_path / "selftest").exists()
+
+    def test_not_on_a_worker_that_is_not_a_secure_vm(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(worker_api, "SECURE_VM_OF", "")
+        monkeypatch.setattr(worker_api, "SECURE_VM_ASK_DIR", tmp_path)
+        monkeypatch.setattr(worker_api, "_verify_api_key", lambda request: None)
+        resp = TestClient(worker_api.app).post("/api/secure-vm/selftest")
+        assert resp.status_code == 404
+        assert not (tmp_path / "selftest").exists()
+
+    def test_it_needs_the_uis_key(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(worker_api, "SECURE_VM_OF", "nas")
+        monkeypatch.setattr(worker_api, "SECURE_VM_ASK_DIR", tmp_path)
+        monkeypatch.setattr(worker_api, "_active_key", lambda: "own-key")
+        resp = TestClient(worker_api.app, raise_server_exceptions=False).post(
+            "/api/secure-vm/selftest", headers={"Authorization": "Bearer wrong"}
+        )
+        assert resp.status_code == 401
+        assert not (tmp_path / "selftest").exists()
 
 
 def _retire(client, token="own-key", cid="vm-1"):
@@ -178,3 +226,20 @@ class TestTheGuestSideCommand:
         ok, message = worker_retire.retire()
         assert not ok
         assert "no key of its own" in message
+
+
+class TestTheUIRoute:
+    def test_the_owner_asks_the_worker(self, client):
+        with (
+            patch("app.main._require_owner"),
+            patch("app.main._proxy_to_worker", new_callable=AsyncMock, return_value={"status": "asked"}) as proxy,
+        ):
+            resp = client.post("/api/workers/7/secure-vm/selftest")
+        assert resp.status_code == 200
+        proxy.assert_awaited_once_with(7, "POST", "/api/secure-vm/selftest", timeout=15)
+
+    def test_nobody_else(self, client):
+        with patch("app.main._proxy_to_worker", new_callable=AsyncMock) as proxy:
+            resp = client.post("/api/workers/7/secure-vm/selftest")
+        assert resp.status_code in (401, 403)
+        proxy.assert_not_awaited()
