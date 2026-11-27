@@ -7744,7 +7744,9 @@ async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | 
     svc = None
     slug = None
     match path.split("/"):
-        case ["", "api", "containers", slug, "deploy" | "restore"] | ["", "api", "proxied", slug, _, "deploy"]:
+        case ["", "api", "containers", slug, "deploy" | "deploy-checked" | "restore"]:
+            svc = catalog.get_service(slug)
+        case ["", "api", "proxied", slug, _, "deploy"]:
             svc = catalog.get_service(slug)
     if wallet_seed.seed_key(svc):
         raise _desktop_wallet_refusal(svc)
@@ -7830,14 +7832,18 @@ class _DesktopDeploySpec(BaseModel):
 
 
 async def _desktop_deploy_body(path: str, spec: dict[str, Any], desktop_json: dict[str, Any] | None) -> dict[str, Any]:
-    deploy_path = re.fullmatch(r"/api/containers/[a-z0-9][a-z0-9_.-]*/deploy", path)
+    # Only the checked route: the old one replaces whatever holds the name,
+    # including a container no CashPilot made (_worker_deploy_target).
+    deploy_path = re.fullmatch(r"/api/containers/[a-z0-9][a-z0-9_.-]*/deploy-checked", path)
     body = None
-    if deploy_path:
+    expected = spec.get("expected_container")
+    if deploy_path and isinstance(expected, str) and _DEPLOY_TARGET_ID.fullmatch(expected):
         # Validation errors carry submitted values, including credentials.
         with contextlib.suppress(ValidationError):
             body = _DesktopDeploySpec.model_validate(spec if desktop_json is None else desktop_json).model_dump(
                 exclude_unset=True
             )
+            body["expected_container"] = expected
     # Walk the serialized body too. Model field order can differ from the raw
     # request, and projection can remove fields between two parts of a phrase.
     await _refuse_desktop_wallet_payload(path, spec, desktop_json, body)
@@ -8060,17 +8066,20 @@ async def _worker_deploy_target(
     params = {"instance": str(instance)} if proxy_id is None else None
     endpoint = "deploy-checked" if proxy_id is None else "deploy"
     state = {}
-    # Desktop has no checked route. Its container list queries Docker directly.
-    if not desktop:
-        try:
-            state = await _proxy_to_worker(worker_id, "GET", f"{base}/{endpoint}", params=params)
-        except HTTPException as exc:
-            if exc.status_code not in (404, 405):
-                raise
+    try:
+        state = await _proxy_to_worker(worker_id, "GET", f"{base}/{endpoint}", params=params)
+    except HTTPException as exc:
+        if exc.status_code not in (404, 405):
+            raise
     if isinstance(state, dict):
         target = state.get("expected_container")
         if isinstance(target, str) and _DEPLOY_TARGET_ID.fullmatch(target):
             return target, True
+    # A Desktop's container list holds only the containers it labelled, so a
+    # container no CashPilot made under its name reads as "none" there, and the
+    # old route deletes it. Without the checked lookup nothing is sent.
+    if desktop:
+        raise HTTPException(status_code=409, detail=await _desktop_needs_checked_route(worker_id))
 
     # Old inventory can be cached. A live existence probe prevents a stale
     # empty inventory (or heartbeat) from being mistaken for a first deploy.
@@ -8081,7 +8090,7 @@ async def _worker_deploy_target(
         if instance > 1
         else f"Container for {slug} not found"
     )
-    if not desktop and not (isinstance(state, dict) and state.get("exists") is True):
+    if not (isinstance(state, dict) and state.get("exists") is True):
         if isinstance(state, dict) and state.get("exists") is False:
             return "none", False
         try:
@@ -8098,7 +8107,6 @@ async def _worker_deploy_target(
         rows = await _proxy_to_worker(worker_id, "GET", "/api/containers")
     else:
         rows = _proxied_reportable(await database.get_worker(worker_id))
-    found = False
     for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict) or egress.container_slug(row) != slug:
             continue
@@ -8106,15 +8114,25 @@ async def _worker_deploy_target(
             instance if proxy_id is None else proxy_id
         ):
             continue
-        found = True
         target = row.get("container_id")
         if isinstance(target, str) and target != "none" and _DEPLOY_TARGET_ID.fullmatch(target):
             return target, False
-    if desktop and isinstance(rows, list) and not found:
-        return "none", False
     raise HTTPException(
         status_code=409,
         detail="A container already exists. Update the worker so CashPilot can identify it before replacing it.",
+    )
+
+
+async def _desktop_needs_checked_route(worker_id: int) -> str:
+    """Why a deploy to this Desktop was not sent: it has no checked deploy route."""
+    worker = await database.get_worker(worker_id) or {}
+    name = worker.get("name") or f"worker {worker_id}"
+    reported = placement.system_info(worker).get("version")
+    known = isinstance(reported, str) and version.release_tuple(reported) is not None
+    runs = f"CashPilot Desktop {reported.strip().removeprefix('v')}" if known else "a CashPilot Desktop"
+    return (
+        f"{name} runs {runs} that cannot check which container a deploy would replace, so nothing was deployed. "
+        "Update CashPilot Desktop on that computer to 2.0.0 or newer, then deploy again."
     )
 
 
@@ -8187,6 +8205,7 @@ async def _send_worker_deploy(
 
     locks = _worker_deploy_locks.setdefault(asyncio.get_running_loop(), {})
     async with locks.setdefault((worker_id, slug), asyncio.Lock()):
+        # A Desktop's lookup answers checked or refuses: it never falls back to the old route.
         current, checked = await _worker_deploy_target(worker_id, slug, instance, proxy_id)
         if not checked and current != expected:
             key = str(instance) if proxy_id is None else f"p{proxy_id}"
