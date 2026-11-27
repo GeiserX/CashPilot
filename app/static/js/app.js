@@ -3228,6 +3228,18 @@ const CP = (() => {
     return `critical_set=${encodeURIComponent(reviewed)}`;
   }
 
+  // CashPilot Desktop deletes data that cannot be made again only on that
+  // computer, and refuses that delete from here whatever the password. So the
+  // owner is told at once, and not asked to review the volumes or for the password.
+  function _desktopKeepsCriticalData(slug, workerId, boxName) {
+    const worker = (_detailWorkers || []).find((w) => String(w.id) === String(workerId));
+    if (!isDesktopWorker(worker)) return false;
+    toast(`Nothing was removed from ${boxName}. The data of ${slug} there holds a node identity or wallet, `
+      + 'and CashPilot Desktop deletes that only on that computer. To remove only the container, '
+      + 'press Remove again and keep the data.', 'error');
+    return true;
+  }
+
   // What a Remove's answer says about the volumes it was asked to delete:
   // success only when none stayed. byHandOn names the box when a Remove again
   // cannot reach a volume that stays: a custom service's Remove already
@@ -3295,6 +3307,7 @@ const CP = (() => {
         // refusal reported, and the approval binds them: the box deletes
         // those or nothing, never one mounted since.
         if (withData && err.code === 'critical_volume') {
+          if (_desktopKeepsCriticalData(slug, workerId, boxName || `worker #${workerId}`)) return;
           const reviewed = confirmCriticalVolumes(slug, boxName || `worker #${workerId}`, err.refusal);
           if (!reviewed) return;
           return removed(await api(path([...params, 'allow_delete_critical=true', reviewed]), { method: 'DELETE', body: {} }));
@@ -5250,6 +5263,7 @@ const CP = (() => {
         // The box names the volumes it cannot judge (its catalog does not know
         // this service): the owner reviews exactly those, then the password.
         if (!withData || err.code !== 'critical_volume') throw err;
+        if (_desktopKeepsCriticalData(slug, workerId, boxName)) return;
         const reviewed = confirmCriticalVolumes(slug, boxName, err.refusal);
         if (!reviewed) return;
         result = await api(`${path}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });
