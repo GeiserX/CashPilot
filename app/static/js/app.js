@@ -3361,6 +3361,87 @@ const CP = (() => {
   // -----------------------------------------------------------
   let logPollTimer = null;
 
+  // Docker starts every line with an RFC 3339 time in nanoseconds, which is
+  // often longer than the message. It is shown in local time, without the
+  // date when every line is from today; the full value is in its tooltip.
+  const LOG_TIME = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2}) ?/;
+
+  function logEntries(text, now) {
+    const pad = n => String(n).padStart(2, '0');
+    const day = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const entries = String(text ?? '').replace(/\r?\n$/, '').split(/\r?\n/).map(raw => {
+      const m = LOG_TIME.exec(raw);
+      // Date reads at most milliseconds.
+      const at = m ? new Date(`${m[1]}${(m[2] || '').slice(0, 4)}${m[3]}`) : null;
+      if (!at || Number.isNaN(at.getTime())) return { stamp: '', day: '', time: '', message: raw };
+      const time = `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
+      return { stamp: m[0].trim(), day: day(at), time, message: raw.slice(m[0].length) };
+    });
+    const today = day(now || new Date());
+    const stamped = entries.filter(e => e.stamp);
+    const dated = stamped.some(e => e.day !== today);
+    for (const e of entries) e.shown = e.stamp ? (dated ? `${e.day} ${e.time}` : e.time) : '';
+    return { entries, width: stamped.length ? (dated ? 19 : 8) : 0 };
+  }
+
+  // The text each viewer shows, so a poll that brings nothing new keeps the
+  // reader's selection and scroll position.
+  const shownLogs = new WeakMap();
+
+  function renderLogs(viewer, text) {
+    if (!viewer) return;
+    const value = String(text ?? '');
+    if (shownLogs.get(viewer) === value) return;
+    const first = !shownLogs.has(viewer);
+    const atEnd = viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight < 24;
+    shownLogs.set(viewer, value);
+    const { entries, width } = logEntries(value);
+    const list = document.createElement('div');
+    list.className = 'log-lines';
+    list.style.setProperty('--log-ts', `${width}ch`);
+    for (const e of entries) {
+      const row = document.createElement('div');
+      row.className = 'log-line';
+      if (e.shown) {
+        const ts = document.createElement('span');
+        ts.className = 'log-ts';
+        ts.title = e.stamp;
+        ts.textContent = e.shown;
+        row.append(ts);
+      }
+      row.append(document.createTextNode(e.message));
+      list.append(row);
+    }
+    viewer.replaceChildren(list);
+    // Follow new lines only while the reader is at the end.
+    if (first || atEnd) viewer.scrollTop = viewer.scrollHeight;
+  }
+
+  function logNote(viewer, text) {
+    if (!viewer) return;
+    shownLogs.delete(viewer);
+    viewer.textContent = text;
+  }
+
+  const LOG_WRAP_KEY = 'cashpilot-log-wrap';
+
+  function applyLogWrap() {
+    const wrap = localStorage.getItem(LOG_WRAP_KEY) === '1';
+    const viewer = document.getElementById('log-content');
+    const button = document.getElementById('log-wrap-toggle');
+    if (viewer) viewer.classList.toggle('log-wrap', wrap);
+    if (button) button.setAttribute('aria-pressed', String(wrap));
+  }
+
+  function toggleLogWrap() {
+    const viewer = document.getElementById('log-content');
+    const atEnd = viewer && viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight < 24;
+    localStorage.setItem(LOG_WRAP_KEY, localStorage.getItem(LOG_WRAP_KEY) === '1' ? '0' : '1');
+    applyLogWrap();
+    // Wrapping changes every line's height: a reader at the end stays there.
+    if (atEnd) viewer.scrollTop = viewer.scrollHeight;
+  }
+
   async function viewLogs(slug, workerId, instance) {
     openModal('logs-modal');
     const title = document.getElementById('logs-modal-title');
@@ -3368,7 +3449,8 @@ const CP = (() => {
     const copy = parseInt(instance) > 1 ? `, copy ${parseInt(instance)}` : '';
     const label = workerId != null ? `${slug} (worker #${workerId}${copy})` : slug;
     if (title) title.textContent = `Logs: ${label}`;
-    if (viewer) viewer.textContent = 'Loading logs...';
+    applyLogWrap();
+    logNote(viewer, 'Loading logs...');
 
     if (logPollTimer) clearInterval(logPollTimer);
     const q = workerId != null ? `lines=200&worker_id=${workerId}${_instanceQuery(instance)}` : 'lines=200';
@@ -3376,10 +3458,9 @@ const CP = (() => {
     async function fetchLogs() {
       try {
         const data = await api(`/api/services/${slug}/logs?${q}`);
-        if (viewer) viewer.textContent = data.logs || '(no logs)';
-        viewer.scrollTop = viewer.scrollHeight;
+        renderLogs(viewer, data.logs || '(no logs)');
       } catch (err) {
-        if (viewer) viewer.textContent = `Error loading logs: ${err.message}`;
+        logNote(viewer, `Error loading logs: ${err.message}`);
       }
     }
 
@@ -5327,13 +5408,12 @@ const CP = (() => {
     if (!viewer) return;
     if (viewer.style.display === 'none') {
       viewer.style.display = 'block';
-      viewer.textContent = 'Loading...';
+      logNote(viewer, 'Loading...');
       try {
         const data = await api(`/api/services/${slug}/logs?worker_id=${workerId}&lines=100${_instanceQuery(instance)}`);
-        viewer.textContent = data.logs || '(no logs)';
-        viewer.scrollTop = viewer.scrollHeight;
+        renderLogs(viewer, data.logs || '(no logs)');
       } catch (err) {
-        viewer.textContent = `Error: ${err.message}`;
+        logNote(viewer, `Error: ${err.message}`);
       }
     } else {
       viewer.style.display = 'none';
@@ -5344,13 +5424,12 @@ const CP = (() => {
     // Legacy — kept for backward compat
     const viewer = document.getElementById(`detail-logs-${slug}`);
     if (!viewer) return;
-    viewer.textContent = 'Loading...';
+    logNote(viewer, 'Loading...');
     try {
       const data = await api(`/api/services/${slug}/logs?lines=100`);
-      viewer.textContent = data.logs || '(no logs)';
-      viewer.scrollTop = viewer.scrollHeight;
+      renderLogs(viewer, data.logs || '(no logs)');
     } catch (err) {
-      viewer.textContent = `Error: ${err.message}`;
+      logNote(viewer, `Error: ${err.message}`);
     }
   }
 
@@ -7009,6 +7088,7 @@ const CP = (() => {
     forgetDeployment,
     viewLogs,
     stopLogPolling,
+    toggleLogWrap,
     deployService,
     copyText,
     toggleWizardService,
