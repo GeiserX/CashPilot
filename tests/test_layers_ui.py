@@ -33,7 +33,7 @@ def _worker(
     system_info = {
         "os": os,
         "features": list(features),
-        "isolation": iso or {"mode": "on", "network": "cashpilot-isolated", "fence": {"state": "ok"}},
+        "isolation": iso or {"mode": "on", "network": "cashpilot-isolated", "fence": {"state": "applied"}},
         **info,
     }
     if layers is not None:
@@ -94,6 +94,14 @@ class TestTheView:
         view = layers_ui.worker_view(w, NONE)
         assert view["earners"][0]["runtime"] == "runc"
         assert view["gvisor"]["state"] == "missing"
+
+    @pytest.mark.parametrize(
+        ("state", "fenced"), [("applied", True), ("reduced", False), ("failed", False), ("n/a", None)]
+    )
+    def test_fenced_only_once_the_filter_is_applied(self, state, fenced):
+        iso = {"mode": "on", "network": "cashpilot-isolated", "fence": {"state": state}}
+        w = _worker(_layers(), [{"slug": "honeygain", "runtime": "runc", "network": "cashpilot-isolated"}], iso=iso)
+        assert layers_ui.worker_view(w, NONE)["earners"][0]["fence"] is fenced
 
     def test_isolation_off_is_not_fenced(self):
         iso = {"mode": "off", "fence": {"state": "reduced"}}
@@ -176,6 +184,37 @@ class TestStorage:
             # New: takes the default, and keeps it after.
             assert _run(layers_ui.for_new_deploy(w, "honeygain")) == "gvisor"
             assert json.loads(store["worker_c7_runtime_choice"])["earners"]["honeygain"] == "gvisor"
+
+    def test_a_stored_choice_an_env_pin_now_overrules_is_not_sent(self):
+        store, g, s = self._store()
+        pins = {"default": None, "overrides": {"honeygain": "runc"}}
+        store["worker_c7_runtime_choice"] = json.dumps({"default": None, "earners": {"honeygain": "gvisor"}})
+        with g, s:
+            assert _run(layers_ui.for_new_deploy(_worker(_layers(pins=pins)), "honeygain")) is None
+            # Without the pin the same stored choice rides the deploy again.
+            assert _run(layers_ui.for_new_deploy(_worker(_layers()), "honeygain")) == "gvisor"
+
+    def test_two_new_earners_at_once_both_keep_their_choice(self):
+        store: dict[str, str] = {}
+
+        async def get(key=None):
+            await asyncio.sleep(0)
+            return store.get(key)
+
+        async def put(key, value):
+            await asyncio.sleep(0)
+            store[key] = value
+
+        async def both(w):
+            await layers_ui.set_default(w, "gvisor")
+            await asyncio.gather(layers_ui.for_new_deploy(w, "honeygain"), layers_ui.for_new_deploy(w, "earnapp"))
+
+        with (
+            patch.object(database, "get_config", side_effect=get),
+            patch.object(database, "set_config", side_effect=put),
+        ):
+            _run(both(_worker(_layers())))
+        assert json.loads(store["worker_c7_runtime_choice"])["earners"] == {"honeygain": "gvisor", "earnapp": "gvisor"}
 
     def test_a_default_that_does_not_fit_leaves_dockers_default(self):
         _store, g, s = self._store()
@@ -286,6 +325,24 @@ class TestTheDeploySendsTheChoice:
             _run(main._send_worker_deploy(7, "honeygain", {"image": "honeygain/honeygain"}, proxy_id=3))
         choice.assert_not_called()
         assert "runtime_choice" not in call.call_args.kwargs["json"]
+
+    def test_a_restore_keeps_the_runtime_choice(self):
+        sent = {}
+
+        async def hop(worker_id, method, path, *, json=None, **kwargs):
+            sent.update(json or {})
+            return {"state_id": 1}
+
+        restore = {"sha256": "ab" * 32, "bundle_b64": "eA==", "passphrase": "p"}
+        with (
+            patch.object(main, "_runtime_choice_for", AsyncMock(return_value="gvisor")),
+            patch.object(main, "_image_for_worker", AsyncMock(side_effect=lambda w, s, spec: spec)),
+            patch.object(database, "get_worker", AsyncMock(return_value={"client_id": "c7"})),
+            patch.object(main, "_confirmed_worker_key", AsyncMock(return_value="k" * 32)),
+            patch.object(main, "_proxy_to_worker", side_effect=hop),
+        ):
+            _run(main._proxy_worker_restore(7, "honeygain", {"image": "honeygain/honeygain"}, restore))
+        assert sent["runtime_choice"] == "gvisor"
 
     def test_desktop_gets_none(self):
         w = _worker(_layers(), device_type="desktop")

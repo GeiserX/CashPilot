@@ -40,17 +40,25 @@ def sha256(name: str) -> str:
     return hashlib.sha256((SCRIPTS_DIR / name).read_bytes()).hexdigest()
 
 
+def problem(name: str) -> str | None:
+    """Why no pinned command can be shown for ``name``, or None when one can."""
+    if name not in SCRIPTS:
+        return i18n.t("layers.cmd.unknown", name=name)
+    if not _RELEASE.fullmatch(version.current().removeprefix("v")):
+        return i18n.t("layers.cmd.dev_build")
+    try:
+        sha256(name)
+    except OSError:
+        return i18n.t("layers.cmd.not_shipped", name=name)
+    return None
+
+
 def command(name: str, action: str, args: list[str] | tuple[str, ...] = ()) -> str:
     """The command line for ``name action args``, pinned to this release's tag and its sha256."""
-    if name not in SCRIPTS:
-        raise Unavailable(i18n.t("layers.cmd.unknown", name=name))
+    if (why := problem(name)) is not None:
+        raise Unavailable(why)
     release = version.current().removeprefix("v")
-    if not _RELEASE.fullmatch(release):
-        raise Unavailable(i18n.t("layers.cmd.dev_build"))
-    try:
-        digest = sha256(name)
-    except OSError:
-        raise Unavailable(i18n.t("layers.cmd.not_shipped", name=name)) from None
+    digest = sha256(name)
     url = f"{REPO_RAW}/v{release}/scripts/{name}"
     run = " ".join(shlex.quote(part) for part in (action, *args))
     return (

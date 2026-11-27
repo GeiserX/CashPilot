@@ -8379,6 +8379,9 @@ async def _proxy_worker_restore(
         "passphrase": restore["passphrase"],
         "approval": step_up.sign(key, step_up.ACTION_RESTORE, target),
     }
+    # A restore recreates the earner: it keeps the runtime the owner chose, as a deploy does.
+    if "runtime_choice" not in body and (choice := await _runtime_choice_for(worker_id, slug)):
+        body["runtime_choice"] = choice
     # The worker pulls the image, creates the container and writes and reads
     # the backup back before it answers; a deploy's time plus the copy.
     result = await _proxy_to_worker(
