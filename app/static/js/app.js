@@ -3231,12 +3231,18 @@ const CP = (() => {
   // CashPilot Desktop deletes data that cannot be made again only on that
   // computer, and refuses that delete from here whatever the password. So the
   // owner is told at once, and not asked to review the volumes or for the password.
-  function _desktopKeepsCriticalData(slug, workerId, boxName) {
+  // A partial restore has its own words: a Remove that keeps the data is
+  // refused while it stays, so "keep the data" would lead back here.
+  function _desktopKeepsCriticalData(slug, workerId, boxName, partialRestore = false) {
     const worker = (_detailWorkers || []).find((w) => String(w.id) === String(workerId));
     if (!isDesktopWorker(worker)) return false;
-    toast(`Nothing was removed from ${boxName}. The data of ${slug} there holds a node identity or wallet, `
-      + 'and CashPilot Desktop deletes that only on that computer. To remove only the container, '
-      + 'press Remove again and keep the data.', 'error');
+    toast(partialRestore
+      ? `Nothing was removed from ${boxName}. The data of ${slug} there holds a partial restore, `
+        + 'and CashPilot Desktop deletes that only on that computer. Remove cannot finish while it stays: '
+        + 'delete it in CashPilot Desktop on that computer.'
+      : `Nothing was removed from ${boxName}. The data of ${slug} there holds a node identity or wallet, `
+        + 'and CashPilot Desktop deletes that only on that computer. To remove only the container, '
+        + 'press Remove again and keep the data.', 'error');
     return true;
   }
 
@@ -3332,7 +3338,7 @@ const CP = (() => {
           result = await api(retry, { method: 'DELETE' });
         } catch (again) {
           if (again.code !== 'critical_volume') throw again;
-          if (_desktopKeepsCriticalData(slug, refused, name)) return;
+          if (_desktopKeepsCriticalData(slug, refused, name, true)) return;
           const reviewed = confirmCriticalVolumes(slug, name, again.refusal);
           if (!reviewed) return;
           result = await api(`${retry}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });

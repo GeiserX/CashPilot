@@ -93,6 +93,8 @@ def test_a_desktop_is_not_asked_when_a_partial_restore_is_deleted_either():
     assert not any("allow_delete_critical=true" in c for c in result["calls"])
     [(message, kind)] = result["toasts"]
     assert kind == "error" and "only on that computer" in message
+    # Its own reason: a Remove that keeps the data is refused while a partial restore stays.
+    assert "partial restore" in message and "press Remove again" not in message
 
 
 def test_a_server_box_still_reviews_the_partial_restore_delete():

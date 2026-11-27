@@ -1763,15 +1763,17 @@ class TestStorageAndRoutes:
 
     def test_a_url_encoded_secret_is_masked_too(self):
         # A password put into a proxy URL comes back quoted; the worker's own redact masks that form as well.
-        definition = {"password": "p@ss!word99"}
+        definition = {"password": f"{PASSWORD}@!"}
         quoted = urllib.parse.quote(definition["password"], safe="")
         answer = _worker_answer(409, {"detail": f"refused socks5://u:{quoted}@h"})
         assert _proxy_call_error(definition, answer).detail == "refused socks5://u:***@h"
 
     def test_a_no_copy_answer_about_another_copy_is_masked(self):
         # Only the answer for the copy this call asked about is our own words.
-        definition = {"password": "p4ssword99"}
-        answer = _worker_answer(404, {"detail": "No proxied copy of p4ssword99 through proxy 1 on this worker"})
+        definition = {"password": PASSWORD.lower()}
+        answer = _worker_answer(
+            404, {"detail": f"No proxied copy of {PASSWORD.lower()} through proxy 1 on this worker"}
+        )
         with _worker_replies(answer), pytest.raises(HTTPException) as err:
             asyncio.run(main._proxy_worker_call(7, "POST", "/api/proxied/a/1/stop", definition))
         assert err.value.detail == "No proxied copy of *** through proxy 1 on this worker"
