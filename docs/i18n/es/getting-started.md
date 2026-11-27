@@ -122,10 +122,10 @@ graph LR
 
 1. **Tú configuras** los servicios desde la interfaz web: eliges un servicio, introduces las credenciales y haces clic en desplegar.
 2. **La UI envía** la especificación del contenedor (imagen, variables de entorno, volúmenes) al worker mediante una API REST.
-3. **El worker crea** el contenedor de Docker y empieza a supervisar su estado.
+3. **El worker crea** el contenedor de Docker y empieza a supervisar su salud.
 4. **El worker informa** del estado del contenedor a la UI cada 60 segundos mediante señales de vida.
 5. **La UI recoge** las ganancias de las API de los servicios según un horario configurable (por defecto, cada hora).
-6. **El panel** muestra las ganancias agregadas, el desglose por servicio y el estado de los contenedores.
+6. **El panel** muestra las ganancias agregadas, el desglose por servicio y la salud de los contenedores.
 
 ## Configuración { #configuration }
 

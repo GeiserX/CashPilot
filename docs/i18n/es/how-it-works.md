@@ -10,13 +10,13 @@ CashPilot usa una arquitectura dividida en **UI + worker**. La UI nunca toca Doc
 | Componente | Imagen | Puerto | Acceso a Docker | Función |
 |-----------|-------|:----:|:-------------:|---------|
 | **CashPilot UI** | `drumsergio/cashpilot` | 8080 | No | Panel web, recolección de ganancias, catálogo de servicios, almacenamiento de credenciales, programación |
-| **CashPilot Worker** | `drumsergio/cashpilot-worker` | 8081 | A través de `cashpilot-socket-proxy` | Ciclo de vida de los contenedores de Docker, informe de estado, señales de vida a la UI |
+| **CashPilot Worker** | `drumsergio/cashpilot-worker` | 8081 | A través de `cashpilot-socket-proxy` | Ciclo de vida de los contenedores de Docker, informe del estado de salud, señales de vida a la UI |
 
 **No existe un modo independiente**. Cada servidor que ejecuta contenedores de Docker necesita un worker. La UI es solo un panel y un programador: puede funcionar en cualquier máquina, incluso en una sin Docker.
 
 ## Principios de diseño { #design-principles }
 
-1. **Separación de responsabilidades.** La UI se encarga del panel, la recolección de ganancias, la programación y la autenticación de usuarios. Los workers se encargan del ciclo de vida de los contenedores de Docker y del informe de estado. Nunca se solapan.
+1. **Separación de responsabilidades.** La UI se encarga del panel, la recolección de ganancias, la programación y la autenticación de usuarios. Los workers se encargan del ciclo de vida de los contenedores de Docker y del informe del estado de salud. Nunca se solapan.
 2. **Los workers necesitan Docker, a través del proxy del socket.** Un worker sin acceso a Docker no sirve para nada. Con los archivos compose que se distribuyen nunca recibe el socket directo: llega a Docker a través de `cashpilot-socket-proxy`. Las fichas de Unraid y TrueNAS siguen montando el socket directo ([tiendas de apps](app-stores.md)). Si no necesitas gestionar Docker, ejecuta solo la UI para seguir tus ganancias.
 3. **Una única fuente de verdad.** La instancia de la UI es la única que recoge ganancias, guarda el historial y sirve el panel. Los workers nunca recogen ganancias.
 4. **Las ganancias nunca se duplican.** Como solo recoge la UI, no hay riesgo de contar dos veces la misma cuenta.
@@ -156,7 +156,7 @@ SQLite con 400 días de retención de datos. Tablas principales:
 - **config**: ajustes clave-valor y credenciales cifradas
 - **users**: cuentas (nombre de usuario, hash bcrypt de la contraseña, rol)
 - **user_preferences**: estado de incorporación de cada usuario (modo de configuración, categorías elegidas, zona horaria)
-- **health_events**: historial de estado de los contenedores (start, stop, crash, check_ok, check_down)
+- **health_events**: historial de salud de los contenedores (start, stop, crash, check_ok, check_down)
 - **workers**: registro de workers de la flota (ID de cliente, nombre, URL, estado, última señal de vida, clave de flota cifrada de cada worker)
 
 ## Modelo de seguridad { #security-model }
@@ -166,4 +166,4 @@ SQLite con 400 días de retención de datos. Tablas principales:
 - Los contenedores gestionados se ejecutan con `--security-opt no-new-privileges`
 - Convención de nombres de los contenedores: `cashpilot-{slug}` con las etiquetas `cashpilot.managed=true`
 - El contenedor de la UI **no** tiene acceso al socket de Docker
-- Autenticación por sesión con un sistema de roles (owner/writer/viewer)
+- Autenticación por sesión con un sistema de roles (owner/writer/viewer: propietario, editor y lector)

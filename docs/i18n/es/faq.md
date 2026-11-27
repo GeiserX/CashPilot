@@ -129,7 +129,7 @@ Dicho esto, ninguna configuración es infalible. Sigues ejecutando software de t
 
 **¿Qué pasa si el contenedor de un servicio se cae?**
 
-CashPilot supervisa el estado de los contenedores de forma continua. Si el contenedor de un servicio termina de forma inesperada, se reinicia automáticamente. El panel muestra el tiempo en marcha y el estado de cada servicio en ejecución.
+CashPilot supervisa la salud de los contenedores de forma continua. Si el contenedor de un servicio termina de forma inesperada, se reinicia automáticamente. El panel muestra el tiempo en marcha y el estado de salud de cada servicio en ejecución.
 
 **Mi nodo de Mysterium no arranca después de volver a desplegarlo. ¿Por qué?**
 

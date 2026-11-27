@@ -42,7 +42,7 @@ CashPilot usa la fecha de caducidad que indica la propia credencial. Cuando no i
 ninguna, CashPilot usa la vida habitual de ese tipo de credencial, contada
 desde el día en que la guardaste. Los propietarios ya la ven en **Needs attention** (Requiere atención),
 con un botón **Renew** (Renovar), así que el panel no la repite. Solo los propietarios reciben
-recordatorios de credenciales desde la API, igual que con la comprobación del estado de las credenciales.
+recordatorios de credenciales desde la API, igual que con la comprobación de la salud de las credenciales.
 Una credencial que el proveedor rechazó ya está en la campana y ya se avisó por push,
 así que no se vuelve a avisar.
 
