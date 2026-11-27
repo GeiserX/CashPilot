@@ -1265,7 +1265,7 @@ terms:
   backup:
     en: "backup"
     kind: "term"
-    note: "A file holding CashPilot's settings and ids, made so the user can restore them. Verb: restore."
+    note: "A file holding CashPilot's settings and ids, made so the user can restore them. Verb: back up. Restoring is the separate term restore."
     es: "copia de seguridad"
     pt-BR: "backup"
     fr: "sauvegarde"
