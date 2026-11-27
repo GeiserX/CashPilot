@@ -144,6 +144,7 @@ nav = [
       { "GPU services" = "gpu.md" },
     ] },
   { Security = [
+      { "Security layers" = "security-layers.md" },
       { "Security defaults" = "security-defaults.md" },
       { "Protecting your home network" = "home-network-security.md" },
       { "Network isolation" = "isolation.md" },

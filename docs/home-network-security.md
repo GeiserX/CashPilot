@@ -33,7 +33,7 @@ page is about the second and third.
 5. [Tidy up the router](#5-router-hygiene).
 6. [Protect the accounts and the money](#6-accounts-and-payouts).
 7. Optionally, [run the containers under gVisor](#7-gvisor-optional) on a host
-   that supports it.
+   that supports it. The Fleet page installs, checks and removes it.
 
 Do the first two and you have removed most of the risk.
 
@@ -400,51 +400,66 @@ was the limit that day, and CPU stayed at about six times runc's: 19 to 20 s for
 
 ### Installing it on a standard Linux host
 
-gVisor supports x86_64 and ARM64 on Linux 5.6 or newer. The
-[official install guide](https://gvisor.dev/docs/user_guide/install/) installs a
-checksummed release and registers it with Docker, without restarting Docker or
-your running containers:
+gVisor supports x86_64 and ARM64 on Linux 5.6 or newer. You install it, check
+it and choose it from the Fleet page, in the worker's **Security layers** row.
+Installing it needs root on the host. The worker does not have root and must
+not get it, so the page gives you one command to run on the host:
 
-```bash
-(
-  set -e
-  ARCH=$(uname -m)
-  URL=https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}
-  wget ${URL}/gvisor.tar.zstd ${URL}/gvisor.tar.zstd.sha512
-  sha512sum -c gvisor.tar.zstd.sha512
-  sudo tar --zstd -xf gvisor.tar.zstd -C /usr/local/bin
-  rm -f gvisor.tar.zstd gvisor.tar.zstd.sha512
-)
-sudo /usr/local/bin/runsc install
-sudo systemctl reload docker
-docker run --rm --runtime=runsc hello-world
-```
+1. **Install.** Copy the install command and run it on the host. It downloads
+   the `cashpilot-gvisor` helper from this repository at your release's tag and
+   checks its sha256 before anything runs with `sudo`. The helper shows what it
+   will change and asks before it does it. It installs gVisor release
+   `20261123.1`, checked against the sha512 pinned in the helper, in its own
+   folder under `/usr/local/lib/cashpilot-gvisor`. It backs up
+   `/etc/docker/daemon.json` and registers the two runtimes below. Then it
+   reloads Docker, so running containers keep running. If a reload is not
+   enough, it asks again before it restarts Docker, because a restart stops
+   every container.
+2. **Check.** Press **Check gVisor**. The worker starts a short probe under each
+   gVisor runtime, on the earners' network, as an unprivileged user with every
+   capability dropped. Green needs gVisor's own kernel inside and a name lookup
+   that works. Red says which of the two failed.
+3. **Choose.** Pick **gVisor** as the runtime for earners you deploy on that
+   worker from now on, or press **Run under gVisor** on one earner. The page
+   asks before it redeploys a running earner. Each earner then shows the
+   runtime it really got.
+4. **Undo.** Switch every earner back to Standard, then run the remove command
+   from the same row. It refuses while an earner still runs under gVisor. It
+   puts back your `daemon.json`, or keeps your own later edits and removes only
+   its runtimes. Then it deletes gVisor, reloads Docker and checks that nothing
+   of it is left.
 
-For CashPilot's networks, add the passthrough runtimes to
-`/etc/docker/daemon.json`, next to the `runsc` entry the install wrote, and run
-`sudo systemctl reload docker`:
+The helper refuses Unraid, Docker Desktop, rootless Docker and the snap
+package, and says why. It also refuses when `daemon.json` already holds a
+runtime with one of its names that it did not register. A gVisor you
+registered by hand under these names works with the Fleet page as it is.
+
+The runtimes it registers, next to any you already have:
 
 ```json
 "runtimes": {
-  "runsc": { "path": "/usr/local/bin/runsc" },
-  "runsc-hostnet": { "path": "/usr/local/bin/runsc", "runtimeArgs": ["--network=host"] },
-  "runsc-hostnet-raw": { "path": "/usr/local/bin/runsc", "runtimeArgs": ["--network=host", "--net-raw"] }
+  "runsc-hostnet": { "path": "/usr/local/lib/cashpilot-gvisor/20261123.1/runsc", "runtimeArgs": ["--network=host"] },
+  "runsc-hostnet-raw": { "path": "/usr/local/lib/cashpilot-gvisor/20261123.1/runsc", "runtimeArgs": ["--network=host", "--net-raw"] }
 }
 ```
 
-`runsc-hostnet-raw` is for a service that needs raw sockets, such as Bitping.
+The worker gives an earner that declares `NET_RAW`, such as Bitping,
+`runsc-hostnet-raw`, and every other earner `runsc-hostnet`. A worker without
+the runtime an earner needs refuses that deploy and says what to install.
 
 ### What we ran under it
 
 On an Ubuntu 24.04 host, each of these ran under `runsc-hostnet` on
 `cashpilot-isolated` without restarting and without name-lookup errors: EarnApp, Earn.fm, Honeygain, IPRoyal Pawns, PacketStream, ProxyBase,
 ProxyLite, ProxyRack, Repocket and Traffmonetizer, plus Bitping under
-`runsc-hostnet-raw`. Mysterium cannot run under it (see above). We did not try
-Storj, whose disk traffic would pay gVisor's overhead on every
-read and write.
+`runsc-hostnet-raw`. Mysterium cannot run under it (see above), and neither can
+the GPU miners, because gVisor cannot pass the GPU in. The Fleet page shows
+their choice locked, with that reason. We did not try Storj, whose disk traffic
+would pay gVisor's overhead on every read and write.
 
-To make that stick across redeploys, set it on the worker, next to
-`CASHPILOT_CONTAINER_NETWORK`:
+You can also set the runtime on the worker, next to
+`CASHPILOT_CONTAINER_NETWORK`. A variable wins over the Fleet page, and the page
+shows the choice locked and names the variable:
 
 ```yaml
 CASHPILOT_CONTAINER_NETWORK: cashpilot-isolated
@@ -452,13 +467,15 @@ CASHPILOT_CONTAINER_RUNTIME: runsc-hostnet
 CASHPILOT_CONTAINER_RUNTIME_OVERRIDES: bitping=runsc-hostnet-raw
 ```
 
-The runtime applies to containers on bridge networking when they are next
-deployed; a service whose catalog entry names a runtime, such as Mysterium
+The variables apply to containers on bridge networking when they are next
+deployed. A service whose catalog entry names a runtime, such as Mysterium
 (`runc`), keeps that one.
-`slug=runc` in the overrides runs one service under `runc`, the runtime Docker ships with; Storj is a good candidate. If the
+`slug=runc` in the overrides runs one service under `runc`, the runtime Docker ships with. Storj is a good candidate. If the
 daemon does not provide a runtime you named, the deploy is refused and the running
-container is left alone. Nothing selects gVisor unless you set it
+container is left alone. Nothing selects gVisor unless you choose it
 ([container runtimes](security-defaults.md#container-runtimes-gvisor-where-it-works)).
+Every layer, what it guards and what it costs:
+[Security layers](security-layers.md).
 
 ## What every deploy already gets
 
