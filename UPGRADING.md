@@ -727,6 +727,12 @@ from before the socket proxy leaves the proxy running: remove it with
 `docker rm -f cashpilot-socket-proxy`. Going back past 1.67, restore the
 `/data` backup you took as well.
 
+> **The old volumes hold the data from the day you migrated.** On 2.0 the
+> worker writes to `cashpilot_worker_data_owned`, and on its host the dashboard to
+> `cashpilot_fleet_owned`. The old compose file mounts `cashpilot_worker_data`
+> and `cashpilot_fleet` again, so everything written on 2.0 is missing there.
+> The newest data stays in the `_owned` volumes until you remove them.
+
 ---
 
 ## Socket proxy on sockguard 2.4.7: take the new proxy line
@@ -1236,9 +1242,11 @@ says why.
 
 **What to do.**
 
-1. **Upgrade the UI** image to `drumsergio/cashpilot:1.0.0` (or newer).
-2. **Upgrade every worker** image to `drumsergio/cashpilot-worker:1.0.0` (or
-   newer). Do not leave old-version workers running against a v1.0.0 UI. An
+1. **Upgrade the UI** image to `drumsergio/cashpilot:1.0.0` or newer.
+2. **Upgrade every worker** image to `drumsergio/cashpilot-worker` at the same
+   version as the UI. A worker newer than its UI can refuse work: a 3.0
+   worker refuses redeploys from a 2.x UI. Do not leave old-version workers
+   running against a v1.0.0 UI. An
    old worker image only knows the shared key and cannot persist the one it is
    issued, so it never finishes enrolling. For the first 24 hours it keeps
    heartbeating on the shared key, which means anyone holding
@@ -1266,9 +1274,10 @@ survives restarts.
   key and re-enrols with the shared one. Expect a few minutes of 401s in the
   worker log while that plays out. To skip the wait, delete `/data/.worker_key`
   on that host and restart the container.
-- **Rolling a worker back to a 0.x image:** remove that worker in the
-  dashboard, wait for it to re-enrol (or delete `/data/.worker_key` on the
-  host), then redeploy the old image.
+- **Rolling back to 0.x:** roll back the UI and every worker together, never
+  a worker alone. A 0.x worker under a v1.0.0 UI never finishes enrolling, and
+  it goes offline after 24 hours (step 2 above). Set the UI image back to the
+  0.x tag you ran before, then set every worker to the same 0.x tag.
 
 ---
 
