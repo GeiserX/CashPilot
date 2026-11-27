@@ -19,6 +19,7 @@ from urllib.parse import urlparse, urlunparse
 from fastapi import HTTPException
 
 from app import cleartext
+from app.i18n import t
 
 _ALLOWED_WORKER_SCHEMES = {"http", "https"}
 
@@ -88,10 +89,10 @@ def _assert_ip_not_blocked(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) 
     """Always-on checks: metadata + loopback/link-local, regardless of policy."""
     addr = _normalize_ip(addr)
     if not _WORKER_ALLOW_METADATA and addr in _METADATA_IPS:
-        raise HTTPException(status_code=400, detail="Worker URL points to a cloud metadata address")
+        raise HTTPException(status_code=400, detail=t("api.worker_url_points_cloud_metadata"))
     for net in _BLOCKED_NETWORKS:
         if addr.version == net.version and addr in net:
-            raise HTTPException(status_code=400, detail="Worker URL points to loopback/link-local/unspecified address")
+            raise HTTPException(status_code=400, detail=t("api.worker_url_points_loopback_link"))
 
 
 def _assert_ip_strict_allowed(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
@@ -99,7 +100,7 @@ def _assert_ip_strict_allowed(addr: ipaddress.IPv4Address | ipaddress.IPv6Addres
     addr = _normalize_ip(addr)
     if any(addr.version == c.version and addr in c for c in _WORKER_ALLOWED_CIDRS):
         return
-    raise HTTPException(status_code=400, detail="Worker URL not in allowed hosts (strict mode)")
+    raise HTTPException(status_code=400, detail=t("api.worker_url_not_allowed_hosts"))
 
 
 def plain_http_refusal(raw_url: str) -> str | None:
@@ -143,14 +144,14 @@ def _validate_worker_url(raw_url: str) -> tuple[str, str | None]:
     """
     parsed = urlparse(raw_url)
     if parsed.scheme not in _ALLOWED_WORKER_SCHEMES:
-        raise HTTPException(status_code=400, detail=f"Invalid worker URL scheme: {parsed.scheme}")
+        raise HTTPException(status_code=400, detail=t("api.invalid_worker_url_scheme", scheme=parsed.scheme))
     host = parsed.hostname or ""
     if not host:
-        raise HTTPException(status_code=400, detail="Worker URL has no host")
+        raise HTTPException(status_code=400, detail=t("api.worker_url_has_no_host"))
     if refusal := plain_http_refusal(raw_url):
         raise HTTPException(status_code=400, detail=refusal)
     if host in ("localhost", "localhost.localdomain"):
-        raise HTTPException(status_code=400, detail="Worker URL points to localhost")
+        raise HTTPException(status_code=400, detail=t("api.worker_url_points_localhost"))
 
     # Case A: literal IP — classify directly, no DNS needed.
     try:
@@ -181,9 +182,7 @@ def _validate_worker_url(raw_url: str) -> tuple[str, str | None]:
         # resolver that recovers makes the next attempt work; a name strict mode
         # could never accept keeps its 400.
         status = 400 if _WORKER_URL_POLICY == "strict" and not hostname_allowed else 503
-        raise HTTPException(
-            status_code=status, detail="Worker URL host does not resolve, so nothing was sent"
-        ) from None
+        raise HTTPException(status_code=status, detail=t("api.worker_url_host_does_not")) from None
 
     for addr in resolved:
         _assert_ip_not_blocked(addr)

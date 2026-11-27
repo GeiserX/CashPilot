@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import auth as auth_module
 from app import database, deps, i18n, themes
+from app.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ async def page_settings(request: Request):
     if not user:
         return deps._login_redirect()
     if not auth_module.require_role(user, "owner"):
-        raise HTTPException(status_code=403, detail="Owner access required")
+        raise HTTPException(status_code=403, detail=t("api.owner_access_required"))
     return await _page(request, "settings.html", user)
 
 
@@ -97,7 +98,7 @@ async def page_import(request: Request):
     if not user:
         return deps._login_redirect()
     if not auth_module.require_role(user, "owner"):
-        raise HTTPException(status_code=403, detail="Owner access required")
+        raise HTTPException(status_code=403, detail=t("api.owner_access_required"))
     return await _page(request, "import.html", user)
 
 
@@ -114,7 +115,7 @@ async def page_payouts(request: Request):
     if not user:
         return deps._login_redirect()
     if not auth_module.require_role(user, "owner"):
-        raise HTTPException(status_code=403, detail="Owner access required")
+        raise HTTPException(status_code=403, detail=t("api.owner_access_required"))
     return await _page(request, "payouts.html", user)
 
 
@@ -129,7 +130,7 @@ async def page_activity(request: Request):
     if not user:
         return deps._login_redirect()
     if not auth_module.require_role(user, "owner"):
-        raise HTTPException(status_code=403, detail="Owner access required")
+        raise HTTPException(status_code=403, detail=t("api.owner_access_required"))
     return await _page(request, "activity.html", user)
 
 

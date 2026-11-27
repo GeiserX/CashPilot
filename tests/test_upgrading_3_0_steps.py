@@ -111,6 +111,6 @@ def test_the_expected_containers_keys_cover_proxied_copies_and_none():
 def test_the_refusal_quote_matches_any_3_0_worker():
     assert "v3.0.0 and replaces" not in UPGRADE
     assert "v3.0.x and replaces" in UPGRADE
-    source = (ROOT / "app" / "worker_api.py").read_text(encoding="utf-8")
+    source = english_source(ROOT / "app" / "worker_api.py")
     assert "and replaces an existing container only when the UI confirms " in source
     assert "which container it replaces, and this UI is too old to do that. Update the UI, then" in source
