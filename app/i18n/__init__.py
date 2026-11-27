@@ -32,6 +32,7 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import json
+import math
 import re
 from functools import cache, lru_cache
 from pathlib import Path
@@ -432,6 +433,15 @@ class _Parser:
         return (kind, name, options)
 
 
+def _count(value: Any) -> float:
+    """A plural's value as a number, as the browser reads it: not a finite number counts as 0."""
+    try:
+        count = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return count if math.isfinite(count) else 0.0
+
+
 @lru_cache(maxsize=4096)
 def parse(text: str) -> tuple:
     """A message as a tree of literal strings and argument tuples. Raises ValueError."""
@@ -453,15 +463,13 @@ def _render(parts: tuple | list, params: dict[str, Any], locale: str, number: An
             value = params.get(name)
             chosen = None
             if kind == "plural":
-                try:
-                    count = float(value)
-                except (TypeError, ValueError):
-                    count = 0
-                exact = f"={int(count)}" if float(count).is_integer() else None
+                count = _count(value)
+                exact = f"={int(count)}" if count.is_integer() else None
                 chosen = options.get(exact) if exact else None
                 if chosen is None:
                     chosen = options.get(plural_category(locale, count))
-                inner_number = value
+                # The count as the browser writes it (String(Number(value))): 1.0 is "1".
+                inner_number = int(count) if count.is_integer() else count
             else:
                 chosen = options.get(str(value))
                 inner_number = number
@@ -474,6 +482,16 @@ def _render(parts: tuple | list, params: dict[str, Any], locale: str, number: An
 def format_message(text: str, params: dict[str, Any] | None = None, locale: str = SOURCE, *, html: bool = False) -> str:
     """Fill a message's arguments. With ``html``, the values are HTML-escaped."""
     return _render(parse(text), params or {}, locale, "", html)
+
+
+def join_and(items: list[str] | tuple[str, ...]) -> str:
+    """``items`` joined with the current locale's "and": "a and b", "a and b and c"."""
+    if not items:
+        return ""
+    text = str(items[0])
+    for item in items[1:]:
+        text = t("i18n.list_and", first=text, last=item)
+    return text
 
 
 def t(key: str, /, **params: Any) -> str:
