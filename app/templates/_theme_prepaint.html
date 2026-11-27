@@ -7,4 +7,4 @@
     default. The list is set first and storage is wrapped, so a browser that
     blocks storage still gets the list and the picker. The ids and the default
     come from app/themes.json. -#}
-(function(){var T={{ theme_config|tojson }},d=document.documentElement,ok=function(t){return T.ids.indexOf(t)>=0},s=d.getAttribute('data-theme'),k=null;window.CP_THEMES=T;if(ok(s)&&d.getAttribute('data-theme-fallback')===null){try{localStorage.setItem('cp-theme',s)}catch(e){}return}try{k=localStorage.getItem('cp-theme')}catch(e){}d.setAttribute('data-theme',ok(k)?k:T.default)})();
+(function(){var T={{ theme_config|tojson }},d=document.documentElement,ok=function(id){return T.ids.indexOf(id)>=0},s=d.getAttribute('data-theme'),k=null;window.CP_THEMES=T;if(ok(s)&&d.getAttribute('data-theme-fallback')===null){try{localStorage.setItem('cp-theme',s)}catch(e){}return}try{k=localStorage.getItem('cp-theme')}catch(e){}d.setAttribute('data-theme',ok(k)?k:T.default)})();
