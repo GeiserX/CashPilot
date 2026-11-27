@@ -66,6 +66,7 @@ from app import (
     wallet_seed,
 )
 from app.constants import DEPLOY_DEADLINE_SECONDS, MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
+from app.i18n import LocaleMiddleware, t
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -364,13 +365,13 @@ def _verify_api_key(request: Request) -> None:
     """
     expected = _active_key()
     if not expected:
-        raise HTTPException(status_code=503, detail="Fleet key not configured")
+        raise HTTPException(status_code=503, detail=t("worker.fleet_key_not_configured"))
     auth = request.headers.get("Authorization", "").encode()
     if hmac.compare_digest(auth, f"Bearer {expected}".encode()):
         return
     if _key_pending and API_KEY and hmac.compare_digest(auth, f"Bearer {API_KEY}".encode()):
         return
-    raise HTTPException(status_code=401, detail="Invalid API key")
+    raise HTTPException(status_code=401, detail=t("worker.invalid_api_key"))
 
 
 # ---------------------------------------------------------------------------
@@ -1458,6 +1459,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CashPilot Worker", version=version.current(), lifespan=lifespan)
+# Answers that a person reads come in the language the dashboard asks for.
+app.add_middleware(LocaleMiddleware)
 
 
 _SECRET_BODY_PATHS = ("/api/proxied/", "/api/proxy-test")
@@ -1917,21 +1920,24 @@ def _validate_runtime(runtime: str | None) -> None:
         # daemon anyway — refuse honestly first.
         raise HTTPException(
             status_code=503,
-            detail=f"Cannot verify the {runtime!r} runtime — the Docker daemon is not answering.",
+            detail=t("worker.cannot_verify_runtime_docker_daemon", runtime=repr(runtime)),
         )
     if runtime not in available:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"This host's Docker daemon does not provide a {runtime!r} runtime. "
-                f"Available: {sorted(available) or 'none reported'}."
+                t(
+                    "worker.host_s_docker_daemon_does",
+                    runtime=repr(runtime),
+                    available=sorted(available) or t("worker.none_reported"),
+                )
             ),
         )
 
 
 def _validate_instance(instance: int) -> None:
     if not 1 <= instance <= MAX_INSTANCES:
-        raise HTTPException(status_code=400, detail=f"instance must be between 1 and {MAX_INSTANCES}")
+        raise HTTPException(status_code=400, detail=t("worker.instance_must_between_1", max_instances=MAX_INSTANCES))
 
 
 #: The most container ports one deploy may publish: a 1000-port UDP range plus
@@ -1959,9 +1965,9 @@ def _validate_fence_gated(spec: DeploySpec, slug: str | None) -> None:
         return
     pinned = {docker_conf.get("image")} | set((docker_conf.get("image_by_arch") or {}).values())
     if spec.image not in pinned - {None, ""}:
-        raise HTTPException(status_code=403, detail=f"'{slug}' runs only the image this worker's catalog pins")
+        raise HTTPException(status_code=403, detail=t("worker.runs_only_image_worker_s", slug=slug))
     if (spec.network_mode or "bridge") not in ("bridge", "default"):
-        raise HTTPException(status_code=403, detail=f"'{slug}' runs only on the fenced bridge")
+        raise HTTPException(status_code=403, detail=t("worker.runs_only_fenced_bridge", slug=slug))
 
 
 def _validate_critical_spec(spec: DeploySpec, slug: str) -> None:
@@ -1987,8 +1993,7 @@ def _validate_critical_spec(spec: DeploySpec, slug: str) -> None:
             status_code=403,
             detail={
                 "error": "step_up_required",
-                "message": f"{slug} keeps a wallet or node identity, and this deploy differs from the catalog: "
-                f"{'; '.join(found)}. That needs the owner's password. Nothing was deployed.",
+                "message": t("worker.keeps_wallet_node_identity_deploy", slug=slug, found="; ".join(found)),
             },
         )
     target = step_up.deploy_target(slug, spec.image, spec.command, spec.env, spec.volumes)
@@ -1996,7 +2001,7 @@ def _validate_critical_spec(spec: DeploySpec, slug: str) -> None:
         step_up.check(_worker_key, spec.approval, step_up.ACTION_CUSTOM_IMAGE, target)
     except step_up.StepUpError as exc:
         raise HTTPException(
-            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was deployed."}
+            status_code=403, detail={"error": "step_up_rejected", "message": t("worker.nothing_deployed_2", exc=exc)}
         ) from None
 
 
@@ -2013,7 +2018,7 @@ def _validate_route_approval(spec: DeploySpec, slug: str) -> bool:
         step_up.check(_worker_key, spec.route_approval, step_up.ACTION_LEAVE_ROUTE, slug)
     except step_up.StepUpError as exc:
         raise HTTPException(
-            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was deployed."}
+            status_code=403, detail={"error": "step_up_rejected", "message": t("worker.nothing_deployed_2", exc=exc)}
         ) from None
     return True
 
@@ -2035,11 +2040,10 @@ def _validate_gpu(slug: str | None, spec: DeploySpec) -> None:
     if orchestrator.proxy_policy_current() is False and (fix := orchestrator.proxy_policy_fix()):
         raise HTTPException(
             status_code=409,
-            detail=f"{name} needs this machine's GPU, and the Docker socket proxy would refuse it: "
-            f"{orchestrator.proxy_policy_fix_text(fix)} Nothing was deployed.",
+            detail=t("worker.needs_machine_s_gpu_docker", name=name, fix=orchestrator.proxy_policy_fix_text(fix)),
         )
     if problem := gpu.missing(grant, gpu.host_gpus()):
-        raise HTTPException(status_code=409, detail=f"{problem} Nothing was deployed.")
+        raise HTTPException(status_code=409, detail=t("worker.nothing_deployed", problem=problem))
 
 
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
@@ -2050,36 +2054,44 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         # request that set NVIDIA_VISIBLE_DEVICES could undo the stamp.
         raise HTTPException(
             status_code=403,
-            detail=f"CashPilot sets the {gpu.ENV_PREFIX} variables itself; refused: {', '.join(blocked_env)}",
+            detail=t(
+                "worker.cashpilot_sets_variables_itself_refused",
+                env_prefix=gpu.ENV_PREFIX,
+                blocked_env=", ".join(blocked_env),
+            ),
         )
     _validate_instance(spec.instance)
     if len(spec.ports) > MAX_PUBLISHED_PORTS:
-        raise HTTPException(status_code=400, detail=f"At most {MAX_PUBLISHED_PORTS} ports can be published")
+        raise HTTPException(
+            status_code=400, detail=t("worker.most_ports_can_published", max_published_ports=MAX_PUBLISHED_PORTS)
+        )
     if spec.instance > 1 and (spec.volumes or spec.ports):
         # Two copies would share the same host directories and fight over the
         # same host ports. The UI refuses this first; this is the backstop.
-        raise HTTPException(
-            status_code=400, detail="Only services without volumes or published ports can run more than once"
-        )
+        raise HTTPException(status_code=400, detail=t("worker.only_services_without_volumes_published"))
     if spec.privileged:
-        raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
+        raise HTTPException(status_code=403, detail=t("worker.privileged_containers_not_allowed"))
     if spec.cap_add:
         requested = {c.upper() for c in spec.cap_add}
         blocked = requested - _catalog_allowed_capabilities(slug)
         if blocked:
-            raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(sorted(blocked))}")
+            raise HTTPException(
+                status_code=403, detail=t("worker.blocked_capabilities", blocked=", ".join(sorted(blocked)))
+            )
     if spec.devices:
         requested_devices = {str(d).split(":")[0].rstrip("/") for d in spec.devices}
         blocked_devices = requested_devices - _catalog_allowed_devices(slug)
         if blocked_devices:
             raise HTTPException(
                 status_code=403,
-                detail=f"Blocked devices: {', '.join(sorted(blocked_devices))}",
+                detail=t("worker.blocked_devices", blocked_devices=", ".join(sorted(blocked_devices))),
             )
     if spec.network_mode not in _ALLOWED_NETWORK_MODES:
-        raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
+        raise HTTPException(
+            status_code=403, detail=t("worker.network_mode_not_allowed", network_mode=spec.network_mode)
+        )
     if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
-        raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
+        raise HTTPException(status_code=403, detail=t("worker.network_mode_host_not_allowed", slug=slug))
     _validate_fence_gated(spec, slug)
     _validate_gpu(slug, spec)
     proxy_roots = orchestrator._proxy_bind_roots() if orchestrator.proxied() else None
@@ -2089,7 +2101,7 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         if source in orchestrator.PROXY_VOLUMES:
             # The volume holds the worker's own Docker socket; a container
             # given it could drive Docker exactly as the worker does.
-            raise HTTPException(status_code=403, detail=f"Volume '{source}' is the worker's Docker socket")
+            raise HTTPException(status_code=403, detail=t("worker.volume_worker_s_docker_socket", source=source))
         if not source.startswith("/"):
             continue  # named volume (e.g. "mysterium-data") — always allowed
         # host_path_key, not normpath: normpath keeps "//" and would let
@@ -2105,8 +2117,11 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             # (docs/security-defaults.md).
             raise HTTPException(
                 status_code=403,
-                detail=f"Volume '{source}' reaches the compose folder ({orchestrator.COMPOSE_DIR_ENV}); "
-                "no service may bind it",
+                detail=t(
+                    "worker.volume_reaches_compose_folder_no",
+                    source=source,
+                    compose_dir_env=orchestrator.COMPOSE_DIR_ENV,
+                ),
             )
         if proxy_roots is not None and not any(
             os.path.normpath(source) == root or os.path.normpath(source).startswith(root.rstrip("/") + "/")
@@ -2117,9 +2132,11 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             raise HTTPException(
                 status_code=403,
                 detail=(
-                    f"The Docker socket proxy does not let containers bind {source}. To allow it, add "
-                    f"the folder to {orchestrator.BIND_MOUNTS_ENV} in the .env next to your compose "
-                    "file (comma-separated), then run docker compose up -d"
+                    t(
+                        "worker.docker_socket_proxy_does_not",
+                        source=source,
+                        bind_mounts_env=orchestrator.BIND_MOUNTS_ENV,
+                    )
                 ),
             )
         real = os.path.realpath(source)
@@ -2143,12 +2160,12 @@ def _validate_resources(resources: ResourceSpec | None) -> None:
         if value is not None and not _MEM_LIMIT_RE.match(value):
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid {field} '{value}': expected a size like '768m' or '2g'",
+                detail=t("worker.invalid_expected_size_like_768m", field=field, value=value),
             )
     if resources.oom_score_adj is not None and not (-1000 <= resources.oom_score_adj <= 1000):
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid oom_score_adj '{resources.oom_score_adj}': must be between -1000 and 1000",
+            detail=t("worker.invalid_oom_score_adj_must", oom_score_adj=resources.oom_score_adj),
         )
     # 2..262144 is the kernel's cpu.shares range (MIN_SHARES..MAX_SHARES);
     # Docker documents no bound of its own, and daemons vary at the edges
@@ -2159,7 +2176,7 @@ def _validate_resources(resources: ResourceSpec | None) -> None:
     if resources.cpu_shares is not None and not (2 <= resources.cpu_shares <= 262144):
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid cpu_shares '{resources.cpu_shares}': must be between 2 and 262144 (Docker's default is 1024)",
+            detail=t("worker.invalid_cpu_shares_must_between", cpu_shares=resources.cpu_shares),
         )
 
 
@@ -2239,17 +2256,15 @@ _LOGIN_SERVER_RE = re.compile(r"^https://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-
 
 def _validate_proxy(proxy: ProxySpec) -> None:
     if proxy.kind not in proxy_tunnel.PROXY_KINDS:
-        raise HTTPException(status_code=400, detail=f"Unknown proxy type {proxy.kind!r}")
+        raise HTTPException(status_code=400, detail=t("worker.unknown_proxy_type", kind=repr(proxy.kind)))
     if proxy.kind == "tailscale":
         if not proxy.auth_key or not _EXIT_NODE_RE.match(proxy.exit_node or ""):
-            raise HTTPException(
-                status_code=400, detail="A Tailscale proxy needs an auth key and the exit node's 100.x address"
-            )
+            raise HTTPException(status_code=400, detail=t("worker.tailscale_proxy_needs_auth_key"))
         if proxy.login_server and not _LOGIN_SERVER_RE.match(proxy.login_server):
-            raise HTTPException(status_code=400, detail="The Tailscale login server must be an https:// URL")
+            raise HTTPException(status_code=400, detail=t("worker.tailscale_login_server_must_https"))
         return
     if not re.match(r"^[A-Za-z0-9.-]{1,253}$", proxy.host or "") or not 1 <= proxy.port <= 65535:
-        raise HTTPException(status_code=400, detail="A proxy needs a host name or IPv4 address and a port")
+        raise HTTPException(status_code=400, detail=t("worker.proxy_needs_host_name_ipv4"))
 
 
 def _validate_proxied(slug: str, spec: ProxiedDeploySpec) -> None:
@@ -2257,22 +2272,22 @@ def _validate_proxied(slug: str, spec: ProxiedDeploySpec) -> None:
     if spec.earner.ports or spec.earner.volumes or spec.earner.network_mode:
         raise HTTPException(
             status_code=400,
-            detail="A proxied copy cannot publish ports, mount volumes or choose its network: it lives inside its tunnel",
+            detail=t("worker.proxied_copy_cannot_publish_ports"),
         )
     if spec.earner.instance != 1:
-        raise HTTPException(status_code=400, detail="A proxied copy has no instance number")
+        raise HTTPException(status_code=400, detail=t("worker.proxied_copy_has_no_instance"))
     # The earner shares the tunnel's network namespace, so anything that could
     # rewrite or bypass the tunnel's firewall is refused whatever the catalog says.
     caps = {str(c).upper().removeprefix("CAP_") for c in spec.earner.cap_add or []}
     if risky := sorted(caps & PROXIED_FORBIDDEN_CAPS):
         raise HTTPException(
             status_code=400,
-            detail=f"A proxied copy cannot hold {', '.join(risky)}: it could change or bypass its tunnel's firewall",
+            detail=t("worker.proxied_copy_cannot_hold_could", risky=", ".join(risky)),
         )
     if spec.earner.devices:
-        raise HTTPException(status_code=400, detail="A proxied copy gets no host devices")
+        raise HTTPException(status_code=400, detail=t("worker.proxied_copy_gets_no_host"))
     if gpu.grant(slug):
-        raise HTTPException(status_code=400, detail="A proxied copy gets no GPU")
+        raise HTTPException(status_code=400, detail=t("worker.proxied_copy_gets_no_gpu"))
     _validate_deploy_spec(spec.earner, slug)
     _validate_proxy(spec.proxy)
 
@@ -2310,9 +2325,7 @@ def _old_ui_target_error(exc: HTTPException, spec: BaseModel | None, *, then: st
     worker = f"CashPilot {version.display()}" if version.series(version.current()) else "a newer CashPilot"
     return HTTPException(
         status_code=409,
-        detail=f"This worker runs {worker} and replaces an existing container only when the UI confirms "
-        f"which container it replaces, and this UI is too old to do that. Update the UI, then {then}. "
-        "Nothing was changed.",
+        detail=t("worker.worker_runs_replaces_existing_container", worker=worker, then=then),
     )
 
 
@@ -2334,11 +2347,11 @@ def _proxy_http_error(exc: Exception) -> HTTPException:
         if refusal:
             return HTTPException(status_code=403, detail=refusal)
         reason = " ".join(proxy_tunnel.redact(str(exc.explanation or exc)).split())[:300]
-        return HTTPException(status_code=409, detail=f"Docker refused the container: {reason}")
+        return HTTPException(status_code=409, detail=t("worker.docker_refused_container", reason=reason))
     if isinstance(exc, RuntimeError):
         return HTTPException(status_code=503, detail=proxy_tunnel.redact(str(exc)))
     logger.error("Proxied copy operation failed: %s", proxy_tunnel.redact(f"{type(exc).__name__}: {exc}"))
-    return HTTPException(status_code=500, detail="The proxied copy operation failed")
+    return HTTPException(status_code=500, detail=t("worker.proxied_copy_operation_failed"))
 
 
 def _deploy_routed(
@@ -2382,13 +2395,12 @@ def _deploy_routed(
         except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
             raise HTTPException(
                 status_code=503,
-                detail=f"Could not list the proxied copies of {slug} on this worker ({exc}); nothing changed",
+                detail=t("worker.could_not_list_proxied_copies", slug=slug, exc=exc),
             ) from None
         if elsewhere:
             raise HTTPException(
                 status_code=409,
-                detail=f"{slug} already runs through another proxy on this worker ({', '.join(elsewhere)}). "
-                "Remove it first, then deploy it through this one; nothing changed",
+                detail=t("worker.already_runs_through_another_proxy", slug=slug, elsewhere=", ".join(elsewhere)),
             )
         # Recorded before the earner exists, so no deploy path can start this
         # service from the box's own IP while the routed one is being made.
@@ -2397,7 +2409,7 @@ def _deploy_routed(
         except (OSError, ValueError) as exc:
             raise HTTPException(
                 status_code=503,
-                detail=f"Could not record the route of {slug} on this worker ({exc}); nothing changed",
+                detail=t("worker.could_not_record_route_worker", slug=slug, exc=exc),
             ) from None
         # The routed copy beside a direct container of the same account would
         # show the provider one device on both the box's IP and the proxy's.
@@ -2407,14 +2419,13 @@ def _deploy_routed(
             route_gate.release(slug, before)
             raise HTTPException(
                 status_code=503,
-                detail=f"Could not list the containers of {slug} on this worker ({exc}); nothing changed",
+                detail=t("worker.could_not_list_containers_worker", slug=slug, exc=exc),
             ) from None
         if direct:
             route_gate.release(slug, before)
             raise HTTPException(
                 status_code=409,
-                detail=f"{slug} already runs from this worker's own IP ({', '.join(direct)}). Remove it first, "
-                "then deploy it with a route; nothing changed",
+                detail=t("worker.already_runs_worker_s_own", slug=slug, direct=", ".join(direct)),
             )
         try:
             # In a tunnel of its own: the mark now names this proxy (proxy_tunnel.deploy).
@@ -2493,8 +2504,7 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
     if _copy_removals.get(key):
         raise HTTPException(
             status_code=409,
-            detail=f"A removal of {slug} through proxy {proxy_id} is running on this worker; "
-            "deploy it again once it ends",
+            detail=t("worker.removal_through_proxy_running_worker", slug=slug, proxy_id=proxy_id),
         )
     _copy_deploys[key] = _copy_deploys.get(key, 0) + 1
     _copy_starts[key] = _copy_starts.get(key, 0) + 1
@@ -2579,7 +2589,7 @@ async def api_proxied_start(
                 status_code=409,
                 detail={
                     "error": "invalid_proxy_start_approval",
-                    "message": "This approval does not match the requested copies. Click Start again to review them.",
+                    "message": t("worker.approval_does_not_match_requested"),
                 },
             )
     proxy: dict[str, Any] | None = None
@@ -2669,8 +2679,7 @@ async def api_proxied_remove(request: Request, slug: str, proxy_id: int) -> dict
         # heartbeat (main._resume_copy_removals) and then removes what it made.
         raise HTTPException(
             status_code=503,
-            detail=f"A deploy of {slug} through proxy {proxy_id} is still running on this worker; "
-            "the removal waits for it",
+            detail=t("worker.deploy_through_proxy_still_running", slug=slug, proxy_id=proxy_id),
         )
     # Marked in the same step as the check, with no await between: from here
     # until the removal ends, a deploy of this copy is refused.
@@ -2700,7 +2709,7 @@ async def api_proxy_test(request: Request, spec: ProxyTestSpec) -> dict[str, Any
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
     if not egress.public_ip(result.get("ip")):
-        raise HTTPException(status_code=409, detail="The tunnel came up, but its exit address is not a public IP")
+        raise HTTPException(status_code=409, detail=t("worker.tunnel_came_up_but_exit"))
     return {"exit_ip": result["ip"], "country": result.get("country") or "", "ms": result.get("ms")}
 
 
@@ -2752,14 +2761,13 @@ def _refuse_beside_routed_copy(slug: str) -> None:
     except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
         raise HTTPException(
             status_code=503,
-            detail=f"Could not check whether {slug} still runs through a proxy on this worker ({exc}); nothing changed",
+            detail=t("worker.could_not_check_whether_still", slug=slug, exc=exc),
         ) from None
     if found:
         pid, name = found[0]
         raise HTTPException(
             status_code=409,
-            detail=f"{slug} still runs through proxy {pid} on this worker ({name}). Remove that copy first, "
-            "then deploy it direct; nothing changed",
+            detail=t("worker.still_runs_through_proxy_worker", slug=slug, pid=pid, name=name),
         )
 
 
@@ -2767,7 +2775,7 @@ def _deploy_target_id(name: str) -> str:
     try:
         target = orchestrator.deploy_target(orchestrator._get_client(), name)
     except (DockerException, RuntimeError):
-        raise HTTPException(status_code=503, detail="Could not look up the deploy container in Docker.") from None
+        raise HTTPException(status_code=503, detail=t("worker.could_not_look_up_deploy")) from None
     return "none" if target is None else target.id
 
 
@@ -2884,7 +2892,7 @@ async def _deploy_container(request: Request, slug: str, spec: CheckedDeploySpec
                 status_code=409,
                 detail={
                     "error": "replace_existing",
-                    "message": "Update CashPilot-Desktop to confirm the exact container before replacing it.",
+                    "message": t("worker.update_cashpilot_desktop_confirm_exact"),
                     "current_container": exc.actual,
                 },
             ) from None
@@ -2923,12 +2931,12 @@ async def _deploy_container(request: Request, slug: str, spec: CheckedDeploySpec
         # line and capped, instead of the bare 500 below.
         logger.warning("Deploy of %s refused by Docker: %s", slug, exc)
         reason = " ".join(str(exc.explanation or exc).split())[:300]
-        raise HTTPException(status_code=409, detail=f"Docker refused the container: {reason}") from None
+        raise HTTPException(status_code=409, detail=t("worker.docker_refused_container", reason=reason)) from None
     except HTTPException:
         raise
     except Exception:
         logger.exception("Deploy failed for %s", slug)
-        raise HTTPException(status_code=500, detail="Container deployment failed")
+        raise HTTPException(status_code=500, detail=t("worker.container_deployment_failed"))
 
 
 @app.post("/api/containers/{slug}/wallet-seed")
@@ -2951,12 +2959,12 @@ async def api_wallet_seed(request: Request, slug: str) -> JSONResponse:
         )
     except step_up.StepUpError as exc:
         raise HTTPException(
-            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was read."}
+            status_code=403, detail={"error": "step_up_rejected", "message": t("worker.nothing_read", exc=exc)}
         ) from None
     svc = orchestrator.get_service(slug) if orchestrator.get_service else None
     if wallet_seed.seed_var(svc) is None:
         raise HTTPException(
-            status_code=404, detail={"error": "wallet_none", "message": f"{slug} keeps no wallet seed."}
+            status_code=404, detail={"error": "wallet_none", "message": t("worker.keeps_no_wallet_seed", slug=slug)}
         )
 
     def _read() -> str:
@@ -3047,7 +3055,7 @@ def _check_critical_delete_approval(request: Request, slug: str, critical_set: s
         )
     except step_up.StepUpError as exc:
         raise HTTPException(
-            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was removed."}
+            status_code=403, detail={"error": "step_up_rejected", "message": t("worker.nothing_removed", exc=exc)}
         ) from None
 
 
@@ -3171,11 +3179,11 @@ def _log_filter(match: str, since_hours: float) -> re.Pattern[str] | None:
     if not match or since_hours <= 0:
         return None
     if len(match) > 200:
-        raise HTTPException(status_code=400, detail="match is too long")
+        raise HTTPException(status_code=400, detail=t("worker.match_too_long"))
     try:
         return re.compile(match)
     except re.error:
-        raise HTTPException(status_code=400, detail="match is not a valid regular expression") from None
+        raise HTTPException(status_code=400, detail=t("worker.match_not_valid_regular_expression")) from None
 
 
 @app.get("/api/containers/{slug}/logs")
@@ -3257,7 +3265,7 @@ async def api_backup(slug: str, body: BackupRequest, request: Request) -> dict[s
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Backup read failed for %s: %s", slug, exc)
-        raise HTTPException(status_code=500, detail="Could not read this service's state") from exc
+        raise HTTPException(status_code=500, detail=t("worker.could_not_read_service_s")) from exc
 
     try:
         # The restore's own checks, run now while the user can still act: a bundle
@@ -3304,9 +3312,9 @@ async def api_backup_verify(slug: str, body: VerifyRequest, request: Request) ->
     try:
         bundle = base64.b64decode(body.bundle_b64 or "", validate=True)
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail="Bundle is not valid base64") from exc
+        raise HTTPException(status_code=400, detail=t("worker.bundle_not_valid_base64")) from exc
     if not state_backup.looks_like_bundle(bundle):
-        raise HTTPException(status_code=400, detail="That file is not a CashPilot backup bundle")
+        raise HTTPException(status_code=400, detail=t("worker.file_not_cashpilot_backup_bundle"))
 
     try:
         payload, _targets, _state = await asyncio.to_thread(orchestrator.read_critical_state, slug)
@@ -3316,7 +3324,7 @@ async def api_backup_verify(slug: str, body: VerifyRequest, request: Request) ->
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Backup verify read failed for %s: %s", slug, exc)
-        raise HTTPException(status_code=500, detail="Could not read this service's state") from exc
+        raise HTTPException(status_code=500, detail=t("worker.could_not_read_service_s")) from exc
 
     return await asyncio.to_thread(
         lambda: state_backup.verify(
@@ -3337,12 +3345,12 @@ MAX_RESTORE_BODY = (orchestrator.MAX_BACKUP_BYTES + 1024 * 1024) * 4 // 3 + 256 
 async def _read_capped(request: Request, limit: int) -> bytes:
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > limit:
-        raise HTTPException(status_code=413, detail="The restore request is larger than any backup can be")
+        raise HTTPException(status_code=413, detail=t("worker.restore_request_larger_than_any"))
     body = bytearray()
     async for chunk in request.stream():
         body.extend(chunk)
         if len(body) > limit:
-            raise HTTPException(status_code=413, detail="The restore request is larger than any backup can be")
+            raise HTTPException(status_code=413, detail=t("worker.restore_request_larger_than_any"))
     return bytes(body)
 
 
@@ -3370,33 +3378,31 @@ async def api_restore(slug: str, request: Request) -> dict[str, Any]:
         body = None
     del raw
     if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="Expected a JSON object")
+        raise HTTPException(status_code=400, detail=t("worker.expected_json_object"))
     bundle_b64, passphrase, approval = (
         body.pop("bundle_b64", None),
         body.pop("passphrase", None),
         body.pop("approval", None),
     )
     if not all(isinstance(v, str) and v for v in (bundle_b64, passphrase, approval)):
-        raise HTTPException(status_code=400, detail="A restore needs the file, its passphrase and the approval")
+        raise HTTPException(status_code=400, detail=t("worker.restore_needs_file_passphrase_approval"))
     try:
         spec = DeploySpec(**body)
     except (ValidationError, TypeError):
-        raise HTTPException(status_code=400, detail="The deploy spec of the restore is malformed") from None
+        raise HTTPException(status_code=400, detail=t("worker.deploy_spec_restore_malformed")) from None
     if spec.instance != 1 or spec.approval:
-        raise HTTPException(status_code=400, detail="A restore creates the first copy, as the catalog runs it")
+        raise HTTPException(status_code=400, detail=t("worker.restore_creates_first_copy_catalog"))
     await asyncio.to_thread(_validate_deploy_spec, spec, slug)
     if slug not in orchestrator.critical_slugs() or orchestrator.restore_targets(slug) is None:
         raise HTTPException(
             status_code=409,
-            detail=f"{slug} cannot be restored from the dashboard: it keeps its state in a host folder, or none. "
-            "Use the command line steps in the backup guide.",
+            detail=t("worker.cannot_restored_dashboard_keeps_state", slug=slug),
         )
     found = orchestrator.critical_spec_deviations(slug, spec.image, spec.command, spec.env, spec.volumes)
     if found:
         raise HTTPException(
             status_code=403,
-            detail=f"A restore runs {slug} exactly as this worker's catalog does, and this one differs: "
-            f"{'; '.join(found)}. Nothing was restored.",
+            detail=t("worker.restore_runs_exactly_worker_s", slug=slug, found="; ".join(found)),
         )
     # The deviations above compare mount targets only: a spec that mounts
     # another volume at a critical folder, or none, would pass them and fail
@@ -3409,20 +3415,19 @@ async def api_restore(slug: str, request: Request) -> dict[str, Any]:
         if mounted.get(orchestrator._norm_mount(target)) != volume:
             raise HTTPException(
                 status_code=400,
-                detail=f"A restore writes {target} into the volume {volume}, as this worker's catalog runs {slug}, "
-                "and this deploy spec does not mount it there. Nothing was restored.",
+                detail=t("worker.restore_writes_into_volume_worker", target=target, volume=volume, slug=slug),
             )
     try:
         bundle = base64.b64decode(bundle_b64, validate=True)
     except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="The backup file is not valid base64") from None
+        raise HTTPException(status_code=400, detail=t("worker.backup_file_not_valid_base64")) from None
     del bundle_b64
     digest = hashlib.sha256(bundle).hexdigest()
     try:
         step_up.check(_worker_key, approval, step_up.ACTION_RESTORE, step_up.restore_target(slug, CLIENT_ID, digest))
     except step_up.StepUpError as exc:
         raise HTTPException(
-            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was restored."}
+            status_code=403, detail={"error": "step_up_rejected", "message": t("worker.nothing_restored", exc=exc)}
         ) from None
     try:
         header = state_backup.read_header(bundle)
@@ -3440,7 +3445,7 @@ async def api_restore(slug: str, request: Request) -> dict[str, Any]:
         archives = await asyncio.to_thread(state_backup.split_archives, payload)
         del payload
     except state_backup.BackupError as exc:
-        raise HTTPException(status_code=400, detail=f"{exc} Nothing was restored.") from None
+        raise HTTPException(status_code=400, detail=t("worker.nothing_restored_2", exc=exc)) from None
     deploy = {
         "image": spec.image,
         "env": spec.env,
@@ -3487,7 +3492,7 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
     if runtimes is None:
         # Same split as _validate_runtime: unreachable daemon is an outage,
         # and an empty list here would read as "no runtimes installed".
-        raise HTTPException(status_code=503, detail="The Docker daemon is not answering.")
+        raise HTTPException(status_code=503, detail=t("worker.docker_daemon_not_answering"))
     available = sorted(runtimes)
     return {
         "available": available,
@@ -3523,7 +3528,7 @@ async def api_isolation_check(request: Request) -> dict[str, Any]:
             status_code=503,
             detail={
                 "error": "isolation_check_unavailable",
-                "message": "The worker's Docker daemon did not answer, so it cannot run the check.",
+                "message": t("worker.worker_s_docker_daemon_did"),
             },
         )
 
@@ -3547,7 +3552,7 @@ async def api_isolation(request: Request) -> dict[str, Any]:
     if not isinstance(body, dict) or body.get("enable") is not True:
         raise HTTPException(
             status_code=400,
-            detail="Isolation is turned off with CASHPILOT_ISOLATION=off on the worker, not from the dashboard.",
+            detail=t("worker.isolation_turned_off_cashpilot_isolation"),
         )
     try:
         return await asyncio.to_thread(lan_fence.enable)
@@ -3556,7 +3561,7 @@ async def api_isolation(request: Request) -> dict[str, Any]:
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     except (DockerException, requests.exceptions.RequestException):
-        raise HTTPException(status_code=503, detail="The worker's Docker daemon did not answer.") from None
+        raise HTTPException(status_code=503, detail=t("worker.worker_s_docker_daemon_did_2")) from None
 
 
 @app.get("/api/payout-addresses")
