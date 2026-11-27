@@ -4,37 +4,54 @@ CashPilot exposes rich Prometheus metrics when enabled, allowing you to monitor 
 
 ## Enabling Metrics
 
-Add this line to the `.env` file next to your compose file, then run
-`docker compose up -d`:
+Make all the changes below first. Recreate the UI only once, in step 3, so it
+starts with every setting.
 
-```bash
-CASHPILOT_METRICS_ENABLED=true
-```
+1. Add these lines to the `.env` file next to your compose file:
 
-The shipped compose files pass the setting to the UI container, so you do not
-edit the compose file. A compose file from 3.0.1 or older does not pass it. Add
-`- CASHPILOT_METRICS_ENABLED=${CASHPILOT_METRICS_ENABLED:-false}` and
-`- CASHPILOT_METRICS_TOKEN=${CASHPILOT_METRICS_TOKEN:-}` to the `environment`
-list of `cashpilot-ui`. Or take the current file, keep your own changes, and
-keep the image tags of the series you run:
+    ```bash
+    CASHPILOT_METRICS_ENABLED=true
+    CASHPILOT_METRICS_TOKEN=a-long-random-string
+    ```
 
-```bash
-curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml
-```
+    The token is optional. With it, a scraper must send
+    `Authorization: Bearer <token>`, and any other request gets 401. Without
+    it, anyone who can reach the port can read the metrics.
 
-Use your own file name in place of `docker-compose.yml`. The
-[upgrade note](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#after-301-the-read-only-key-and-metrics-work-from-env)
-has the details.
+2. Check your compose file. The shipped compose files pass both settings to
+    the UI container. A compose file from 3.0.1 or older does not. In that
+    file, add these lines to the `environment` list of `cashpilot-ui`:
 
-Metrics are served at `GET /metrics`. Without a token, anyone who can reach the
-port can read them.
+    ```yaml
+          - CASHPILOT_METRICS_ENABLED=${CASHPILOT_METRICS_ENABLED:-false}
+          - CASHPILOT_METRICS_TOKEN=${CASHPILOT_METRICS_TOKEN:-}
+    ```
 
-To require a token, also add `CASHPILOT_METRICS_TOKEN` to `.env`. A scraper
-must then send `Authorization: Bearer <token>`, and any other request gets 401:
+    To compare with the current file, download it under another name, so it
+    does not overwrite yours:
 
-```bash
-CASHPILOT_METRICS_TOKEN=a-long-random-string
-```
+    ```bash
+    curl -fsSL -o docker-compose.upstream.yml https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml
+    ```
+
+    If you run `docker-compose.fleet.yml`, put that name in the URL. Merge
+    its settings into your own compose file, and keep the image tags of the
+    series you run. The
+    [upgrade note](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#after-301-the-read-only-key-and-metrics-work-from-env)
+    has the details.
+
+3. Recreate the UI with your own compose file:
+
+    ```bash
+    # With docker-compose.yml:
+    docker compose -f docker-compose.yml up -d
+    # With docker-compose.fleet.yml:
+    docker compose -f docker-compose.fleet.yml up -d
+    ```
+
+    If your file has another name, put that name after `-f`.
+
+Metrics are served at `GET /metrics`.
 
 > **Security:** The `/metrics` endpoint exposes operational data (earnings balances, worker hostnames, container status). Set a token, and keep the port reachable only from trusted networks (LAN, Tailscale, VPN) or behind a reverse proxy.
 
