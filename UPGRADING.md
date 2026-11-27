@@ -57,10 +57,12 @@ Then recreate the UI with your own compose file:
 
 ```sh
 # With docker-compose.yml:
-docker compose up -d
+docker compose -f docker-compose.yml up -d
 # With docker-compose.fleet.yml:
 docker compose -f docker-compose.fleet.yml up -d
 ```
+
+If your file has another name, put that name after `-f`.
 
 ---
 

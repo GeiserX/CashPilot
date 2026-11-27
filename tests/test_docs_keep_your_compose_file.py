@@ -18,6 +18,20 @@ GUIDE = ROOT / "docs" / "guides" / "prometheus-metrics.md"
 #: ``curl`` that saves under the URL's own file name: ``-O`` in any flag group, or ``--remote-name``.
 REMOTE_NAME = re.compile(r"\bcurl\b[^\n]*?\s(?:-[A-Za-z]*O[A-Za-z]*|--remote-name)\s+(\S+)")
 
+#: ``curl`` that saves under a name it is given: ``-o`` at the end of any flag group, or ``--output``.
+OUTPUT_NAME = re.compile(r"\bcurl\b[^\n]*?\s(?:-[A-Za-z]*o|--output)\s+(\S+)")
+
+#: The compose files we ship, so the names a reader's running install uses.
+LIVE_NAMES = {path.name for path in ROOT.glob("docker-compose*.yml")}
+
+
+def _saved_names(section: str):
+    """Yield (file name, match) for every ``curl`` in the section that writes a file."""
+    for match in REMOTE_NAME.finditer(section):
+        yield match.group(1).rsplit("/", 1)[-1], match
+    for match in OUTPUT_NAME.finditer(section):
+        yield match.group(1), match
+
 
 def _sections(text: str) -> list[str]:
     return re.split(r"\n(?=#{2,4} )", text)
@@ -28,13 +42,13 @@ def _docs_for_running_installs() -> list[Path]:
 
 
 def test_no_download_writes_over_a_compose_file_without_a_copy_first():
-    """A ``curl -O`` of a compose file is fine only after the same section copies that file away."""
+    """A download that writes a live compose file is fine only after the same section copies that file away."""
+    assert {"docker-compose.yml", "docker-compose.fleet.yml", "docker-compose.worker.yml"} <= LIVE_NAMES
     offenders = []
     for path in _docs_for_running_installs():
         for section in _sections(path.read_text(encoding="utf-8")):
-            for match in REMOTE_NAME.finditer(section):
-                name = match.group(1).rsplit("/", 1)[-1]
-                if not name.startswith("docker-compose"):
+            for name, match in _saved_names(section):
+                if name not in LIVE_NAMES:
                     continue
                 if f"cp {name} " not in section[: match.start()]:
                     heading = section.splitlines()[0]
@@ -47,6 +61,16 @@ def test_the_guard_catches_an_overwriting_download():
     assert REMOTE_NAME.search(sample).group(1).endswith("/docker-compose.yml")
     assert REMOTE_NAME.search(sample.replace("-fsSLO", "-fsSL --remote-name"))
     assert not REMOTE_NAME.search(sample.replace("-fsSLO", "-fsSL -o docker-compose.upstream.yml"))
+
+
+def test_the_guard_catches_a_download_named_over_a_live_file():
+    url = "https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml"
+    for flags in ("-fsSL -o docker-compose.yml", "-fsSLo docker-compose.yml", "-fsSL --output docker-compose.yml"):
+        names = [name for name, _ in _saved_names(f"## Fix\n\ncurl {flags} {url}\n")]
+        assert "docker-compose.yml" in names, flags
+    safe = [name for name, _ in _saved_names(f"## Fix\n\ncurl -fsSL -o docker-compose.upstream.yml {url}\n")]
+    assert safe == ["docker-compose.upstream.yml"]
+    assert "docker-compose.upstream.yml" not in LIVE_NAMES
 
 
 def _enable_section() -> str:

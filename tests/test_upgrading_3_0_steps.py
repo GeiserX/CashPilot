@@ -80,7 +80,10 @@ def test_the_env_fix_is_its_own_section_with_the_lines_to_add():
     assert (
         "curl -fsSL -o docker-compose.upstream.yml https://raw.githubusercontent.com/GeiserX/CashPilot/main/" in section
     ), "download the current file under another name, never over the reader's own"
+    assert "docker compose -f docker-compose.yml up -d" in section
     assert "docker compose -f docker-compose.fleet.yml up -d" in section
+    assert "put that name after `-f`" in section
+    assert "docker compose up -d" not in section, "a bare up -d uses the default file, not the fleet one"
     assert "#after-301-the-read-only-key-and-metrics-work-from-env" in UPGRADE
 
 
