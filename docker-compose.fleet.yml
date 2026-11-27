@@ -7,6 +7,12 @@
 # UI: Full dashboard + earnings collection (no Docker socket needed)
 # Workers: Agents that manage containers through a Docker socket proxy and report to UI
 
+# ONE CashPilot per Docker host. The container names in this file are fixed,
+# and a worker manages every container on its Docker engine that carries
+# CashPilot's labels, whichever install made it. A second install on the same
+# host would list, stop and replace the first one's earners. Put it on another
+# host or VM. docs/getting-started.md has the details.
+#
 # === Deploy on main server (e.g., server-a) ===
 services:
   cashpilot-ui:
@@ -33,6 +39,14 @@ services:
       - CASHPILOT_ENCRYPTION_KEY=${CASHPILOT_ENCRYPTION_KEY:-}
       - CASHPILOT_ALLOW_EPHEMERAL_KEY=${CASHPILOT_ALLOW_EPHEMERAL_KEY:-false}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
+      - CASHPILOT_ADMIN_API_KEY=${CASHPILOT_ADMIN_API_KEY:-}
+      # Optional bearer key for reporting only (Home Assistant, Grafana,
+      # cashpilot-mcp with CASHPILOT_READ_ONLY=true). See docs/configuration.md.
+      - CASHPILOT_READONLY_API_KEY=${CASHPILOT_READONLY_API_KEY:-}
+      # Optional Prometheus /metrics. true serves it; set a token to require
+      # Authorization: Bearer. See docs/guides/prometheus-metrics.md.
+      - CASHPILOT_METRICS_ENABLED=${CASHPILOT_METRICS_ENABLED:-false}
+      - CASHPILOT_METRICS_TOKEN=${CASHPILOT_METRICS_TOKEN:-}
       # Optional CAPTCHA on the sign-in page, for a UI the internet can reach:
       # turnstile, hcaptcha or recaptcha (v2 checkbox), plus both keys. Empty = off.
       # See docs/security-defaults.md, "Protect the sign-in page with a CAPTCHA".

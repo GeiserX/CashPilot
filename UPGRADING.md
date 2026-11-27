@@ -21,6 +21,51 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## After 3.0.1: the read-only key and metrics work from `.env`
+
+**Affects you if** you set `CASHPILOT_READONLY_API_KEY`,
+`CASHPILOT_METRICS_ENABLED` or `CASHPILOT_METRICS_TOKEN` in `.env`. Up to
+3.0.1 the compose files did not pass these to the UI container. So the
+read-only key got HTTP 401 on every call, also from cashpilot-mcp in
+read-only mode, and `/metrics` answered 404. The fleet compose file did not
+pass `CASHPILOT_ADMIN_API_KEY` either.
+
+**What to do.** Add the missing lines to the `environment` list of
+`cashpilot-ui` in your compose file:
+
+```yaml
+      - CASHPILOT_READONLY_API_KEY=${CASHPILOT_READONLY_API_KEY:-}
+      - CASHPILOT_METRICS_ENABLED=${CASHPILOT_METRICS_ENABLED:-false}
+      - CASHPILOT_METRICS_TOKEN=${CASHPILOT_METRICS_TOKEN:-}
+```
+
+In `docker-compose.fleet.yml`, also add
+`- CASHPILOT_ADMIN_API_KEY=${CASHPILOT_ADMIN_API_KEY:-}` if it is not there.
+
+Or compare with the current file. Download it under another name, so it does
+not overwrite yours:
+
+```sh
+curl -fsSL -o docker-compose.upstream.yml https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml
+```
+
+If you run `docker-compose.fleet.yml`, put that name in the URL. Merge its
+settings into your own compose file, and keep the image tags of the series you
+run. Keep your `.env`.
+
+Then recreate the UI with your own compose file:
+
+```sh
+# With docker-compose.yml:
+docker compose -f docker-compose.yml up -d
+# With docker-compose.fleet.yml:
+docker compose -f docker-compose.fleet.yml up -d
+```
+
+If your file has another name, put that name after `-f`.
+
+---
+
 ## 3.0: upgrade the UI first, then change the image tags
 
 ### What changed in 3.0
@@ -117,10 +162,11 @@ change, rename and proxied rebuild of a container that already runs. It also
 refuses the Start of a proxied copy made before 3.0 when that Start must move
 the copy into a new tunnel. Such a copy has no saved container ID yet. It
 stays down, also when the traffic cap reset would start it again. The 2.x UI
-shows the worker's answer: "This worker runs CashPilot v3.0.0 and replaces an
+shows the worker's answer: "This worker runs CashPilot v3.0.x and replaces an
 existing container only when the UI confirms which container it replaces, and
 this UI is too old to do that. Update the UI, then redeploy. Nothing was
-changed." For a Start, the answer ends in "then Start the copy again". The
+changed." The worker names its exact version where this quote has 3.0.x.
+For a Start, the answer ends in "then Start the copy again". The
 Fleet page marks that worker in amber, because it is on another release
 series.
 
@@ -132,12 +178,56 @@ running containers itself and asks you to approve a replacement.
 1. Back up the dashboard's `/data` and your node identities (see the top of
    this file). [Backing up and restoring](docs/backup-restore.md#backup) and
    [Backing up node identities](docs/backup.md) have the steps.
-2. On the UI host, take the 3.0 compose file, or change every
+2. On the UI host, keep a copy of your current compose file. You need it to
+   roll back. Run the line for the file you use:
+
+   ```sh
+   # The dashboard and its worker on one host:
+   cp docker-compose.yml docker-compose.2.10.yml
+   # A dashboard with remote workers:
+   cp docker-compose.fleet.yml docker-compose.fleet.2.10.yml
+   ```
+
+   Then replace the file with the 3.0 one of the same name:
+
+   ```sh
+   curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/v3.0.1/docker-compose.yml
+   ```
+
+   Replace `v3.0.1` with the newest 3.0 release
+   (https://github.com/GeiserX/CashPilot/releases), and the file name with
+   the one you use. Carry over your own changes, such as container names,
+   mounts or ports, and keep your `.env`. Or keep your file and change every
    `drumsergio/cashpilot:2.10` and `drumsergio/cashpilot-worker:2.10` tag to
-   `3.0`. Then run `docker compose up -d --force-recreate`.
-3. Do the same on every worker host. On a worker-only server, run
-   `docker compose -f docker-compose.worker.yml up -d --force-recreate`, unless
-   you saved that file as `docker-compose.yml`.
+   `3.0`. If you set the read-only key or metrics in `.env`, also add the
+   lines from
+   [After 3.0.1](#after-301-the-read-only-key-and-metrics-work-from-env).
+   Then recreate the containers:
+
+   ```sh
+   # With docker-compose.yml:
+   docker compose up -d --force-recreate
+   # With docker-compose.fleet.yml:
+   docker compose -f docker-compose.fleet.yml up -d --force-recreate
+   ```
+
+   Both files also run a worker on the UI host, so that worker is now on 3.0.
+3. Do the same on every worker host, with `docker-compose.worker.yml`. Keep a
+   copy first:
+
+   ```sh
+   cp docker-compose.worker.yml docker-compose.worker.2.10.yml
+   ```
+
+   Then take the 3.0 file or change the tag, carry over your changes and
+   keep your `.env`. Then run:
+
+   ```sh
+   docker compose -f docker-compose.worker.yml up -d --force-recreate
+   ```
+
+   If you saved the worker file as `docker-compose.yml`, use that name in
+   these commands and leave out `-f`.
 
 On Unraid, both apps follow `:latest`, and each release moves `:latest` for
 both images. So the next update of either app takes it to 3.0. Update the UI
@@ -215,14 +305,36 @@ CashPilot, or ask for a catalog entry.
   - `POST /api/proxies/{proxy_id}/copies`, when the copy already runs
   - `POST /api/workers/{worker_id}/command` with `"command": "deploy"`, when
     the service already runs on that worker
+- Every 409 below puts its fields under `detail`, not at the top level of
+  the body. Read `body["detail"]["error"]`, not `body["error"]`.
 - A call that does not confirm gets HTTP 409. The error is
   `deploy_target_changed` for a 3.0 worker, and `confirm_deploy_targets` for a
-  joined Desktop or a 2.x worker. Handle both.
+  joined Desktop or a 2.x worker. Handle both. `deploy_target_changed` also
+  carries `detail.current_container`.
 - To confirm, send the call with `"replace_existing": true`. The answer is
-  HTTP 409 with `"error": "confirm_deploy_targets"`, a `message` to show the
-  owner, and `expected_containers`, the container ID of each copy. Send the
-  same call again with that `expected_containers` object. The worker replaces
-  only those containers. The import-draft route takes no
+  HTTP 409 with a body like this:
+
+  ```json
+  {
+    "detail": {
+      "error": "confirm_deploy_targets",
+      "message": "Replace these containers ...",
+      "expected_containers": {"1": "<container id>"}
+    }
+  }
+  ```
+
+  Show `message` to the owner. The keys of `expected_containers` are copy
+  numbers as strings, or `p<proxy id>` for a proxied copy. Each value is that
+  copy's container ID, or `none` when the worker found no container. A 3.0
+  worker gives full IDs, and a 2.x worker short ones. Send the same call again
+  with `"replace_existing": true` and `"expected_containers"` set to
+  `detail.expected_containers`, unchanged. A 3.0 worker replaces only those
+  containers. A 2.x worker or a joined Desktop does not check the IDs itself.
+  The UI reads its containers again just before it sends the deploy, and
+  refuses when an ID changed. A container that changes after that read can
+  still be replaced. Update 2.x workers to 3.0 to close that gap. No Desktop
+  release closes it yet. The import-draft route takes no
   `replace_existing`. It replaces a running container only when the call
   sends `expected_containers`.
 - Adding a proxied copy that already runs takes no `replace_existing`
@@ -243,7 +355,7 @@ CashPilot, or ask for a catalog entry.
   string, empty when not set. Each worker also has a new `unmetered` field.
 - `GET /api/earnings/breakdown` keeps 12 decimals instead of 4.
 
-**What to do.** Use cashpilot-mcp 0.4.0 or later: older versions cannot
+**What to do.** Use cashpilot-mcp 0.4.1 or later: older versions cannot
 redeploy a running service. Add the confirmation step to your scripts.
 
 ### A proxied copy may ask you to approve its containers once
@@ -299,7 +411,7 @@ the Home Assistant integration with this server.
   in the Desktop's dashboard if you want this server to command it.
 - Desktop does not update itself. Download it from its
   [releases page](https://github.com/GeiserX/CashPilot-Desktop/releases).
-- **[cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp) 0.4.0 or later**
+- **[cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp) 0.4.1 or later**
   is needed to redeploy a running service, because it sends the confirmation
   that 3.0 asks for.
 - CashPilot Desktop 2.0 has its own upgrade steps. Its pairing moves to a new
@@ -314,16 +426,51 @@ the Home Assistant integration with this server.
   balances in CashPilot.
 
 **What to do.** Upgrade this server to 3.0 before you upgrade a Desktop to
-2.0. Update cashpilot-mcp to 0.4.0.
+2.0. Update cashpilot-mcp to 0.4.1.
 
 ### Rolling back
 
 3.0 adds one table to the database and changes no other, so 2.10.2 opens the
-same database. To go back, put back the 2.10 compose file on the UI host and
-on every worker host, and run `docker compose up -d --force-recreate` on each.
-Move the UI and every worker back together. 2.10.2 has no Mining catalog, so
-remove the mining services you deployed on 3.0 before you go back. A container
-that got a GPU on 3.0 keeps it on 2.10.2 until something redeploys it.
+same database. Move the UI and every worker back together. 2.10.2 has no
+Mining catalog, so remove the mining services you deployed on 3.0 before you
+go back. A container that got a GPU on 3.0 keeps it on 2.10.2 until something
+redeploys it.
+
+On each host, put back the 2.10 compose file you kept in step 2 or 3, then
+recreate the containers. Run the lines for the file that host uses:
+
+```sh
+# The dashboard and its worker on one host:
+cp docker-compose.2.10.yml docker-compose.yml
+docker compose up -d --force-recreate
+# A dashboard with remote workers:
+cp docker-compose.fleet.2.10.yml docker-compose.fleet.yml
+docker compose -f docker-compose.fleet.yml up -d --force-recreate
+# A worker host:
+cp docker-compose.worker.2.10.yml docker-compose.worker.yml
+docker compose -f docker-compose.worker.yml up -d --force-recreate
+```
+
+If you did not keep it, download the 2.10 file under the name of the copy, so
+it does not overwrite your current file:
+
+```sh
+curl -fsSL -o docker-compose.2.10.yml https://raw.githubusercontent.com/GeiserX/CashPilot/v2.10.2/docker-compose.yml
+```
+
+For the fleet or worker file, put its name in the URL and in the copy name, as
+in the lines above. Carry over your own changes from your current file into the
+copy. Then run the lines above for that host.
+
+If you only changed the tags, change them back to `2.10`. If you also took the
+3.0 proxy policy, the 2.10 worker may report that its proxy policy is out of
+date. Then put back the 2.10 file, or run the policy command shown under
+**Settings**, **About and updates**.
+
+On Unraid, edit each app and set **Repository** to
+`drumsergio/cashpilot:2.10` and `drumsergio/cashpilot-worker:2.10`, then
+**Apply**. Change both apps. While these tags stay, an update keeps them on
+2.10. Set them back to `:latest` when you are ready to return to 3.0.
 
 ---
 
@@ -641,7 +788,9 @@ backup you hold is the one that survives a lost disk.
 
 #### 2. Take the 2.0 compose file
 
-On each host, replace your compose file with the 2.0 one:
+On each host, first keep a copy of your current compose file, for example
+`cp docker-compose.yml docker-compose.1.x.yml`. Rolling back needs it. Then
+replace your compose file with the 2.0 one:
 `docker-compose.yml` where the dashboard runs, `docker-compose.fleet.yml` for a
 dashboard with remote workers, or `docker-compose.worker.yml` on a worker-only
 host. Carry over your own changes and keep your `.env`. If you keep your old
@@ -719,8 +868,11 @@ lists each leftover and the commands.
 2.0 uses the same database schema as every release since 1.67. To go back to
 1.73, set the tags back to `1.73` and run `docker compose up -d`.
 
-To go back further, put your old compose file back and run
-`docker compose up -d`. The migration copies and never deletes, so your old
+To go back further, put back the copy of your old compose file you kept in
+step 2, for example `cp docker-compose.1.x.yml docker-compose.yml`, and run
+`docker compose up -d`. Use your own file names, and add
+`-f docker-compose.fleet.yml` or `-f docker-compose.worker.yml` where you use
+those files. The migration copies and never deletes, so your old
 worker volumes and each `<volume>-pre-isolation` backup are still there,
 unless you removed them. That is why you keep them for a while. A compose file
 from before the socket proxy leaves the proxy running: remove it with

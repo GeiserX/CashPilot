@@ -2,9 +2,35 @@
 
 ## Prerequisites
 
-- **Docker** and **Docker Compose** installed on your server
+- **Docker** with the **Compose v2 plugin, version 2.23.1 or newer**. Check
+  with `docker compose version`. Older versions cannot read the inline config
+  in the compose file. Docker Desktop includes the plugin. On a bare Docker
+  Engine on Linux, install it from Docker's package repository
+  (https://docs.docker.com/compose/install/linux/). On macOS with Colima,
+  install it with Homebrew and link it as a Docker plugin:
+
+    ```sh
+    brew install docker-compose
+    mkdir -p ~/.docker/cli-plugins
+    ln -sfn "$(brew --prefix)/opt/docker-compose/bin/docker-compose" ~/.docker/cli-plugins/docker-compose
+    ```
+
 - A Linux, macOS, or Windows host (amd64 or arm64)
 - At least 1 GB of RAM available for CashPilot + managed services
+- **One CashPilot per Docker host.** See the warning below.
+
+!!! warning "One CashPilot per Docker host"
+    Do not run two CashPilot installs on one Docker host. The compose files
+    use fixed container names (`cashpilot-ui`, `cashpilot-worker`,
+    `cashpilot-socket-proxy`), so a second copy of the file fails on a name
+    conflict. If you rename them to get past that, the two installs still
+    share the host. Each worker manages every container that carries
+    CashPilot's labels, whichever install made it. So each dashboard lists,
+    stops and replaces the other one's earners. The two also share the
+    `cashpilot-isolated` network, the earner names (`cashpilot-<service>`),
+    their host ports and volumes such as `mysterium-data`. For a second
+    install, use another host or VM. To run earners on more servers, add
+    workers to one dashboard instead ([Fleet](fleet.md)).
 
 ## Quick Start
 
@@ -15,10 +41,13 @@ curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-comp
 docker compose up -d
 ```
 
-This starts three containers:
+This starts three long-running containers. Before them, a one-shot
+`cashpilot-migrate` runs and exits with code 0 on every `up`, so
+`docker compose ps -a` shows it as `Exited (0)`. That is normal.
 
 | Container | Port | Purpose |
 |-----------|------|---------|
+| **cashpilot-migrate** | none | Runs once and exits. It moves data an older release made onto volumes the socket proxy accepts, and finds nothing to do on a new install |
 | **cashpilot-ui** | 8080 | Web dashboard, earnings collection, service catalog |
 | **cashpilot-worker** | 8081 | Docker agent that deploys and monitors service containers |
 | **cashpilot-socket-proxy** | none | Holds the Docker socket read-only and gives the worker a filtered copy ([Security defaults](security-defaults.md)) |
@@ -180,9 +209,13 @@ instead. Put that value in `.env` and the button works.
 To stay on one exact release, replace the `X.Y` series tag in
 `docker-compose.yml` with a full release tag `X.Y.Z` on both
 `drumsergio/cashpilot` and `drumsergio/cashpilot-worker` (always the same tag on
-both), and remove `pull_policy: always`. To move to a newer
-series, edit both tags. Browse tags on
+both), and remove `pull_policy: always`. Browse tags on
 [Docker Hub](https://hub.docker.com/r/drumsergio/cashpilot/tags).
+
+To move to a newer series, edit both tags: on the UI host first, then on
+every worker host. Read
+[UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md)
+first, because a major release such as 3.0 has its own steps.
 
 ### Automating updates (optional)
 

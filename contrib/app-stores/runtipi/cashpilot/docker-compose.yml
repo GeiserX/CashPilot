@@ -10,6 +10,9 @@ services:
       - ${APP_DATA_DIR}/data/fleet:/fleet
     environment:
       - TZ=${TZ}
+      - CASHPILOT_READONLY_API_KEY=${CASHPILOT_READONLY_API_KEY:-}
+      - CASHPILOT_METRICS_ENABLED=${CASHPILOT_METRICS_ENABLED:-false}
+      - CASHPILOT_METRICS_TOKEN=${CASHPILOT_METRICS_TOKEN:-}
     init: true
     security_opt:
       - no-new-privileges:true

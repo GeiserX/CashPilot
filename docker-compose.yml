@@ -5,9 +5,16 @@
 #
 #   Start / update:  docker compose pull && docker compose up -d
 #
+# ONE CashPilot per Docker host. The container names in this file are fixed,
+# and a worker manages every container on its Docker engine that carries
+# CashPilot's labels, whichever install made it. A second install on the same
+# host would list, stop and replace the first one's earners. Put it on another
+# host or VM. docs/getting-started.md has the details.
+#
 # Images are PINNED to a major.minor tag, which is what the lines below say.
 # `docker compose pull && up -d` therefore gets the newest patch of that series,
-# not the newest release overall — to move to a newer series, edit the tags.
+# not the newest release overall. To move to a newer series, read UPGRADING.md
+# first, then edit the tags on the UI host first and on every worker after it.
 #
 # This header used to claim the file tracked `latest` while pinning 1.4, and the
 # string `:latest` it told you to replace did not appear anywhere. Following the
@@ -46,6 +53,13 @@ services:
       - CASHPILOT_ALLOW_EPHEMERAL_KEY=${CASHPILOT_ALLOW_EPHEMERAL_KEY:-false}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY:-}
       - CASHPILOT_ADMIN_API_KEY=${CASHPILOT_ADMIN_API_KEY:-}
+      # Optional bearer key for reporting only (Home Assistant, Grafana,
+      # cashpilot-mcp with CASHPILOT_READ_ONLY=true). See docs/configuration.md.
+      - CASHPILOT_READONLY_API_KEY=${CASHPILOT_READONLY_API_KEY:-}
+      # Optional Prometheus /metrics. true serves it; set a token to require
+      # Authorization: Bearer. See docs/guides/prometheus-metrics.md.
+      - CASHPILOT_METRICS_ENABLED=${CASHPILOT_METRICS_ENABLED:-false}
+      - CASHPILOT_METRICS_TOKEN=${CASHPILOT_METRICS_TOKEN:-}
       # Optional CAPTCHA on the sign-in page, for a UI the internet can reach:
       # turnstile, hcaptcha or recaptcha (v2 checkbox), plus both keys. Empty = off.
       # See docs/security-defaults.md, "Protect the sign-in page with a CAPTCHA".
