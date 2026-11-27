@@ -185,6 +185,11 @@ img { max-width: 100%; }
    with a swatch. Rows, not columns, so a longer label never widens the menu. */
 .avatar-theme { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; }
 .avatar-theme-title { font-size: var(--fs-2); color: var(--text-muted); }
+/* The language picker (app/templates/_language_picker.html): the avatar menu and the sign-in bar. */
+.lang-picker { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; }
+.lang-picker-title { font-size: var(--fs-2); color: var(--text-muted); }
+.lang-picker-select { height: 28px; padding-block: 0; }
+.gate-bar .lang-picker { flex-direction: row; align-items: center; padding: 0; margin-inline-start: auto; }
 .avatar-theme-options {
   display: flex; flex-direction: column;
   border: 1px solid var(--border-light); border-radius: 2px; overflow: hidden;

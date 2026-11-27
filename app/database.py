@@ -529,6 +529,9 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     -- An id from app/themes.json. NULL = never chosen, so the default applies.
     -- Nullable with no default so fresh and upgraded match.
     theme               TEXT,
+    -- A locale from app/i18n (NAMES). NULL = never chosen, or set back to
+    -- automatic, so the browser's language applies.
+    language            TEXT,
     created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at          TEXT    NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -1316,6 +1319,11 @@ async def init_db() -> None:
         if "theme" not in pref_cols:
             applied.append("user_preferences.theme")
             await db.execute("ALTER TABLE user_preferences ADD COLUMN theme TEXT")
+        # The language choice, per user. NULL means "never chosen": the
+        # browser's Accept-Language decides, as it did before this column.
+        if "language" not in pref_cols:
+            applied.append("user_preferences.language")
+            await db.execute("ALTER TABLE user_preferences ADD COLUMN language TEXT")
 
         # Migrate earnings table: add fx_rate_usd so a non-USD balance's value at the
         # time it was recorded stays reconstructable (rates are only cached live).
@@ -3313,11 +3321,13 @@ async def save_user_preferences(
     timezone: str | None = None,
     setup_completed: bool | None = None,
     theme: str | None = None,
+    language: str | None = None,
 ) -> None:
     """Upsert the fields that were passed; a None field keeps its stored value.
 
     One statement, no read first: a theme click and the wizard's step-4 POST can
     land together, and a read-modify-write would let one undo the other.
+    ``language="auto"`` clears the choice, so the browser's language applies again.
     """
     done = None if setup_completed is None else int(setup_completed)
     db = await _get_db()
@@ -3325,18 +3335,19 @@ async def save_user_preferences(
         await db.execute(
             """
             INSERT INTO user_preferences
-                (user_id, setup_mode, selected_categories, timezone, setup_completed, theme, updated_at)
+                (user_id, setup_mode, selected_categories, timezone, setup_completed, theme, language, updated_at)
             VALUES (?1, COALESCE(?2, 'fresh'), COALESCE(?3, '[]'), COALESCE(?4, 'UTC'), COALESCE(?5, 0), ?6,
-                    datetime('now'))
+                    NULLIF(?7, 'auto'), datetime('now'))
             ON CONFLICT(user_id) DO UPDATE SET
                 setup_mode = COALESCE(?2, setup_mode),
                 selected_categories = COALESCE(?3, selected_categories),
                 timezone = COALESCE(?4, timezone),
                 setup_completed = COALESCE(?5, setup_completed),
                 theme = COALESCE(?6, theme),
+                language = CASE WHEN ?7 IS NULL THEN language ELSE NULLIF(?7, 'auto') END,
                 updated_at = datetime('now')
             """,
-            (user_id, setup_mode, selected_categories, timezone, done, theme),
+            (user_id, setup_mode, selected_categories, timezone, done, theme, language),
         )
         await db.commit()
     finally:

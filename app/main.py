@@ -37,8 +37,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError, field_validator
+from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.routing import Route
 
 from app import (
     activity_ui,
@@ -59,6 +61,7 @@ from app import (
     fleet_key,
     gpu,
     health_probe,
+    i18n,
     income_export,
     ipgeo,
     lan_isolation,
@@ -3652,6 +3655,8 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(_SecurityHeadersMiddleware)
+# Outermost, so every request, its error pages included, knows its language.
+app.add_middleware(i18n.LocaleMiddleware)
 
 
 @app.exception_handler(RequestValidationError)
@@ -3732,6 +3737,34 @@ class _VersionedStaticFiles(StaticFiles):
 # Static files, gzipped: app.js and style.css are about 366 KB raw, 95 KB gzipped.
 # Only here, not app-wide: pages carry a CSRF token next to reflected input.
 app.mount("/static", GZipMiddleware(_VersionedStaticFiles(directory="app/static"), minimum_size=1024), name="static")
+
+
+async def _i18n_bundle(request: Request) -> Response:
+    """A locale's strings for app/static/js/i18n.js, as ``window.CP_I18N``.
+
+    Public, like /static: the sign-in page needs its strings before anyone signs
+    in, and the strings are the same for everyone. Cached like the static files,
+    a year on the running release's own ``?v=``.
+    """
+    asked = request.path_params["locale"]
+    if asked not in i18n.available():
+        return PlainTextResponse("Unknown locale", status_code=404)
+    body = i18n.bundle_js(asked)
+    etag = '"' + hashlib.sha256(body.encode("utf-8")).hexdigest()[:16] + '"'
+    headers = {"ETag": etag, "Cache-Control": "no-cache"}
+    if version.series(version.current()) and version.display() in request.query_params.getlist("v"):
+        headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(body, media_type="text/javascript; charset=utf-8", headers=headers)
+
+
+# Gzipped like /static: the strings carry no secret and no reflected input.
+app.mount(
+    "/i18n",
+    GZipMiddleware(Starlette(routes=[Route("/{locale}.js", _i18n_bundle)]), minimum_size=1024),
+    name="i18n",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -12324,6 +12357,7 @@ async def api_get_preferences(request: Request) -> dict[str, Any]:
             "timezone": "UTC",
             "setup_completed": False,
             "theme": None,
+            "language": None,
         }
     return prefs
 
@@ -12337,6 +12371,8 @@ class PreferencesUpdate(BaseModel):
     timezone: str | None = None
     setup_completed: bool | None = None
     theme: str | None = None
+    # A locale from app/i18n, or "auto" to go back to the browser's language.
+    language: str | None = None
 
 
 @app.post("/api/preferences")
@@ -12347,6 +12383,8 @@ async def api_set_preferences(
         raise HTTPException(status_code=400, detail="setup_mode must be fresh, monitoring, or mixed")
     if body.theme is not None and body.theme not in THEMES:
         raise HTTPException(status_code=400, detail=f"theme must be one of: {', '.join(THEMES)}")
+    if body.language is not None and body.language != "auto" and body.language not in i18n.available():
+        raise HTTPException(status_code=400, detail=f"language must be auto or one of: {', '.join(i18n.available())}")
 
     # API keys resolve to uid 0, which has no users row, so the save would fail
     # the foreign key and return a 500. Refuse it plainly, as the password route does.
@@ -12361,6 +12399,7 @@ async def api_set_preferences(
         timezone=body.timezone,
         setup_completed=body.setup_completed,
         theme=body.theme,
+        language=body.language,
     )
     # Saving the preference is a viewer-safe act; triggering a fleet-wide
     # collection is not. /api/collect gates the identical call behind
