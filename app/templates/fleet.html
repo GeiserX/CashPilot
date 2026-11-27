@@ -369,7 +369,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       if (!_isOwner || !m.heat_prefix || m.verdict === 'not_metered') return '';
       const hs = m.heat_settings || {};
       const source = Object.hasOwn(HEAT_SOURCES, hs.heat) ? hs.heat : 'none';
-      const ticked = new Set(String(hs.heat_months || '').split(',').map(t => t.trim()));
+      const ticked = new Set(String(hs.heat_months || '').split(',').map(m => m.trim()));
       return `<details class="econ-heat"><summary>Heat</summary>
         <form class="heat-form" data-prefix="${esc(m.heat_prefix)}">
           <label>Its heat replaces
@@ -875,7 +875,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
     // Isolated can still have reachable lines: the ones the report marks
     // expected (DNS through the Tailscale rewrite or a LAN DNS exception).
-    const allowed = (r.groups || []).flatMap(g => g.targets).filter(t => t.reachable).map(t => t.address);
+    const allowed = (r.groups || []).flatMap(g => g.targets).filter(target => target.reachable).map(target => target.address);
     const head = {
       isolated: ['text-ok', allowed.length
         ? `Isolated over IPv4. An earner reached only the expected DNS ${allowed.length === 1 ? 'line' : 'lines'} ${allowed.join(', ')} and none of the other addresses below, and it reached the internet.`
@@ -892,11 +892,11 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
     for (const g of r.groups || []) {
       html += `<div class="iso-group"><span class="iso-label">${esc(g.label)}</span><span class="iso-targets">`;
-      for (const t of g.targets) {
-        const bad = t.reachable && !t.expected;
-        const tone = t.reachable ? (bad ? 'iso-fail' : 'iso-warn') : 'iso-ok';
-        const tip = `${t.label}${t.note ? '. ' + t.note : ''}`;
-        html += `<span class="iso-target ${tone}" title="${esc(tip)}"><span class="mono">${esc(t.address)}</span> <span class="iso-state">${t.reachable ? 'reachable' : 'blocked'}</span></span>`;
+      for (const target of g.targets) {
+        const bad = target.reachable && !target.expected;
+        const tone = target.reachable ? (bad ? 'iso-fail' : 'iso-warn') : 'iso-ok';
+        const tip = `${target.label}${target.note ? '. ' + target.note : ''}`;
+        html += `<span class="iso-target ${tone}" title="${esc(tip)}"><span class="mono">${esc(target.address)}</span> <span class="iso-state">${target.reachable ? 'reachable' : 'blocked'}</span></span>`;
       }
       html += '</span></div>';
     }
@@ -1347,8 +1347,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       _proxies.map((p) => {
         const target = p.kind === 'tailscale' ? `Tailscale exit ${esc(p.exit_node)}` : `${esc(p.kind)} ${esc(p.host)}:${esc(p.port)}`;
         let exit = p.last_exit_ip ? `${esc(p.last_exit_ip)}${p.last_country ? ' · ' + esc(p.last_country) : ''}${p.rotating ? ' (rotating)' : ''}` : '<span class="muted">not tested</span>';
-        const t = p.last_test;
-        if (t && !t.ok) exit += `<br><span class="muted">Last test failed on ${esc(t.worker)} (${esc((t.at || '').replace('T', ' ').slice(0, 16))}): ${esc(t.error)}</span>`;
+        const lastTest = p.last_test;
+        if (lastTest && !lastTest.ok) exit += `<br><span class="muted">Last test failed on ${esc(lastTest.worker)} (${esc((lastTest.at || '').replace('T', ' ').slice(0, 16))}): ${esc(lastTest.error)}</span>`;
         const copies = p.copies.map((c) => {
           const st = copyStatus(c.worker_id, c.slug, p.id);
           // Asked to remove, worker not confirmed yet: no buttons, it goes once the worker confirms.
