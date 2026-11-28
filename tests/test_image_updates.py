@@ -9,6 +9,7 @@ updated by itself.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -114,6 +115,71 @@ class TestCheckPeriod:
         assert old.removed
         docker.client.images.remove.assert_not_called()
 
+    def test_a_tag_that_moved_after_the_check_is_refused_before_anything_changes(self, markers, fast):
+        old, docker = _docker()
+        docker.client.images.get.return_value.id = "sha256:" + "b" * 64
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="moved to another build") as refused:
+            _deploy(docker, old, settle_seconds=0.01, expect_image="sha256:" + "a" * 64)
+        assert refused.value.status_code == 409
+        assert docker.get("cashpilot-honeygain") is old and not old.removed
+        old.stop.assert_not_called()
+        docker.client.containers.create.assert_not_called()
+
+    def test_the_checked_build_is_installed(self, markers, fast):
+        old, docker = _docker()
+        docker.client.images.get.return_value.id = "sha256:" + "a" * 64
+        _deploy(docker, old, settle_seconds=0.01, expect_image="sha256:" + "a" * 64)
+        assert old.removed
+
+    def test_a_copy_stopped_after_the_check_is_not_started_by_the_update(self, markers, fast):
+        old, docker = _docker()
+        old.status = "exited"
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="was stopped after the check"):
+            _deploy(docker, old, settle_seconds=0.01)
+        assert docker.get("cashpilot-honeygain") is old and not old.removed
+        old.start.assert_not_called()
+        docker.client.containers.create.assert_not_called()
+
+    def test_a_replacement_docker_cannot_describe_at_the_end_is_undone(self, markers, fast, monkeypatch):
+        monkeypatch.setattr(orchestrator, "_SETTLE_GRACE_SECONDS", 0.05)
+        old, docker = _docker()
+        docker.created.reload.side_effect = orchestrator.APIError("500 Server Error")
+        with pytest.raises(orchestrator.ImageUpdateFailed, match="did not describe"):
+            _deploy(docker, old, settle_seconds=0.01)
+        assert docker.get("cashpilot-honeygain") is old and not old.removed
+        old.start.assert_called_once()
+
+    def test_one_unreadable_look_then_a_good_one_passes(self, markers, fast, monkeypatch):
+        monkeypatch.setattr(orchestrator, "_SETTLE_GRACE_SECONDS", 5)
+        old, docker = _docker()
+        looks = iter([orchestrator.APIError("500 Server Error")])
+
+        def reload():
+            if (error := next(looks, None)) is not None:
+                raise error
+
+        docker.created.reload.side_effect = reload
+        _deploy(docker, old, settle_seconds=0.01)
+        assert old.removed
+
+    def test_stop_waits_for_a_deploy_that_holds_the_route_lock(self):
+        held: list[str] = []
+        real = orchestrator.route_gate.deploying
+
+        def deploying(slug):
+            held.append(slug)
+            return real(slug)
+
+        container = MagicMock(name="cashpilot-honeygain")
+        with (
+            patch.object(orchestrator.route_gate, "deploying", side_effect=deploying),
+            patch.object(orchestrator, "_find_container", return_value=container),
+            patch.object(orchestrator, "fence_gated", return_value=False),
+        ):
+            orchestrator.stop_service("honeygain")
+        assert held == ["honeygain"]
+        container.stop.assert_called_once()
+
 
 def _image(image_id, digest="", ref="honeygain/honeygain"):
     return MagicMock(id=image_id, attrs={"RepoDigests": [f"{ref}@{digest}"] if digest else []})
@@ -187,8 +253,8 @@ class _Hooks:
         async def blocker(wid, slug, answer):
             return self._blocker
 
-        async def deploy(wid, slug, expected):
-            self.deploys.append((wid, slug, expected))
+        async def deploy(wid, slug, expected, new_image):
+            self.deploys.append((wid, slug, expected, new_image))
             if isinstance(self._deploy, Exception):
                 raise self._deploy
             return self._deploy or {"image_update": {"new_image": "sha256:new", "old_kept": ""}}
@@ -236,7 +302,8 @@ class TestDecisions:
     async def test_auto_runs_the_blank_redeploy_against_the_checked_containers(self):
         state = _Hooks(_answer())
         assert await _run(state, image_updates.AUTO) == "updated"
-        assert state.deploys == [(1, "honeygain", {"1": "c1"})]
+        # The checked build is the only one the worker may install.
+        assert state.deploys == [(1, "honeygain", {"1": "c1"}, "sha256:new")]
         result, facts = state.rows[0]
         assert result == "updated" and facts["old_image"] == "sha256:old" and facts["new_image"] == "sha256:new"
 
@@ -283,6 +350,11 @@ class TestSettings:
         assert image_updates.effective_mode(s, 1, "honeygain") == "auto"
         assert image_updates.effective_mode(s, 2, "honeygain") == "notify"
         assert image_updates.effective_mode(s, 2, "proxyrack") == "off"
+
+    @pytest.mark.parametrize("bad", [["2"], "auto", 3, None])
+    def test_an_override_that_is_not_a_map_is_none(self, bad):
+        s = image_updates.parse_settings({"mode": "auto", "workers": bad, "services": bad})
+        assert s["workers"] == {} and s["services"] == {}
 
     def test_anything_unreadable_is_off(self):
         assert image_updates.parse_settings("not json")["mode"] == "off"
@@ -336,6 +408,15 @@ class TestDefaults:
         await database.init_db()
         assert image_updates.parse_settings(await database.get_config(image_updates.CONFIG_KEY))["mode"] == "notify"
 
+    async def test_pruning_never_releases_a_held_build(self, db, monkeypatch):
+        monkeypatch.setattr(database, "IMAGE_UPDATE_ROWS", 3)
+        await database.init_db()
+        await database.record_image_update(1, "honeygain", "rolled_back", new_image="sha256:bad")
+        for n in range(6):
+            await database.record_image_update(1, "honeygain", "available", new_image=f"sha256:{n}")
+        assert await database.image_update_seen(1, "honeygain", "sha256:bad", ("rolled_back",))
+        assert not await database.image_update_seen(1, "honeygain", "sha256:0", ("available",))
+
     async def test_rows_are_recorded_and_found(self, db):
         await database.init_db()
         await database.record_image_update(1, "honeygain", "rolled_back", new_image="sha256:new", detail="x")
@@ -355,7 +436,7 @@ def _worker_answer(status, payload):
 class TestTheDashboardSide:
     """What the UI makes of the worker's answers, and the settings routes."""
 
-    def test_the_workers_undo_reaches_the_dashboard_with_its_reason(self):
+    async def test_the_workers_undo_reaches_the_dashboard_with_its_reason(self):
         from app.main import _safe_worker_detail
 
         message = (
@@ -383,13 +464,13 @@ class TestTheDashboardSide:
             patch.object(main, "_deploy", AsyncMock(side_effect=refusal)),
             pytest.raises(image_updates.DeployRefused) as caught,
         ):
-            await main._image_update_deploy(1, "honeygain", {"1": "abc"})
+            await main._image_update_deploy(1, "honeygain", {"1": "abc"}, "sha256:" + "a" * 64)
         assert caught.value.rolled_back and str(caught.value) == "undone"
         with (
             patch.object(main, "_deploy", AsyncMock(side_effect=failed)),
             pytest.raises(image_updates.DeployRefused) as caught,
         ):
-            await main._image_update_deploy(1, "honeygain", {"1": "abc"})
+            await main._image_update_deploy(1, "honeygain", {"1": "abc"}, "sha256:" + "a" * 64)
         assert not caught.value.rolled_back
 
     async def test_saving_keeps_the_last_run_and_ends_the_offer(self, db):
@@ -405,16 +486,15 @@ class TestTheDashboardSide:
         assert saved["last_run"] == "2026-11-28" and "offer" not in saved
 
     async def test_check_now_does_not_use_up_the_daily_run(self, db):
+        from zoneinfo import ZoneInfo
+
         from app import main
 
-        class FiveAm(datetime):
-            @classmethod
-            def now(cls, tz=None):
-                return datetime(2026, 11, 28, 5, 0)
-
+        # 05:00 for the owner, in their own zone; the server's clock is not asked.
+        five_am = datetime(2026, 11, 28, 5, 0, tzinfo=ZoneInfo("Asia/Singapore"))
         await database.init_db()
         with (
-            patch.object(main, "datetime", FiveAm),
+            patch.object(main, "_obligations_now", AsyncMock(return_value=five_am)),
             patch.object(main.database, "list_workers", AsyncMock(return_value=[])),
             patch.object(main, "_refresh_image_update_bell", AsyncMock()),
         ):
@@ -423,3 +503,56 @@ class TestTheDashboardSide:
             # A new install is on Update automatically, and 05:00 is past its hour.
             await main._run_image_updates()
             assert (await main._image_update_settings())["last_run"] == "2026-11-28"
+
+    async def test_a_current_check_keeps_the_old_warning_out_of_the_bell_after_a_restart(self, db):
+        from app import main
+
+        await database.init_db()
+        await database.record_image_update(1, "honeygain", "available", new_image="sha256:new")
+        workers = AsyncMock(return_value=[{"id": 1, "name": "alpha"}])
+        with patch.object(main.database, "list_workers", workers), patch.object(main, "_collector_alerts", []):
+            await main._refresh_image_update_bell()
+            assert "1|honeygain" in main._image_update_bell
+            await main._refresh_image_update_bell({1: {"honeygain": "current"}})
+            assert "1|honeygain" not in main._image_update_bell
+            # A restart rebuilds the bell with no run's outcomes.
+            main._image_update_bell.clear()
+            await main._refresh_image_update_bell()
+            assert "1|honeygain" not in main._image_update_bell
+            # A newer row comes back.
+            await database.record_image_update(1, "honeygain", "failed", new_image="sha256:newer", detail="x")
+            await main._refresh_image_update_bell()
+            assert "1|honeygain" in main._image_update_bell
+
+    async def test_a_save_during_a_run_is_not_overwritten_by_its_last_run_stamp(self, db):
+        from zoneinfo import ZoneInfo
+
+        from app import main
+
+        await database.init_db()
+        five_am = datetime(2026, 11, 28, 5, 0, tzinfo=ZoneInfo("UTC"))
+        real_get = main._image_update_settings
+        saving = asyncio.Event()
+
+        async def slow_get():
+            settings = await real_get()
+            # The owner saves Off while the run holds its copy of the settings.
+            saving.set()
+            await asyncio.sleep(0.05)
+            return settings
+
+        body = main.ImageUpdateSettingsBody(mode="off", hour=4, workers={}, services={})
+
+        async def owner_saves():
+            await saving.wait()
+            await main.api_set_image_updates(body, _auth={"r": "owner"})
+
+        with (
+            patch.object(main, "_obligations_now", AsyncMock(return_value=five_am)),
+            patch.object(main, "_image_update_settings", side_effect=slow_get),
+            patch.object(main.database, "list_workers", AsyncMock(return_value=[])),
+            patch.object(main, "_refresh_image_update_bell", AsyncMock()),
+        ):
+            await asyncio.gather(main._run_image_updates(), owner_saves())
+        settings = await real_get()
+        assert settings["mode"] == "off" and settings["last_run"] == "2026-11-28"
