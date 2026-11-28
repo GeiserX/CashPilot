@@ -1688,15 +1688,18 @@ def deploy_raw(
                 on_created(created_id)
                 container = client.containers.get(created_id)
             else:
+                # An image update is created, checked, then started: Docker reads
+                # the tag again at create time, and the checked build is the only
+                # one that may run against the app's volumes.
                 container = (
                     client.containers.create(**run_kwargs)
-                    if gated or not start
+                    if gated or not start or expect_image
                     else client.containers.run(detach=True, **run_kwargs)
                 )
             created = container
             if expect_image and str((getattr(container, "attrs", None) or {}).get("Image") or "") != expect_image:
-                # Docker read the tag again at create time, and another pull moved it
-                # since the check above. Undone and not held: nobody tried this build.
+                # Another pull moved the tag since the check above. Undone and
+                # not held: nobody tried this build, and it never started.
                 raise ContainerRuntimeError(
                     f"The tag {image} moved to another build after the check. The previous container was put "
                     "back; the next check tries the new build.",
@@ -1711,7 +1714,7 @@ def deploy_raw(
                 # Left created, not started, when the fence is not confirmed: the guard
                 # starts it as soon as it is, and nothing runs before that.
                 _require_fence(slug)
-            if gated or on_created is not None:
+            if gated or on_created is not None or (expect_image and start):
                 container.start()
         except ContainerNetworkError:
             raise
@@ -1719,7 +1722,11 @@ def deploy_raw(
             # No answer is not a refusal: Docker may still be starting it. A
             # create-only (restore) or gated create that got none was never
             # started, so there is nothing to wait for.
-            if not _outcome_unknown(exc) or not start or (created is None and (gated or on_created is not None)):
+            if (
+                not _outcome_unknown(exc)
+                or not start
+                or (created is None and (gated or on_created is not None or expect_image))
+            ):
                 raise
             container = created = _await_start(client, name, created, began, exc)
         if gated:
@@ -2012,7 +2019,7 @@ class _SettleUnreadable(Exception):
     """Docker did not describe the replacement on one look."""
 
 
-def _settle_problem(container: Any, slug: str, since: float) -> str | None:
+def _settle_problem(container: Any, slug: str, since: float, *, logs: bool = True) -> str | None:
     """Why a replacement is not healthy now, or None while it looks well.
 
     It must run, must not have been restarted by Docker, must not report an
@@ -2021,7 +2028,8 @@ def _settle_problem(container: Any, slug: str, since: float) -> str | None:
     is not a fault). The whole log since ``since`` is read, never a tail, so a
     failure line is not pushed out by the lines after it, and an ``unless``
     line anywhere in the period still counts. A log Docker does not return,
-    for a service with signals to look for, is an unreadable look.
+    for a service with signals to look for, is an unreadable look. ``logs``
+    False judges the state alone: the log is judged once the period is over.
     """
     try:
         container.reload()
@@ -2041,7 +2049,7 @@ def _settle_problem(container: Any, slug: str, since: float) -> str | None:
     if health.get("Status") == "unhealthy":
         return "is reported unhealthy by its image's own health check"
     signals = ((get_service(slug) or {}).get("docker") or {}).get("health_signals") if get_service else None
-    if not isinstance(signals, list) or not signals:
+    if not logs or not isinstance(signals, list) or not signals:
         return None
     try:
         raw = container.logs(since=int(since))
@@ -2065,8 +2073,11 @@ def _settle(container: Any, slug: str, seconds: float, since: float, name: str) 
         # Passing needs a look that started once the period was over: one that
         # began earlier can miss a stop that came while Docker answered it.
         started = time.monotonic()
+        # A stop, a restart or an unhealthy check fails at once. The log is judged
+        # on a look after the period, so an unless line written later still counts.
+        final = started >= end
         try:
-            problem, seen = _settle_problem(container, slug, since), True
+            problem, seen = _settle_problem(container, slug, since, logs=final), True
         except _SettleUnreadable:
             # Passing needs a look that worked: the last one must have read the
             # container and, when it has signals to look for, its log.
@@ -2074,7 +2085,7 @@ def _settle(container: Any, slug: str, seconds: float, since: float, name: str) 
         if problem:
             logger.warning("%s failed its check after the update: it %s", name, problem)
             raise ImageUpdateFailed(f"The new {name} {problem} within its {int(seconds)} s check, so it was undone.")
-        if started >= end and seen:
+        if final and seen:
             return
         now = time.monotonic()
         if now >= end + _SETTLE_GRACE_SECONDS:
@@ -2107,15 +2118,24 @@ def _remove_old_image(client: Any, image_id: str) -> str | None:
     return None
 
 
+def _repo_name(name: str) -> str:
+    """A repository name as Docker Hub spells it in full, so two spellings of one repository compare equal."""
+    first = name.split("/", 1)[0]
+    # A first part with no dot, colon or "localhost" is a Docker Hub namespace, not a registry.
+    if "/" not in name or ("." not in first and ":" not in first and first != "localhost"):
+        name = "docker.io/" + name
+    if name.startswith("docker.io/") and name.count("/") == 1:
+        name = "docker.io/library/" + name.split("/", 1)[1]
+    return name
+
+
 def _repo_digest(image: Any, ref: str) -> str:
     """The registry digest (sha256:...) ``image`` was pulled as for the repository of ``ref``, or ""."""
     attrs = image.attrs if isinstance(getattr(image, "attrs", None), dict) else {}
     digests = [str(d) for d in attrs.get("RepoDigests") or [] if "@" in str(d)]
     repo = ref.rsplit(":", 1)[0] if ref.rfind(":") > ref.rfind("/") else ref
     for entry in digests:
-        if entry.split("@", 1)[0] in (repo, f"docker.io/{repo}", f"docker.io/library/{repo}") or entry.split("@", 1)[
-            0
-        ].endswith("/" + repo):
+        if _repo_name(entry.split("@", 1)[0]) == _repo_name(repo):
             return entry.split("@", 1)[1]
     # Another repository's digest is not this one's: no digest beats a wrong one.
     return ""

@@ -92,6 +92,35 @@ class TestCheckPeriod:
         _deploy(docker, old, settle_seconds=0.01)
         assert old.removed
 
+    def test_an_unless_line_written_later_in_the_period_still_cancels_the_signal(self, markers, fast, monkeypatch):
+        # The failure line is in the log from the start, its unless line only
+        # from halfway through the period. The log is judged once the period is
+        # over, so the later line counts.
+        import time as clock
+
+        signal = {"pattern": "cannot be reached", "unless": "connected to server", "means": "It cannot start."}
+        monkeypatch.setattr(orchestrator, "get_service", lambda slug: {"docker": {"health_signals": [signal]}})
+        monkeypatch.setattr(orchestrator, "_SETTLE_POLL_SECONDS", 0.005)
+        began = clock.monotonic()
+
+        def logs(**kwargs):
+            later = clock.monotonic() - began > 0.05
+            return b"update server cannot be reached\n" + (b"connected to server\n" if later else b"")
+
+        old, docker = _docker()
+        docker.created.logs.side_effect = logs
+        _deploy(docker, old, settle_seconds=0.1)
+        assert old.removed
+
+    def test_a_failure_line_with_no_unless_line_by_the_end_fails_the_check(self, markers, fast, monkeypatch):
+        signal = {"pattern": "cannot be reached", "unless": "connected to server", "means": "It cannot start."}
+        monkeypatch.setattr(orchestrator, "get_service", lambda slug: {"docker": {"health_signals": [signal]}})
+        old, docker = _docker()
+        docker.created.logs.return_value = b"update server cannot be reached\n"
+        with pytest.raises(orchestrator.ImageUpdateFailed, match="It cannot start"):
+            _deploy(docker, old, settle_seconds=0.02)
+        assert docker.get("cashpilot-honeygain") is old
+
     def test_a_healthy_build_replaces_the_old_and_its_image_goes(self, markers, fast):
         old, docker = _docker()
         report: dict = {}
@@ -144,6 +173,26 @@ class TestCheckPeriod:
         assert refused.value.status_code == 409
         assert docker.get("cashpilot-honeygain") is old and not old.removed
         assert docker.created.removed
+        # Created, checked and never started: the other build never ran on the volumes.
+        docker.client.containers.run.assert_not_called()
+        docker.created.start.assert_not_called()
+        old.start.assert_called_once()
+
+    def test_an_update_whose_create_gets_no_answer_is_undone_and_not_held(self, markers, fast, monkeypatch):
+        # No answer to the create: whether Docker made it is unknown, and nothing
+        # started it, so there is no start to wait out. The previous container
+        # comes back at once.
+        waited = MagicMock(side_effect=AssertionError("waited for a start nobody made"))
+        monkeypatch.setattr(orchestrator, "_await_start", waited)
+        old, docker = _docker(Image="sha256:" + "a" * 64)
+        docker.client.images.get.return_value.id = "sha256:" + "a" * 64
+        docker.client.containers.create.side_effect = orchestrator.requests.exceptions.ReadTimeout("no answer")
+        with pytest.raises(orchestrator.ContainerRuntimeError) as failed:
+            _deploy(docker, old, settle_seconds=0.01, expect_image="sha256:" + "a" * 64)
+        waited.assert_not_called()
+        assert not isinstance(failed.value, orchestrator.ImageUpdateFailed)
+        assert docker.get("cashpilot-honeygain") is old
+        docker.created.start.assert_not_called()
         old.start.assert_called_once()
 
     def test_only_a_look_that_starts_after_the_period_passes_it(self, markers, fast, monkeypatch):
@@ -224,6 +273,22 @@ class TestCheckPeriod:
 
         container = MagicMock(name="cashpilot-honeygain")
         holding, release, done = threading.Event(), threading.Event(), threading.Event()
+        lock = orchestrator.route_gate.deploying("honeygain")
+        free_during_stop: list[bool] = []
+
+        def stop_call(**kwargs):
+            # Another thread cannot take the route lock while the container stops.
+            def probe():
+                got = lock.acquire(blocking=False)
+                if got:
+                    lock.release()
+                free_during_stop.append(got)
+
+            prober = threading.Thread(target=probe)
+            prober.start()
+            prober.join()
+
+        container.stop.side_effect = stop_call
 
         def deploy():
             with orchestrator.route_gate.deploying("honeygain"):
@@ -248,6 +313,7 @@ class TestCheckPeriod:
         release.set()
         assert done.wait(5)
         container.stop.assert_called_once()
+        assert free_during_stop == [False], "the container stopped outside the route lock"
         deployer.join()
         stopper.join()
 
@@ -256,7 +322,10 @@ class TestRepoDigest:
     def test_only_the_checked_repository_s_digest_is_named(self):
         image = MagicMock(attrs={"RepoDigests": ["mirror.example/other@sha256:" + "c" * 64]})
         assert orchestrator._repo_digest(image, "honeygain/honeygain:latest") == ""
-        image.attrs["RepoDigests"].append("honeygain/honeygain@sha256:" + "d" * 64)
+        # Another registry's copy of the same path is another repository.
+        image.attrs["RepoDigests"].append("mirror.example/honeygain/honeygain@sha256:" + "e" * 64)
+        assert orchestrator._repo_digest(image, "honeygain/honeygain:latest") == ""
+        image.attrs["RepoDigests"].append("docker.io/honeygain/honeygain@sha256:" + "d" * 64)
         assert orchestrator._repo_digest(image, "honeygain/honeygain:latest") == "sha256:" + "d" * 64
 
 
@@ -674,12 +743,18 @@ class TestImageCheckEndpoint:
         monkeypatch.setattr(worker_api, "_verify_api_key", lambda request: None)
 
         def refused(slug):
-            raise orchestrator.ContainerRuntimeError("pull from https://me:hunter2@registry.example/x failed", 502)
+            raise orchestrator.ContainerRuntimeError(
+                "pull from https://me:hunter2@registry.example/x failed; "
+                "blob at https://cdn.example/b?X-Amz-Signature=s3cr3t&X-Amz-Credential=key failed",
+                502,
+            )
 
         monkeypatch.setattr(orchestrator, "check_image", refused)
         with pytest.raises(HTTPException) as err:
             asyncio.run(worker_api.api_image_check(MagicMock(), "honeygain"))
-        assert "hunter2" not in str(err.value.detail) and "registry.example" in str(err.value.detail)
+        detail = str(err.value.detail)
+        assert "hunter2" not in detail and "registry.example" in detail
+        assert "s3cr3t" not in detail and "key" not in detail and "cdn.example/b" in detail
 
 
 @pytest.mark.asyncio
@@ -690,15 +765,20 @@ class TestCustomServiceBlocker:
     blocker judges the container against the saved definition.
     """
 
-    async def _blocker(self, monkeypatch, saved, made_with):
+    async def _blocker(self, monkeypatch, saved, made_with, *, instances=1, deployed_env=None, image_volumes=()):
         from app import custom_services, main
 
         slug = custom_services.SLUG_PREFIX + "mine"
         definition, _ = custom_services.validate(saved)
-        recorded = {"image": made_with["image"], "env": {}, "command": made_with["command"]}
+        recorded = {
+            "image": made_with["image"],
+            "env": deployed_env or {},
+            "command": made_with["command"],
+            "instances": instances,
+        }
         shape = {
             "image": made_with["image"],
-            "mounts": [made_with["data_path"]] if made_with["data_path"] else [],
+            "mounts": ([made_with["data_path"]] if made_with["data_path"] else []) + list(image_volumes),
             "env_keys": [],
             "restart_policy": "unless-stopped",
         }
@@ -733,3 +813,30 @@ class TestCustomServiceBlocker:
         made = {"image": "example/mine:latest", "command": "", "data_path": ""}
         saved = {"name": "Mine", "image": "example/mine:latest", "command": "", "data_path": "/data"}
         assert "/data" in await self._blocker(monkeypatch, saved, made)
+
+    async def test_a_box_recorded_with_several_copies_is_left_to_the_owner(self, monkeypatch):
+        # Only one copy runs now, but a redeploy rebuilds every recorded copy.
+        made = {"image": "example/mine:latest", "command": "", "data_path": ""}
+        saved = {"name": "Mine", "image": "example/mine:latest", "command": "", "data_path": ""}
+        assert "2 copies" in await self._blocker(monkeypatch, saved, made, instances=2)
+
+    async def test_a_saved_value_not_deployed_yet_is_left_to_the_owner_without_naming_it(self, monkeypatch):
+        made = {"image": "example/mine:latest", "command": "", "data_path": ""}
+        saved = {"name": "Mine", "image": "example/mine:latest", "env": [{"key": "GREETING", "value": "new-value"}]}
+        why = await self._blocker(monkeypatch, saved, made, deployed_env={"GREETING": "old-value"})
+        assert "not deployed yet" in why and "new-value" not in why and "old-value" not in why
+        assert await self._blocker(monkeypatch, saved, made, deployed_env={"GREETING": "new-value"}) == ""
+
+    async def test_a_hostname_value_compares_by_its_key(self, monkeypatch):
+        made = {"image": "example/mine:latest", "command": "", "data_path": ""}
+        saved = {"name": "Mine", "image": "example/mine:latest", "env": [{"key": "NAME", "value": "box-{hostname}"}]}
+        assert await self._blocker(monkeypatch, saved, made, deployed_env={"NAME": "box-mini2"}) == ""
+
+    async def test_data_in_an_image_volume_outside_the_data_path_is_left_to_the_owner(self, monkeypatch):
+        # The new container would get an empty anonymous volume, and the old one
+        # goes with the old container.
+        made = {"image": "example/mine:latest", "command": "", "data_path": "/data"}
+        saved = {"name": "Mine", "image": "example/mine:latest", "data_path": "/data"}
+        why = await self._blocker(monkeypatch, saved, made, image_volumes=["/var/lib/mine"])
+        assert "/var/lib/mine" in why and "empty" in why
+        assert await self._blocker(monkeypatch, saved, made) == ""

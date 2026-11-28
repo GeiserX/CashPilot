@@ -50,7 +50,9 @@ to turn the updates on. CashPilot never turns them on for you.
 4. If the new container stops, restarts, shows an unhealthy Docker health
    check, or logs one of the app's known failure lines, the worker removes it.
    Then it starts the old container again, with its old image. The table and
-   the bell show **Undone**.
+   the bell show **Undone**. An undo puts back the container, not the data:
+   the old and the new container use the same volume, so anything the new
+   build wrote there stays.
 5. If the new container passes, the worker removes the old container and its
    image.
 
@@ -76,6 +78,10 @@ table shows **Not installed** and the reason:
   copies.
 - The app runs through a proxy. CashPilot does not yet update a copy behind a
   proxy by itself.
+- Your own app keeps data in a folder outside its data path. The image
+  declares that folder, so Docker gives each new container an empty one. Set
+  the folder as the data path and redeploy, and the next build installs by
+  itself.
 - The box has no deployment record of the app, for example because you made
   the container by hand.
 
