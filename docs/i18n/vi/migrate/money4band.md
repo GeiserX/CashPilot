@@ -1,5 +1,5 @@
 ---
-source_hash: 05d0f97e7d36
+source_hash: 5a764f1d0f5a
 ---
 # Chuyển từ money4band { #moving-from-money4band }
 
@@ -36,10 +36,10 @@ money4band 5.0 mã hóa `config/user-config.json` trên đĩa
 và xóa file `.env` của nó sau mỗi lần khởi động
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
 CashPilot không đọc được file đã mã hóa. Trong thư mục money4band của bạn, chạy
-lệnh `config edit` của nó: `./Money4Band-<os>-<arch> config edit` cho file binary
-bản phát hành, hoặc `python main.py config edit` khi chạy từ mã nguồn. Lệnh này mở
-file đã giải mã trong trình soạn thảo của bạn
-([tài liệu tham khảo CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+lệnh `config edit` của nó. Với file binary bản phát hành, dùng file dành cho hệ thống của bạn, ví dụ `./Money4Band-linux-amd64 config edit`, hoặc `.\Money4Band-windows-amd64.exe config edit` trên Windows.
+Khi chạy từ mã nguồn, chạy `python run.py config edit`.
+Lệnh này chạy money4band qua uv, hoặc qua một môi trường pip khi không có uv ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69)).
+Lệnh `config edit` mở file đã giải mã trong trình soạn thảo của bạn ([tài liệu tham khảo CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Sao chép toàn bộ nội dung của nó, dán vào trang **Import from another tool** (Nhập từ công cụ khác), rồi đóng trình soạn thảo.
 
 Nên dùng file JSON. Trong một `.env`, Docker Compose khai triển `$` trong các giá trị

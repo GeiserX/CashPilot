@@ -33,6 +33,7 @@ import ipaddress
 from typing import Any
 
 from app import catalog, disclosure
+from app.i18n import t
 
 # Verdicts for whether a service can be confined to an isolated bridge.
 ISOLATABLE = "isolatable"
@@ -109,14 +110,14 @@ def exceptions_for(service: dict[str, Any] | None) -> list[dict[str, str]]:
         found.append(
             {
                 "kind": "host_network",
-                "detail": "This service runs on the host network, so a container bridge does not apply to it at all.",
+                "detail": t("lan_isolation.service_runs_host_network_container"),
             }
         )
     for port in published_ports(service):
         found.append(
             {
                 "kind": "inbound_port",
-                "detail": f"Port {port} must accept inbound connections, or the node cannot do its job.",
+                "detail": t("lan_isolation.port_must_accept_inbound_connections", port=port),
             }
         )
     # Gated on CashPilot actually having a collector for this slug, and on that
@@ -149,10 +150,7 @@ def exceptions_for(service: dict[str, Any] | None) -> list[dict[str, str]]:
             found.append(
                 {
                     "kind": "collector_reachability",
-                    "detail": (
-                        "CashPilot reads this service's earnings from an address you configure "
-                        f"({', '.join(url_args)}), so that address must stay reachable from the UI."
-                    ),
+                    "detail": (t("lan_isolation.cashpilot_reads_service_s_earnings", url_args=", ".join(url_args))),
                 }
             )
     return found
@@ -161,7 +159,12 @@ def exceptions_for(service: dict[str, Any] | None) -> list[dict[str, str]]:
 def assess(service: dict[str, Any] | None) -> dict[str, Any]:
     """Can this service be confined to a LAN-isolated bridge?"""
     if not service:
-        return {"slug": None, "verdict": NOT_ISOLATABLE, "exceptions": [], "summary": "Unknown service."}
+        return {
+            "slug": None,
+            "verdict": NOT_ISOLATABLE,
+            "exceptions": [],
+            "summary": t("lan_isolation.unknown_service"),
+        }
 
     name = service.get("name") or service.get("slug") or "This service"
     exceptions = exceptions_for(service)

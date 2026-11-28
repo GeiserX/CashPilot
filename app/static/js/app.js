@@ -344,11 +344,19 @@ const CP = (() => {
 
   let _ratesLoaded = false;
 
+  // The catalog and an open service detail may have drawn their estimates
+  // before the first rates came. Only the detail's estimate is redrawn:
+  // redrawing the modal would throw away the deploy form.
+  function redrawEstimates() {
+    if (document.body.dataset.page === 'catalog' && catalogServices.length) filterCatalog();
+    const openEstimate = document.getElementById('sd-estimate');
+    if (openEstimate && _detailSvc) openEstimate.innerHTML = detailEstimate(_detailSvc);
+  }
+
   async function loadExchangeRates() {
     try {
       _exchangeRates = await api('/api/exchange-rates');
-      // The catalog may have drawn its estimates before the first rates came.
-      if (!_ratesLoaded && document.body.dataset.page === 'catalog' && catalogServices.length) filterCatalog();
+      if (!_ratesLoaded) redrawEstimates();
       _ratesLoaded = true;
     } catch (err) {
       console.warn('Could not refresh exchange rates, keeping previous values:', err);
@@ -3495,15 +3503,23 @@ const CP = (() => {
     if (atEnd) viewer.scrollTop = viewer.scrollHeight;
   }
 
+  // One message for each case, so a translation words the whole title.
+  function logsTitle(slug, workerId, instance) {
+    const copy = parseInt(instance);
+    if (workerId == null) return t('logs.title_service', { slug });
+    const worker = String(workerId);
+    return copy > 1
+      ? t('logs.title_copy', { slug, worker, copy: String(copy) })
+      : t('logs.title_worker', { slug, worker });
+  }
+
   async function viewLogs(slug, workerId, instance) {
     openModal('logs-modal');
     const title = document.getElementById('logs-modal-title');
     const viewer = document.getElementById('log-content');
-    const copy = parseInt(instance) > 1 ? `, copy ${parseInt(instance)}` : '';
-    const label = workerId != null ? `${slug} (worker #${workerId}${copy})` : slug;
-    if (title) title.textContent = `Logs: ${label}`;
+    if (title) title.textContent = logsTitle(slug, workerId, instance);
     applyLogWrap();
-    logNote(viewer, 'Loading logs...');
+    logNote(viewer, t('logs.loading'));
 
     if (logPollTimer) clearInterval(logPollTimer);
     const q = workerId != null ? `lines=200&worker_id=${workerId}${_instanceQuery(instance)}` : 'lines=200';
@@ -3511,9 +3527,9 @@ const CP = (() => {
     async function fetchLogs() {
       try {
         const data = await api(`/api/services/${slug}/logs?${q}`);
-        renderLogs(viewer, data.logs || '(no logs)');
+        renderLogs(viewer, data.logs || t('logs.none'));
       } catch (err) {
-        logNote(viewer, `Error loading logs: ${err.message}`);
+        logNote(viewer, t('logs.load_failed', { error: err.message }));
       }
     }
 
@@ -4604,7 +4620,7 @@ const CP = (() => {
 
   // A catalog estimate is in whole dollars; a bound under a dollar keeps its cents.
   function estimateAmount(usd) {
-    return formatCurrency(usd, 'USD', Number.isInteger(Number(usd)) ? 0 : 2);
+    return formatCurrency(usd, 'USD', 'whole');
   }
 
   function renderCatalogCard(svc) {
@@ -4731,13 +4747,15 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Cached workers for detail modal
   let _detailWorkers = [];
+  let _detailSvc = null;
 
   async function openServiceDetail(slug) {
     openModal('service-detail-modal');
     const body = document.getElementById('service-detail-body');
     const title = document.getElementById('service-detail-title');
     if (body) body.innerHTML = '<div class="spinner spinner-block"></div>';
-    if (title) title.textContent = 'Loading...';
+    if (title) title.textContent = t('app.detail.loading');
+    _detailSvc = null;
 
     try {
       const [svc, workers] = await Promise.all([
@@ -4745,6 +4763,7 @@ const CP = (() => {
         api('/api/workers').catch(() => []),
       ]);
       _detailWorkers = workers;
+      _detailSvc = svc;
       if (title) title.textContent = svc.name;
       if (body) body.innerHTML = renderServiceDetail(svc, workers);
       // After the markup is in the DOM, not before: the container it fills is
@@ -4955,10 +4974,14 @@ const CP = (() => {
     }
   }
 
-  function renderServiceDetail(svc, workers) {
-    const earning = svc.earnings
+  function detailEstimate(svc) {
+    return svc.earnings
       ? t('app.detail.estimate', { low: estimateAmount(svc.earnings.monthly_low), high: estimateAmount(svc.earnings.monthly_high), per: svc.earnings.per || t('app.cat.month') })
       : t('app.detail.varies');
+  }
+
+  function renderServiceDetail(svc, workers) {
+    const earning = detailEstimate(svc);
 
     const isDeployed = svc.deployed || false;
     const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
@@ -4992,7 +5015,7 @@ const CP = (() => {
       </div>
       <div class="detail-item">
         <div class="detail-label">${t('app.detail.estimated')}</div>
-        <div class="detail-value num">${earning}</div>
+        <div class="detail-value num" id="sd-estimate">${earning}</div>
       </div>
       <div class="detail-item">
         <div class="detail-label">${t('app.detail.payout')}</div>
@@ -5442,12 +5465,12 @@ const CP = (() => {
     if (!viewer) return;
     if (viewer.style.display === 'none') {
       viewer.style.display = 'block';
-      logNote(viewer, 'Loading...');
+      logNote(viewer, t('logs.loading_short'));
       try {
         const data = await api(`/api/services/${slug}/logs?worker_id=${workerId}&lines=100${_instanceQuery(instance)}`);
-        renderLogs(viewer, data.logs || '(no logs)');
+        renderLogs(viewer, data.logs || t('logs.none'));
       } catch (err) {
-        logNote(viewer, `Error: ${err.message}`);
+        logNote(viewer, t('logs.failed', { error: err.message }));
       }
     } else {
       viewer.style.display = 'none';
@@ -5458,12 +5481,12 @@ const CP = (() => {
     // Legacy — kept for backward compat
     const viewer = document.getElementById(`detail-logs-${slug}`);
     if (!viewer) return;
-    logNote(viewer, 'Loading...');
+    logNote(viewer, t('logs.loading_short'));
     try {
       const data = await api(`/api/services/${slug}/logs?lines=100`);
-      renderLogs(viewer, data.logs || '(no logs)');
+      renderLogs(viewer, data.logs || t('logs.none'));
     } catch (err) {
-      logNote(viewer, `Error: ${err.message}`);
+      logNote(viewer, t('logs.failed', { error: err.message }));
     }
   }
 
@@ -5556,6 +5579,8 @@ const CP = (() => {
     // Same for the device ids: they do not need the config, and loadIdentities
     // writes its own error into its panel.
     loadIdentities();
+    loadEncryptionKey();
+    loadEarnerSecrets();
     try {
       const [config, envInfo, collectorsMeta] = await Promise.all([
         api('/api/config'),
@@ -5832,6 +5857,139 @@ const CP = (() => {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast(t('app.ids.exported', { name }), 'success');
+  }
+
+  // --- Credential encryption key (docs/encryption-key.md) --------------------
+
+  // What the status says, as HTML. Pure, so a test can run it: the status never
+  // carries the key, only where it comes from.
+  function encryptionKeyStatusHtml(st) {
+    if (!st || typeof st !== 'object') return '';
+    const lines = [];
+    if (st.source === 'file' && st.file_inside) {
+      lines.push(t('app.key.status.data', { path: st.file || '' }));
+    } else if (st.source === 'file') {
+      lines.push(t('app.key.status.file', { path: st.file || '' }));
+    } else if (st.source === 'env') {
+      lines.push(t('app.key.status.env'));
+    } else {
+      lines.push(t('app.key.status.data', { path: st.data_file || '' }));
+      if (st.env_same) lines.push(t('app.key.env_same'));
+    }
+    if (st.source === 'file' && !st.file_inside && st.data_copy === 'same') lines.push(t('app.key.copy_same', { path: st.data_file || '' }));
+    if (st.source !== 'data' && st.data_copy === 'different') lines.push(t('app.key.copy_different', { path: st.data_file || '' }));
+    if (st.outside) lines.push(t('app.key.outside'));
+    return lines.map(line => `<p>${escapeHtml(line)}</p>`).join('');
+  }
+
+  async function loadEncryptionKey() {
+    const box = document.getElementById('key-status');
+    const actions = document.getElementById('key-actions');
+    const move = document.getElementById('key-move');
+    if (!box || !actions) return;
+    let st;
+    try {
+      st = await api('/api/settings/encryption-key');
+    } catch (err) {
+      box.innerHTML = `<p class="muted">${escapeHtml(t('app.key.load_failed', { error: err.message }))}</p>`;
+      return;
+    }
+    box.innerHTML = encryptionKeyStatusHtml(st);
+    const buttons = [];
+    if (st.removable) {
+      buttons.push(`<button type="button" class="btn btn-primary btn-sm" data-action="removeEncryptionKeyCopy">${escapeHtml(t('app.key.remove_copy'))}</button>`);
+    }
+    if (!st.outside && !st.removable) {
+      buttons.push(`<button type="button" class="btn btn-secondary btn-sm" data-action="toggleEncryptionKeyMove">${escapeHtml(t('app.key.move'))}</button>`);
+    }
+    actions.innerHTML = buttons.join('');
+    if (move && st.outside) move.hidden = true;
+  }
+
+  function toggleEncryptionKeyMove() {
+    const move = document.getElementById('key-move');
+    if (move) move.hidden = !move.hidden;
+  }
+
+  // The server asks for the password first (api() shows the prompt) and writes
+  // the reveal to the audit log before it answers. The key stays on screen
+  // until Hide, a reload or leaving the page; nothing keeps it.
+  async function revealEncryptionKey() {
+    let res;
+    try {
+      res = await api('/api/settings/encryption-key/reveal', { method: 'POST', body: {} });
+    } catch (err) {
+      toast(t('app.key.reveal_failed', { error: err.message }), 'error');
+      return;
+    }
+    const input = document.getElementById('key-value');
+    const box = document.getElementById('key-revealed');
+    if (!input || !box || !res || !res.key) return;
+    input.value = res.key;
+    box.hidden = false;
+    input.focus();
+    input.select();
+  }
+
+  async function copyEncryptionKey() {
+    const input = document.getElementById('key-value');
+    if (!input || !input.value) return;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      toast(t('app.key.copied'), 'success');
+    } catch (err) {
+      input.select();
+      toast(t('app.key.copy_failed'), 'warning');
+    }
+  }
+
+  function hideEncryptionKey() {
+    const input = document.getElementById('key-value');
+    const box = document.getElementById('key-revealed');
+    if (input) input.value = '';
+    if (box) box.hidden = true;
+  }
+
+  async function removeEncryptionKeyCopy() {
+    if (!window.confirm(t('app.key.remove_confirm'))) return;
+    try {
+      await api('/api/settings/encryption-key/remove-data-copy', { method: 'POST', body: {} });
+    } catch (err) {
+      toast(t('app.key.remove_failed', { error: err.message }), 'error');
+      return;
+    }
+    hideEncryptionKey();
+    toast(t('app.key.removed'), 'success');
+    loadEncryptionKey();
+  }
+
+  // One line per worker: its setting and how many earners keep their credentials in a file.
+  function earnerSecretsHtml(rows) {
+    if (!Array.isArray(rows) || !rows.length) return `<p class="muted">${escapeHtml(t('app.earner_secrets.no_workers'))}</p>`;
+    return rows.map((row) => {
+      const mode = row.mode || 'old';
+      // A worker that reports no container shapes (CashPilot-Desktop) has no counts.
+      if (row.in_file == null || row.in_config == null) {
+        return `<p>${escapeHtml(t('app.earner_secrets.row_mode', { worker: row.worker || '', mode }))}</p>`;
+      }
+      const line = t('app.earner_secrets.row', {
+        worker: row.worker || '',
+        mode,
+        in_file: Number(row.in_file) || 0,
+        in_config: Number(row.in_config) || 0,
+      });
+      return `<p>${escapeHtml(line)}</p>`;
+    }).join('');
+  }
+
+  async function loadEarnerSecrets() {
+    const box = document.getElementById('earner-secrets-container');
+    if (!box) return;
+    try {
+      box.innerHTML = earnerSecretsHtml(await api('/api/settings/earner-secrets'));
+    } catch (err) {
+      box.innerHTML = `<p class="muted">${escapeHtml(t('app.key.load_failed', { error: err.message }))}</p>`;
+    }
   }
 
   // Every reveal is written to the audit log by the server before it answers.
@@ -6496,9 +6654,10 @@ const CP = (() => {
     return 'USD';
   }
 
+  // digits 'whole' drops the cents only when the shown amount has none: $5 is
+  // "$5", and the same bound in euros at 0.86 is "€4.30", never "€4".
   function formatCurrency(val, nativeCurrency, digits) {
     nativeCurrency = nativeCurrency || 'USD';
-    const fractionDigits = digits ?? 2;
     const amount = parseFloat(val || 0);
 
     // Convert to USD first
@@ -6533,15 +6692,21 @@ const CP = (() => {
     }
     // else: no rate, so the value stays in USD and says so.
 
+    // 'whole' writes two decimals and drops them only when the formatter's own
+    // rounding leaves both zero: 1.005 is "1.01", 4.999 is "5".
+    const whole = digits === 'whole';
+    const fractionDigits = whole ? 2 : (digits ?? 2);
     try {
       return new Intl.NumberFormat(undefined, {
         style: 'currency',
         currency,
         minimumFractionDigits: fractionDigits,
         maximumFractionDigits: fractionDigits,
+        ...(whole ? { trailingZeroDisplay: 'stripIfInteger' } : {}),
       }).format(displayAmount);
     } catch {
-      return displayAmount.toFixed(fractionDigits) + ' ' + currency;
+      const text = displayAmount.toFixed(fractionDigits);
+      return (whole ? text.replace(/\.00$/, '') : text) + ' ' + currency;
     }
   }
 
@@ -7156,6 +7321,15 @@ const CP = (() => {
     closeIdentityForm,
     addIdentity,
     exportIdentities,
+    loadEncryptionKey,
+    toggleEncryptionKeyMove,
+    revealEncryptionKey,
+    copyEncryptionKey,
+    hideEncryptionKey,
+    removeEncryptionKeyCopy,
+    encryptionKeyStatusHtml,
+    loadEarnerSecrets,
+    earnerSecretsHtml,
     checkRestoreFile,
     submitRestore,
     pickPreviousIdentity,

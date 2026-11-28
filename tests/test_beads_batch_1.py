@@ -241,15 +241,43 @@ class TestASuppliedEncryptionKeyIsNotTreatedAsEphemeral:
     "supply a key via CASHPILOT_ENCRYPTION_KEY" — which they already had.
     """
 
-    def test_the_flag_is_conditional_on_where_the_key_came_from(self):
-        source = (ROOT / "app" / "database.py").read_text(encoding="utf-8")
-        assert "_fernet_key_is_ephemeral = env_key is None" in source
-        assert "_fernet_key_is_ephemeral = True\n        _logger.error" not in source
+    def test_the_flag_is_conditional_on_where_the_key_came_from(self, tmp_path, monkeypatch):
+        """Since CASHPILOT_ENCRYPTION_KEY_FILE, a supplied key is never written to the data folder at all."""
+        import importlib
 
-    def test_a_minted_key_is_still_ephemeral_when_unwritable(self):
+        from cryptography.fernet import Fernet
+
+        from app import database
+
+        blocker = tmp_path / "not-a-directory"
+        blocker.write_text("x")
+        monkeypatch.setenv("CASHPILOT_DATA_DIR", str(blocker / "data"))
+        monkeypatch.setenv("CASHPILOT_ENCRYPTION_KEY", Fernet.generate_key().decode())
+        monkeypatch.delenv("CASHPILOT_ENCRYPTION_KEY_FILE", raising=False)
+        try:
+            db = importlib.reload(database)
+            assert not db._fernet_key_is_ephemeral
+            db.verify_encryption_key_persisted()  # must not raise
+        finally:
+            monkeypatch.undo()
+            importlib.reload(database)
+
+    def test_a_minted_key_is_still_ephemeral_when_unwritable(self, tmp_path, monkeypatch):
         """The guard must keep working for the case it was built for."""
-        source = (ROOT / "app" / "database.py").read_text(encoding="utf-8")
-        assert "env_key is None" in source
+        import importlib
+
+        from app import database
+
+        blocker = tmp_path / "not-a-directory"
+        blocker.write_text("x")
+        monkeypatch.setenv("CASHPILOT_DATA_DIR", str(blocker / "data"))
+        monkeypatch.delenv("CASHPILOT_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("CASHPILOT_ENCRYPTION_KEY_FILE", raising=False)
+        try:
+            assert importlib.reload(database)._fernet_key_is_ephemeral
+        finally:
+            monkeypatch.undo()
+            importlib.reload(database)
 
 
 class TestTheSaladHintPointsAtAHostThatExists:
@@ -347,20 +375,38 @@ class TestThePersistenceFailureMessageMatchesTheConsequence:
     def _source(self) -> str:
         return (ROOT / "app" / "database.py").read_text(encoding="utf-8")
 
-    def test_a_minted_key_still_gets_the_data_loss_error(self):
+    def _reload(self, monkeypatch, tmp_path, key):
+        import importlib
+
+        from app import database
+
+        blocker = tmp_path / "not-a-directory"
+        blocker.write_text("x")
+        monkeypatch.setenv("CASHPILOT_DATA_DIR", str(blocker / "data"))
+        monkeypatch.delenv("CASHPILOT_ENCRYPTION_KEY_FILE", raising=False)
+        if key:
+            monkeypatch.setenv("CASHPILOT_ENCRYPTION_KEY", key)
+        else:
+            monkeypatch.delenv("CASHPILOT_ENCRYPTION_KEY", raising=False)
+        try:
+            importlib.reload(database)
+        finally:
+            monkeypatch.undo()
+            importlib.reload(database)
+
+    def test_a_minted_key_still_gets_the_data_loss_error(self, monkeypatch, tmp_path, caplog):
         """The dangerous case must keep its loud message."""
-        source = self._source()
-        assert "Credentials encrypted now will be unreadable after a restart." in source
-        assert "if env_key is None:" in source
+        with caplog.at_level("ERROR"):
+            self._reload(monkeypatch, tmp_path, None)
+        assert any("Credentials encrypted now will be unreadable after a restart." in r.message for r in caplog.records)
 
-    def test_a_supplied_key_gets_a_warning_not_a_data_loss_error(self):
-        source = self._source()
-        assert "This is not data loss" in source
+    def test_a_supplied_key_gets_no_data_loss_error(self, monkeypatch, tmp_path, caplog):
+        """Since CASHPILOT_ENCRYPTION_KEY_FILE, a supplied key is never written, so nothing can fail to persist."""
+        from cryptography.fernet import Fernet
 
-    def test_the_supplied_key_message_says_what_to_do(self):
-        """The user's only real risk is unsetting the variable."""
-        source = self._source()
-        assert "Keep that variable set" in source
+        with caplog.at_level("WARNING"):
+            self._reload(monkeypatch, tmp_path, Fernet.generate_key().decode())
+        assert not any("unreadable after a restart" in r.message for r in caplog.records)
 
     def test_the_migration_comment_matches_the_code_below_it(self):
         """It said existing rows get the migration time — the removed behaviour.
