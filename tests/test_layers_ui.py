@@ -264,6 +264,21 @@ class TestStorage:
             _run(layers_ui.set_default(w, "gvisor"))
             assert _run(layers_ui.for_new_deploy(w, "mysterium")) is None
 
+    def test_a_gvisor_default_on_a_worker_whose_gvisor_is_gone_is_sent_not_recorded(self):
+        """The deploy refuses it and says why, instead of running the earner without gVisor."""
+        store, g, s = self._store()
+        store["worker_c7_runtime_choice"] = json.dumps({"default": "gvisor", "earners": {}})
+        with g, s:
+            assert _run(layers_ui.for_new_deploy(_worker(_layers(runtimes=["runc"])), "honeygain")) == "gvisor"
+            assert json.loads(store["worker_c7_runtime_choice"])["earners"] == {}
+
+    def test_a_stored_value_that_is_not_an_object_reads_as_no_choice(self):
+        store, g, s = self._store()
+        for raw in ("[]", '"gvisor"', "3", "null"):
+            store["worker_c7_runtime_choice"] = raw
+            with g, s:
+                assert _run(layers_ui.choices(_worker(_layers()))) == {"default": None, "earners": {}}
+
     def test_no_choice_sends_nothing(self):
         _store, g, s = self._store()
         with g, s:
