@@ -4,9 +4,9 @@
     sync.py [--repo NAME ...] [--base BRANCH --base-remote origin|amiga] [--dry-run] [--no-push]
 
 For each CashPilot repo it fetches main, finds the translations whose English changed (the
-source hash each surface stores) or that are missing, asks Claude (through `nd run`, model opus)
-for only those entries, runs the repo's own checks, and opens one ready PR from the
-Amigadelasmigas fork. It never merges. See README.md.
+source hash each surface stores) or that are missing, asks Claude (through `nd run`, model opus, on
+an allowed seat with room) for only those entries, runs the repo's own checks, and opens one ready
+PR from the Amigadelasmigas fork. It never merges. See README.md.
 
 Standard library only. It imports scripts/i18n_check.py (the parity check every CashPilot repo
 copies) for the parsers, the placeholder comparison and the source hash.
@@ -94,6 +94,11 @@ SURFACE_RULES = {
 - A `<plurals>` element has one `<item quantity="...">` for each CLDR plural category of the language,
   always with `other`.
 - Keep `https://`, `http://`, 192.168.x.x, 10.x.x.x, `.local` and `.lan` as written.""",
+    "catalog": """\
+- Each entry is one text of a service card: a description, a payout note, a disclosure or a setup hint.
+- Keep every HTML tag (`<b>`, `<a href="...">`), attribute and link target exactly, and translate only
+  the text between tags. Keep `{name}` placeholders exactly.
+- Keep amounts, coin and token symbols (ETC, MYST, USDT) and payout thresholds exactly.""",
     "textdir": """\
 - Each entry is one Google Play listing text file. title.txt has at most 30 characters,
   short_description.txt at most 80, full_description.txt at most 4000. Plain text, no Markdown.
@@ -114,7 +119,7 @@ COMMON_RULES = """\
 @dataclasses.dataclass
 class Surface:
     name: str
-    fmt: str  # json | android | textdir | docs
+    fmt: str  # json | catalog | android | textdir | docs
     about: str
     source: str = ""
     targets: str = ""
@@ -136,9 +141,20 @@ REPOS: dict[str, dict] = {
                 "app/i18n/en.json",
                 "app/i18n/*.json",
             ),
+            Surface(
+                "service catalog",
+                "catalog",
+                "the service catalog of CashPilot: the cards that describe each passive-income service it runs",
+                "services/_i18n/en.yml",
+                "services/_i18n/*.yml",
+            ),
             Surface("docs", "docs", "a page of the CashPilot documentation site (Markdown, built with Zensical)"),
         ],
-        "checks": ["python3 -I .github/scripts/docs-i18n.py check", "node scripts/i18n_format_check.mjs"],
+        "checks": [
+            "python3 -I .github/scripts/docs-i18n.py check",
+            "node scripts/i18n_format_check.mjs",
+            "python3 -I scripts/i18n_check.py services/_i18n/en.yml services/_i18n/*.yml",
+        ],
     },
     "CashPilot-Desktop": {
         "surfaces": [
@@ -258,17 +274,55 @@ def lang_code(locale: str) -> str | None:
 # Claude, through nd
 
 
+# The only Claude Code seats the job may use: the neutralbase and neutralstate ones. Never the
+# enterprise seat, a personal one or a Kimi one, whatever `nd pick` would offer.
+SEATS = (*(f"cc-neutralagent{n}" for n in range(1, 8)), "cc-neutralstack")
+SEATS += tuple(f"cc-ns-{name}" for name in ("admin", "diego", "lucas", "mateo", "sara"))
+
+
+class NoSeat(Exception):
+    """No allowed seat has room tonight."""
+
+
+def usable_seats(usage: dict, wanted: list[str]) -> tuple[list[str], dict[str, str]]:
+    """The wanted seats that `nd usage json` shows with room, most weekly room first, and why the rest are out.
+
+    A seat at 0 weekly left, rejected, or rate-limited on its model windows dies at once with
+    "rate limit reached" or "token was revoked", so it is skipped before any call.
+    """
+    seen = {a.get("id"): a for a in usage.get("accounts", [])}
+    ok: list[tuple[float, str]] = []
+    skipped: dict[str, str] = {}
+    for seat in wanted:
+        a = seen.get(seat)
+        left = ((a or {}).get("weekly") or {}).get("left")
+        state = ((a or {}).get("modelWeeklies") or {}).get("state")
+        if seat not in SEATS:
+            skipped[seat] = "not an allowed seat"
+        elif a is None:
+            skipped[seat] = "not in nd usage"
+        elif a.get("status") == "rejected":
+            skipped[seat] = "status rejected"
+        elif left is not None and left <= 0:
+            skipped[seat] = "0% weekly left"
+        elif state == "rate-limited":
+            skipped[seat] = "model windows rate-limited"
+        else:
+            ok.append((left if left is not None else 0.0, seat))
+    return [seat for _, seat in sorted(ok, key=lambda x: -x[0])], skipped
+
+
 class Claude:
     def __init__(self) -> None:
         fixed = os.environ.get("I18N_SYNC_ACCOUNTS")
-        if fixed:
-            self.accounts = [a for a in fixed.split(",") if a]
-        else:
-            out = sh(["nd", "pick", "--json", "--provider", "claude"], ROOT).stdout
-            self.accounts = [c["id"] for c in json.loads(out)["candidates"] if c["id"].startswith("cc-")]
-        self.accounts = list(dict.fromkeys(self.accounts))  # each account once, so ask() can try them all
+        wanted = [a for a in fixed.split(",") if a] if fixed else list(SEATS)
+        usage = json.loads(sh(["nd", "usage", "json"], ROOT).stdout)
+        self.accounts, skipped = usable_seats(usage, list(dict.fromkeys(wanted)))  # each seat once
+        for seat, why in skipped.items():
+            log.info("seat %s skipped: %s", seat, why)
         if not self.accounts:
-            raise RuntimeError("nd pick found no Claude account to run on")
+            raise NoSeat(f"no allowed Claude seat has room (checked {', '.join(dict.fromkeys(wanted))})")
+        log.info("seats, in order: %s", ", ".join(self.accounts))
         self.at = 0
         self.lock = threading.Lock()
         self.cwd = ROOT / "claude-cwd"  # an empty folder: no CLAUDE.md, no project settings
@@ -674,6 +728,26 @@ def write_work(clone: pathlib.Path, w: Work) -> set[pathlib.Path]:
         if new != t.path.read_text(encoding="utf-8"):
             t.path.write_text(new, encoding="utf-8")
             changed.add(t.path)
+    elif s.fmt == "catalog":
+        # Flat keys with inline {text, source}, in the English order; the file's comment header stays.
+        entries = {k: v for k, v in t.entries.items() if k not in w.extra}
+        for key in w.extra:
+            hashes.pop(key, None)
+        for key, text in w.result.items():
+            entries[key] = text.rstrip("\n") + "\n" if source[key].endswith("\n") else text.rstrip("\n")
+            hashes[key] = ic.source_hash(source[key])
+        order = [k for k in source if k in entries] + [k for k in entries if k not in source]
+        before = t.path.read_text(encoding="utf-8")
+        ic.write_catalog(t.path, {k: entries[k] for k in order}, hashes, ic._leading_comments(t.path))
+        # write_catalog quotes a key that starts with a digit ("2miners-etc..."). en.yml writes every key
+        # bare and every reader loads it, so keep that form: only the translated entries change.
+        bare = set(source) | set(re.findall(r"^([^\s\"#][^\n]*?):$", before, re.M))
+        after = re.sub(
+            r'^"([^"\n]+)":$', lambda m: f"{m[1]}:" if m[1] in bare else m[0], t.path.read_text("utf-8"), flags=re.M
+        )
+        if after != before:
+            t.path.write_text(after, encoding="utf-8")
+            changed.add(t.path)
     elif s.fmt == "android":
         text = t.path.read_text(encoding="utf-8")
         en_names = list(dict.fromkeys(base_name(k) for k in source))
@@ -1072,6 +1146,16 @@ def main(argv: list[str] | None = None) -> int:
     log.info("start: %s", " ".join(sys.argv[1:]) or "nightly")
     status = 0
     claude_box: list = []
+    if not args.dry_run:
+        try:
+            claude_box.append(Claude())
+        except NoSeat as e:
+            log.warning("%s; stopping before any repo, nothing translated", e)
+            log.info("end: no seat")
+            return 0
+        except Exception as e:
+            log.exception("cannot read the seats from nd: %s", e)
+            return 1
     for repo in args.repo or list(REPOS):
         try:
             log.info("%s: %s", repo, sync_repo(repo, args, claude_box))
