@@ -500,6 +500,60 @@ class TestTheDeploySendsTheChoice:
             _run(main._send_worker_deploy(7, "honeygain", {"image": "honeygain/honeygain"}))
         remember.assert_not_called()
 
+    def test_a_second_deploy_reads_the_choice_the_first_recorded_not_a_default_changed_between(self):
+        """Pick and record run under the deploy lock: both deploys of one earner get the same runtime."""
+        store: dict[str, str] = {}
+        w = _worker(_layers())
+        bodies: list[dict] = []
+
+        async def get(key=None):
+            await asyncio.sleep(0)
+            return store.get(key)
+
+        async def put(key, value):
+            await asyncio.sleep(0)
+            store[key] = value
+
+        second: list[asyncio.Task] = []
+
+        async def hop(worker_id, method, path, *, json=None, **kwargs):
+            if method == "GET":
+                return {"expected_container": "none"}
+            bodies.append(dict(json or {}))
+            if len(bodies) == 1:
+                # While the first deploy is on its way, the owner moves the default
+                # and a second deploy of the same earner starts.
+                await layers_ui.set_default(w, "runc")
+                second.append(asyncio.create_task(deploy()))
+                for _ in range(20):
+                    await asyncio.sleep(0)
+            return {"container_id": "abc123"}
+
+        def deploy():
+            return main._send_worker_deploy(7, "honeygain", {"image": "honeygain/honeygain"})
+
+        async def both():
+            await layers_ui.set_default(w, "gvisor")
+            await deploy()
+            await second[0]
+
+        with (
+            patch.object(database, "get_config", side_effect=get),
+            patch.object(database, "set_config", side_effect=put),
+            patch.object(database, "get_worker", AsyncMock(return_value=w)),
+            patch.object(main, "_worker_is_desktop", AsyncMock(return_value=False)),
+            patch.object(main, "_proxy_to_worker", side_effect=hop),
+        ):
+            _run(both())
+        assert [b.get("runtime_choice") for b in bodies] == ["gvisor", "gvisor"]
+        assert json.loads(store["worker_c7_runtime_choice"])["earners"] == {"honeygain": "gvisor"}
+
+    def test_a_failed_record_never_fails_a_deploy_the_worker_took(self):
+        with (
+            patch.object(database, "get_worker", AsyncMock(side_effect=RuntimeError("db gone"))),
+        ):
+            assert _run(main._remember_runtime_choice(7, "honeygain", "gvisor")) is None
+
     def test_a_routed_copy_of_an_earner_whose_gvisor_choice_a_pin_overrules_is_not_refused(self):
         pins = {"default": None, "overrides": {"honeygain": "runc"}}
         w = _worker(_layers(pins=pins))
