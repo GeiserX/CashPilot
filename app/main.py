@@ -6810,12 +6810,15 @@ async def _step_up_critical(
     if not has_password and not custom_image:
         return False
     if request is None or not has_password:
-        what = "keeps a wallet or node identity" if critical else "runs with a device id the provider pays by"
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "step_up_required",
-                "message": t("api.running_another_image_than_catalog", name=svc.get("name") or slug, what=what),
+                "message": (
+                    t("api.running_another_image_identity", name=svc.get("name") or slug)
+                    if critical
+                    else t("api.running_another_image_device_id", name=svc.get("name") or slug)
+                ),
             },
         )
     image = custom_image or (svc.get("docker") or {}).get("image") or ""

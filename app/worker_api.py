@@ -2321,10 +2321,10 @@ def _old_ui_target_error(exc: HTTPException, spec: BaseModel | None, *, then: st
     ):
         return None
     # A build from a branch or a checkout reports "latest" or "dev": no number to name.
-    worker = f"CashPilot {version.display()}" if version.series(version.current()) else "a newer CashPilot"
+    shown = version.display() if version.series(version.current()) else "none"
     return HTTPException(
         status_code=409,
-        detail=t("worker.worker_runs_replaces_existing_container", worker=worker, then=then),
+        detail=t("worker.worker_runs_replaces_existing_container", version=shown, then=then),
     )
 
 
@@ -2617,9 +2617,7 @@ async def api_proxied_start(
     else:
         return {"status": "started", **result}
     # Only the legacy URL: the checked one is the current UI's, which reads the structured answer.
-    if request.url.path.endswith("/start") and (
-        old_ui := _old_ui_target_error(refusal, spec, then="Start the copy again")
-    ):
+    if request.url.path.endswith("/start") and (old_ui := _old_ui_target_error(refusal, spec, then="start")):
         raise old_ui from None
     raise refusal from None
 

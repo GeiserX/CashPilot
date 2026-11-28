@@ -42,7 +42,7 @@ SHADOW = re.compile(
 def _sources() -> list[Path]:
     files = sorted((ROOT / "app/templates").rglob("*.html"))
     files += sorted((ROOT / "app/static/js").glob("*.js"))
-    files += sorted(p for p in (ROOT / "app").rglob("*.py") if p.parent.name != "i18n")
+    files += sorted((ROOT / "app").rglob("*.py"))
     return files
 
 
@@ -61,8 +61,8 @@ def _scan() -> tuple[set[str], list[str]]:
             if listed:
                 used.update(k.strip() for k in listed.group(1).split(","))
                 listed_lines.add(number)
-        if path.name == "i18n.js":  # the implementation: t(key, params) is its own signature
-            continue
+        if path.name == "i18n.js" or rel.as_posix() == "app/i18n/__init__.py":
+            continue  # the implementation: t(key, params) is its own signature
         for m in ANY_CALL.finditer(text):
             number = text.count("\n", 0, m.start()) + 1
             line = lines[number - 1]
@@ -205,3 +205,9 @@ def test_a_server_message_is_a_sentence_and_never_a_code():
     server = ("api.", "worker.", "err.", "preflight.")
     codes = {k: v for k, v in EN.items() if k.startswith(server) and not re.search(r"\s", v)}
     assert not codes, f"these server messages look like codes: {codes}"
+
+
+def test_a_count_is_a_plural_and_never_an_s_in_parentheses():
+    """ "{n} service(s)" reads wrong in English and cannot be translated: a count takes a plural."""
+    found = sorted(k for k, v in EN.items() if re.search(r"\w\((?:s|es)\)", v))
+    assert not found, f"use {{n, plural, one {{...}} other {{...}}}} instead of (s): {found}"
