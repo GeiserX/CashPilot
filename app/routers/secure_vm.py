@@ -48,9 +48,6 @@ def _ui_url(raw: str) -> str:
         or any(c.isspace() for c in raw)
     ):
         raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.bad_ui_url"))
-    # The installer reaches the UI over IPv4 and refuses an IPv6 literal.
-    if ":" in hostname:
-        raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.ipv6_ui"))
     return f"{parts.scheme}://{parts.netloc}"
 
 
@@ -108,9 +105,14 @@ async def api_secure_vm_commands(request: Request, worker_id: int, ui_url: str =
         is_secure_vm(vi) and (h := vm_host(vi, workers)) is not None and h["id"] == host["id"]
         for vi in (placement.system_info(w) for w in workers)
     )
-    # The guest's worker refuses to send its key over plain http to a public
-    # host, so such an install could never enrol: say so before it starts.
-    # status, verify and remove never use the address, so they stay available.
-    if not has_vm and not cleartext.bearer_allowed(url):
-        raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.public_http"))
+    # Only the install command uses the address. status, verify and remove
+    # never do, so they stay available on any address.
+    if not has_vm:
+        # The installer reaches the UI over IPv4 and refuses an IPv6 literal.
+        if ":" in (urlsplit(url).hostname or ""):
+            raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.ipv6_ui"))
+        # The guest's worker refuses to send its key over plain http to a
+        # public host, so such an install could never enrol.
+        if not cleartext.bearer_allowed(url):
+            raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.public_http"))
     return commands(host["name"], url, has_vm)
