@@ -892,6 +892,9 @@ kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
 kryptex-pearl.docker.env.WORKER_NAME.description:
   text: "Beri setiap mesin nama yang berbeda di akun Kryptex Anda."
   source: "277ed1b0adb3"
+kryptex-pearl.docker.runtime_reason:
+  text: "gVisor tidak dapat meneruskan GPU ke layanan ini."
+  source: "302a2b5c988f"
 kryptex-pearl.payment.minimum_payout:
   text: "0.00001 BTC melalui Lightning (metode lain bervariasi)"
   source: "134616d8ae98"
@@ -961,6 +964,9 @@ mysterium.docker.env.UI_ADDRESS.description:
 mysterium.docker.env.UDP_PORTS.description:
   text: "Port UDP yang digunakan node untuk sesi VPN, dalam format start:end. Teruskan rentang yang sama ini di router Anda. Setiap sesi memakai sekitar dua port, jadi 30 port default menampung sekitar 15 sesi sekaligus, lebih dari yang didapat node rumahan. Rentang yang lebih lebar tidak memperbaiki apa pun dan lebih mahal: setiap port yang dipublikasikan memperlambat start dan penghapusan node (300 port butuh sekitar 12 detik untuk start), CashPilot menerima paling banyak 300, dan dengan userland proxy default Docker setiap port juga memakan sekitar 2.5 MB memori. Jika semua sesi gagal, masalahnya ada di router, bukan karena port terlalu sedikit: lihat \"Routers that rewrite UDP source ports\" di panduan Mysterium. Jaga di bawah 32768: port 32768-60999 adalah rentang ephemeral Linux, tempat program apa pun di host bisa memakainya sesaat, dan satu port yang terpakai membuat start node gagal. Node yang sudah memiliki rentang tetap mempertahankannya."
   source: "530524e2e718"
+mysterium.docker.runtime_reason:
+  text: "gVisor tidak menyediakan iptables-nft maupun WireGuard kernel, yang dibutuhkannya untuk membawa lalu lintas."
+  source: "d8a72a275579"
 mysterium.docker.critical_volumes.0.holds:
   text: "Keystore identitas node. Menghapusnya akan membuat identitas yang benar-benar baru: node kehilangan reputasinya dan semua penghasilan yang masih tertahan pada identitas lama."
   source: "97272764fec0"
@@ -1834,6 +1840,9 @@ srbminer-multi.docker.env.WALLET.description:
 srbminer-multi.docker.env.ALGO.description:
   text: "pearlhash untuk Pearl, progpow_zano untuk Zano, kawpow untuk Ravencoin."
   source: "31c8ee0aa660"
+srbminer-multi.docker.runtime_reason:
+  text: "gVisor tidak dapat meneruskan GPU ke layanan ini."
+  source: "302a2b5c988f"
 srbminer-multi.earnings.notes:
   text: "Perkiraan kotor sebelum biaya listrik. Pada 2026-11-25 hashrate.no memperkirakan sekitar $2.45 per hari untuk Pearl dengan RTX 4070 yang menarik daya sekitar 142 W. Kami belum mengukurnya. Pearl adalah koin baru, dan harga serta tingkat kesulitannya berubah cepat. Periksa konsumsi daya GPU Anda dan harga listrik Anda untuk melihat apakah ini menguntungkan."
   source: "e7b856e43825"
