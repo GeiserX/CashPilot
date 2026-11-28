@@ -26,7 +26,7 @@ REPO_RAW = "https://raw.githubusercontent.com/GeiserX/CashPilot"
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 
 #: Each helper the UI offers, and the interpreter it runs under.
-SCRIPTS: dict[str, str] = {"cashpilot-gvisor": "bash"}
+SCRIPTS: dict[str, str] = {"cashpilot-gvisor": "bash", "cashpilot-vm": "bash"}
 
 _RELEASE = re.compile(r"\d+\.\d+\.\d+")
 
