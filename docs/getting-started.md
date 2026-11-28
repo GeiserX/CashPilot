@@ -232,8 +232,9 @@ are optional. CashPilot does not bundle an updater.
 
 ### Cleaning up old images
 
-CashPilot pulls images but never deletes them. Each update and each redeploy
-can leave the previous image on disk. On a three-server test fleet the old
+CashPilot deletes an image only after an [app image update](image-updates.md)
+replaced it, and only on a worker with the raw Docker socket. Otherwise each
+update and each redeploy can leave the previous image on disk. On a three-server test fleet the old
 CashPilot and earner images came to about 3 GB in total. That is small next
 to what other programs on the same host usually leave behind, so look at the
 whole host:
