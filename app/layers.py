@@ -32,6 +32,7 @@ from typing import Any
 import docker
 
 from app import gpu
+from app.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -188,9 +189,9 @@ def pick(
     if choice == RUNC:
         return RUNC
     if choice != GVISOR:
-        raise ChoiceRefused(f"{choice!r} is not a runtime choice; use one of {', '.join(CHOICES)}.")
+        raise ChoiceRefused(t("err.layers.not_a_choice", choice=repr(choice), choices=", ".join(CHOICES)))
     if facts is None:
-        raise ChoiceRefused("Cannot check for gVisor: the Docker daemon is not answering.")
+        raise ChoiceRefused(t("err.layers.no_daemon"))
     usable = [f for f in facts if f["gvisor"] and f["hostnet"] and (allowed is None or f["name"] in allowed)]
     if net_raw:
         usable = [f for f in usable if f["net_raw"]]
@@ -201,16 +202,8 @@ def pick(
     if usable:
         return usable[0]["name"]
     if net_raw:
-        raise ChoiceRefused(
-            f"{service} needs raw sockets, and this worker has no gVisor runtime registered with --network=host "
-            f"and --net-raw (runsc-hostnet-raw). Run the gVisor install command from the Fleet page, "
-            f"or keep {service} on Standard."
-        )
-    raise ChoiceRefused(
-        f"This worker has no gVisor runtime registered with --network=host (runsc-hostnet), which Docker's DNS "
-        f"needs on CashPilot's network. Run the gVisor install command from the Fleet page, or keep {service} "
-        f"on Standard."
-    )
+        raise ChoiceRefused(t("err.layers.no_gvisor_raw", service=service))
+    raise ChoiceRefused(t("err.layers.no_gvisor", service=service))
 
 
 def set_last_check(result: dict[str, Any]) -> None:

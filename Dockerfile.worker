@@ -57,6 +57,8 @@ WORKDIR /app
 COPY --from=builder /build/.venv ./.venv
 
 COPY app/__init__.py ./app/
+# The worker's answers to the dashboard, in the dashboard's language.
+COPY app/i18n/__init__.py app/i18n/*.json ./app/i18n/
 COPY app/constants.py ./app/
 COPY app/fleet_key.py ./app/
 # The plain-http rule for the key on the heartbeat (CASHPILOT_UI_URL).

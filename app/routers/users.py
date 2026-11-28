@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from app import auth as auth_module
 from app import database, deps
+from app.i18n import t
 
 router = APIRouter()
 
@@ -39,22 +40,22 @@ class UserRoleUpdate(BaseModel):
 async def api_update_user_role(request: Request, user_id: int, body: UserRoleUpdate) -> dict[str, str]:
     current = deps._require_owner(request)
     if body.role not in ("viewer", "writer", "owner"):
-        raise HTTPException(status_code=400, detail="Role must be viewer, writer, or owner")
+        raise HTTPException(status_code=400, detail=t("api.role_must_viewer_writer_owner"))
     user = await database.get_user_by_id(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=t("api.user_not_found"))
     if body.role == "owner" and not _is_signed_in_user(current):
         # The admin API key must not mint an owner: an owner session reads the
         # claimable device ids and passes the password step-ups, which the key
         # alone is refused (issue #740). Promote someone from the dashboard.
-        raise HTTPException(status_code=403, detail="Sign in to the dashboard as an owner to make someone an owner")
+        raise HTTPException(status_code=403, detail=t("api.sign_dashboard_owner_make_someone"))
     if current["uid"] == user_id and body.role != "owner":
-        raise HTTPException(status_code=400, detail="Cannot demote yourself")
+        raise HTTPException(status_code=400, detail=t("api.cannot_demote_yourself"))
     if user["role"] == "owner" and body.role != "owner":
         all_users = await database.list_users()
         owner_count = sum(1 for u in all_users if u["role"] == "owner")
         if owner_count <= 1:
-            raise HTTPException(status_code=400, detail="Cannot remove the last owner")
+            raise HTTPException(status_code=400, detail=t("api.cannot_remove_last_owner"))
     # Revoke outstanding sessions BEFORE applying the role change, so there is no
     # window where the demotion has committed but the old higher-privilege cookie
     # is still valid (a crash between the two writes must not leave it usable).
@@ -71,10 +72,10 @@ async def api_update_user_role(request: Request, user_id: int, body: UserRoleUpd
 async def api_delete_user(request: Request, user_id: int) -> dict[str, str]:
     current = deps._require_owner(request)
     if current["uid"] == user_id:
-        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+        raise HTTPException(status_code=400, detail=t("api.cannot_delete_yourself"))
     user = await database.get_user_by_id(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=t("api.user_not_found"))
     # Revoke outstanding sessions BEFORE deleting the row, so there is never a
     # window where the account is gone but its cookie is still honored. The
     # revocation is keyed by uid with no FK to users, so persisting it ahead of the

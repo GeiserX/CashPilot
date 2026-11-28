@@ -24,6 +24,7 @@ from urllib.parse import quote, urlsplit
 import yaml
 
 from app import arch, gpu, health_probe, ratings, traffic_stall, wallet_seed
+from app.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +63,10 @@ def parse_port(mapping: object) -> tuple[str, int | list[str | int]]:
     raw = str(mapping).strip()
     match = _PORT_RE.fullmatch(raw)
     if not match:
-        raise ValueError(
-            f"port {raw!r} must be 'HOST:CONTAINER', 'ADDRESS:HOST:CONTAINER', optionally ending in /tcp or /udp"
-        )
+        raise ValueError(t("err.catalog.port_must_host_container_address", raw=repr(raw)))
     host, container = int(match["host"]), int(match["container"])
     if not (1 <= host <= 65535 and 1 <= container <= 65535):
-        raise ValueError(f"port {raw!r} is outside 1-65535")
+        raise ValueError(t("err.catalog.port_outside_1_65535", raw=repr(raw)))
     key = f"{container}/{match['protocol'] or 'tcp'}"
     address = match["address"]
     if address is None:
@@ -75,7 +74,7 @@ def parse_port(mapping: object) -> tuple[str, int | list[str | int]]:
     try:
         ipaddress.IPv4Address(address)
     except ValueError:
-        raise ValueError(f"port {raw!r} must bind to an IPv4 address, not {address!r}") from None
+        raise ValueError(t("err.catalog.port_must_bind_ipv4_address", raw=repr(raw), address=repr(address))) from None
     return key, [address, host]
 
 
@@ -119,15 +118,19 @@ def expand_udp_range(value: str, cap: int = MAX_UDP_PORTS) -> dict[str, int]:
     if not value:
         return {}
     if not is_port_range(value):
-        raise ValueError(f"{value!r} is not a port range start:end with start <= end <= 65535")
+        raise ValueError(t("err.catalog.not_port_range_start_end", value=repr(value)))
     start, _, end = value.partition(":")
     first, last = int(start), int(end)
     if last - first + 1 > cap:
         raise ValueError(
-            f"{value!r} spans {last - first + 1} ports; at most {cap} can be published, since every published "
-            f"port slows the container's start and a wider range runs past what a deploy can wait for. Choose a "
-            f"range of {cap} ports or fewer, such as {first}:{min(first + cap - 1, 65535)}, and forward the same "
-            "range on your router"
+            t(
+                "err.catalog.spans_ports_most_can_published",
+                value=repr(value),
+                value2=last - first + 1,
+                cap=cap,
+                first=first,
+                value3=min(first + cap - 1, 65535),
+            )
         )
     return {f"{port}/udp": port for port in range(first, last + 1)}
 
@@ -148,7 +151,7 @@ def ui_bindings(value: str, port: int) -> list[list[str | int]]:
         try:
             ipaddress.IPv4Address(address)
         except ValueError:
-            raise ValueError(f"{address!r} is not an IPv4 address") from None
+            raise ValueError(t("err.catalog.not_ipv4_address", address=repr(address))) from None
         if [address, port] not in found:
             found.append([address, port])
     return found
@@ -901,7 +904,7 @@ def device_id_masks(slug: str | None = None) -> tuple[list[re.Pattern[str]], lis
         if link.get("id_shape_unique") is True or svc.get("slug") == slug:
             try:
                 if not _valid_id_shape(shape):
-                    raise re.error(f"unusable id_shape {shape!r}")
+                    raise re.error(t("err.catalog.unusable_id_shape", shape=repr(shape)))
                 ids.append(re.compile(_id_shape_mask(shape), re.IGNORECASE))
             except re.error as exc:
                 # Never crash a notice on a catalog pattern: mask more, not less.

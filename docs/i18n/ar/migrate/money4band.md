@@ -1,5 +1,5 @@
 ---
-source_hash: 05d0f97e7d36
+source_hash: 5a764f1d0f5a
 ---
 # الانتقال من money4band { #moving-from-money4band }
 
@@ -35,10 +35,10 @@ CashPilot على إصدار money4band لديك.
 ويحذف ملف `.env` الخاص به بعد كل تشغيل
 ([مُنشئ env](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
 لا يستطيع CashPilot قراءة الملف المشفّر. في مجلد money4band الخاص بك، شغّل أمره
-`config edit`: `./Money4Band-<os>-<arch> config edit` للملف التنفيذي المنشور،
-أو `python main.py config edit` عند التشغيل من الشيفرة المصدرية. يفتح هذا الأمر
-الملف بعد فك تشفيره في محرّرك
-([مرجع CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+`config edit`. للملف التنفيذي المنشور، استخدم الملف المناسب لنظامك، مثل `./Money4Band-linux-amd64 config edit`، أو `.\Money4Band-windows-amd64.exe config edit` على Windows.
+عند التشغيل من الشيفرة المصدرية، شغّل `python run.py config edit`.
+يشغّل هذا الأمر money4band عبر uv، أو عبر بيئة pip عندما لا يكون uv مثبّتًا ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69)).
+يفتح الأمر الملف بعد فك تشفيره في محرّرك ([مرجع CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 انسخ نصه كله، والصقه في صفحة **Import from another tool** (الاستيراد من أداة أخرى)، ثم أغلق المحرّر.
 
 فضّل ملف JSON. ففي ملف `.env`، يوسّع Docker Compose الرمز `$` في القيم غير المحاطة بعلامات اقتباس،

@@ -30,6 +30,7 @@ from typing import Any
 import httpx
 
 from app import database
+from app.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +83,10 @@ def _bounded_lines(f: Any) -> Any:
     total = 0
     while line := f.readline(MAX_LINE_BYTES + 1):
         if len(line) > MAX_LINE_BYTES:
-            raise ValueError("a line is longer than any in the real table")
+            raise ValueError(t("err.ipgeo.line_longer_than_any_real"))
         total += len(line)
         if total > MAX_TABLE_BYTES:
-            raise ValueError("the table unpacks to more than the real one")
+            raise ValueError(t("err.ipgeo.table_unpacks_more_than_real"))
         yield line
 
 
@@ -103,7 +104,7 @@ def _rows(lines: Any) -> Any:
         if start is None or end is None or asn < 0:
             bad += 1
             if bad > MAX_BAD_LINES:
-                raise ValueError("too many lines that are not table rows")
+                raise ValueError(t("err.ipgeo.too_many_lines_not_table"))
             continue
         if asn == 0:
             continue  # AS 0: not routed, nothing to name
@@ -133,7 +134,7 @@ def build(lines: Any, target: Path | None = None) -> int:
         batch = []
         for row in _rows(lines):
             if n + len(batch) >= MAX_ROWS:
-                raise ValueError("the table has more ranges than the real one")
+                raise ValueError(t("err.ipgeo.table_has_more_ranges_than"))
             batch.append(row)
             if len(batch) >= 5000:
                 conn.executemany("INSERT OR REPLACE INTO ranges VALUES (?, ?, ?, ?, ?)", batch)
@@ -143,7 +144,7 @@ def build(lines: Any, target: Path | None = None) -> int:
             conn.executemany("INSERT OR REPLACE INTO ranges VALUES (?, ?, ?, ?, ?)", batch)
             n += len(batch)
         if n < MIN_ROWS:
-            raise ValueError("the table is too small to be the real one")
+            raise ValueError(t("err.ipgeo.table_too_small_real_one"))
         conn.execute("INSERT INTO meta VALUES ('rows', ?), ('built_at', ?)", (str(n), datetime.now(UTC).isoformat()))
         conn.commit()
     except BaseException:
@@ -162,7 +163,7 @@ def download() -> int:
     if not url:
         raise RuntimeError("disabled")
     if not _lock.acquire(blocking=False):
-        raise DownloadBusy("a download is already running")
+        raise DownloadBusy(t("err.ipgeo.download_already_running"))
     try:
         return _download(url)
     finally:
@@ -179,13 +180,13 @@ def _download(url: str) -> int:
             # Redirects are followed, but never from https down to plain http.
             final = str(getattr(resp.url, "scheme", "")).lower()
             if url.lower().startswith("https://") and final != "https":
-                raise ValueError("the download was redirected off https")
+                raise ValueError(t("err.ipgeo.download_redirected_off_https"))
             size = 0
             with gz.open("wb") as f:
                 for chunk in resp.iter_bytes():
                     size += len(chunk)
                     if size > MAX_DOWNLOAD_BYTES:
-                        raise ValueError("the download is larger than the real table")
+                        raise ValueError(t("err.ipgeo.download_larger_than_real_table"))
                     f.write(chunk)
         with gzip.open(gz, "rb") as f:
             return build(_bounded_lines(f))

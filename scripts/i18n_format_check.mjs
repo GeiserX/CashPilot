@@ -40,6 +40,10 @@ for (const c of cases) {
 // A key with no string shows the key, never a blank.
 const w = load('en', {});
 if (w.t('missing.key') !== 'missing.key') { bad++; console.log('  FAIL missing key'); }
+// A key that names an Object.prototype member is missing too, not its function.
+for (const key of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+  if (w.t(key) !== key) { bad++; console.log(`  FAIL prototype key ${key}: ${JSON.stringify(w.t(key))}`); }
+}
 // A broken message shows its raw text rather than throwing into the page.
 const broken = load('en', {k: '{n, plural, one {x}}'});
 if (broken.t('k', {n: 1}) !== '{n, plural, one {x}}') { bad++; console.log('  FAIL broken message'); }

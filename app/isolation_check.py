@@ -47,6 +47,7 @@ from docker.errors import DockerException, NotFound
 
 from app import lan_fence, orchestrator
 from app.constants import LABEL_MANAGED, LABEL_SERVICE
+from app.i18n import t
 
 DOCS = "https://geiserx.github.io/CashPilot/"
 FIX_PAGE = DOCS + "isolation-check/#2-fix-it-by-platform"
@@ -377,7 +378,9 @@ def run_probe(
         )
         status = container.wait(timeout=PROBE_TIMEOUT)
         if (status or {}).get("StatusCode") != 0:
-            raise RuntimeError(f"the probe exited with status {(status or {}).get('StatusCode')}")
+            raise RuntimeError(
+                t("err.isolation_check.probe_exited_status", statuscode=(status or {}).get("StatusCode"))
+            )
         return json.loads(container.logs(stdout=True, stderr=False))
     finally:
         if not _remove_probe(client, name) and leftovers is not None:
@@ -630,16 +633,16 @@ def _keep(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from a missing fence.
     """
     best: dict[tuple[str, Any], dict[str, Any]] = {}
-    for t in candidates:
-        if t.get("ok") and t["port"] != 53:
-            key = (t["host"], t.get("via"))
-            if key not in best or _rank(t["port"]) < _rank(best[key]["port"]):
-                best[key] = t
-    chosen = {id(t) for t in best.values()}
+    for target_entry in candidates:
+        if target_entry.get("ok") and target_entry["port"] != 53:
+            key = (target_entry["host"], target_entry.get("via"))
+            if key not in best or _rank(target_entry["port"]) < _rank(best[key]["port"]):
+                best[key] = target_entry
+    chosen = {id(target_entry) for target_entry in best.values()}
     return [
-        {k: t[k] for k in ("group", "host", "port", "label") if k in t}
-        for t in candidates
-        if t.get("ok") and (t["port"] == 53 or id(t) in chosen)
+        {k: target_entry[k] for k in ("group", "host", "port", "label") if k in target_entry}
+        for target_entry in candidates
+        if target_entry.get("ok") and (target_entry["port"] == 53 or id(target_entry) in chosen)
     ]
 
 
@@ -723,7 +726,7 @@ def _self_image(client: Any) -> str | None:
 def run() -> dict[str, Any]:
     """Run the whole check. Raises CheckBusy when one is already running."""
     if not _lock.acquire(blocking=False):
-        raise CheckBusy("An isolation check is already running on this worker.")
+        raise CheckBusy(t("err.isolation_check.isolation_check_already_running_worker"))
     try:
         client = _client()
         try:
@@ -743,13 +746,13 @@ def _client() -> Any:
     try:
         client = docker.from_env(timeout=DOCKER_TIMEOUT)
     except DockerException as exc:
-        raise RuntimeError(f"Docker socket not available: {exc}") from exc
+        raise RuntimeError(t("err.isolation_check.docker_socket_not_available", exc=exc)) from exc
     try:
         client.ping()
     except Exception as exc:
         with contextlib.suppress(Exception):
             client.close()
-        raise RuntimeError(f"Docker socket not available: {exc}") from exc
+        raise RuntimeError(t("err.isolation_check.docker_socket_not_available", exc=exc)) from exc
     return client
 
 
@@ -923,16 +926,16 @@ def judge_fence(
     b = (before or {}).get("counters") or {}
     a = (after or {}).get("counters") or {}
     ranges = []
-    for t in targets:
-        name = t["label"]
+    for target_entry in targets:
+        name = target_entry["label"]
         ranges.append(
             {
                 "rule": name,
-                "range": t["range"],
-                "address": _address(t["host"], t["port"]),
-                "reachable": bool(t.get("reachable")),
-                "proven": name in a and name in b and a[name] > b[name] and not t.get("reachable"),
-                "optional": bool(t.get("optional")),
+                "range": target_entry["range"],
+                "address": _address(target_entry["host"], target_entry["port"]),
+                "reachable": bool(target_entry.get("reachable")),
+                "proven": name in a and name in b and a[name] > b[name] and not target_entry.get("reachable"),
+                "optional": bool(target_entry.get("optional")),
             }
         )
     fence = {
@@ -1012,7 +1015,9 @@ def _probe(
         return f"The control probe on the host network failed: {exc}"
     candidates = found.get("candidates") or []
     kept = _keep(candidates)
-    report["not_answering_from_host"] = [f"{t['host']}:{t['port']}" for t in candidates if not t.get("ok")]
+    report["not_answering_from_host"] = [
+        f"{target_entry['host']}:{target_entry['port']}" for target_entry in candidates if not target_entry.get("ok")
+    ]
     report["addresses_left_out"] = list(found.get("addresses_left_out") or [])
     if not kept and not fenced:
         return (
@@ -1047,7 +1052,9 @@ def _probe(
         sentinels = fence_targets(lan_fence.gateway(client), before)
 
     keys = ("group", "host", "port", "label", "refused")
-    targets = kept + [{k: t[k] for k in keys if k in t} for t in sentinels] + [INTERNET]
+    targets = (
+        kept + [{k: target_entry[k] for k in keys if k in target_entry} for target_entry in sentinels] + [INTERNET]
+    )
     try:
         results = (
             run_probe(
@@ -1061,7 +1068,8 @@ def _probe(
         return "The probe on the earner side returned an incomplete answer."
 
     outcome = [
-        dict(t, reachable=bool(r), address=f"{t['host']}:{t['port']}") for t, r in zip(targets, results, strict=True)
+        dict(target_entry, reachable=bool(r), address=f"{target_entry['host']}:{target_entry['port']}")
+        for target_entry, r in zip(targets, results, strict=True)
     ]
     internet = outcome.pop()
     report["internet"] = {"address": internet["address"], "reachable": internet["reachable"]}
@@ -1072,33 +1080,39 @@ def _probe(
             after = lan_fence.read_fence(client)
         except Exception as exc:  # noqa: BLE001
             return f"The fence's counters could not be read after the probe: {exc}"
-        for t, r in zip(sentinels, hit, strict=True):
-            t["reachable"] = r["reachable"]
+        for target_entry, r in zip(sentinels, hit, strict=True):
+            target_entry["reachable"] = r["reachable"]
         report["fence"], found_fence = judge_fence(sentinels, before, after)
         report["findings"].extend(found_fence)
     _dns_notes(outcome)
 
     for group, (label, docs) in GROUPS.items():
         rows = [
-            {k: t[k] for k in ("address", "label", "reachable", "expected", "note") if k in t}
-            for t in outcome
-            if t["group"] == group
+            {k: target_entry[k] for k in ("address", "label", "reachable", "expected", "note") if k in target_entry}
+            for target_entry in outcome
+            if target_entry["group"] == group
         ]
         if not rows:
             continue
         report["groups"].append({"group": group, "label": label, "targets": rows})
-        exposed = [t for t in outcome if t["group"] == group and t["reachable"] and not t.get("expected")]
+        exposed = [
+            target_entry
+            for target_entry in outcome
+            if target_entry["group"] == group and target_entry["reachable"] and not target_entry.get("expected")
+        ]
         if exposed:
             report["findings"].append(
                 {
                     "kind": f"reachable_{group}",
                     "exposure": True,
-                    "detail": f"{label}: an earner reaches {', '.join(t['address'] for t in exposed)}.",
+                    "detail": f"{label}: an earner reaches {', '.join(target_entry['address'] for target_entry in exposed)}.",
                     "docs": docs,
                 }
             )
 
-    blocked = {t["host"] for t in outcome if t["port"] == 53 and not t["reachable"]}
+    blocked = {
+        target_entry["host"] for target_entry in outcome if target_entry["port"] == 53 and not target_entry["reachable"]
+    }
     report["findings"].extend(dns_findings(every, network, found.get("resolvers") or [], blocked))
 
     if not internet["reachable"]:
@@ -1122,9 +1136,13 @@ def _dns_notes(outcome: list[dict[str, Any]]) -> None:
     for dns in outcome:
         if dns["port"] != 53 or not dns["reachable"]:
             continue
-        others = [t for t in outcome if t["host"] == dns["host"] and t["port"] != 53]
+        others = [
+            target_entry
+            for target_entry in outcome
+            if target_entry["host"] == dns["host"] and target_entry["port"] != 53
+        ]
         if dns["host"] == TAILSCALE_DNS:
-            page = next((t for t in others if t["port"] == 80), None)
+            page = next((target_entry for target_entry in others if target_entry["port"] == 80), None)
             if page and not page["reachable"]:
                 dns["expected"] = True
                 dns["note"] = (
@@ -1137,7 +1155,7 @@ def _dns_notes(outcome: list[dict[str, Any]]) -> None:
                     "docs show."
                 )
         elif dns["group"] == "lan":
-            if others and not any(t["reachable"] for t in others):
+            if others and not any(target_entry["reachable"] for target_entry in others):
                 dns["expected"] = True
                 dns["note"] = (
                     f"Expected with the DNS exception: port {others[0]['port']} on the same address is blocked, "

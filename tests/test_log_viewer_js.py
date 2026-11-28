@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import NODE_T
+
 ROOT = Path(__file__).resolve().parent.parent
 
 _HARNESS = r"""
@@ -95,3 +97,35 @@ class TestLogEntries:
         result = _entries("2026-13-45T99:99:99Z broken\n")
         assert result["entries"][0]["shown"] == ""
         assert result["entries"][0]["message"] == "2026-13-45T99:99:99Z broken"
+
+
+_TITLE_HARNESS = r"""
+const fs = require('fs');
+const src = fs.readFileSync(process.argv[1], 'utf8');
+const from = src.indexOf('  function logsTitle(');
+const to = src.indexOf('  async function viewLogs(');
+if (from < 0 || to < from) { console.log(JSON.stringify({ error: 'markers not found' })); process.exit(0); }
+const logsTitle = new Function(`${src.slice(from, to)}; return logsTitle;`)();
+console.log(JSON.stringify(JSON.parse(process.argv[2]).map((args) => logsTitle(...args))));
+"""
+
+
+def test_the_logs_title_reads_as_before_for_a_service_a_worker_and_a_copy():
+    """Each case is one message now; the English must not move."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    cases = [["honeygain", None, None], ["honeygain", 3, None], ["honeygain", 3, "1"], ["honeygain", 1234, "2"]]
+    out = subprocess.run(
+        [node, *NODE_T, "-e", _TITLE_HARNESS, str(ROOT / "app/static/js/app.js"), json.dumps(cases)],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    assert json.loads(out.stdout) == [
+        "Logs: honeygain",
+        "Logs: honeygain (worker #3)",
+        "Logs: honeygain (worker #3)",
+        "Logs: honeygain (worker #1234, copy 2)",
+    ]

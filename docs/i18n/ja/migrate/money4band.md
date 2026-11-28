@@ -1,5 +1,5 @@
 ---
-source_hash: 05d0f97e7d36
+source_hash: 5a764f1d0f5a
 ---
 # money4band からの移行 { #moving-from-money4band }
 
@@ -35,9 +35,10 @@ money4band 5.0 は `config/user-config.json` をディスク上で暗号化し
 起動のたびに自分の `.env` を削除します
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11))。
 CashPilot は暗号化されたファイルを読めません。money4band のフォルダーで、その `config edit`
-コマンドを実行してください。リリースのバイナリなら `./Money4Band-<os>-<arch> config edit`、
-ソースからなら `python main.py config edit` です。復号したファイルがエディターで開きます
-([CLI リファレンス](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit))。
+コマンドを実行してください。リリースのバイナリなら、お使いのシステム用のファイルを使います。たとえば `./Money4Band-linux-amd64 config edit`、Windows では `.\Money4Band-windows-amd64.exe config edit` です。
+ソースからなら `python run.py config edit` を実行します。
+これは uv で money4band を動かし、uv がない場合は pip の環境で動かします ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69))。
+このコマンドで、復号したファイルがエディターで開きます ([CLI リファレンス](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit))。
 その内容をすべてコピーして**Import from another tool** (ほかのツールからインポート) のページに貼り付け、エディターを閉じます。
 
 JSON ファイルを優先してください。`.env` では、Docker Compose が引用符で囲まれていない値の `$` を展開するので、

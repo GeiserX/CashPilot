@@ -19,6 +19,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app import auth, database, i18n, login_rate_limit, setup_token, themes, version
+from app.i18n import t
 
 __all__ = [
     "templates",
@@ -95,9 +96,9 @@ def _require_auth_api(request: Request) -> dict[str, Any]:
     """
     user = auth.get_current_user(request)
     if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(status_code=401, detail=t("api.not_authenticated"))
     if user.get("r") == "reader":
-        raise HTTPException(status_code=403, detail="Read-only token")
+        raise HTTPException(status_code=403, detail=t("api.read_only_token"))
     _refuse_fleet_key(user)
     return user
 
@@ -112,7 +113,7 @@ def _refuse_fleet_key(user: dict[str, Any]) -> None:
     the key themselves (app/main.py::_authenticate_worker_heartbeat).
     """
     if user.get("r") == "fleet":
-        raise HTTPException(status_code=403, detail="The fleet key only enrolls workers")
+        raise HTTPException(status_code=403, detail=t("api.fleet_key_only_enrolls_workers"))
 
 
 def _require_reader(request: Request) -> dict[str, Any]:
@@ -125,7 +126,7 @@ def _require_reader(request: Request) -> dict[str, Any]:
     """
     user = auth.get_current_user(request)
     if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(status_code=401, detail=t("api.not_authenticated"))
     _refuse_fleet_key(user)
     return user
 
@@ -133,14 +134,14 @@ def _require_reader(request: Request) -> dict[str, Any]:
 def _require_writer(request: Request) -> dict[str, Any]:
     user = _require_auth_api(request)
     if not auth.require_role(user, "owner", "writer"):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise HTTPException(status_code=403, detail=t("api.insufficient_permissions"))
     return user
 
 
 def _require_owner(request: Request) -> dict[str, Any]:
     user = _require_auth_api(request)
     if not auth.require_role(user, "owner"):
-        raise HTTPException(status_code=403, detail="Owner access required")
+        raise HTTPException(status_code=403, detail=t("api.owner_access_required"))
     return user
 
 
@@ -170,7 +171,7 @@ def _require_private_network(request: Request) -> None:
     except ValueError:
         return
     if not (ip.is_loopback or ip.is_private):
-        raise HTTPException(status_code=403, detail="First-run setup only allowed from private networks")
+        raise HTTPException(status_code=403, detail=t("api.first_run_setup_only_allowed"))
 
 
 def _require_first_run_access(request: Request, setup_token_value: str | None = None) -> None:
@@ -190,7 +191,7 @@ def _require_first_run_access(request: Request, setup_token_value: str | None = 
     if not setup_token.verify(token):
         raise HTTPException(
             status_code=403,
-            detail="First-run setup requires the setup token printed in the server logs",
+            detail=t("api.first_run_setup_requires_setup"),
         )
 
 
@@ -216,8 +217,7 @@ async def require_step_up(request: Any, password: str | None, *, action: str, ta
             status_code=403,
             detail={
                 "error": "step_up_api_key",
-                "message": "This needs the owner's password, so it cannot be done with an API key. "
-                "Sign in to the dashboard and do it there.",
+                "message": t("api.needs_owner_s_password_cannot"),
             },
         )
     ip = client_ip(request) or "unknown"
@@ -230,7 +230,7 @@ async def require_step_up(request: Any, password: str | None, *, action: str, ta
         await database.add_audit_event(action, target, "failed", actor=user, detail="wrong password")
         raise HTTPException(
             status_code=403,
-            detail={"error": "step_up_failed", "message": "The password is not correct."},
+            detail={"error": "step_up_failed", "message": t("api.password_not_correct")},
         )
     login_rate_limit.clear(rate_key)
     await database.add_audit_event(action, target, "confirmed", actor=user)

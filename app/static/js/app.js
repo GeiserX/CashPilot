@@ -342,9 +342,22 @@ const CP = (() => {
     note.style.display = message ? '' : 'none';
   }
 
+  let _ratesLoaded = false;
+
+  // The catalog and an open service detail may have drawn their estimates
+  // before the first rates came. Only the detail's estimate is redrawn:
+  // redrawing the modal would throw away the deploy form.
+  function redrawEstimates() {
+    if (document.body.dataset.page === 'catalog' && catalogServices.length) filterCatalog();
+    const openEstimate = document.getElementById('sd-estimate');
+    if (openEstimate && _detailSvc) openEstimate.innerHTML = detailEstimate(_detailSvc);
+  }
+
   async function loadExchangeRates() {
     try {
       _exchangeRates = await api('/api/exchange-rates');
+      if (!_ratesLoaded) redrawEstimates();
+      _ratesLoaded = true;
     } catch (err) {
       console.warn('Could not refresh exchange rates, keeping previous values:', err);
     }
@@ -606,7 +619,8 @@ const CP = (() => {
     const host = server.containers.filter(c => c.no_counters).map(c => c.service);
     const parts = [t('app.usage.sum_note')];
     if (host.length) {
-      parts.push(t('app.usage.host_network_some', { names: [...new Set(host)].join(', ') }));
+      const names = [...new Set(host)];
+      parts.push(t('app.usage.host_network_some', { names: names.join(', '), n: names.length }));
     }
     return parts.join(' ');
   }
@@ -3501,15 +3515,23 @@ const CP = (() => {
     if (atEnd) viewer.scrollTop = viewer.scrollHeight;
   }
 
+  // One message for each case, so a translation words the whole title.
+  function logsTitle(slug, workerId, instance) {
+    const copy = parseInt(instance);
+    if (workerId == null) return t('logs.title_service', { slug });
+    const worker = String(workerId);
+    return copy > 1
+      ? t('logs.title_copy', { slug, worker, copy: String(copy) })
+      : t('logs.title_worker', { slug, worker });
+  }
+
   async function viewLogs(slug, workerId, instance) {
     openModal('logs-modal');
     const title = document.getElementById('logs-modal-title');
     const viewer = document.getElementById('log-content');
-    const copy = parseInt(instance) > 1 ? `, copy ${parseInt(instance)}` : '';
-    const label = workerId != null ? `${slug} (worker #${workerId}${copy})` : slug;
-    if (title) title.textContent = `Logs: ${label}`;
+    if (title) title.textContent = logsTitle(slug, workerId, instance);
     applyLogWrap();
-    logNote(viewer, 'Loading logs...');
+    logNote(viewer, t('logs.loading'));
 
     if (logPollTimer) clearInterval(logPollTimer);
     const q = workerId != null ? `lines=200&worker_id=${workerId}${_instanceQuery(instance)}` : 'lines=200';
@@ -3517,9 +3539,9 @@ const CP = (() => {
     async function fetchLogs() {
       try {
         const data = await api(`/api/services/${slug}/logs?${q}`);
-        renderLogs(viewer, data.logs || '(no logs)');
+        renderLogs(viewer, data.logs || t('logs.none'));
       } catch (err) {
-        logNote(viewer, `Error loading logs: ${err.message}`);
+        logNote(viewer, t('logs.load_failed', { error: err.message }));
       }
     }
 
@@ -4608,9 +4630,14 @@ const CP = (() => {
       </table>`;
   }
 
+  // A catalog estimate is in whole dollars; a bound under a dollar keeps its cents.
+  function estimateAmount(usd) {
+    return formatCurrency(usd, 'USD', 'whole');
+  }
+
   function renderCatalogCard(svc) {
     const earning = svc.earnings
-      ? t('app.cat.estimate', { low: svc.earnings.monthly_low, high: svc.earnings.monthly_high, per: escapeHtml(svc.earnings.per || t('app.cat.month')) })
+      ? t('app.cat.estimate', { low: estimateAmount(svc.earnings.monthly_low), high: estimateAmount(svc.earnings.monthly_high), per: escapeHtml(svc.earnings.per || t('app.cat.month')) })
       : t('app.cat.varies');
     const isDeployed = svc.deployed || false;
     const broken = svc.status === 'broken';
@@ -4732,13 +4759,15 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Cached workers for detail modal
   let _detailWorkers = [];
+  let _detailSvc = null;
 
   async function openServiceDetail(slug) {
     openModal('service-detail-modal');
     const body = document.getElementById('service-detail-body');
     const title = document.getElementById('service-detail-title');
     if (body) body.innerHTML = '<div class="spinner spinner-block"></div>';
-    if (title) title.textContent = 'Loading...';
+    if (title) title.textContent = t('app.detail.loading');
+    _detailSvc = null;
 
     try {
       const [svc, workers] = await Promise.all([
@@ -4746,6 +4775,7 @@ const CP = (() => {
         api('/api/workers').catch(() => []),
       ]);
       _detailWorkers = workers;
+      _detailSvc = svc;
       if (title) title.textContent = svc.name;
       if (body) body.innerHTML = renderServiceDetail(svc, workers);
       // After the markup is in the DOM, not before: the container it fills is
@@ -4956,10 +4986,14 @@ const CP = (() => {
     }
   }
 
-  function renderServiceDetail(svc, workers) {
-    const earning = svc.earnings
-      ? t('app.detail.estimate', { low: svc.earnings.monthly_low, high: svc.earnings.monthly_high, per: svc.earnings.per || t('app.cat.month') })
+  function detailEstimate(svc) {
+    return svc.earnings
+      ? t('app.detail.estimate', { low: estimateAmount(svc.earnings.monthly_low), high: estimateAmount(svc.earnings.monthly_high), per: svc.earnings.per || t('app.cat.month') })
       : t('app.detail.varies');
+  }
+
+  function renderServiceDetail(svc, workers) {
+    const earning = detailEstimate(svc);
 
     const isDeployed = svc.deployed || false;
     const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
@@ -4993,7 +5027,7 @@ const CP = (() => {
       </div>
       <div class="detail-item">
         <div class="detail-label">${t('app.detail.estimated')}</div>
-        <div class="detail-value num">${earning}</div>
+        <div class="detail-value num" id="sd-estimate">${earning}</div>
       </div>
       <div class="detail-item">
         <div class="detail-label">${t('app.detail.payout')}</div>
@@ -5443,12 +5477,12 @@ const CP = (() => {
     if (!viewer) return;
     if (viewer.style.display === 'none') {
       viewer.style.display = 'block';
-      logNote(viewer, 'Loading...');
+      logNote(viewer, t('logs.loading_short'));
       try {
         const data = await api(`/api/services/${slug}/logs?worker_id=${workerId}&lines=100${_instanceQuery(instance)}`);
-        renderLogs(viewer, data.logs || '(no logs)');
+        renderLogs(viewer, data.logs || t('logs.none'));
       } catch (err) {
-        logNote(viewer, `Error: ${err.message}`);
+        logNote(viewer, t('logs.failed', { error: err.message }));
       }
     } else {
       viewer.style.display = 'none';
@@ -5459,12 +5493,12 @@ const CP = (() => {
     // Legacy — kept for backward compat
     const viewer = document.getElementById(`detail-logs-${slug}`);
     if (!viewer) return;
-    logNote(viewer, 'Loading...');
+    logNote(viewer, t('logs.loading_short'));
     try {
       const data = await api(`/api/services/${slug}/logs?lines=100`);
-      renderLogs(viewer, data.logs || '(no logs)');
+      renderLogs(viewer, data.logs || t('logs.none'));
     } catch (err) {
-      logNote(viewer, `Error: ${err.message}`);
+      logNote(viewer, t('logs.failed', { error: err.message }));
     }
   }
 
@@ -5586,6 +5620,8 @@ const CP = (() => {
   // The ledger's rows as HTML. Pure, so the harness can run it: every value
   // arrives masked, and the full one only ever comes from the reveal route.
   function identityRowsHtml(rows) {
+    // How long an unconfirmed deploy or restore holds its id: database.PENDING_IDENTITY_SECONDS.
+    const PENDING_IDENTITY_HOURS = 6;
     if (!Array.isArray(rows) || !rows.length) {
       return `<p class="muted">${t('app.ids.empty')}</p>`;
     }
@@ -5615,9 +5651,9 @@ const CP = (() => {
       const change = r.changeable
         ? `<button class="btn btn-ghost btn-sm" data-action="openIdentityChange" data-a1="${id}">${t('app.ids.change')}</button>` : '';
       const unconfirmed = held && !r.forgettable
-        ? `<div class="credential-health-hint">${t('app.ids.unconfirmed_deploy')}</div>`
+        ? `<div class="credential-health-hint">${t('app.ids.unconfirmed_deploy', { hours: PENDING_IDENTITY_HOURS })}</div>`
         : (backup && r.source === 'pending' && !r.forgettable
-          ? `<div class="credential-health-hint">${t('app.ids.unconfirmed_restore')}</div>` : '');
+          ? `<div class="credential-health-hint">${t('app.ids.unconfirmed_restore', { hours: PENDING_IDENTITY_HOURS })}</div>` : '');
       return `
         <div class="credential-health-item identity-row" data-identity="${id}">
           <div>
@@ -6495,9 +6531,10 @@ const CP = (() => {
     return 'USD';
   }
 
+  // digits 'whole' drops the cents only when the shown amount has none: $5 is
+  // "$5", and the same bound in euros at 0.86 is "€4.30", never "€4".
   function formatCurrency(val, nativeCurrency, digits) {
     nativeCurrency = nativeCurrency || 'USD';
-    const fractionDigits = digits ?? 2;
     const amount = parseFloat(val || 0);
 
     // Convert to USD first
@@ -6532,15 +6569,21 @@ const CP = (() => {
     }
     // else: no rate, so the value stays in USD and says so.
 
+    // 'whole' writes two decimals and drops them only when the formatter's own
+    // rounding leaves both zero: 1.005 is "1.01", 4.999 is "5".
+    const whole = digits === 'whole';
+    const fractionDigits = whole ? 2 : (digits ?? 2);
     try {
       return new Intl.NumberFormat(undefined, {
         style: 'currency',
         currency,
         minimumFractionDigits: fractionDigits,
         maximumFractionDigits: fractionDigits,
+        ...(whole ? { trailingZeroDisplay: 'stripIfInteger' } : {}),
       }).format(displayAmount);
     } catch {
-      return displayAmount.toFixed(fractionDigits) + ' ' + currency;
+      const text = displayAmount.toFixed(fractionDigits);
+      return (whole ? text.replace(/\.00$/, '') : text) + ' ' + currency;
     }
   }
 
@@ -7018,6 +7061,8 @@ const CP = (() => {
         loadServicesTable();
         loadUsagePanel();
       }
+      // The catalog's estimates are drawn in the display currency too.
+      if (document.body.dataset.page === 'catalog') filterCatalog();
       // Also sync settings page dropdown if present
       const settingsSelect = document.getElementById('settings-currency');
       if (settingsSelect) settingsSelect.value = select.value;
