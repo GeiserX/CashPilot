@@ -274,10 +274,12 @@ class Claude:
         self.cwd.mkdir(parents=True, exist_ok=True)
 
     def ask(self, prompt: str, schema: dict, timeout: int) -> dict:
-        tried = 0
-        while tried < len(self.accounts):
+        tried: set[str] = set()  # per call, so another worker moving the cursor never skips an account
+        while len(tried) < len(self.accounts):
             with self.lock:
-                acct = self.accounts[self.at % len(self.accounts)]
+                start = self.at % len(self.accounts)
+            order = self.accounts[start:] + self.accounts[:start]
+            acct = next(a for a in order if a not in tried)
             cmd = ["nd", "run", acct, "--", "claude", "-p", "--model", "opus", "--tools", ""]
             cmd += ["--strict-mcp-config", "--setting-sources", "", "--no-session-persistence"]
             cmd += ["--output-format", "json", "--json-schema", json.dumps(schema)]
@@ -299,7 +301,7 @@ class Claude:
                 with self.lock:
                     if self.accounts[self.at % len(self.accounts)] == acct:
                         self.at += 1
-                tried += 1
+                tried.add(acct)
                 continue
             raise RuntimeError(f"claude on {acct} failed: {why[:400]}")
         raise RuntimeError(f"no Claude account could run (tried {', '.join(self.accounts)})")
@@ -419,7 +421,7 @@ def old_english(clone: pathlib.Path, s: Surface, wanted: dict[str, str]) -> dict
     return found
 
 
-ANDROID_ELEM = r'(?ms)^([ \t]*)<(string|plurals|string-array)\b[^>]*\bname="{name}"[^>]*>.*?</\2>[ \t]*\n'
+ANDROID_ELEM = r'(?ms)^([ \t]*)<(string|plurals|string-array)\b[^>]*\bname=(["\']){name}\3[^>]*>.*?</\2>[ \t]*\n'
 
 
 def android_element(text: str, name: str) -> tuple[str, str] | None:
@@ -487,11 +489,20 @@ def json_delete(root: dict, path: tuple) -> None:
             del chain[depth - 1][path[depth - 1]]
 
 
+PLAY_LIMITS = {"title.txt": 30, "short_description.txt": 80, "full_description.txt": 4000}
+
+
 def check_one(s: Surface, source: dict, key_values: dict) -> dict[str, str]:
     """Placeholder or emptiness errors of new values, by key."""
     src = {k: source[k] for k in key_values}
     found = ic.check_target(src, key_values, None)
-    return {k: d or "empty" for kind in ("missing", "placeholder") for k, d in found[kind]}
+    errors = {k: d or "empty" for kind in ("missing", "placeholder") for k, d in found[kind]}
+    if s.fmt == "textdir":  # Google Play's limits
+        for k, v in key_values.items():
+            limit = PLAY_LIMITS.get(pathlib.PurePath(k).name)
+            if limit and len(v.strip()) > limit and k not in errors:
+                errors[k] = f"{len(v.strip())} characters; Google Play allows {limit}"
+    return errors
 
 
 def parse_android(xml: str, name: str, root_tag: str) -> tuple[dict, str | None]:
@@ -592,45 +603,42 @@ def translate_work(clone: pathlib.Path, w: Work, claude: Claude) -> None:
                     picked.append(k)
         return [{"en": source[k], "translation": t.entries[k]} for k in picked[:40]]
 
+    def validate(key: str, text: str) -> str | None:
+        if s.fmt == "android":
+            values, err = parse_android(text.strip(), key, root_tag)
+            if err is not None:
+                return err
+            want = [k for k in source if base_name(k) == key]
+            if set(values) != set(want):  # an extra or a missing array item, or another element's keys
+                return f"the element must hold exactly {', '.join(want)}"
+            bad = check_one(s, source, values)
+            return "; ".join(f"{k}: {d}" for k, d in bad.items()) or None
+        return check_one(s, source, {key: text}).get(key)
+
     todo = list(w.keys)
     errors: dict[str, str] = {}
     for attempt in range(2):
         if not todo:
             break
-        answers: dict[str, str] = {}
+        last, errors = errors, {}
         for i in range(0, len(todo), BATCH):
             chunk = todo[i : i + BATCH]
-            prompt = keys_prompt(s, t.code, [entry(k) for k in chunk], context(chunk), errors)
-            answers.update(claude.ask(prompt, KEYS_SCHEMA, 900)["translations"])
-        errors = {}
-        for key in todo:
-            text = answers.get(key)
-            if text is None:
-                errors[key] = "no answer for this key"
+            prompt = keys_prompt(s, t.code, [entry(k) for k in chunk], context(chunk), last)
+            try:
+                reply = claude.ask(prompt, KEYS_SCHEMA, 900)["translations"]
+            except Exception as e:  # this batch stays for the retry; the batches before it are kept
+                errors.update({k: f"no answer: {str(e)[:200]}" for k in chunk})
                 continue
-            if s.fmt == "android":
-                values, err = parse_android(text.strip(), key, root_tag)
+            for key in chunk:  # only the keys this batch asked for
+                text = reply.get(key)
+                err = "no answer for this key" if text is None else validate(key, text)
                 if err is None:
-                    want = [k for k in source if base_name(k) == key]
-                    got = {k: v for k, v in values.items() if k in want}
-                    if set(got) != set(want):
-                        err = f"the element must hold exactly {', '.join(want)}"
-                    else:
-                        bad = check_one(s, source, got)
-                        err = "; ".join(f"{k}: {d}" for k, d in bad.items()) or None
-                if err is None:
-                    w.result[key] = text.strip()
+                    w.result[key] = text.strip() if s.fmt == "android" else text
                 else:
                     errors[key] = err
-            else:
-                bad = check_one(s, source, {key: text})
-                if bad:
-                    errors[key] = bad[key]
-                else:
-                    w.result[key] = text
         todo = list(errors)
         if errors and attempt == 0:
-            log.info("%s %s: %d answers failed the check, asking once more", s.name, t.locale, len(errors))
+            log.info("%s %s: %d entries have no valid answer yet, asking once more", s.name, t.locale, len(errors))
     w.failed = errors
     for key, why in errors.items():
         log.warning("%s %s: %s stays as it was: %s", s.name, t.locale, key, why)
@@ -650,16 +658,17 @@ def write_work(clone: pathlib.Path, w: Work) -> set[pathlib.Path]:
         en_paths = json_paths(en_root)
         tgt_paths = json_paths(root)
         inline = t.sidecar is None
+        # Removed keys go first: English may have turned a leaf "notice" into "notice.title".
+        for key in w.extra:
+            if key in tgt_paths:
+                json_delete(root, tgt_paths[key])
+            hashes.pop(key, None)
         for key in w.unstamped if inline else ():
             json_put(root, en_root, tgt_paths[key], {"text": t.entries[key], "source": hashes[key]})
         for key, text in w.result.items():
             h = ic.source_hash(source[key])
             json_put(root, en_root, en_paths[key], {"text": text, "source": h} if inline else text)
             hashes[key] = h
-        for key in w.extra:
-            if key in tgt_paths:
-                json_delete(root, tgt_paths[key])
-            hashes.pop(key, None)
         new = json.dumps(tree, ensure_ascii=False, indent=2) + "\n"
         if new != t.path.read_text(encoding="utf-8"):
             t.path.write_text(new, encoding="utf-8")
@@ -667,6 +676,10 @@ def write_work(clone: pathlib.Path, w: Work) -> set[pathlib.Path]:
     elif s.fmt == "android":
         text = t.path.read_text(encoding="utf-8")
         en_names = list(dict.fromkeys(base_name(k) for k in source))
+        for name in w.extra:
+            text = re.sub(ANDROID_ELEM.format(name=re.escape(name)), "", text)
+            for key in [k for k in hashes if base_name(k) == name]:
+                hashes.pop(key)
         for name, xml in w.result.items():
             cur = android_element(text, name)
             indent = cur[0] if cur else "    "
@@ -682,10 +695,6 @@ def write_work(clone: pathlib.Path, w: Work) -> set[pathlib.Path]:
                 text = text[:at] + block + text[at:]
             for key in (k for k in source if base_name(k) == name):
                 hashes[key] = ic.source_hash(source[key])
-        for name in w.extra:
-            text = re.sub(ANDROID_ELEM.format(name=re.escape(name)), "", text)
-            for key in [k for k in hashes if base_name(k) == name]:
-                hashes.pop(key)
         if text != t.path.read_text(encoding="utf-8"):
             t.path.write_text(text, encoding="utf-8")
             changed.add(t.path)
@@ -721,6 +730,8 @@ def docs_module(clone: pathlib.Path):
 
 def docs_check(clone: pathlib.Path) -> tuple[list[str], dict[str, list[str]], str]:
     p = sh([sys.executable, "-I", ".github/scripts/docs-i18n.py", "check"], clone, check=False)
+    if p.returncode not in (0, 1) or "docs-i18n check:" not in p.stdout:  # a crash, never "no findings"
+        raise RuntimeError(f"docs-i18n.py check crashed ({p.returncode}): {(p.stderr or p.stdout).strip()[-600:]}")
     stale = re.findall(r"^STALE (docs/i18n/\S+\.md):", p.stdout, re.M)
     errors: dict[str, list[str]] = {}
     for m in re.finditer(r"^ERROR (\S+?):? (.*)$", p.stdout, re.M):
@@ -810,35 +821,35 @@ def translate_page(clone: pathlib.Path, pw: PageWork, claude: Claude, errors: li
 
 
 def sync_docs(clone: pathlib.Path, pages: list[PageWork], claude: Claude) -> set[pathlib.Path]:
+    def rel(pw: PageWork) -> str:
+        return pw.path.relative_to(clone).as_posix()
+
     errors: dict[str, list[str]] = {}
     todo = list(pages)
     for attempt in range(2):
         with concurrent.futures.ThreadPoolExecutor(WORKERS) as pool:
-            futs = {
-                pool.submit(
-                    translate_page, clone, pw, claude, errors.get(pw.path.relative_to(clone).as_posix(), [])
-                ): pw
-                for pw in todo
-            }
+            futs = {pool.submit(translate_page, clone, pw, claude, errors.get(rel(pw), [])): pw for pw in todo}
             for f in concurrent.futures.as_completed(futs):
                 pw = futs[f]
                 try:
                     f.result()
                     pw.path.write_text(pw.new, encoding="utf-8")
+                    pw.failed = ""
                 except Exception as e:  # one page failing leaves that page stale, never the run broken
-                    pw.failed = str(e)
+                    pw.failed = f"no answer: {str(e)[:200]}"
                     log.warning("docs %s %s: %s", pw.code, pw.rel, e)
         _, errors, _ = docs_check(clone)
-        todo = [pw for pw in todo if not pw.failed and pw.path.relative_to(clone).as_posix() in errors]
+        todo = [pw for pw in pages if pw.failed or rel(pw) in errors]
         if not todo:
             break
         if attempt == 0:
-            log.info("docs: %d pages failed the check, asking once more", len(todo))
-    for pw in todo:  # still failing after the retry: put the stale page back
-        pw.failed = "; ".join(errors.get(pw.path.relative_to(clone).as_posix(), []))[:300]
+            log.info("docs: %d pages have no valid answer yet, asking once more", len(todo))
+    for pw in todo:  # no valid answer after the retry: put the stale page back as it was
+        pw.failed = pw.failed or "; ".join(errors.get(rel(pw), []))[:300]
+        pw.new = ""
         pw.path.write_text(pw.original, encoding="utf-8")
         log.warning("docs %s %s stays stale: %s", pw.code, pw.rel, pw.failed)
-    return {pw.path for pw in pages if not pw.failed and pw.new}
+    return {pw.path for pw in pages if pw.new and not pw.failed}
 
 
 # ---------------------------------------------------------------------------
@@ -872,6 +883,7 @@ def prepare(repo: str, base: str, remote: str) -> pathlib.Path:
     if not clone.exists():
         clone.parent.mkdir(parents=True, exist_ok=True)
         sh(["git", "clone", "-q", f"https://github.com/{UPSTREAM}/{repo}.git", str(clone)], ROOT)
+    if "amiga" not in git(clone, "remote").split():  # run.sh clones CashPilot with origin only
         git(clone, "remote", "add", "amiga", f"https://github.com/{FORK}/{repo}.git")
     git(clone, "fetch", "-q", "origin", "main")
     if remote == "amiga":
@@ -944,7 +956,7 @@ def sync_repo(repo: str, args, claude_box: list) -> str:
         branch += f"-{datetime.datetime.now():%H%M}"
     git(clone, "switch", "-q", "-c", branch)
     git(clone, "add", "--", *sorted(str(p.relative_to(clone)) for p in changed))
-    title, body = pr_text(repo, work, pages)
+    title, body = pr_text(repo, work, pages, args.base)
     git(clone, "-c", f"user.name={AUTHOR[0]}", "-c", f"user.email={AUTHOR[1]}", "commit", "-q", "-m", title)
     failures = run_checks(clone, repo)
     if failures:
@@ -954,16 +966,18 @@ def sync_repo(repo: str, args, claude_box: list) -> str:
     git(clone, "push", "-q", "amiga", f"HEAD:refs/heads/{branch}", amiga=True)
     body_file = ROOT / "logs" / f"pr-{repo}-{branch.replace('/', '_')}.md"
     body_file.write_text(body, encoding="utf-8")
-    url = sh(
-        ["gh-amiga", "pr", "create", "--repo", f"{UPSTREAM}/{repo}", "--base", "main"]
-        + ["--head", f"{FORK}:{branch}", "--title", title, "--body-file", str(body_file)],
-        clone,
-    ).stdout.strip()
+    create = ["gh-amiga", "pr", "create", "--repo", f"{UPSTREAM}/{repo}", "--base", "main"]
+    create += ["--head", f"{FORK}:{branch}", "--title", title, "--body-file", str(body_file)]
+    try:
+        url = sh(create, clone).stdout.strip()
+    except RuntimeError as e:
+        raise Refused(f"pushed {FORK}:{branch}, but opening the PR failed: {e}. Open it by hand: {' '.join(create)}")
     return f"opened {url}"
 
 
-def pr_text(repo: str, work: list[Work], pages: list[PageWork]) -> tuple[str, str]:
-    locales = {w.target.code for w in work if w.result or w.extra} | {pw.code for pw in pages if pw.new}
+def pr_text(repo: str, work: list[Work], pages: list[PageWork], base: str = "main") -> tuple[str, str]:
+    locales = {w.target.code for w in work if w.result or w.extra}
+    locales |= {pw.code for pw in pages if pw.new and not pw.failed}
     n = len(locales)
     if n:
         title = f"fix(i18n): update {n} language{'s' if n != 1 else ''} to the changed English, so none shows old text"
@@ -979,6 +993,11 @@ def pr_text(repo: str, work: list[Work], pages: list[PageWork]) -> tuple[str, st
         " (`scripts/i18n-sync/` in GeiserX/CashPilot). It used Claude (opus), the glossary in"
         " `i18n/glossary.yml` of GeiserX/CashPilot, and the translations we already have. A person merges it.",
         "",
+        *(
+            [f"This run translated the fork's branch `{base}`, so the PR also carries that branch's commits.", ""]
+            if base != "main"
+            else []
+        ),
         "These checks passed on this branch before the PR opened:",
         "",
         *[f"- {c}" for c in checks],
@@ -1010,7 +1029,7 @@ def pr_text(repo: str, work: list[Work], pages: list[PageWork]) -> tuple[str, st
     left = [(w.target.locale, k, why) for w in work for k, why in w.failed.items()]
     left += [(pw.code, pw.rel, pw.failed) for pw in pages if pw.failed]
     if left:
-        lines += ["These stay as they were, because the answer failed the check twice:", ""]
+        lines += ["These stay as they were, because no answer passed the check in two tries:", ""]
         lines += [f"- {loc} `{k}`: {why}" for loc, k, why in left]
         lines.append("")
     lines.append("To review, read a few changed strings in a language you know, then merge.")
