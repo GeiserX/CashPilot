@@ -549,7 +549,7 @@ def _gpu_presence() -> dict[str, Any]:
             "available": None,
             "devices": [],
             "detected_by": None,
-            "reason": f"GPU detection is not implemented for {platform.system()}; this says nothing about whether one exists",
+            "reason": t("worker.gpu_detection_not_implemented_says", platform=platform.system()),
         }
 
     if Path("/.dockerenv").exists():
@@ -560,7 +560,7 @@ def _gpu_presence() -> dict[str, Any]:
             "available": None,
             "devices": [],
             "detected_by": None,
-            "reason": "no GPU is visible from inside this container; the host may still have one that was not passed through",
+            "reason": t("worker.no_gpu_visible_inside_container"),
         }
 
     # Linux, sysfs unreadable (or WSL), no NVIDIA tool and no render node. Only
@@ -1946,7 +1946,8 @@ _ALLOWED_NETWORK_MODES = {None, "", "bridge", "none", "host"}
 def _validate_runtime_choice(choice: str | None) -> None:
     if choice is not None and choice not in layers.CHOICES:
         raise HTTPException(
-            status_code=400, detail=f"runtime_choice is {choice!r}; it takes one of {', '.join(layers.CHOICES)}."
+            status_code=400,
+            detail=t("worker.runtime_choice_takes_one", choice=repr(choice), choices=", ".join(layers.CHOICES)),
         )
 
 
@@ -2515,8 +2516,13 @@ def _deploy_routed(
                 # the routed deployment records, so the earner stays capped and listed.
                 error.detail = {
                     "error": "routed_copy_may_exist",
-                    "message": f"{error.detail}. {slug} stays routed through proxy {proxy_id} on this worker, "
-                    f"because its routed copy may still exist: {', '.join(left)}",
+                    "message": t(
+                        "worker.stays_routed_through_proxy_worker",
+                        detail=error.detail,
+                        slug=slug,
+                        proxy_id=proxy_id,
+                        left=", ".join(left),
+                    ),
                 }
             raise error from None
 
@@ -2547,8 +2553,7 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
         # layer the copy does not have.
         raise HTTPException(
             status_code=400,
-            detail="A copy routed through a proxy runs under Docker's default runtime. "
-            "Choosing gVisor for it is not supported yet; deploy it without a runtime choice.",
+            detail=t("worker.copy_routed_through_proxy_runs"),
         )
     # Counted from now, as a direct deploy's is (api_deploy_container): the UI
     # holds the ids of a copy deploy it got no answer for, and the hold must
@@ -3213,10 +3218,7 @@ async def api_remove_container(
                 "blocked": exc.blocked,
                 # What the owner's approval names to delete exactly these (step_up.delete_target).
                 "critical_set": exc.critical_set,
-                "hint": (
-                    "Nothing was removed. Back up the listed volumes first. To proceed "
-                    "anyway, repeat the request with allow_delete_critical=true."
-                ),
+                "hint": (t("worker.nothing_removed_back_up_listed")),
             },
         )
     except ValueError as exc:
@@ -3572,10 +3574,7 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
         "available": available,
         "default": orchestrator._CONTAINER_RUNTIME or None,
         "supported": False,
-        "note": (
-            "Selecting a non-default runtime is an advanced, unsupported choice. It is not a "
-            "hardening recommendation — see the docs for why."
-        ),
+        "note": (t("worker.selecting_non_default_runtime_advanced")),
     }
 
 

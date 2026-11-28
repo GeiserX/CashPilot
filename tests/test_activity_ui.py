@@ -450,6 +450,25 @@ class TestAlertRules:
     def test_each_lan_class_raises(self, cls):
         assert self._kinds([["tcp", "10.1.2.3", 22, cls, 1, {"syn_sent": 1}]]) == [("activity_lan", cls)]
 
+    @pytest.mark.parametrize(
+        ("cls", "phrase"),
+        [
+            ("lan", "tried to reach your local network: 1 destination, port 22."),
+            ("tailnet", "tried to reach your tailnet: 1 destination, port 22."),
+            ("docker_host", "tried to reach the Docker host itself: 1 destination, port 22."),
+            ("link_local", "tried to reach a link-local address: 1 destination, port 22."),
+            ("docker_peer", "tried to reach another container on its Docker network (not an earner): 2 destinations"),
+        ],
+    )
+    def test_each_lan_class_names_its_destination_in_one_sentence(self, cls, phrase):
+        # One message with a select on the class, so a translation words the
+        # whole sentence; a code that no branch names would show as the code.
+        rows = [["tcp", "10.1.2.3", 22, cls, 1, {"est": 1}]]
+        if cls == "docker_peer":
+            rows.append(["tcp", "10.1.2.4", 22, cls, 1, {"est": 1}])
+        f = activity_ui.alert_findings(activity_ui.sanitise(window(out=rows), NOW))
+        assert phrase in f[0]["message"]
+
     def test_pending_wording(self):
         f = activity_ui.alert_findings(
             activity_ui.sanitise(window(out=[["tcp", "10.1.2.3", 22, "lan", 1, {"syn_sent": 1}]]), NOW)
@@ -538,6 +557,57 @@ class TestSpikes:
         alerts = run_db(tmp_path, go)
         assert [(a["kind"], a["subject"]) for a in alerts] == [("activity_spike", "box:c:bytes")]
         assert "received 5.0 GiB" in alerts[0]["message"]
+
+    def _byte_spike(self, tmp_path):
+        from app import main
+
+        now = 1_900_000_000.0
+        last = int(now // 3600) * 3600 - 3600
+
+        async def go():
+            db = await database._get_db()
+            for i in range(1, 100):
+                await db.execute(
+                    "INSERT INTO usage_hourly (worker_id, container, hour, slug, rx_bytes, tx_bytes) VALUES (1, 'c', ?, 'x', ?, ?)",
+                    (last - i * 3600, 10 * 1024**2, None),
+                )
+            await db.execute(
+                "INSERT INTO usage_hourly (worker_id, container, hour, slug, rx_bytes, tx_bytes) VALUES (1, 'c', ?, 'x', ?, NULL)",
+                (last, 5 * 1024**3),
+            )
+            await db.commit()
+            await main._activity_spikes([{"id": 1, "client_id": "box", "name": "box"}], now=now)
+            return await rows("alerts")
+
+        return run_db(tmp_path, go)[0]["message"]
+
+    def test_a_spike_alert_reads_as_one_sentence(self, tmp_path):
+        assert self._byte_spike(tmp_path) == (
+            "On box: c received 5.0 GiB in the last hour, more than 10 times its usual hour this week."
+        )
+
+    def test_a_spike_alert_is_in_the_owners_language(self, tmp_path, monkeypatch):
+        from pathlib import Path
+
+        from app import i18n
+
+        source = json.loads((Path(i18n.__file__).parent / "en.json").read_text(encoding="utf-8"))
+        directory = tmp_path / "i18n"
+        directory.mkdir()
+        (directory / "en.json").write_text(json.dumps(source), encoding="utf-8")
+        key = "alert.activity.spike"
+        marked = {key: {"text": f"«{source[key]}»", "source": i18n.source_hash(source[key])}}
+        (directory / "es.json").write_text(json.dumps(marked, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setattr(i18n, "DIR", directory)
+        i18n.reload()
+        i18n.set_background("es")
+        try:
+            assert self._byte_spike(tmp_path) == (
+                "«On box: c received 5.0 GiB in the last hour, more than 10 times its usual hour this week.»"
+            )
+        finally:
+            monkeypatch.undo()
+            i18n.reload()
 
 
 # ---------------------------------------------------------------------------
