@@ -139,8 +139,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - cashpilot_docker_api:/run/cashpilot-docker
     environment:
-      # Host folders containers may bind (a folder a service keeps its data
-      # in, Storj for example), comma-separated. The placeholders sit under
+      # Host paths containers may bind (each folder a service keeps its data
+      # in, Storj's identity and data folders for example), comma-separated.
+      # The worker binds a listed path only as itself, never a folder under
+      # it. The placeholders sit under
       # /dev/null, where no directory can ever exist, so they allow nothing.
       # Written out, not as ${VAR:-default}: CasaOS turns an unset variable
       # into "$VAR" on import and then into an empty string, and an empty
@@ -160,7 +162,7 @@ services:
       envs:
         - container: SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS
           description:
-            en_US: Host folders service containers may bind, comma-separated. Put the same list in the worker's CASHPILOT_PROXY_BIND_MOUNTS.
+            en_US: Host paths service containers may bind, comma-separated. Each one binds only as itself, never a folder under it. Put the same list in the worker's CASHPILOT_PROXY_BIND_MOUNTS.
 
   cashpilot-worker:
     image: drumsergio/cashpilot-worker:3.0.0
@@ -221,7 +223,7 @@ services:
             en_US: Name of this worker in the dashboard
         - container: CASHPILOT_PROXY_BIND_MOUNTS
           description:
-            en_US: Host folders service containers may bind, comma-separated. Must match the socket proxy's SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS.
+            en_US: Host paths service containers may bind, comma-separated, each only as itself, never a folder under it. Must match the socket proxy's SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS.
       volumes:
         - container: /run/cashpilot-docker
           description:

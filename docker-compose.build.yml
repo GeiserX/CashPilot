@@ -156,9 +156,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - cashpilot_docker_api:/run/cashpilot-docker
     environment:
-      # Host folders containers may bind: your compose folder (the in-app
-      # update needs it) and any folder a service keeps its data in (Storj,
-      # for example), comma-separated. Set both in the .env next to this file.
+      # Host paths containers may bind: your compose folder (the in-app
+      # update needs it) and each folder a service keeps its data in (Storj's
+      # identity and data folders, for example), comma-separated. Set both in
+      # the .env next to this file. The worker binds a listed path only as
+      # itself, never a folder under it, so list every path a service binds.
       # The placeholders sit under /dev/null, where no directory can ever exist
       # (Docker cannot create one there), so an unset variable allows nothing.
       - SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=${CASHPILOT_COMPOSE_DIR:-/dev/null/cashpilot-compose-dir-unset},${CASHPILOT_PROXY_BIND_MOUNTS:-/dev/null/cashpilot-bind-mounts-unset}
