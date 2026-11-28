@@ -3026,7 +3026,7 @@ def critical_mount_conflicts(slug: str, volumes: Any, client: Any = None) -> lis
             # belongs to the service whose volume it copies, by its name alone: it
             # stays that service's after the copy's container is gone.
             copied = _COPY_VOLUME_RE.fullmatch(source)
-            owners = named.get(source, set()) | (named.get(copied.group(1), set()) if copied else set())
+            owners = named.get(source) or (named.get(copied.group(1), set()) if copied else set())
             others = sorted(owners - {slug})
             if others:
                 found.append((source, others[0]))

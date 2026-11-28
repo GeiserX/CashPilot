@@ -32,11 +32,14 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;',
 const box = {
   innerHTML: '',
   querySelectorAll(sel) {
-    assert.equal(sel, 'input[data-ack]:checked');
-    return [...this.innerHTML.matchAll(/<input type="checkbox" data-ack="([a-z_]+)" checked>/g)].map(m => ({dataset: {ack: m[1]}}));
+    const all = sel === 'input[data-ack]';
+    assert.ok(all || sel === 'input[data-ack]:checked', sel);
+    const re = all ? /<input type="checkbox" data-ack="([a-z_]+)"( checked)?>/g : /<input type="checkbox" data-ack="([a-z_]+)" checked>/g;
+    return [...this.innerHTML.matchAll(re)].map(m => ({dataset: {ack: m[1]}}));
   },
 };
 const tick = key => { box.innerHTML = box.innerHTML.replace(`data-ack="${key}">`, `data-ack="${key}" checked>`); };
+const untick = key => { box.innerHTML = box.innerHTML.replace(`data-ack="${key}" checked>`, `data-ack="${key}">`); };
 const run = {disabled: false};
 const slug = {value: 'mysterium'};
 const proxy = {value: '3'};
@@ -51,7 +54,8 @@ const document = {
   })[id],
 };
 let answer = {needs: ['net_admin', 'tun_device', 'no_inbound'], volumes: ['mysterium-data-p3']};
-const CP = {api: async () => { if (answer instanceof Error) throw answer; return answer; }};
+let during = null; // runs while the request is out, as an owner's click would
+const CP = {api: async () => { if (during) { during(); during = null; } if (answer instanceof Error) throw answer; return answer; }};
 
 const fillNeeds = new Function(
   'document', 'CP', 'esc', 't',
@@ -70,6 +74,14 @@ await fillNeeds();
 assert.deepEqual(
   box.querySelectorAll('input[data-ack]:checked').map(el => el.dataset.ack), ['net_admin', 'no_inbound'],
   'a refresh of the same service and proxy keeps the ticks',
+);
+
+// The owner ticks one and unticks another while the refresh is out: the boxes show that.
+during = () => { tick('tun_device'); untick('net_admin'); };
+await fillNeeds();
+assert.deepEqual(
+  box.querySelectorAll('input[data-ack]:checked').map(el => el.dataset.ack), ['tun_device', 'no_inbound'],
+  'ticks changed during a refresh are kept',
 );
 
 // Another proxy: the ticks answered the old one's needs, so they go.

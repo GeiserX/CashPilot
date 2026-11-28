@@ -928,20 +928,29 @@ def _gate_up(client: Any, tunnel: Any) -> None:
         return
     files = {key: _read_secret_file_or_raise(tunnel, key) or "" for key in SECRET_KEYS}
     files["gate"] = "1"
-    old = _get(client, gate_name(tag))
-    if old is not None:
-        if _labels(old).get(LABEL_GATE_OF) != tag:
-            raise ProxyTunnelError(t("err.proxy_tunnel.container_named_cashpilot_did_not", final=gate_name(tag)))
-        old.stop(timeout=SIDECAR_STOP_SECONDS)
-        old.remove(force=True, v=True)
-    net = _gate_network(client, tag)
-    network = orchestrator.container_network("bridge")
-    kwargs = sidecar_kwargs(gate_name(tag), GATE_SLUG, None, network, hostname=_hostname(gate_name(tag)))
-    kwargs.pop("detach")
-    kwargs["labels"][LABEL_GATE_OF] = tag
-    kwargs["sysctls"]["net.ipv4.ip_forward"] = "1"
     secrets = [files.get("auth_key", ""), *_auth_secrets(files.get("proxy_auth", ""))]
-    gate = client.containers.create(**kwargs)
+    # A Docker error here is a gate that could not start, as one below is: the
+    # caller rolls back to the old settings on it (_in_place), never mistakes
+    # it for a broken tunnel.
+    try:
+        old = _get(client, gate_name(tag))
+        if old is not None:
+            if _labels(old).get(LABEL_GATE_OF) != tag:
+                raise ProxyTunnelError(t("err.proxy_tunnel.container_named_cashpilot_did_not", final=gate_name(tag)))
+            old.stop(timeout=SIDECAR_STOP_SECONDS)
+            old.remove(force=True, v=True)
+        net = _gate_network(client, tag)
+        network = orchestrator.container_network("bridge")
+        kwargs = sidecar_kwargs(gate_name(tag), GATE_SLUG, None, network, hostname=_hostname(gate_name(tag)))
+        kwargs.pop("detach")
+        kwargs["labels"][LABEL_GATE_OF] = tag
+        kwargs["sysctls"]["net.ipv4.ip_forward"] = "1"
+        gate = client.containers.create(**kwargs)
+    except ProxyTunnelError:
+        raise
+    except Exception as exc:
+        detail = orchestrator.proxy_refusal(exc) or str(exc)
+        raise ProxyTunnelError(redact(t("err.proxy_tunnel.gate_could_not_start", detail=detail), secrets)) from None
     try:
         net.connect(gate)
         if not gate.put_archive(SECRET_DIR, _secret_tar(files)):
@@ -976,7 +985,11 @@ def _sweep_gates(client: Any) -> None:
     for gate in gates:
         tag = _labels(gate).get(LABEL_GATE_OF)
         if tag and tag not in tags and _age_seconds(gate) >= STAGED_STALE_SECONDS:
-            _drop_gate(client, tag)
+            # One that cannot go never stops the heartbeat: the next one tries again.
+            try:
+                _drop_gate(client, tag)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not remove the orphan gate %s: %s", gate_name(tag), redact(str(exc)))
     # A gate network whose tunnel and gate are both gone (a worker that died
     # between creating it and creating the tunnel). Not a young one, which a
     # deploy may be filling.
@@ -1593,6 +1606,16 @@ def _ensure_tunnel(
         # A change that died after it began moving copies: finish it first.
         with _swap_lock:
             current = _finish_staged(client, leftover, current, final, target=move_target)
+    # A tunnel its watchdog stopped holds its copies until their owner starts
+    # each one (_hold_tripped), and the heartbeat may not have seen the trip
+    # yet. A deploy of one copy is no Start of the others: their holds go in
+    # before this tunnel runs again.
+    if keep is not None and current is not None and tripped(client, current):
+        for member in _members(client, current):
+            if str(member.name) != keep:
+                _set_held(str(member.name), True, strict=True)
+                if getattr(member, "status", "") in _LIVE:
+                    member.stop(timeout=orchestrator._get_stop_timeout(_labels(member).get(LABEL_SERVICE) or ""))
     broken = False
     # An older worker's tunnel, which Docker restarts on its own, is never used
     # as it is: replaced before any earner starts in it (_restarts_by_itself).
@@ -2721,15 +2744,17 @@ def _halt(
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
         except Exception as exc:  # noqa: BLE001 - raised below, after the tunnel
             failure = failure or exc
-    if tunnel is not None and tunnel_live:
+    if tunnel is not None:
         # Also when the earner did not stop: with no copy that should run left,
-        # stopping the tunnel cuts the earner's way out all the same.
+        # stopping the tunnel cuts the earner's way out all the same. The gate
+        # stops also when its tunnel already exited.
         try:
             stopped = held()
         except OSError:
             stopped = None  # the tunnel keeps running: safe, and the next stop tries again
         if stopped is not None and not any(str(m.name) not in stopped for m in _members(client, tunnel)):
-            tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
+            if tunnel_live:
+                tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
             _stop_gate(client, tunnel)
     if failure is not None:
         raise failure
@@ -2976,6 +3001,7 @@ def _stop_if_unwanted(client: Any, tunnel: Any) -> None:
         stopped = held()
         if not any(str(m.name) not in stopped for m in _members(client, tunnel)):
             tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
+            _stop_gate(client, tunnel)
 
 
 def _started_or_raise(earner: Any, tunnel: Any, slug: str, *, restart: bool = False) -> None:

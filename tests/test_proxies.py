@@ -2508,7 +2508,7 @@ class TestReducedIsolation:
                 patch.object(main, "_send_worker_deploy", call),
             ):
                 return await main._refresh_proxied_copies(
-                    "bitping", 7, svc, svc["docker"], BITPING_RECORD, expected={f"p{pid}": "c0ffee"}
+                    "bitping", 7, svc, svc["docker"], BITPING_RECORD, expected={f"p{pid}": "c0ffeec0ffee"}
                 )
 
         notes = _run(go)

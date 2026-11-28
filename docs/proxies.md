@@ -513,9 +513,14 @@ add it again. Delete them by hand (`docker volume rm`) when you are done with
 the copy for good. A copy's volume of a service that marks it critical (a
 wallet, a node identity) is protected from deletion like the original's. Its
 name says whose it is, so no other service can mount it, also once the copy is
-gone. It is not in the state backups: those read the service's own container only. Write
+gone. It is not in the state backups: those read the service's own container only, so a
+routed service's volumes are not in them either. Write
 down what it holds (Mysterium's beneficiary wallet, for example) before you
 rely on the copy.
+
+The worker reads a Mysterium node's balance from the node itself only for the
+service's own containers. A Mysterium copy, or a routed Mysterium, adds no
+balance to the dashboard. Its node shows on mystnodes.com.
 
 ### Copies that need NET_ADMIN or NET_RAW
 
@@ -569,12 +574,14 @@ For any other worker, it asks you to update the worker first.
 Every tunnel and every gate runs `cp-watch` for as long as it runs:
 
 - Every 5 seconds, it compares the tunnel's firewall with the one it loaded.
+  A firewall it cannot read counts as a change.
 - Every 10 minutes, it sends a probe through the tunnel and checks that the
   probe does not leave from the box's own IP.
 
 When either check fails, it stops the tunnel with exit status 86. The worker
 reads that status on the next heartbeat. It stops every copy in that tunnel
-and records each one as stopped, so nothing starts them again. The Fleet page
+and records each one as stopped, so nothing starts them again. A redeploy of
+one copy before that heartbeat records the others as stopped too. The Fleet page
 says the watchdog stopped the copy, and the gate stops with it. It runs again
 only when you start it, on a fresh tunnel and a fresh gate.
 
