@@ -511,8 +511,14 @@ def load_catalog(path: pathlib.Path) -> tuple[dict, dict]:
     return entries, hashes
 
 
-def _write_atomic(path: pathlib.Path, text: str) -> None:
-    """Replace path with text in one step, so a failed write leaves the old file."""
+def _write_atomic(path: pathlib.Path, text: str, expect: str | None = None) -> None:
+    """Replace path with text in one step, so a failed write leaves the old file.
+
+    With `expect`, the file must still hold exactly that text just before the
+    replace, or nothing is written: an editor's save is refused, never lost.
+    A save in the instant between that read and the replace is the one case
+    left, so do not stamp a file while an editor is saving it.
+    """
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
     tmp = pathlib.Path(name)
     try:
@@ -527,12 +533,14 @@ def _write_atomic(path: pathlib.Path, text: str) -> None:
         os.chmod(name, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
+        if expect is not None and path.read_text(encoding="utf-8") != expect:
+            raise ParseError(f"{path}: the file changed while it was being stamped; run again")
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
 
 
-def write_catalog(path: pathlib.Path, entries: dict, hashes: dict, header: str = "") -> None:
+def write_catalog(path: pathlib.Path, entries: dict, hashes: dict, header: str = "", expect: str | None = None) -> None:
     lines = [header.rstrip("\n")] if header else []
     for key, text in entries.items():
         # A plain key must stay a string for every YAML reader: start with a
@@ -551,7 +559,7 @@ def write_catalog(path: pathlib.Path, entries: dict, hashes: dict, header: str =
         lines.append(f"  text: {dump_yaml_string(text)}")
         if hashes.get(key):
             lines.append(f"  source: {dump_yaml_string(hashes[key])}")
-    _write_atomic(path, "\n".join(lines) + "\n")
+    _write_atomic(path, "\n".join(lines) + "\n", expect)
 
 
 def _inner_xml(elem: ET.Element) -> str:
@@ -1069,9 +1077,7 @@ def write_json_inline(path: pathlib.Path, hashes: dict, checked: tuple[dict, dic
                 walk(v, key)
 
     walk(root, "")
-    if path.read_text(encoding="utf-8") != raw:
-        raise changed
-    _write_atomic(path, json.dumps(tree, ensure_ascii=False, indent=2) + "\n")
+    _write_atomic(path, json.dumps(tree, ensure_ascii=False, indent=2) + "\n", raw)
 
 
 def _drop_ignored(entries: dict, globs: list[str]) -> dict:
@@ -1087,7 +1093,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--i18next-plurals", action="store_true", help="group key_one/key_other... families")
     ap.add_argument("--ignore", action="append", default=[], metavar="GLOB", help="skip source keys matching GLOB")
     ap.add_argument("--strict", action="store_true", help="extra, stale and unstamped keys fail too")
-    ap.add_argument("--stamp", action="store_true", help="store hashes for translated keys that have none")
+    ap.add_argument(
+        "--stamp",
+        action="store_true",
+        help="store hashes for translated keys that have none (not while an editor is saving the file)",
+    )
     ap.add_argument(
         "--restamp", action="append", default=[], metavar="GLOB", help="re-store hashes for keys matching GLOB"
     )
@@ -1109,6 +1119,8 @@ def main(argv: list[str] | None = None) -> int:
         fmt = args.format if args.format != "auto" else None
         try:
             fmt = fmt or detect_format(path)
+            # Read before the parse: a write later refuses any change since.
+            raw = path.read_text(encoding="utf-8") if path.is_file() else None
             whole, inline = load(path, fmt, args.i18next_plurals)
             snapshot = (dict(whole), dict(inline or {}))
             # Ignored keys leave the comparison, never the file a stamp rewrites.
@@ -1146,7 +1158,7 @@ def main(argv: list[str] | None = None) -> int:
             if n:
                 try:
                     if fmt == "catalog":
-                        write_catalog(path, whole, hashes, _leading_comments(path))
+                        write_catalog(path, whole, hashes, _leading_comments(path), raw)
                     elif sidecar is not None:
                         sidecar.parent.mkdir(parents=True, exist_ok=True)
                         _write_atomic(sidecar, json.dumps(hashes, ensure_ascii=False, indent=2, sort_keys=True) + "\n")

@@ -817,7 +817,8 @@ def test_a_source_hash_changed_after_the_check_is_not_overwritten(tmp_path, monk
     en = write(tmp_path / "en.json", json.dumps({"a": "Hi", "b": "Bye"}))
     es = write(tmp_path / "es.json", json.dumps({"a": {"text": "Hola", "source": "111111111111"}, "b": "Adiós"}))
     edited = json.dumps({"a": {"text": "Hola", "source": "222222222222"}, "b": "Adiós"})
-    _edit_after_read(monkeypatch, es, 1, edited)
+    # The first read keeps the text a write compares against, the second parses it.
+    _edit_after_read(monkeypatch, es, 2, edited)
     assert ic.main([str(en), str(es), "--stamp"]) != 0
     assert json.loads(es.read_text(encoding="utf-8"))["a"]["source"] == "222222222222"
 
@@ -944,3 +945,46 @@ def test_a_placeholder_of_another_kind_moved_between_select_keywords_fails(tmp_p
     assert run(en, es)[0] == 1
     write(es, json.dumps({"k": f"{{g, select, other {{b {q}}} x {{a {p}}}}}"}))
     assert run(en, es)[0] == 0
+
+
+def test_a_select_inside_a_plural_may_lose_the_one_form(tmp_path):
+    # Japanese has only "other", so the select in the English "one" form goes.
+    en = write(
+        tmp_path / "en.json",
+        json.dumps(
+            {
+                "k": "{n, plural, one {{g, select, x {A single box} other {One box}}} other {{g, select, x {{who} has # boxes} other {# boxes}}}}"
+            }
+        ),
+    )
+    ja = write(
+        tmp_path / "ja.json", json.dumps({"k": "{n, plural, other {{g, select, x {{who} の # 個} other {# 個}}}}"})
+    )
+    assert run(en, ja)[0] == 0
+
+
+def _edit_during_the_temp_write(monkeypatch, path, text):
+    real = ic.os.fdopen
+
+    def fdopen(*a, **k):
+        path.write_text(text, encoding="utf-8")
+        return real(*a, **k)
+
+    monkeypatch.setattr(ic.os, "fdopen", fdopen)
+
+
+def test_a_json_save_during_the_stamp_is_kept(tmp_path, monkeypatch):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hi"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": "Hola"}))
+    _edit_during_the_temp_write(monkeypatch, es, json.dumps({"a": "Hola, editado"}))
+    assert ic.main([str(en), str(es), "--stamp"]) != 0
+    assert json.loads(es.read_text(encoding="utf-8")) == {"a": "Hola, editado"}
+    assert not list(tmp_path.glob(".es.json.*"))
+
+
+def test_a_catalog_save_during_the_stamp_is_kept(tmp_path, monkeypatch):
+    d, en = catalog(tmp_path)
+    es = write(d / "es.yml", 'iproyal.description:\n  text: "Comparte"\n')
+    _edit_during_the_temp_write(monkeypatch, es, 'iproyal.description:\n  text: "Comparte, editado"\n')
+    assert ic.main([str(en), str(es), "--stamp"]) != 0
+    assert "editado" in es.read_text(encoding="utf-8")
