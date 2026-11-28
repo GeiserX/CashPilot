@@ -9,8 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # A green run takes 11 to 16 minutes. On 2026-11-14 a hung test held runners
-    # until GitHub's six-hour default and queued every other PR behind them.
+    # A green run takes 25 to 30 minutes, most of it the suite under coverage.
+    # On 2026-11-14 a hung test held runners until GitHub's six-hour default
+    # and queued every other PR behind them.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
@@ -206,11 +207,12 @@ jobs:
             THEME="$t" ./scripts/fleet_overflow_check.sh
           done
 
-      - name: Run tests
-        run: uv run pytest tests/ -v --tb=short
-
+      # One pass only. The suite used to run twice, plain and then with
+      # coverage, and the two passes together reached the 45-minute timeout
+      # (run 46113417282, 2026-11-28). The coverage pass fails on the same
+      # test failures, so the plain pass proved nothing extra.
       - name: Run tests with coverage
-        run: uv run pytest tests/ --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=90
+        run: uv run pytest tests/ --tb=short --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=90
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v7
