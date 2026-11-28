@@ -266,6 +266,7 @@ class Claude:
         else:
             out = sh(["nd", "pick", "--json", "--provider", "claude"], ROOT).stdout
             self.accounts = [c["id"] for c in json.loads(out)["candidates"] if c["id"].startswith("cc-")]
+        self.accounts = list(dict.fromkeys(self.accounts))  # each account once, so ask() can try them all
         if not self.accounts:
             raise RuntimeError("nd pick found no Claude account to run on")
         self.at = 0
