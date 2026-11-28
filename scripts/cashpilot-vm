@@ -241,11 +241,10 @@ host_connected_public() {
 # The home's public IPv4. A connection to it from inside leaves as internet
 # traffic, and most home routers loop it straight back into the LAN (NAT
 # loopback), so the fence drops it. A lookup is reused for two minutes. When
-# every lookup fails, the last address is kept for up to an hour; after that,
-# or when no lookup ever worked, this fails and the guard keeps the guest cut
-# off, because the fence would miss the drop for the current address.
+# every lookup fails, this fails and the guard keeps the guest cut off until a
+# lookup works: the address may have changed, and the fence would miss its drop.
 egress_ip() {
-  local cache="$STATE/egress" age=999999 now ip url
+  local cache="$STATE/egress" age now ip url
   now=$(date +%s)
   if [ -f "$cache" ]; then
     age=$((now - $(stat -c %Y "$cache")))
@@ -258,7 +257,6 @@ egress_ip() {
       echo "$ip"; return 0
     fi
   done
-  if [ -f "$cache" ] && [ "$age" -lt 3600 ]; then cat "$cache"; return 0; fi
   return 1
 }
 
@@ -597,6 +595,9 @@ guard_pass() {
   load_conf || { warn "not installed"; return 0; }
   exec 9>"$RUN_DIR.lock"
   flock -w 50 9 || { warn "another guard pass is still running"; return 0; }
+  # remove holds this lock while it takes the host rules out: a pass that
+  # loaded the config before that must not put them back.
+  [ -f "$CONF" ] || return 0
   if [ -f "$RUN_DIR/hold" ]; then
     # A red/green self-test owns the fence right now.
     hold_is_live && return 0
@@ -632,7 +633,7 @@ guard_pass() {
     printf '%s\n' "$live" >"$STATE/fence.golden.new"
     mv "$STATE/fence.golden.new" "$STATE/fence.golden"
     mv "$STATE/fence.rules.new" "$STATE/fence.rules"
-    link_connect
+    link_connect || { guard_fail "the guest's link would not come up"; return 1; }
     write_guard_state ok "$reason"
     log "$reason; connected"
   else
@@ -640,7 +641,7 @@ guard_pass() {
     live=$(ns_fingerprint)
     if [ "$live" = "$golden" ]; then
       if ! tap_up; then
-        link_connect
+        link_connect || { guard_fail "the guest's link would not come up"; return 1; }
         log "match; connected"
       fi
       write_guard_state ok "match"
@@ -651,7 +652,7 @@ guard_pass() {
       net_up
       live=$(ns_fingerprint)
       if [ "$live" = "$golden" ]; then
-        link_connect
+        link_connect || { guard_fail "the guest's link would not come up"; return 1; }
         write_guard_state ok "drift repaired"
         log "fence restored, exact match; connected"
       else
@@ -735,6 +736,13 @@ guest_run() {
   q=$(qemu_bin) || die "QEMU is not installed"
   mkdir -p "$RUN_DIR"
   ns_exists || net_up
+  # A restart (systemd restarts the guest after a crash or a kill) must never
+  # come up over an open link the fence does not cover: an up tap needs an
+  # exact match with the golden copy, or it goes down first, and the guard
+  # connects it after its next check.
+  if tap_up && [ "$(ns_fingerprint)" != "$(cat "$STATE/fence.golden" 2>/dev/null)" ]; then
+    link_cut || die "the guest's link did not go down, so the guest is not started"
+  fi
   # The console log is for first-boot problems; keep it small.
   if [ -f "$STATE/console.log" ] && [ "$(stat -c %s "$STATE/console.log")" -gt 1048576 ]; then
     : >"$STATE/console.log"
@@ -1288,10 +1296,12 @@ first_boot_over() {
 }
 
 wait_for() {
-  # wait_for SECONDS DESCRIPTION COMMAND...
-  local secs=$1 what=$2 i
+  # wait_for SECONDS DESCRIPTION COMMAND... : by the clock, so a slow probe
+  # (an ssh that takes its whole deadline) cannot stretch the wait.
+  local secs=$1 what=$2 end
   shift 2
-  for ((i = 0; i < secs; i += 5)); do
+  end=$((SECONDS + secs))
+  while [ "$SECONDS" -lt "$end" ]; do
     if "$@" >/dev/null 2>&1; then return 0; fi
     sleep 5
   done
@@ -1335,7 +1345,7 @@ cmd_install() {
   derive_net
   preflight
   HOST_WORKER=${HOST_WORKER:-$(hostname -s)}
-  [[ "$HOST_WORKER" =~ ^[A-Za-z0-9._\ -]+$ ]] || die "--host-worker may hold letters, digits, spaces, dots, dashes and underscores"
+  [[ "$HOST_WORKER" =~ ^[A-Za-z0-9._\ -]{1,64}$ ]] || die "--host-worker may hold up to 64 letters, digits, spaces, dots, dashes and underscores"
   local WORKER_NAME="$HOST_WORKER-secure-vm"
   parse_url "$UI_URL"
   UI_URL="${UI_URL%/}"
@@ -1475,6 +1485,8 @@ probe_targets() {
   # The host's own addresses, on a port that listens there.
   port=$(ss -Htln 2>/dev/null | awk '{print $4}' | { grep -E '^(0\.0\.0\.0|\*):' || true; } | sed 's/.*://' | sort -n | head -1)
   for ip in $(host_addrs); do
+    # The UI's own address and port is the one allowed hole, checked apart.
+    [ "$ip" = "$UI_IP" ] && [ "${port:-22}" = "$UI_PORT" ] && continue
     echo "host $ip ${port:-22}"
   done
   echo "host-veth $VH_IP ${port:-22}"
@@ -1633,10 +1645,13 @@ cmd_verify() {
     nsx iptables -I FORWARD 1 -m comment --comment cpvm:red-test -j ACCEPT
     # The host's own drop for the veth is a second layer; open it too.
     iptables -w -I CPVM-IN 1 -m comment --comment cpvm:red-test -j ACCEPT
-    if selftest_once loud; then
-      say "RED FAILED: with the fence open the guest still reached nothing, so these probes cannot tell."
-    else
+    selftest_once loud || true
+    # Only a connection or a refusal from a forbidden target proves the probes
+    # work. A missing result or a missing gVisor fails the test, but proves nothing.
+    if grep -qE '^FAIL .* answered the guest \((reached|refused)\)$' <<<"$SELFTEST_LINES"; then
       say "RED as expected: with the fence open the guest reaches the targets above."
+    else
+      say "RED FAILED: with the fence open no forbidden target answered the guest, so these probes cannot tell."
     fi
     rm -f "$RUN_DIR/hold"
     exec 8>&-
@@ -1744,7 +1759,13 @@ cmd_remove() {
     svc_remove
     guest_stop
   fi
-  # Everything below also runs for a half-finished install.
+  # Everything below also runs for a half-finished install. The guard lock
+  # keeps a guard pass that was already running from putting the host rules
+  # back; such a pass finds the config gone once it gets the lock.
+  mkdir -p "$RUN_DIR"
+  exec 9>"$RUN_DIR.lock"
+  flock -w 60 9 || warn "a guard pass still holds its lock; removing anyway"
+  rm -f "$CONF"
   pkill -f 'process=cashpilot-vm' 2>/dev/null || true
   [ -n "${NET_BASE:-}" ] || { NET_BASE=10.213.0; derive_net; }
   HOST_PORT=${HOST_PORT:-0}
