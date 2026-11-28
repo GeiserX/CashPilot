@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import os
 import re
+import subprocess
 import tarfile
 import threading
 import time
@@ -1801,6 +1802,43 @@ class TestTheWholeWayToReadyFitsTheWorkersWait:
         assert modes == ["virtual"]  # the worst case: names only after the switch
         assert ready_at is not None and ready_at < proxy_tunnel.READY_TIMEOUT
         assert '"ip":"203.0.113.7"' in (tmp_path / "ready").read_text()
+
+
+def _run_supervision(tmp_path: Path, watch: str, tunnel: str = "sleep 30") -> tuple[subprocess.CompletedProcess, Path]:
+    """Run cp-tunnel from its watchdog start to its end, with ``watch`` as cp-watch and ``tunnel`` as its process."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "cp-watch").write_text(f"#!/bin/sh\n{watch}\n")
+    (bin_dir / "cp-watch").chmod(0o755)
+    start = _CP_TUNNEL.index("# 5: every rule is loaded")
+    tail = _CP_TUNNEL[start:].replace("/run/", f"{tmp_path}/")
+    ready = tmp_path / "ready"
+    ready.write_text("{}")
+    script = f'die() {{ echo "cp-tunnel: $*" >&2; exit 1; }}\n{tunnel} &\nTPID=$!\n{tail}'
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "T": str(tmp_path)}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=20)
+    return proc, ready
+
+
+class TestTheTunnelEndsWithItsWatchdog:
+    """The entrypoint waited on the tunnel process only: a watchdog killed or broken left the tunnel
+    ready and carrying traffic with nothing checking its firewall any more."""
+
+    def test_a_watchdog_that_ends_without_a_trip_ends_the_run_not_as_a_trip(self, tmp_path):
+        proc, ready = _run_supervision(tmp_path, "exit 0")
+        assert proc.returncode == 1, proc.stderr
+        assert "the watchdog exited" in proc.stderr
+        assert not ready.exists()
+
+    def test_a_trip_still_ends_the_run_with_86(self, tmp_path):
+        proc, ready = _run_supervision(tmp_path, ': >"$T/tripped"\nrm -f "$T/ready"\nkill "$1"\nexit 86')
+        assert proc.returncode == 86, proc.stderr
+        assert not ready.exists()
+
+    def test_a_tunnel_process_that_exits_ends_the_run(self, tmp_path):
+        proc, _ = _run_supervision(tmp_path, "sleep 5", tunnel="sleep 1")
+        assert proc.returncode == 1
+        assert "the tunnel process exited" in proc.stderr
 
 
 def _stub_clock_bin(tmp_path: Path, curl_cases: str) -> tuple[Path, Path]:

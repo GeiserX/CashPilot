@@ -414,7 +414,21 @@ fi
 
 # 5: every rule is loaded; from here on a change to them is a tamper.
 cp-watch "$TPID" firewall &
+WPID=$!
 
+# Both must run: the tunnel process carries the traffic, and the watchdog
+# stops it when the firewall changes. A watchdog that ends without a trip (a
+# kill, a shell error) ends the run too: not ready, the tunnel process stopped,
+# and an exit code other than 86, so it does not read as a trip.
+while kill -0 "$TPID" 2>/dev/null; do
+    if ! kill -0 "$WPID" 2>/dev/null && [ ! -f /run/tripped ]; then
+        rm -f /run/ready
+        kill "$TPID" 2>/dev/null
+        wait "$TPID" 2>/dev/null || true
+        die "the watchdog exited; the earner stays cut off until this container restarts"
+    fi
+    sleep 1
+done
 wait "$TPID" || true
 [ -f /run/tripped ] && exit 86
 die "the tunnel process exited; the earner stays cut off until this container restarts"
