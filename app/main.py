@@ -65,6 +65,7 @@ from app import (
     income_export,
     ipgeo,
     lan_isolation,
+    layers_ui,
     log_redaction,
     login_rate_limit,
     machine_economics,
@@ -320,6 +321,12 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             # check (app/drift.py). None from a worker too old to send it.
                             "shape": c.get("shape"),
                             "_arch": sys_info.get("arch"),
+                            # The layers this copy really got: behind the LAN fence or
+                            # not, and runc or gVisor (app/layers_ui.py). None = not reported.
+                            "_layers": {
+                                "fence": layers_ui.fence(c, sys_info),
+                                "runtime": layers_ui.kind(c.get("runtime"), sys_info.get("layers")),
+                            },
                             # The worker's isolation mode, for the drift advice on
                             # a fence-gated node still on the host's network.
                             "_isolation_mode": (
@@ -4142,6 +4149,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "hints": _windowed_hints.get((slug, inst.get("_worker_id"), int(inst.get("instance") or 1)), []),
                 "fatal": inst.get("fatal"),
                 "held": inst.get("held"),
+                # Fence and runtime, for the badge on the row; external copies get none.
+                "layers": None if inst.get("deployed_by") == "external" else inst.get("_layers"),
             }
             # A copy routed through a proxy from its deploy: the row shows
             # the exit IP and country it leaves from.
@@ -5222,6 +5231,9 @@ async def _deploy(
             if recorded_route is not None:
                 await _refuse_direct_on_proxied_only(svc, slug, worker_id)
                 await _confirm_leave_route(request, svc, slug, worker_id, password)
+                # A runtime choice the worker cannot take refuses the deploy: ask
+                # before the routed copy goes, so a refusal stops nothing.
+                await _runtime_choice_for(worker_id, slug)
                 await _remove_routed_copies(worker_id, slug, [recorded_route])
                 options["leave_route"] = True
         held = await _reserve_pending_identities(slug, worker_id, 1, spec.get("env"))
@@ -7619,6 +7631,9 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "self_update_unavailable",
         "isolation_check_busy",
         "isolation_check_unavailable",
+        # The gVisor check's own answers (app/gvisor_check.py).
+        "gvisor_check_busy",
+        "gvisor_check_unavailable",
         # A deploy refused for a wallet or identity volume (app/step_up.py).
         "critical_volume_mount",
         "step_up_required",
@@ -8223,6 +8238,40 @@ async def _confirm_deploy_targets(worker_id: int, slug: str, keys: list[str]) ->
         await _ask_deploy_confirmation(worker_id, slug, targets, old=old)
 
 
+async def _runtime_choice_for(worker_id: int, slug: str, *, routed: bool = False) -> str | None:
+    """The runtime choice a deploy of ``slug`` sends to this worker, or None for Docker's default.
+
+    Refused when a choice is stored but the worker cannot take it: deploying
+    under Docker's default instead would show the owner a layer the earner
+    does not have. A copy routed through a proxy takes no choice (the worker
+    runs it under Docker's default), so an earner set to gVisor is refused there.
+    """
+    worker = await database.get_worker(worker_id) or {}
+    info = placement.system_info(worker)
+    if placement.is_desktop(info) or placement.is_android(info):
+        return None
+    if routed:
+        stored = (await layers_ui.choices(worker))["earners"].get(slug)
+        # A choice the catalog or an env pin overrules is not the earner's runtime: no refusal.
+        if stored == layers_ui.GVISOR and not layers_ui.overruled(slug, info, stored):
+            raise HTTPException(
+                status_code=409, detail=t("api.runtime_choice_routed", worker=worker.get("name") or f"#{worker_id}")
+            )
+        return None
+    choice = await layers_ui.for_new_deploy(worker, slug)
+    if choice and layers_ui.FEATURE not in (info.get("features") or []):
+        raise HTTPException(
+            status_code=409,
+            detail=t("api.runtime_choice_worker_too_old", runtime=choice, worker=worker.get("name") or f"#{worker_id}"),
+        )
+    if choice == layers_ui.GVISOR and (why := layers_ui.locked(slug, info, choice)):
+        raise HTTPException(
+            status_code=409,
+            detail=t("api.runtime_choice_cannot", worker=worker.get("name") or f"#{worker_id}", why=why),
+        )
+    return choice
+
+
 async def _send_worker_deploy(
     worker_id: int,
     slug: str,
@@ -8258,6 +8307,14 @@ async def _send_worker_deploy(
 
     locks = _worker_deploy_locks.setdefault(asyncio.get_running_loop(), {})
     async with locks.setdefault((worker_id, slug), asyncio.Lock()):
+        # The owner's runtime choice for this earner on this worker (app/layers_ui.py),
+        # picked and recorded under this lock: a second deploy of the earner reads
+        # what the first one recorded, never a default changed in between.
+        if proxy_id is not None:
+            await _runtime_choice_for(worker_id, slug, routed=True)
+        elif "runtime_choice" not in body and (choice := await _runtime_choice_for(worker_id, slug)):
+            body["runtime_choice"] = choice
+        sent = body.get("runtime_choice") if proxy_id is None else None
         # A Desktop's lookup answers checked or refuses: it never falls back to the old route.
         current, checked = await _worker_deploy_target(worker_id, slug, instance, proxy_id)
         if not checked and current != expected:
@@ -8276,7 +8333,29 @@ async def _send_worker_deploy(
         if not checked and current != "none" and proxy_id is None:
             # The intermediate worker protocol also requires this flag.
             body["replace_existing"] = True
-        return await send(checked=checked)
+        result = await send(checked=checked)
+        # The worker took it: a default this earner inherited is now its own (app/layers_ui.py).
+        await _remember_runtime_choice(worker_id, slug, sent)
+    return result
+
+
+async def _remember_runtime_choice(worker_id: int, slug: str, choice: Any) -> None:
+    """Record the choice a deploy the worker took was sent with. Never fails the deploy.
+
+    The earner already runs: a failed write only means a later change of the
+    worker default can move it, so it is logged and the deploy's own
+    bookkeeping goes on.
+    """
+    if not isinstance(choice, str):
+        return
+    try:
+        worker = await database.get_worker(worker_id)
+        if worker:
+            await layers_ui.remember(worker, slug, choice)
+    except Exception as exc:
+        logger.warning(
+            "Could not record the runtime choice of %s on worker %s: %s", slug, worker_id, type(exc).__name__
+        )
 
 
 async def _proxy_worker_deploy(
@@ -8361,21 +8440,28 @@ async def _proxy_worker_restore(
         "passphrase": restore["passphrase"],
         "approval": step_up.sign(key, step_up.ACTION_RESTORE, target),
     }
-    # The worker pulls the image, creates the container and writes and reads
-    # the backup back before it answers; a deploy's time plus the copy.
-    result = await _proxy_to_worker(
-        worker_id,
-        "POST",
-        f"/api/containers/{slug}/restore",
-        json=body,
-        timeout=_deploy_timeout(slug) + 120,
-        marked=True,
-        # The owner's yes to plain HTTP, checked against the URL the passphrase goes to.
-        allow_plain_http=restore.get("allow_plain_http") is True,
-    )
-    # The worker restored it: whatever fails after this, the restore happened.
-    restore["answered"] = True
-    restore["state_id"] = result.get("state_id") if isinstance(result, dict) else None
+    locks = _worker_deploy_locks.setdefault(asyncio.get_running_loop(), {})
+    # Picked and recorded under the deploy lock, as a deploy does (_send_worker_deploy).
+    async with locks.setdefault((worker_id, slug), asyncio.Lock()):
+        # A restore recreates the earner: it keeps the runtime the owner chose, as a deploy does.
+        if "runtime_choice" not in body and (choice := await _runtime_choice_for(worker_id, slug)):
+            body["runtime_choice"] = choice
+        # The worker pulls the image, creates the container and writes and reads
+        # the backup back before it answers; a deploy's time plus the copy.
+        result = await _proxy_to_worker(
+            worker_id,
+            "POST",
+            f"/api/containers/{slug}/restore",
+            json=body,
+            timeout=_deploy_timeout(slug) + 120,
+            marked=True,
+            # The owner's yes to plain HTTP, checked against the URL the passphrase goes to.
+            allow_plain_http=restore.get("allow_plain_http") is True,
+        )
+        # The worker restored it: whatever fails after this, the restore happened.
+        restore["answered"] = True
+        restore["state_id"] = result.get("state_id") if isinstance(result, dict) else None
+        await _remember_runtime_choice(worker_id, slug, body.get("runtime_choice"))
     return result
 
 
@@ -13636,6 +13722,17 @@ async def api_worker_secure_vm_selftest(request: Request, worker_id: int) -> dic
     return await _proxy_to_worker(worker_id, "POST", "/api/secure-vm/selftest", timeout=15)
 
 
+@app.post("/api/workers/{worker_id}/gvisor-check")
+async def api_worker_gvisor_check(request: Request, worker_id: int) -> dict[str, Any]:
+    """Does gVisor really protect the earners on this worker's host? (app/gvisor_check.py)
+
+    Owner only, and POST: the worker starts a short probe container per gVisor
+    runtime an earner would get.
+    """
+    _require_owner(request)
+    return await _proxy_to_worker(worker_id, "POST", "/api/layers/gvisor-check", timeout=180)
+
+
 @app.post("/api/workers/{worker_id}/isolation")
 async def api_worker_isolation(request: Request, worker_id: int) -> dict[str, Any]:
     """Turn LAN isolation on for an upgraded worker (app/lan_fence.py).
@@ -14978,11 +15075,13 @@ from app.routers import activity as activity_router  # noqa: E402
 from app.routers import auth as auth_router  # noqa: E402
 from app.routers import credential_storage as credential_storage_router  # noqa: E402
 from app.routers import importers as importers_router  # noqa: E402
+from app.routers import layers as layers_router  # noqa: E402
 from app.routers import obligations as obligations_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
 app.include_router(activity_router.router)
+app.include_router(layers_router.router)
 app.include_router(auth_router.router)
 app.include_router(pages_router.router)
 app.include_router(users_router.router)

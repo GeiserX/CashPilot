@@ -92,6 +92,29 @@ def _no_custom_images(request):
 
 
 @pytest.fixture(autouse=True)
+def _no_runtime_choice(request, monkeypatch):
+    """No earner has a runtime choice, unless a test asks for the real lookup.
+
+    Each worker deploy reads the owner's runtime choice from the config table
+    (app/layers_ui.py). Most deploy tests mock the database call by call and
+    never create its tables. Tests marked ``real_runtime_choice`` get the real
+    function.
+    """
+    if request.node.get_closest_marker("real_runtime_choice"):
+        return
+    from app import main
+
+    async def none(worker_id, slug, **_):
+        return None
+
+    async def noop(worker_id, slug, choice):
+        return None
+
+    monkeypatch.setattr(main, "_runtime_choice_for", none)
+    monkeypatch.setattr(main, "_remember_runtime_choice", noop)
+
+
+@pytest.fixture(autouse=True)
 def _gated_services_run_in_any_mode(request):
     """A fence-gated service (Mysterium) deploys in the suite's ``off`` mode.
 
