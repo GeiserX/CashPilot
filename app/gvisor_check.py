@@ -105,10 +105,25 @@ def probe_name() -> str:
     return f"{PROBE_PREFIX}{activity._worker_tag()}"
 
 
-def _remove(client: Any, leftovers: list[str]) -> None:
+def _ours(container: Any) -> bool:
+    """True when the labels say this worker's gVisor check made the container."""
+    labels = ((getattr(container, "attrs", None) or {}).get("Config") or {}).get("Labels") or {}
+    return labels.get(PROBE_LABEL) == "gvisor-check" and labels.get(activity.WORKER_LABEL) == activity.WORKER_ID
+
+
+def _remove(client: Any, leftovers: list[str], container: Any = None) -> None:
+    """Remove the probe this check created (by its id), or else the one under this
+    worker's probe name, only when its labels say it is ours. A create that failed
+    halfway leaves no handle, which is why the name is looked up at all."""
     name = probe_name()
     try:
-        client.containers.get(name).remove(force=True, v=True)
+        if container is None:
+            container = client.containers.get(name)
+            if not _ours(container):
+                logger.warning("A container named %s is not this worker's gVisor probe; left as it is.", name)
+                leftovers.append(name)
+                return
+        container.remove(force=True, v=True)
     except NotFound:
         pass
     except Exception as exc:  # noqa: BLE001 - reported, never raised
@@ -120,6 +135,7 @@ def _probe(
     client: Any, image: str, runtime: str, network: str, leftovers: list[str], dns: list[str] | None = None
 ) -> dict[str, Any]:
     _remove(client, [])
+    container = None
     try:
         container = client.containers.run(
             image=image,
@@ -151,7 +167,7 @@ def _probe(
         logger.warning("gVisor probe under %s failed: %s", runtime, exc)
         return {"error": f"Docker could not run the probe under {runtime}: {str(exc)[:200]}"}
     finally:
-        _remove(client, leftovers)
+        _remove(client, leftovers, container)
 
 
 def run() -> dict[str, Any]:
