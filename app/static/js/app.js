@@ -3495,15 +3495,23 @@ const CP = (() => {
     if (atEnd) viewer.scrollTop = viewer.scrollHeight;
   }
 
+  // One message for each case, so a translation words the whole title.
+  function logsTitle(slug, workerId, instance) {
+    const copy = parseInt(instance);
+    if (workerId == null) return t('logs.title_service', { slug });
+    const worker = String(workerId);
+    return copy > 1
+      ? t('logs.title_copy', { slug, worker, copy: String(copy) })
+      : t('logs.title_worker', { slug, worker });
+  }
+
   async function viewLogs(slug, workerId, instance) {
     openModal('logs-modal');
     const title = document.getElementById('logs-modal-title');
     const viewer = document.getElementById('log-content');
-    const copy = parseInt(instance) > 1 ? `, copy ${parseInt(instance)}` : '';
-    const label = workerId != null ? `${slug} (worker #${workerId}${copy})` : slug;
-    if (title) title.textContent = `Logs: ${label}`;
+    if (title) title.textContent = logsTitle(slug, workerId, instance);
     applyLogWrap();
-    logNote(viewer, 'Loading logs...');
+    logNote(viewer, t('logs.loading'));
 
     if (logPollTimer) clearInterval(logPollTimer);
     const q = workerId != null ? `lines=200&worker_id=${workerId}${_instanceQuery(instance)}` : 'lines=200';
@@ -3511,9 +3519,9 @@ const CP = (() => {
     async function fetchLogs() {
       try {
         const data = await api(`/api/services/${slug}/logs?${q}`);
-        renderLogs(viewer, data.logs || '(no logs)');
+        renderLogs(viewer, data.logs || t('logs.none'));
       } catch (err) {
-        logNote(viewer, `Error loading logs: ${err.message}`);
+        logNote(viewer, t('logs.load_failed', { error: err.message }));
       }
     }
 
@@ -5442,12 +5450,12 @@ const CP = (() => {
     if (!viewer) return;
     if (viewer.style.display === 'none') {
       viewer.style.display = 'block';
-      logNote(viewer, 'Loading...');
+      logNote(viewer, t('logs.loading_short'));
       try {
         const data = await api(`/api/services/${slug}/logs?worker_id=${workerId}&lines=100${_instanceQuery(instance)}`);
-        renderLogs(viewer, data.logs || '(no logs)');
+        renderLogs(viewer, data.logs || t('logs.none'));
       } catch (err) {
-        logNote(viewer, `Error: ${err.message}`);
+        logNote(viewer, t('logs.failed', { error: err.message }));
       }
     } else {
       viewer.style.display = 'none';
@@ -5458,12 +5466,12 @@ const CP = (() => {
     // Legacy — kept for backward compat
     const viewer = document.getElementById(`detail-logs-${slug}`);
     if (!viewer) return;
-    logNote(viewer, 'Loading...');
+    logNote(viewer, t('logs.loading_short'));
     try {
       const data = await api(`/api/services/${slug}/logs?lines=100`);
-      renderLogs(viewer, data.logs || '(no logs)');
+      renderLogs(viewer, data.logs || t('logs.none'));
     } catch (err) {
-      logNote(viewer, `Error: ${err.message}`);
+      logNote(viewer, t('logs.failed', { error: err.message }));
     }
   }
 
