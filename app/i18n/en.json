@@ -664,6 +664,7 @@
   "app.drift.ignored": "{slug}: ignored until the catalog changes it",
   "app.earner_secrets.no_workers": "No workers yet.",
   "app.earner_secrets.row": "{worker}: {mode, select, file {credentials go in a file} env {credentials go in the container settings} unavailable {this worker image cannot keep credentials in a file} other {this worker is too old to say}}. {in_file, plural, =0 {No earner has its credentials in a file} one {# earner has its credentials in a file} other {# earners have their credentials in a file}}, {in_config, plural, =0 {none still has them in its container settings.} one {# still has them in its container settings: redeploy it.} other {# still have them in their container settings: redeploy them.}}",
+  "app.earner_secrets.row_mode": "{worker}: {mode, select, file {credentials go in a file} env {credentials go in the container settings} unavailable {this worker image cannot keep credentials in a file} other {this worker is too old to say}}. It does not report its earners one by one.",
   "app.env.default": "Default",
   "app.env.from_env": "From env",
   "app.env.hide": "Hide",

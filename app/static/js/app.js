@@ -5966,6 +5966,10 @@ const CP = (() => {
     if (!Array.isArray(rows) || !rows.length) return `<p class="muted">${escapeHtml(t('app.earner_secrets.no_workers'))}</p>`;
     return rows.map((row) => {
       const mode = row.mode || 'old';
+      // A worker that reports no container shapes (CashPilot-Desktop) has no counts.
+      if (row.in_file == null || row.in_config == null) {
+        return `<p>${escapeHtml(t('app.earner_secrets.row_mode', { worker: row.worker || '', mode }))}</p>`;
+      }
       const line = t('app.earner_secrets.row', {
         worker: row.worker || '',
         mode,
