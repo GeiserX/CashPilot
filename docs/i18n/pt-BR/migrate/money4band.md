@@ -1,5 +1,5 @@
 ---
-source_hash: 05d0f97e7d36
+source_hash: 5a764f1d0f5a
 ---
 # Migrar do money4band { #moving-from-money4band }
 
@@ -36,10 +36,10 @@ O money4band 5.0 criptografa o `config/user-config.json` no disco
 e apaga o `.env` dele depois de cada inicialização
 ([gerador do env](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
 O CashPilot não consegue ler o arquivo criptografado. Na sua pasta do money4band, rode
-o comando `config edit` dele: `./Money4Band-<os>-<arch> config edit` para o binário
-publicado, ou `python main.py config edit` a partir do código-fonte. Ele abre o
-arquivo descriptografado no seu editor
-([referência da CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+o comando `config edit` dele. Para o binário publicado, use o arquivo do seu sistema, por exemplo `./Money4Band-linux-amd64 config edit`, ou `.\Money4Band-windows-amd64.exe config edit` no Windows.
+A partir do código-fonte, rode `python run.py config edit`.
+Ele executa o money4band pelo uv, ou por um ambiente pip quando o uv não está instalado ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69)).
+O comando abre o arquivo descriptografado no seu editor ([referência da CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Copie todo o texto dele, cole na página **Import from another tool** (Importar de outra ferramenta) e depois feche o editor.
 
 Prefira o arquivo JSON. Em um `.env`, o Docker Compose expande `$` em valores

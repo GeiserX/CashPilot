@@ -1,5 +1,5 @@
 ---
-source_hash: 05d0f97e7d36
+source_hash: 5a764f1d0f5a
 ---
 
 # ย้ายมาจาก money4band { #moving-from-money4band }
@@ -37,9 +37,10 @@ money4band 5.0 เข้ารหัส `config/user-config.json` บนดิ�
 และลบ `.env` ของตัวเองหลังการเริ่มทำงานทุกครั้ง
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11))
 CashPilot อ่านไฟล์ที่เข้ารหัสไม่ได้ ในโฟลเดอร์ money4band ให้รันคำสั่ง `config edit`
-ของมัน: `./Money4Band-<os>-<arch> config edit` สำหรับไบนารีจากรีลีส หรือ
-`python main.py config edit` เมื่อรันจากซอร์สโค้ด คำสั่งนี้จะเปิดไฟล์ที่ถอดรหัสแล้วในโปรแกรมแก้ไขข้อความของคุณ
-([ข้อมูลอ้างอิง CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit))
+ของมัน สำหรับไบนารีจากรีลีส ให้ใช้ไฟล์ที่ตรงกับระบบของคุณ เช่น `./Money4Band-linux-amd64 config edit` หรือ `.\Money4Band-windows-amd64.exe config edit` บน Windows
+เมื่อรันจากซอร์สโค้ด ให้รัน `python run.py config edit`
+ซึ่งจะรัน money4band ผ่าน uv หรือผ่านสภาพแวดล้อม pip เมื่อไม่มี uv ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69))
+คำสั่งนี้จะเปิดไฟล์ที่ถอดรหัสแล้วในโปรแกรมแก้ไขข้อความของคุณ ([ข้อมูลอ้างอิง CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit))
 คัดลอกข้อความทั้งหมด วางลงในหน้า **Import from another tool** (นำเข้าจากเครื่องมืออื่น) แล้วปิดโปรแกรมแก้ไข
 
 ควรใช้ไฟล์ JSON ใน `.env` นั้น Docker Compose จะขยาย `$` ในค่าที่ไม่มีเครื่องหมายคำพูด
