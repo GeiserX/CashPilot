@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "Itinatakda bilang ContactInfo sa anonrc, na may prefix na '@anon:0x...'."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "Mga relay fingerprint na pinaghihiwalay ng kuwit. Wala ito sa web dashboard: patakbuhin ang <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> sa host na nagpapatakbo ng relay.\n"
-  source: "9b5c068c9636"
+  text: "Mga relay fingerprint na pinaghihiwalay ng kuwit. Walang online dashboard na nagpapakita ng mga ito. Para sa relay na pinapatakbo ng CashPilot, patakbuhin ang <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> sa host na nagpapatakbo nito. Para sa hardware relay, buksan ang Relay Control Panel nito sa <b>http://relayup.local</b> at basahin ang Fingerprint sa Home page.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"

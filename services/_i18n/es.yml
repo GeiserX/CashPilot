@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "Se define como ContactInfo en anonrc, con el prefijo '@anon:0x...'."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "Huellas (fingerprints) de los relays separadas por comas. Este dato no está en ningún panel web: ejecuta <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> en el equipo que ejecuta el relay.\n"
-  source: "9b5c068c9636"
+  text: "Huellas (fingerprints) de los relays separadas por comas. Ningún panel en línea las muestra. Para el relay que ejecuta CashPilot, ejecuta <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> en el equipo donde se ejecuta. Para un relay de hardware, abre su Relay Control Panel en <b>http://relayup.local</b> y lee Fingerprint en la página Home.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"

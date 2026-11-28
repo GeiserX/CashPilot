@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "anonrc의 ContactInfo에 '@anon:0x...' 접두사를 붙여 설정합니다."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "쉼표로 구분한 릴레이 핑거프린트입니다. 이 값은 웹 대시보드에 없습니다. 릴레이를 실행하는 호스트에서 <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b>를 실행하십시오.\n"
-  source: "9b5c068c9636"
+  text: "쉼표로 구분한 릴레이 핑거프린트입니다. 온라인 대시보드에는 표시되지 않습니다. CashPilot이 실행하는 릴레이는 그 릴레이를 실행하는 호스트에서 <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b>를 실행하십시오. 하드웨어 릴레이는 <b>http://relayup.local</b>에서 Relay Control Panel을 열고 Home 페이지의 Fingerprint를 확인하십시오.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"

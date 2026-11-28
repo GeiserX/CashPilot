@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "Đặt làm ContactInfo trong anonrc, với tiền tố '@anon:0x...'."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "Các fingerprint của relay, phân tách bằng dấu phẩy. Giá trị này không có trên bảng điều khiển web nào: hãy chạy <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> trên máy chủ đang chạy relay.\n"
-  source: "9b5c068c9636"
+  text: "Các fingerprint của relay, phân tách bằng dấu phẩy. Không bảng điều khiển trực tuyến nào hiển thị chúng. Với relay do CashPilot chạy, hãy chạy <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> trên máy chủ đang chạy nó. Với relay phần cứng, hãy mở Relay Control Panel của nó tại <b>http://relayup.local</b> và xem Fingerprint trên trang Home.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"

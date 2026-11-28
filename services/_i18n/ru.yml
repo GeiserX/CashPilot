@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "Указывается как ContactInfo в anonrc с префиксом '@anon:0x...'."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "Отпечатки ретрансляторов через запятую. Их нет в веб-панели: выполните <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> на хосте, где работает ретранслятор.\n"
-  source: "9b5c068c9636"
+  text: "Отпечатки ретрансляторов через запятую. Ни одна онлайн-панель их не показывает. Для ретранслятора, который запускает CashPilot, выполните <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> на хосте, где он работает. Для аппаратного ретранслятора откройте его Relay Control Panel по адресу <b>http://relayup.local</b> и посмотрите Fingerprint на странице Home.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"
