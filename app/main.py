@@ -5213,6 +5213,7 @@ async def _deploy(
                     request=request,
                     acknowledged=route_acks,
                     moved_mounts=moved_mounts,
+                    approve=approve,
                 )
             # A service routed through a proxy on this worker leaves the route only with
             # the owner's password, and its routed copy goes first: both run the same
@@ -5709,6 +5710,7 @@ async def _deploy_routed(
     request: Request | None = None,
     acknowledged: list[str] | None = None,
     moved_mounts: list[str] | None = None,
+    approve: bool = False,
 ) -> dict[str, Any]:
     """Deploy ``slug`` on a worker through one of the owner's proxies, never from the worker's own IP.
 
@@ -5760,6 +5762,11 @@ async def _deploy_routed(
         record = {**spec, "route": {"proxy_id": proxy_id, **({"acknowledged": acks} if acks else {})}}
         record.pop("instances", None)
         try:
+            # A wallet or node identity on a spec other than the catalog's goes
+            # out with the owner's approval, as on the direct path
+            # (_step_up_critical); the worker checks it against this exact earner.
+            if approve:
+                earner = await _approve_spec(worker_id, slug, earner)
             result = await _send_worker_deploy(
                 worker_id,
                 slug,

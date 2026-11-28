@@ -467,6 +467,42 @@ class TestTheWorkerProxiedRoutes:
         body = {"earner": BODY, "proxy": PROXY, "routed": routed, **extra}
         return worker("POST", "/api/proxied/honeygain/3/deploy", body), seen
 
+    def _routed_wallet(self, worker, monkeypatch, image, **extra):
+        """A routed ProxyBase (a wallet on its volume), with ``image``, through the real critical-spec check."""
+        seen = {}
+
+        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
+            seen["image"] = earner["image"]
+            return {"container_id": "e"}
+
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
+        monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
+        monkeypatch.setattr(proxy_tunnel, "_deploy", deploy)
+        docker_conf = catalog.get_service("proxybase-xyz")["docker"]
+        earner = {"image": image, "command": docker_conf.get("command"), "env": {}, **extra}
+        resp = worker("POST", "/api/proxied/proxybase-xyz/3/deploy", {"earner": earner, "proxy": PROXY, "routed": True})
+        return resp, seen, earner
+
+    def test_a_routed_wallet_service_on_another_image_needs_the_owners_approval(self, worker, monkeypatch):
+        """As a direct deploy (_validate_critical_spec): its container can read or replace the wallet."""
+        resp, seen, _ = self._routed_wallet(worker, monkeypatch, "attacker/proxybase:1")
+        assert resp.status_code == 403 and _detail(resp)["error"] == "step_up_required", resp.text
+        assert seen == {} and route_gate.routed() == {}
+
+    def test_a_routed_wallet_service_runs_another_image_with_the_owners_approval(self, worker, monkeypatch):
+        docker_conf = catalog.get_service("proxybase-xyz")["docker"]
+        target = step_up.deploy_target("proxybase-xyz", "custom/proxybase:1", docker_conf.get("command"), {}, {})
+        approval = step_up.sign(WORKER_KEY, step_up.ACTION_CUSTOM_IMAGE, target)
+        resp, seen, _ = self._routed_wallet(worker, monkeypatch, "custom/proxybase:1", approval=approval)
+        assert resp.status_code == 200, resp.text
+        assert seen == {"image": "custom/proxybase:1"}
+
+    def test_a_routed_wallet_service_on_the_catalogs_image_needs_no_approval(self, worker, monkeypatch):
+        image = catalog.get_service("proxybase-xyz")["docker"]["image"]
+        resp, seen, _ = self._routed_wallet(worker, monkeypatch, image)
+        assert resp.status_code == 200, resp.text
+        assert seen == {"image": image}
+
     def test_a_routed_deploy_is_recorded_before_the_earner_exists(self, worker, monkeypatch):
         resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
         assert resp.status_code == 200, resp.text
@@ -1282,6 +1318,28 @@ class TestTheUiDeploysARoute:
         assert sent["earner"]["env"]["HONEYGAIN_DEVICE_NAME"] == "box"
         assert result["route"]["proxy_id"] == pid
         assert proxies.route_of(record) == pid
+
+    def test_a_routed_wallet_service_on_another_image_goes_out_with_the_owners_signed_approval(self, db):
+        """As on the direct path: the worker checks it against the exact earner it receives."""
+        ui = _Ui(_worker_row(features=("proxy_tunnel", "route_at_deploy", "proxied_isolation")))
+        checked = AsyncMock()
+
+        async def go():
+            pid = await ui.proxy()
+            with patch.object(main, "require_step_up", checked):
+                await ui.deploy(
+                    main.DeployRequest(image="custom/proxybase:1", step_up_password="pw", route=pid),
+                    slug="proxybase-xyz",
+                )
+
+        _run(go)
+        assert checked.await_count == 1
+        earner = ui.calls[-1][2]["earner"]
+        assert earner["image"] == "custom/proxybase:1"
+        target = step_up.deploy_target(
+            "proxybase-xyz", earner["image"], earner.get("command"), earner.get("env"), earner.get("volumes")
+        )
+        step_up.check(WORKER_KEY, earner["approval"], step_up.ACTION_CUSTOM_IMAGE, target)
 
     def test_a_redeploy_keeps_the_route_without_being_asked(self, db):
         ui = _Ui()
