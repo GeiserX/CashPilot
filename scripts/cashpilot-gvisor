@@ -186,14 +186,17 @@ register() {
   # $1: the step, $2: runsc, $3: the runtime, then its arguments. Saves in
   # states/ what the step leaves daemon.json as, BEFORE it edits the real file,
   # so an install killed in the middle still leaves a state undo recognises.
-  local n="$1" runsc="$2" name="$3" stage="$TMP_DIR/stage.json"
+  # Each prediction starts from the previous one, never from the live file, so
+  # states/ only ever holds the backup plus this script's own edits. A live file
+  # that someone else edited meanwhile then matches none of them, and undo
+  # keeps that edit.
+  local n="$1" runsc="$2" name="$3" stage="$TMP_DIR/stage.json" prev="$STATE/states/$(($1 - 1))"
   shift 3
   rm -f "$stage"
-  if [ -f "$DAEMON_JSON" ]; then cp -p "$DAEMON_JSON" "$stage"; fi
+  if [ -f "$prev" ]; then cp -p "$prev" "$stage"; fi
   "$runsc" install -download-sidecars NEVER -config_file "$stage" -runtime "$name" -- "$@" >/dev/null 2>&1
   cp -p "$stage" "$STATE/states/$n"
   "$runsc" install -download-sidecars NEVER -config_file "$DAEMON_JSON" -runtime "$name" -- "$@"
-  cmp -s "$DAEMON_JSON" "$STATE/states/$n" || cp -p "$DAEMON_JSON" "$STATE/states/$n"
 }
 
 cmd_install() {
