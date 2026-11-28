@@ -217,25 +217,27 @@ class TestASlowStartIsNotAFailedDeploy:
         assert seen == [under_lock]
         node.stop.assert_called_once()
 
-    @pytest.mark.parametrize(("slug", "waits_for_deploy"), [("mysterium", True), ("honeygain", False)])
-    def test_a_stop_sent_during_a_redeploy_waits_for_the_deploy_lock(self, slug, waits_for_deploy):
-        # The worker stops a fence-gated node under the lock deploy_raw holds
-        # while it waits out a slow start. Cut off sooner, a stop that goes
-        # through answers 504, is never recorded, and the container-down alert
-        # fires for a node stopped on purpose. A service without the fence
-        # takes no lock, and its wait is unchanged (the control).
+    @pytest.mark.parametrize("slug", ["mysterium", "honeygain"])
+    def test_a_stop_sent_during_a_redeploy_waits_for_the_deploy_lock(self, slug):
+        # The worker stops every copy under the route lock deploy_raw holds while
+        # it waits out a slow start, and through an image update's check period.
+        # Cut off sooner, a stop that goes through answers 504, is never
+        # recorded, and the container-down alert fires for a node stopped on purpose.
         import asyncio
         from unittest.mock import AsyncMock
 
-        from app import main
+        from app import image_updates, main
 
         proxy = AsyncMock(return_value={})
         with patch("app.main._proxy_to_worker", proxy):
             asyncio.run(main._proxy_worker_command(1, "stop", slug))
             stop_alone = 30 + main._catalog_stop_timeout(slug)
-            deploy = main._deploy_timeout(slug)
-        expected = stop_alone + deploy if waits_for_deploy else stop_alone
-        assert proxy.call_args.kwargs["timeout"] == expected
+            deploy = main._deploy_timeout(slug) + image_updates.SETTLE_SECONDS + 30
+        assert proxy.call_args.kwargs["timeout"] == stop_alone + deploy
+        # A restart takes no deploy lock, and its wait is unchanged (the control).
+        with patch("app.main._proxy_to_worker", proxy):
+            asyncio.run(main._proxy_worker_command(1, "restart", slug))
+        assert proxy.call_args.kwargs["timeout"] == stop_alone
 
 
 # ---------------------------------------------------------------------------

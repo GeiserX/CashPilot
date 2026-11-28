@@ -22,6 +22,9 @@ function makePage() {
     renders: 0,
     addEventListener: (type, fn) => { listeners.root[type] = fn; },
     querySelectorAll: () => [],
+    // The error line the controls carry, present once they are drawn.
+    errorLine: {hidden: true, textContent: ''},
+    querySelector: (sel) => (sel === '[data-updates-load-error]' && html.includes('data-updates-load-error') ? root.errorLine : null),
   };
   // Count each time the controls are drawn.
   let html = '';
@@ -31,10 +34,11 @@ function makePage() {
   });
   const pending = [];
   const calls = [];
-  const api = (url, opts = {}) => new Promise((resolve) => {
+  const api = (url, opts = {}) => new Promise((resolve, reject) => {
     calls.push({url, method: opts.method || 'GET', body: opts.body});
-    pending.push(resolve);
+    pending.push({resolve, reject});
   });
+  const settle = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
   const data = {
     settings: {mode: 'auto', hour: 4, workers: {}, services: {}},
     settle_seconds: 120, workers: [], services: [], history: [], running: false,
@@ -58,8 +62,12 @@ function makePage() {
     click: (action) => listeners.doc.click({target: {closest: () => ({dataset: {updatesAction: action}})}}),
     tick: () => context.tick(),
     // Answer the oldest open request, then let the script run on.
-    answer: async (body = data) => { pending.shift()(body); for (let i = 0; i < 5; i++) await Promise.resolve(); },
+    answer: async (body = data) => { pending.shift().resolve(body); await settle(); },
+    // Answer the newest open request first, as a slow older one arrives later.
+    answerNewest: async (body = data) => { pending.pop().resolve(body); await settle(); },
+    fail: async (message) => { pending.shift().reject(new Error(message)); await settle(); },
     open: () => pending.length,
+    data,
   };
 }
 
@@ -114,6 +122,30 @@ p.click('run');
 await p.answer({status: 'started'});
 await p.answer();
 check('with no change, the reload after Check now draws the controls', p.root.renders === 2, `drawn ${p.root.renders} times`);
+
+// 6. An older load that answers after a newer one is thrown away.
+p = makePage();
+await p.answer();
+p.tick();
+p.tick();
+const off = {...p.data, settings: {...p.data.settings, mode: 'off'}};
+await p.answerNewest(off);
+await p.answer();
+check('an older load that answers last draws nothing', p.root.renders === 2, `drawn ${p.root.renders} times`);
+check('the newest answer is the one shown', p.root.innerHTML.includes('value="off" selected'), 'the fleet choice is not the newest answer');
+
+// 7. A reload that fails keeps the controls and a change not saved, and says so.
+p = makePage();
+await p.answer();
+p.change();
+p.click('run');
+await p.answer({status: 'started'});
+await p.fail('the dashboard did not answer');
+check('a failed reload keeps the controls', p.root.renders === 1, `drawn ${p.root.renders} times`);
+check('a failed reload shows its error beside them', !p.root.errorLine.hidden && p.root.errorLine.textContent.includes('did not answer'), JSON.stringify(p.root.errorLine));
+p = makePage();
+await p.fail('the dashboard did not answer');
+check('a first load that fails says so in place of the controls', p.root.innerHTML.includes('did not answer'), p.root.innerHTML);
 
 if (failures.length) {
   console.error(`image updates check FAILED (${failures.length} of ${checksRun}):\n  ${failures.join('\n  ')}`);
