@@ -71,7 +71,7 @@ from app.constants import (  # noqa: E402
     TUNNEL_PREFIX,
     drift_warnings_enabled,
 )
-from app.i18n import t  # noqa: E402
+from app.i18n import Reason, say, t, wire  # noqa: E402
 
 # Cached Docker availability (checked once at startup, refreshed on demand)
 _docker_available: bool | None = None
@@ -535,6 +535,14 @@ def _fatal_entry(container: Any, slug: str) -> dict[str, Any]:
     text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw or "")
     kind = match_fatal(text, signals)
     return {"fatal": kind, "fatal_at": finished} if kind else {}
+
+
+def _held_reason_entry(container: Any) -> dict[str, Any]:
+    """``{"held_reason": {code, params}}`` beside ``held``, so the UI words it in its reader's language."""
+    from app import lan_fence
+
+    wired = wire((lan_fence._state.get("guard") or {}).get(getattr(container, "name", None)))
+    return {"held_reason": wired} if wired else {}
 
 
 def _held_entry(container: Any) -> dict[str, Any]:
@@ -2515,6 +2523,13 @@ def _remember_identity(name: str, identity: str | None) -> None:
         logger.warning("Could not record the identity of %s: %s", name, exc)
 
 
+#: The English a mismatch record holds (reason.identity.mismatch), read back for its two identities.
+_MISMATCH_TEXT = re.compile(
+    r"its identity is (?P<current>\S+), not (?P<expected>\S+) as before the redeploy, so it is not running on the "
+    r"data volume that holds its keystore\. It stays stopped: restore that volume, then redeploy"
+)
+
+
 def identity_problem(container: Any) -> str | None:
     """Why a fence-gated node must stop: a different identity than before its redeploy.
 
@@ -2533,6 +2548,10 @@ def identity_problem(container: Any) -> str | None:
     if held == "MISMATCH":
         # Sticky until the next deploy rewrites the record: a stopped node
         # reads no identity, and must not be started again because of that.
+        # The record keeps the English, as older releases wrote it; the two
+        # identities in it are read back so the UI can word it.
+        if m := _MISMATCH_TEXT.fullmatch(rest):
+            return Reason("reason.identity.mismatch", current=m["current"], expected=m["expected"])
         return rest
     if getattr(container, "status", "") != "running":
         return None
@@ -2544,10 +2563,7 @@ def identity_problem(container: Any) -> str | None:
         _remember_identity(container.name, None)
         logger.info("%s kept its identity %s across the redeploy", container.name, current)
         return None
-    reason = (
-        f"its identity is {current}, not {expected} as before the redeploy, so it is not running on the data "
-        "volume that holds its keystore. It stays stopped: restore that volume, then redeploy"
-    )
+    reason = Reason("reason.identity.mismatch", current=current, expected=expected)
     _MISMATCH_HELD[container.name] = reason
     _remember_identity(container.name, f"MISMATCH {reason}")
     return reason
@@ -2564,7 +2580,7 @@ def _require_fence(slug: str) -> None:
 
     problem = lan_fence.fence_problem(_get_client(), service_name(slug))
     if problem:
-        raise ContainerNetworkError(t("err.orchestrator.not_started", slug=slug, problem=problem))
+        raise ContainerNetworkError(t("err.orchestrator.not_started", slug=slug, problem=say(problem)))
 
 
 def _require_startable(container: Any, slug: str) -> None:
@@ -2591,7 +2607,7 @@ def _require_startable(container: Any, slug: str) -> None:
         or identity_problem(container)
     )
     if problem:
-        raise ContainerNetworkError(t("err.orchestrator.not_started", slug=slug, problem=problem))
+        raise ContainerNetworkError(t("err.orchestrator.not_started", slug=slug, problem=say(problem)))
 
 
 def gated_spec_problem(container: Any, mode: str | None = None) -> str | None:
@@ -2611,49 +2627,53 @@ def gated_spec_problem(container: Any, mode: str | None = None) -> str | None:
     config = attrs.get("Config") if isinstance(attrs.get("Config"), dict) else {}
     network_mode = str(host.get("NetworkMode") or "")
     if network_mode == "host":
-        return "it shares the host's network, where its NET_ADMIN would reach the host's firewall"
+        return Reason("reason.spec.host_network")
     if host.get("Privileged"):
-        return "it runs privileged"
+        return Reason("reason.spec.privileged")
     want_caps = {str(c).upper().removeprefix("CAP_") for c in docker_conf.get("cap_add") or []}
     have_caps = {str(c).upper().removeprefix("CAP_") for c in host.get("CapAdd") or []}
     if extra := sorted(have_caps - want_caps):
-        return f"it holds {', '.join(extra)}, which its catalog entry does not grant"
+        return Reason("reason.spec.extra_caps", caps=", ".join(extra))
     policy = str((host.get("RestartPolicy") or {}).get("Name") or "no")
     if policy != "no":
-        return f"Docker would start it on its own (restart policy {policy}), before the fence is confirmed"
+        return Reason("reason.spec.restart_policy", policy=policy)
     pinned = {docker_conf.get("image")} | set((docker_conf.get("image_by_arch") or {}).values())
     pinned -= {None, ""}
     if pinned and str(config.get("Image") or "") not in pinned:
-        return f"it runs {config.get('Image') or 'an unknown image'}, not the image the catalog pins"
+        if not config.get("Image"):
+            return Reason("reason.spec.unknown_image")
+        return Reason("reason.spec.image", image=config["Image"])
     from app import lan_fence
 
     if mode == lan_fence.MODE_ON and network_mode != lan_fence.NETWORK_NAME:
-        return f"it is not on {lan_fence.NETWORK_NAME}, so the fence does not cover it"
+        return Reason("reason.spec.not_on_fence", network=lan_fence.NETWORK_NAME)
     if mode == lan_fence.MODE_OPERATOR and network_mode != _CONTAINER_NETWORK:
-        return f"it is not on {_CONTAINER_NETWORK}, the network whose rules this worker runs earners under"
+        return Reason("reason.spec.not_on_operator", network=_CONTAINER_NETWORK)
     if mode in (lan_fence.MODE_ON, lan_fence.MODE_OPERATOR):
         settings = attrs.get("NetworkSettings") if isinstance(attrs.get("NetworkSettings"), dict) else {}
         attached = settings.get("Networks") if isinstance(settings.get("Networks"), dict) else {}
         if network_mode not in attached:
-            return f"it is not attached to {network_mode}, so it would start with no network"
+            return Reason("reason.spec.not_attached", network=network_mode)
         if extra := sorted(set(attached) - {network_mode}):
-            return f"it is also attached to {', '.join(extra)}, where the fence does not cover it"
+            return Reason("reason.spec.also_attached", networks=", ".join(extra))
         bindings = host.get("PortBindings") if isinstance(host.get("PortBindings"), dict) else {}
         ui = docker_conf.get("ui_port")
         if isinstance(ui, dict) and f"{ui.get('port')}/tcp" not in bindings:
-            return f"it does not publish its WebUI port {ui.get('port')}"
+            return Reason("reason.spec.no_ui_port", port=ui.get("port"))
         rng = docker_conf.get("udp_port_range")
         if isinstance(rng, dict):
             wanted = _env_port_range(config, str(rng.get("env") or ""))
             if wanted is None and not any(k.endswith("/udp") for k in bindings):
-                return "it publishes none of its UDP ports"
+                return Reason("reason.spec.no_udp")
             if wanted is not None:
                 missing = [p for p in range(wanted[0], wanted[1] + 1) if f"{p}/udp" not in bindings]
                 if missing:
-                    return (
-                        f"it does not publish UDP {missing[0]}"
-                        + (f" and {len(missing) - 1} more" if len(missing) > 1 else "")
-                        + f" of its range {wanted[0]}:{wanted[1]}"
+                    return Reason(
+                        "reason.spec.udp_missing",
+                        port=missing[0],
+                        more=len(missing) - 1,
+                        start=wanted[0],
+                        end=wanted[1],
                     )
     return None
 
@@ -5665,6 +5685,7 @@ def get_status() -> list[dict[str, Any]]:
                 **_state_id_entry(c, slug, client),
                 **_fatal_entry(c, slug),
                 **_held_entry(c),
+                **_held_reason_entry(c),
             }
             # Present only when the service declares a dial-back address var;
             # the key's absence is "nothing to say", never "checked and fine".
@@ -5963,6 +5984,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 **_stop_facts(c),
                 **_fatal_entry(c, slug),
                 **_held_entry(c),
+                **_held_reason_entry(c),
             }
             # Same contract as get_status: key present only when declared+set.
             if advertised := _advertised_address(c, slug):

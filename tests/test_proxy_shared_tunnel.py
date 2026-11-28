@@ -2166,6 +2166,22 @@ class TestAStuckTunnelChangeIsReported:
         (entry,) = [e for e in _heartbeat() if e["slug"] == "m1"]
         assert "did not create" in entry["tunnel_change"]["reason"]
 
+    def test_the_reason_carries_its_key_so_the_ui_can_word_it(self, docker):
+        current, _staged = self._half_done(docker)
+        current.labels = {}
+        (entry,) = [e for e in _heartbeat() if e["slug"] == "m1"]
+        assert entry["tunnel_change"]["reason_wire"] == {
+            "code": "reason.tunnel.name_taken",
+            "params": {"name": "cashpilot-tunnel-p3"},
+        }
+
+    def test_an_error_with_no_key_of_its_own_sends_its_text_alone(self, docker):
+        self._half_done(docker)
+        with patch.object(proxy_tunnel, "_finish_staged", side_effect=RuntimeError("boom")):
+            (entry,) = [e for e in _heartbeat() if e["slug"] == "m1"]
+        assert entry["tunnel_change"]["reason"] == "boom"
+        assert entry["tunnel_change"]["reason_wire"] is None
+
     def test_an_error_with_no_text_is_still_reported(self, docker):
         self._half_done(docker)
         with patch.object(proxy_tunnel, "_finish_staged", side_effect=RuntimeError()):

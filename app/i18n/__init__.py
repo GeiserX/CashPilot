@@ -559,6 +559,87 @@ def t(key: str, /, **params: Any) -> str:
     return format_message(text, params, rules)
 
 
+#: The keys a worker may name in a reason it sends: nothing else in en.json.
+REASON_PREFIX = "reason."
+
+
+class Reason(str):
+    """A sentence in English that also carries its message key and arguments.
+
+    The worker writes why it holds a node, or why a tunnel change is stuck, with
+    no page to take a language from, and the UI words it later for its reader.
+    A Reason is a str with the English text, so a log line, a comparison and an
+    older UI read it as before. ``wire()`` adds the key and the arguments to a
+    heartbeat, and ``reword()`` on the UI side turns them into the reader's
+    language. Arguments are strings or numbers, so they cross JSON unchanged.
+    """
+
+    code: str
+    params: dict[str, Any]
+
+    def __new__(cls, key: str, /, **params: Any) -> Reason:
+        if not key.startswith(REASON_PREFIX):
+            raise ValueError(f"a reason key starts with {REASON_PREFIX!r}: {key!r}")
+        values = {
+            k: v if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v) for k, v in params.items()
+        }
+        obj = super().__new__(cls, format_message(source()[key], values, SOURCE))
+        obj.code = key
+        obj.params = values
+        return obj
+
+    def localized(self) -> str:
+        """The reason in the current locale."""
+        return t(self.code, **self.params)
+
+
+def say(value: Any) -> Any:
+    """A Reason in the current locale, anything else as it is."""
+    return value.localized() if isinstance(value, Reason) else value
+
+
+def wire(value: Any) -> dict[str, Any] | None:
+    """What a heartbeat carries beside a reason's English: its key and arguments, or None."""
+    return {"code": value.code, "params": dict(value.params)} if isinstance(value, Reason) else None
+
+
+def reword(text: Any, wired: Any) -> Any:
+    """A reason from a worker in the current locale, or ``text`` as the worker sent it.
+
+    ``text`` stays when the worker sent no key (an older worker, or Desktop),
+    when the key is not a reason this release knows, or when its arguments do
+    not fill it.
+    """
+    if not isinstance(wired, dict):
+        return text
+    key, params = wired.get("code"), wired.get("params")
+    if not isinstance(key, str) or not key.startswith(REASON_PREFIX) or key not in source():
+        return text
+    if not isinstance(params, dict) or not all(
+        isinstance(k, str) and isinstance(v, (str, int, float)) and not isinstance(v, bool) for k, v in params.items()
+    ):
+        return text
+    if not _arg_names(parse(source()[key])) <= set(params):
+        return text
+    try:
+        return t(key, **params)
+    except Exception:  # noqa: BLE001 - the worker's English is the fallback
+        return text
+
+
+def _arg_names(parts: tuple | list) -> set[str]:
+    """Every argument a parsed message reads, in any branch."""
+    names: set[str] = set()
+    for part in parts:
+        if isinstance(part, str) or part[0] == "#":
+            continue
+        names.add(part[1])
+        if part[0] != "arg":
+            for branch in part[2].values():
+                names |= _arg_names(branch)
+    return names
+
+
 def bundle_js(locale: str) -> str:
     """The script that hands the browser its strings (served at /i18n/<locale>.js)."""
     locale = locale if locale in available() else SOURCE

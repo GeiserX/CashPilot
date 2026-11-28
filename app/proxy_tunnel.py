@@ -80,7 +80,7 @@ from app.constants import (
     ROLE_TUNNEL,
     TUNNEL_PREFIX,
 )
-from app.i18n import t
+from app.i18n import Reason, t, wire
 
 logger = logging.getLogger(__name__)
 
@@ -3030,13 +3030,10 @@ def _finish_stale_staged(client: Any, staged: Any) -> str | None:
         return None
     if half := _moving(client, pid):
         # recover_moves settles those first, at a later heartbeat
-        return (
-            f"{', '.join(sorted(half))} {'is' if len(half) == 1 else 'are'} still half moved between tunnels, "
-            "and the worker has not settled that yet."
-        )
+        return Reason("reason.tunnel.half_moved", names=", ".join(sorted(half)), count=len(half))
     lock = _deploy_lock(int(pid))
     if not lock.acquire(blocking=False):
-        return "Another change to this proxy is running on this worker."
+        return Reason("reason.tunnel.busy")
     # The name the staged tunnel was made for: the proxy's shared one, or a
     # routed service's own.
     key = _own_key(staged)
@@ -3044,7 +3041,7 @@ def _finish_stale_staged(client: Any, staged: Any) -> str | None:
     try:
         current = _get(client, final)
         if current is not None and not _is_tunnel_for(current, int(pid), key):
-            return f"A container named {final} that CashPilot did not create holds the name the new tunnel needs."
+            return Reason("reason.tunnel.name_taken", name=final)
         _finish_staged(client, staged, current, final)
         return None
     except Exception as exc:  # noqa: BLE001 - the next heartbeat tries again
@@ -3451,6 +3448,7 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
                         "tunnel": str(container.name),
                         "age_seconds": int(_age_seconds(container)),
                         "reason": reason,
+                        "reason_wire": wire(reason),
                     }
             else:
                 _remove_quietly(container, SIDECAR_STOP_SECONDS)
