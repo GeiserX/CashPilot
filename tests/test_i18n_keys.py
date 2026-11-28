@@ -238,3 +238,36 @@ def test_the_page_holds_an_unconfirmed_id_as_long_as_the_server():
     )
     assert found, "app.js no longer defines PENDING_IDENTITY_HOURS"
     assert int(found.group(1)) * 3600 == database.PENDING_IDENTITY_SECONDS
+
+
+def _shows_count(parts, name) -> bool:
+    for part in parts:
+        if isinstance(part, str):
+            continue
+        if part[0] == "#" or part == ("arg", name):
+            return True
+        if part[0] == "select" and part[2] and all(_shows_count(o, name) for o in part[2].values()):
+            return True
+    return False
+
+
+def _silent_ones(parts, found):
+    for part in parts:
+        if isinstance(part, str) or part[0] in ("#", "arg"):
+            continue
+        kind, name, options = part
+        if kind == "plural" and "one" in options and "=1" not in options and not _shows_count(options["one"], name):
+            found.append(name)
+        for sub in options.values():
+            _silent_ones(sub, found)
+    return found
+
+
+def test_a_plural_that_hides_its_number_names_exactly_one_with_eq_1():
+    """ "one" also covers 21 in Russian and 0 in French: a form that says "it" or "that box" names exactly one with =1."""
+    from app import i18n
+
+    found = sorted(k for k, v in EN.items() if _silent_ones(i18n.parse(v), []))
+    assert not found, f"use =1, or show the number with #, in the one form of: {found}"
+    assert _silent_ones(i18n.parse("{n, plural, one {it} other {them}}"), []) == ["n"]
+    assert _silent_ones(i18n.parse("{n, plural, =1 {it} other {them}}"), []) == []
