@@ -300,5 +300,13 @@
    "n": "many"
   },
   "expected": "0 boxes"
+ },
+ {
+  "locale": "en",
+  "message": "Service ''{slug}'' not found",
+  "params": {
+   "slug": "honeygain"
+  },
+  "expected": "Service 'honeygain' not found"
  }
 ]
