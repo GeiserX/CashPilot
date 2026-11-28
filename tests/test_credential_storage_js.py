@@ -126,3 +126,7 @@ class TestTheEarnerCredentialsCard:
         assert "{" not in one and "{" not in many
         assert one != many
         assert "3" in many and "2" in many
+
+    def test_a_worker_without_counts_says_only_its_setting(self):
+        [line] = _lines("earnerSecretsHtml", [{"worker": "mac", "mode": "file", "in_file": None, "in_config": None}])
+        assert line == "mac: credentials go in a file. It does not report its earners one by one."

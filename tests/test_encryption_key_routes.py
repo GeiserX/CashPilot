@@ -1,4 +1,4 @@
-"""Settings > Credential encryption key: the routes (app/routers/encryption_key.py)."""
+"""Settings > Credential encryption key and Earner credentials: the routes (app/routers/credential_storage.py)."""
 
 from __future__ import annotations
 
@@ -106,3 +106,46 @@ def test_the_copy_is_deleted_after_the_password():
     assert res.status_code == 200 and res.json()["outside"] is True
     remove.assert_called_once()
     assert step_up_.await_args.kwargs["action"] == "remove-key-copy"
+
+
+def _workers():
+    import json
+
+    shape = {"entrypoint": None}
+    return [
+        {
+            "id": 1,
+            "name": "box",
+            "status": "online",
+            "system_info": json.dumps({"earner_secrets": "file"}),
+            "containers": json.dumps(
+                [
+                    {"slug": "honeygain", "shape": {**shape, "secrets_file": True}},
+                    {"slug": "iproyal", "shape": shape},
+                    # No secret variable: never counted.
+                    {"slug": "mysterium", "shape": shape},
+                ]
+            ),
+        },
+        {
+            "id": 2,
+            "name": "mac",
+            "status": "online",
+            "system_info": json.dumps({"earner_secrets": "env"}),
+            "containers": json.dumps([{"slug": "honeygain"}]),
+        },
+        {"id": 3, "name": "old", "status": "online", "system_info": "{}", "containers": "[]"},
+    ]
+
+
+def test_the_earner_credentials_count_per_worker():
+    with (
+        patch.object(deps, "_require_owner", lambda r: OWNER),
+        patch.object(database, "list_workers", AsyncMock(return_value=_workers())),
+    ):
+        rows = _client().get("/api/settings/earner-secrets").json()
+    by = {row["worker"]: row for row in rows}
+    assert (by["box"]["mode"], by["box"]["in_file"], by["box"]["in_config"]) == ("file", 1, 1)
+    # A worker that sends no shapes (CashPilot-Desktop) has unknown counts, never zero.
+    assert (by["mac"]["mode"], by["mac"]["in_file"], by["mac"]["in_config"]) == ("env", None, None)
+    assert (by["old"]["mode"], by["old"]["in_file"], by["old"]["in_config"]) == (None, 0, 0)

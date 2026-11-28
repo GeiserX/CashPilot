@@ -110,7 +110,8 @@ async def api_earner_secrets(request: Request) -> list[dict[str, Any]]:
     a worker image without the shim), or None for a worker older than this.
     ``in_file`` and ``in_config`` count the containers of services that have a
     secret (and do not opt out): the first got the file, the second still has
-    the values in Docker's config and needs a redeploy (or the setting). Never a value.
+    the values in Docker's config and needs a redeploy (or the setting). Both are None
+    for a worker whose containers carry no shape. Never a value.
     """
     deps._require_owner(request)
     out: list[dict[str, Any]] = []
@@ -121,12 +122,18 @@ async def api_earner_secrets(request: Request) -> list[dict[str, Any]]:
         except (TypeError, ValueError):
             info, containers = {}, []
         in_file = in_config = 0
+        # A worker that sends no shapes (CashPilot-Desktop, or CASHPILOT_DRIFT_WARNINGS=off)
+        # reports only its setting: its counts are unknown, never zero.
+        shaped = False
         for container in containers if isinstance(containers, list) else []:
             if not isinstance(container, dict):
                 continue
             slug = egress.container_slug(container)
             shape = container.get("shape")
-            if not isinstance(shape, dict) or not secret_env.covers(catalog.get_service(slug), slug):
+            if not isinstance(shape, dict):
+                continue
+            shaped = True
+            if not secret_env.covers(catalog.get_service(slug), slug):
                 continue
             if shape.get("secrets_file"):
                 in_file += 1
@@ -139,8 +146,8 @@ async def api_earner_secrets(request: Request) -> list[dict[str, Any]]:
                 "worker": worker.get("name") or "",
                 "status": worker.get("status") or "",
                 "mode": mode if mode in ("file", "env", "unavailable") else None,
-                "in_file": in_file,
-                "in_config": in_config,
+                "in_file": in_file if shaped or not containers else None,
+                "in_config": in_config if shaped or not containers else None,
             }
         )
     return out
