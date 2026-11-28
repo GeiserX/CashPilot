@@ -87,7 +87,7 @@ The dashboard is what you look at every day: the balances, a 7-day or 30-day ear
 <figcaption>The wizard: pick categories, pick services, enter credentials, deploy</figcaption>
 </figure>
 <figure markdown>
-![The fleet page: four Linux boxes and an Android phone with their system, last report, power draw and containers or apps, one box offline, the running cost of each machine, and the block to add another box](images/screenshots/fleet.png)
+![The fleet page: four Linux boxes with their system, last report, power draw and containers, one box offline, the running cost of each machine, and the blocks to add a proxy or another box](images/screenshots/fleet.png)
 <figcaption>The fleet: every worker, its host, and how to add the next one</figcaption>
 </figure>
 <figure markdown>
