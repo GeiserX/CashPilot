@@ -155,6 +155,8 @@ nav = [
       { "Test your isolation" = "isolation-check.md" },
       { "Moving Mysterium behind the fence" = "mysterium-fence.md" },
       { "Activity per container" = "activity.md" },
+      { "Encryption key outside the data folder" = "encryption-key.md" },
+      { "Earner credentials outside Docker" = "earner-secrets.md" },
     ] },
   { Operations = [
       { "Backing up and restoring" = "backup-restore.md" },

@@ -11,6 +11,7 @@ control drops what does not answer from the host, "could not test" is never
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import ipaddress
 import json
 import logging
@@ -1094,3 +1095,55 @@ def test_the_heartbeat_offers_the_check_only_with_docker(docker_ok, offered):
     features = sent["system_info"]["features"]
     assert "instances" in features, "older UIs depend on it"
     assert ("isolation_check" in features) is offered
+
+
+class TestTheReportSpeaksTheAskedLanguage:
+    """The worker writes the report in the language the UI asks for.
+
+    A group's name and the reason a check could not run are words of the
+    report, so they come from the same catalog as the verdicts beside them.
+    """
+
+    SPANISH = {
+        "isolation_check.group.lan": "Tu red local",
+        "isolation_check.earner_reaches": "{label}: un generador llega a {address}.",
+        "isolation_check.reason.no_own_container": "El worker no encuentra su propio contenedor.",
+    }
+
+    @pytest.fixture
+    def spanish(self, tmp_path, monkeypatch):
+        from app import i18n
+
+        source = json.loads((ROOT / "app/i18n/en.json").read_text(encoding="utf-8"))
+        (tmp_path / "en.json").write_text(json.dumps(source), encoding="utf-8")
+        stamped = {k: {"text": v, "source": i18n.source_hash(source[k])} for k, v in self.SPANISH.items()}
+        (tmp_path / "es.json").write_text(json.dumps(stamped, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setattr(i18n, "DIR", tmp_path)
+        i18n.reload()
+        yield i18n
+        i18n.reload()
+
+    @staticmethod
+    def _in(i18n, locale, fn, *args):
+        def run():
+            i18n.use(locale)
+            return fn(*args)
+
+        return contextvars.Context().run(run)
+
+    def test_a_group_and_its_verdict_name_the_group_in_the_asked_language(self, spanish):
+        fake = FakeDocker(_ok(GATEWAY), {"192.168.1.1:80": True, **INTERNET_OK})
+        report = self._in(spanish, "es", _check, fake)
+        assert report["groups"][0]["label"] == "Tu red local"
+        assert report["findings"][0]["detail"] == "Tu red local: un generador llega a 192.168.1.1:80."
+
+        fake = FakeDocker(_ok(GATEWAY), {"192.168.1.1:80": True, **INTERNET_OK})
+        report = self._in(spanish, "en", _check, fake)
+        assert report["groups"][0]["label"] == "Your LAN"
+        assert report["findings"][0]["detail"] == "Your LAN: an earner reaches 192.168.1.1:80."
+
+    def test_the_reason_it_could_not_test_is_in_the_asked_language(self, spanish):
+        fake = FakeDocker(_ok(GATEWAY), INTERNET_OK)
+        with patch.object(isolation_check.orchestrator, "_self_container", return_value=None):
+            report = self._in(spanish, "es", isolation_check._run, fake)
+        assert report["reason"] == "El worker no encuentra su propio contenedor."

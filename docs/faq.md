@@ -23,16 +23,18 @@ Note that this is a different key from `CASHPILOT_SECRET_KEY`, which only signs 
 Your credentials are only as recoverable as `/data/.fernet_key`. If you lose that file you will have to re-enter every credential, because there is no way to decrypt the stored values without it.
 
 ```bash
-# Back it up
+# Back it up (if the key lives outside the data folder, back up that file or secret instead)
 docker exec cashpilot-ui cat /data/.fernet_key
 
-# Restore onto a fresh volume: pass the saved value when starting CashPilot.
-# It must reach the container, so put it on the same command line (or export it,
-# or set it in your .env) - a bare shell assignment on its own line does nothing.
-CASHPILOT_ENCRYPTION_KEY=<the value you saved> docker compose up -d
+# Restore onto a fresh volume: save the value in the .env file beside your
+# compose file, so every start reads it, then start CashPilot.
+echo 'CASHPILOT_ENCRYPTION_KEY=<the value you saved>' >> .env
+docker compose up -d
 ```
 
-The file always takes precedence over the environment variable, so setting `CASHPILOT_ENCRYPTION_KEY` on an instance that already has a key changes nothing and is safe. It is adopted only when no key file exists, which is exactly the restore case.
+Keep the value in `.env`, or move it to a key file ([guide](encryption-key.md)). CashPilot does not write a key from the variable into `/data`, so a later start without it has no key that reads the restored credentials, and it refuses to start. The file in `/data` always takes precedence over the environment variable, so setting `CASHPILOT_ENCRYPTION_KEY` on an instance that already has a key changes nothing and is safe. A key that decrypts none of the stored credentials stops the start, so a wrong value cannot slip through.
+
+To keep the key out of the data folder for good, see [Encryption key outside the data folder](encryption-key.md).
 
 If CashPilot cannot write the key to disk at all, because `/data` is unwritable or unmounted, it refuses to start rather than encrypting your credentials under a key that disappears on the next restart. Set `CASHPILOT_ALLOW_EPHEMERAL_KEY=true` if that is genuinely what you want.
 

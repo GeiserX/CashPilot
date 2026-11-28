@@ -69,6 +69,15 @@ ACTION_REVEAL_WALLET_SEED = "reveal-wallet-seed"
 #: The UI checks the password alone: no worker takes part. Target: "device ids".
 ACTION_EXPORT_IDENTITIES = "export-device-ids"
 
+#: Showing the credential encryption key once, to copy it into a secret store
+#: (Settings > Credential encryption key). The UI checks the password alone.
+#: Target: "credential encryption key".
+ACTION_REVEAL_ENCRYPTION_KEY = "reveal-encryption-key"
+
+#: Deleting the data folder's copy of that key once the same key comes from
+#: outside it. The UI checks the password alone. Target as above.
+ACTION_REMOVE_KEY_COPY = "remove-key-copy"
+
 #: The request header that carries an approval on a request with no JSON body
 #: (the DELETE of a service with its critical data).
 APPROVAL_HEADER = "X-CashPilot-Step-Up"

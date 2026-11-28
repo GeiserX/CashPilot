@@ -132,7 +132,7 @@ graph LR
 |----------|---------|-------------|
 | `TZ` | `UTC` | Timezone for scheduling and display |
 | `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Signing key for login sessions. Persisted at `/data/.secret_key`. **Does not encrypt credentials** |
-| `CASHPILOT_ENCRYPTION_KEY` | *(auto-generated)* | Fernet key encrypting stored credentials at rest. Persisted at `/data/.fernet_key`. Adopted only when that file is absent, so set it only to restore a backup |
+| `CASHPILOT_ENCRYPTION_KEY` | *(auto-generated)* | Fernet key encrypting stored credentials at rest. Persisted at `/data/.fernet_key`. Used only when that file is absent, and never written into `/data`. `CASHPILOT_ENCRYPTION_KEY_FILE` (a path) wins over both: see [Encryption key outside the data folder](encryption-key.md) |
 | `CASHPILOT_API_KEY` | *(from `/fleet`)* | Shared enrolment key for workers. Each worker gets its own key when it enrols; see [Fleet](fleet.md) |
 | `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
 | `CASHPILOT_UI_PORT` | `8080` | Host port the UI is published on. Set it in `.env` when 8080 is taken |

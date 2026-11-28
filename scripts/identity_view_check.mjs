@@ -253,14 +253,16 @@ const settingsCalls = [];
 const stub = name => () => { settingsCalls.push(name); };
 const loadSettings = new Function(
   'populateCurrencyDropdown', 'loadUpdateCard', 'loadIdentities', 'loadCredentialHealth',
-  'renderEnvVars', 'renderCollectors', 'settingsPanelsFailed', 'api',
+  'renderEnvVars', 'renderCollectors', 'settingsPanelsFailed', 'loadEncryptionKey', 'loadEarnerSecrets', 'api',
   `${loadSettingsFn}; return loadSettings;`,
 )(stub('currency'), stub('update'), stub('identities'), stub('credentials'),
-  stub('env'), stub('collectors'), stub('failed'),
+  stub('env'), stub('collectors'), stub('failed'), stub('key'), stub('earner-secrets'),
   async path => { if (path === '/api/config') throw new Error('401'); return []; });
 await loadSettings();
 check('a failed /api/config still loads the device ids', settingsCalls.includes('identities')
   && settingsCalls.includes('failed'), JSON.stringify(settingsCalls));
+check('a failed /api/config still loads the key and earner credential cards',
+  settingsCalls.includes('key') && settingsCalls.includes('earner-secrets'), JSON.stringify(settingsCalls));
 
 // --- a slow save never closes a newer form -----------------------------------
 // The owner saves, then Cancels and opens the form again while the save runs.

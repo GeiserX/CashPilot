@@ -11,6 +11,8 @@
   <a href="#credential-health-card" id="credential-health-link" hidden>{{ t('settings.health.title') }}</a>
   <a href="#set-identities">{{ t('settings.identities.title') }}</a>
   <a href="#set-restore">{{ t('settings.index.restore') }}</a>
+  <a href="#set-key">{{ t('settings.key.title') }}</a>
+  <a href="#set-earner-secrets">{{ t('settings.earner_secrets.title') }}</a>
   <a href="#set-env">{{ t('settings.env.title') }}</a>
   <a href="#set-about">{{ t('settings.about.title') }}</a>
   <a href="/import">{{ t('settings.index.import') }}</a>
@@ -74,6 +76,67 @@
   <input type="file" id="restore-file" accept=".cpbackup,application/octet-stream">
   <button type="button" class="btn btn-ghost btn-sm" data-action="checkRestoreFile">{{ t('settings.restore.check') }}</button>
   <div id="restore-preview"></div>
+</div>
+
+<!-- Credential encryption key (docs/encryption-key.md). Owner only, like the whole page. -->
+<div class="card settings-section" id="set-key">
+  <h3 class="settings-section-title">{{ t('settings.key.title') }}</h3>
+  <p class="settings-section-desc">{{ t('settings.key.desc') }}</p>
+  <div id="key-status">
+    <p class="loading-line">{{ t('settings.key.loading') }}</p>
+  </div>
+  <div class="settings-actions" id="key-actions"></div>
+  <div id="key-move" hidden>
+    <ol>
+      <li>{{ t('settings.key.step_reveal') }}
+        <div class="settings-actions">
+          <button type="button" class="btn btn-secondary btn-sm" data-action="revealEncryptionKey">{{ t('settings.key.reveal') }}</button>
+        </div>
+        <div id="key-revealed" hidden>
+          <input type="text" id="key-value" class="form-input" readonly autocomplete="off" spellcheck="false" aria-label="{{ t('settings.key.value_label') }}">
+          <div class="settings-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-action="copyEncryptionKey">{{ t('settings.key.copy') }}</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-action="hideEncryptionKey">{{ t('settings.key.hide') }}</button>
+          </div>
+        </div>
+      </li>
+      <li>{{ t('settings.key.step_file') }}
+<pre><code>mkdir -p secrets
+sudo chown 1000:1000 secrets/cashpilot_encryption_key
+sudo chmod 400 secrets/cashpilot_encryption_key</code></pre>
+        {{ t('settings.key.step_compose') }}
+<pre><code>secrets:
+  cashpilot_encryption_key:
+    file: ./secrets/cashpilot_encryption_key
+
+services:
+  cashpilot-ui:
+    secrets:
+      - cashpilot_encryption_key
+    environment:
+      - CASHPILOT_ENCRYPTION_KEY_FILE=/run/secrets/cashpilot_encryption_key</code></pre>
+        {{ t('settings.key.step_file_other_html') }}
+      </li>
+      <li>{{ t('settings.key.step_restart') }}
+<pre><code>docker compose up -d cashpilot-ui</code></pre>
+      </li>
+      <li>{{ t('settings.key.step_check') }}</li>
+    </ol>
+  </div>
+</div>
+
+<!-- Earner credentials on each box (CASHPILOT_EARNER_SECRETS, docs/earner-secrets.md). Owner only. -->
+<div class="card settings-section" id="set-earner-secrets">
+  <h3 class="settings-section-title">{{ t('settings.earner_secrets.title') }}</h3>
+  <p class="settings-section-desc">{{ t('settings.earner_secrets.desc_html') }}</p>
+  <div id="earner-secrets-container">
+    <p class="loading-line">{{ t('settings.key.loading') }}</p>
+  </div>
+<pre><code>services:
+  cashpilot-worker:
+    environment:
+      - CASHPILOT_EARNER_SECRETS=file</code></pre>
+  <p class="settings-section-desc">{{ t('settings.earner_secrets.how') }}</p>
 </div>
 
 <!-- Environment Variables -->

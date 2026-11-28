@@ -106,7 +106,7 @@ A worker started from an older compose file, from the Unraid template or with `d
 ### Data Storage
 
 - SQLite database stored in a Docker volume (`/data/cashpilot.db`)
-- Service credentials are encrypted at rest using Fernet symmetric encryption. The key is generated on first run and stored at `/data/.fernet_key`; it can be supplied via `CASHPILOT_ENCRYPTION_KEY` to restore a backup. This is **not** `CASHPILOT_SECRET_KEY`, which signs login sessions and lives at `/data/.secret_key`. These are two separate keys with separate jobs
+- Service credentials are encrypted at rest using Fernet symmetric encryption. The key is generated on first run and stored at `/data/.fernet_key`; it can be kept outside the data folder with `CASHPILOT_ENCRYPTION_KEY_FILE` (a Docker secret or a file a secret manager writes, which wins over the data folder's file) or supplied via `CASHPILOT_ENCRYPTION_KEY` to restore a backup. A key that decrypts none of the stored credentials stops the start. Earner credentials can be kept out of Docker's container config with `CASHPILOT_EARNER_SECRETS=file` on the worker; root on the host can still read them from the running process (`/proc/<pid>/environ`). This is **not** `CASHPILOT_SECRET_KEY`, which signs login sessions and lives at `/data/.secret_key`. These are two separate keys with separate jobs
 - If the encryption key cannot be persisted, CashPilot refuses to start rather than continuing with a key that dies with the process (override with `CASHPILOT_ALLOW_EPHEMERAL_KEY`)
 - Database is not network-accessible (local file only)
 - 400-day data retention with automatic purging
