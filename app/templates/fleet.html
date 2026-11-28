@@ -842,7 +842,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // A worker inside a Secure VM shows the VM's fence; any other shows whether its host has KVM.
     const vm = view.secure_vm;
     const vmState = vm ? (vm.state === 'ok' ? true : vm.state === 'failed' ? false : null) : null;
-    const vmText = vm ? t(`layers.vm.fence_${vm.state}`)
+    const vmText = vm ? t(`layers.vm.fence_${vm.state}`) // i18n-keys: layers.vm.fence_ok, layers.vm.fence_failed, layers.vm.fence_stale, layers.vm.fence_unknown
       : view.kvm === true ? t('layers.vm.kvm') : view.kvm === false ? t('layers.vm.no_kvm') : t('layers.unknown');
     const vmTip = vm ? [t('layers.vm.inside', { host: vm.host }), vm.reason].filter(Boolean).join(' ') : t('layers.vm.tip');
     const summary = [

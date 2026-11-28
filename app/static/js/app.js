@@ -2175,8 +2175,8 @@ const CP = (() => {
     const l = inst && inst.layers;
     if (!l || (l.fence == null && l.runtime == null)) return '';
     const parts = [];
-    if (l.fence != null) parts.push(t(l.fence ? 'layers.earner.fenced' : 'layers.earner.not_fenced'));
-    if (l.runtime) parts.push(t(l.runtime === 'gvisor' ? 'layers.runtime.gvisor' : 'layers.runtime.runc'));
+    if (l.fence != null) parts.push(l.fence ? t('layers.earner.fenced') : t('layers.earner.not_fenced'));
+    if (l.runtime) parts.push(l.runtime === 'gvisor' ? t('layers.runtime.gvisor') : t('layers.runtime.runc'));
     const tone = l.fence === false ? 'warn' : 'plain';
     return `<span class="badge badge-layers badge-layers-${tone}" title="${escapeHtml(t('layers.badge.tip'))}">${escapeHtml(parts.join(' · '))}</span>`;
   }
