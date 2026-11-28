@@ -1112,7 +1112,7 @@ def container_runtime(
                 "err.orchestrator.runtime_settings_give_runtime_which",
                 slug=slug,
                 runtime=repr(runtime),
-                available=sorted(available) or "none reported",
+                available=sorted(available) or t("worker.none_reported"),
             )
         )
     return runtime
@@ -1132,10 +1132,7 @@ class PastDeadline(ContainerRuntimeError):
 
 
 def _past_deadline(image: str) -> ContainerRuntimeError:
-    return PastDeadline(
-        f"The deploy of {image} ran past its {DEPLOY_DEADLINE_SECONDS // 60}-minute limit, so it was abandoned "
-        "before its container was created. Try again."
-    )
+    return PastDeadline(t("err.orchestrator.deploy_past_deadline", image=image, minutes=DEPLOY_DEADLINE_SECONDS // 60))
 
 
 def _refuse_past(deadline: float, image: str) -> None:
@@ -3481,8 +3478,12 @@ class RestoreError(ContainerRuntimeError):
 
 
 #: Said where Docker's own answer would go: that text stays in the worker log.
-_DOCKER_ANSWER_IN_LOG = "The worker's log has Docker's answer."
-_WORKER_LOG_SAYS_WHY = "The worker's log says why."
+def _docker_answer_in_log() -> str:
+    return t("err.orchestrator.docker_answer_in_log")
+
+
+def _worker_log_says_why() -> str:
+    return t("err.orchestrator.worker_log_says_why")
 
 
 def restore_targets(slug: str) -> dict[str, str] | None:
@@ -3507,10 +3508,7 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
     """
     labelled = client.containers.list(all=True, filters={"label": f"{LABEL_SERVICE}={slug}"})
     if labelled:
-        return (
-            f"{slug} already has a container on this box ({labelled[0].name}). A restore only creates a new one: "
-            "back the running one up, remove it from the dashboard and say yes to deleting its data, then restore"
-        )
+        return t("err.orchestrator.restore_has_container", slug=slug, container=labelled[0].name)
     for candidate in (name, name + REPLACED_SUFFIX, name + RESTORE_HELPER_SUFFIX):
         try:
             found = client.containers.get(candidate)
@@ -3529,22 +3527,17 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
                     continue
                 except Exception:  # noqa: BLE001 - a volume that cannot be checked counts as there
                     pass
-                return (
-                    f"a restore of {slug} did not finish, so the volume {held} may be half-written. "
-                    "Remove the service with its data (Remove from this box, in the service's dashboard panel, offers it), then restore"
-                )
+                return t("err.orchestrator.restore_unfinished_volume", slug=slug, volume=held)
             try:
                 found.remove(force=True)
             except NotFound:
                 pass
             except Exception as exc:  # noqa: BLE001 - said to the owner, Docker's text in the log
                 logger.warning("Could not remove %s, left by a restore that did not finish: %s", candidate, exc)
-                return (
-                    f"{candidate}, left by a restore that did not finish, could not be removed. {_DOCKER_ANSWER_IN_LOG}"
-                )
+                return t("err.orchestrator.restore_leftover_not_removed", name=candidate, log=_docker_answer_in_log())
             logger.warning("Removed %s, left by a restore that did not finish", candidate)
             continue
-        return f"a container named {candidate} already exists on this box"
+        return t("err.orchestrator.restore_name_taken", name=candidate)
     try:
         recorded = _restore_mark_volumes(slug) if slug in restore_marks() else None
     except RestoreRecordUnreadable as exc:
@@ -3555,10 +3548,7 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
         candidates = sorted(set(volumes.values()) | set(recorded))
         held = [v for v in candidates if _volume_exists(client, v)]
         if held:
-            return (
-                f"a restore of {slug} did not finish, so the volume {held[0]} may be half-written. "
-                "Remove the service with its data (Remove from this box, in the service's dashboard panel, offers it), then restore"
-            )
+            return t("err.orchestrator.restore_unfinished_volume", slug=slug, volume=held[0])
     for volume in volumes.values():
         try:
             client.volumes.get(volume)
@@ -3568,13 +3558,10 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
             refusal = proxy_refusal(exc)
             if not refusal:
                 logger.warning("Could not check the volume %s for a restore: %s", volume, exc)
-            return (
-                f"the volume {volume} could not be checked, so it counts as there. {refusal or _DOCKER_ANSWER_IN_LOG}"
+            return t(
+                "err.orchestrator.restore_volume_unchecked", volume=volume, refusal=refusal or _docker_answer_in_log()
             )
-        return (
-            f"the volume {volume} already exists on this box. A restore never writes into an existing volume: "
-            "if it holds nothing you need, remove it, then restore"
-        )
+        return t("err.orchestrator.restore_volume_exists", volume=volume)
     return None
 
 
@@ -3931,7 +3918,7 @@ def _restore_locked(
         if not refusal:
             logger.warning("Restore of %s: Docker refused to list the box: %s", slug, exc)
         raise RestoreError(
-            t("err.orchestrator.nothing_restored_docker_refused_show", refusal=refusal or _DOCKER_ANSWER_IN_LOG)
+            t("err.orchestrator.nothing_restored_docker_refused_show", refusal=refusal or _docker_answer_in_log())
         ) from None
     if why:
         raise RestoreError(t("err.orchestrator.nothing_restored", value=why.rstrip(".")))
@@ -4070,7 +4057,7 @@ def _restore_locked(
                 t(
                     "err.orchestrator.docker_could_not_create_worker",
                     name=name,
-                    refusal=refusal or _WORKER_LOG_SAYS_WHY,
+                    refusal=refusal or _worker_log_says_why(),
                     note=note,
                 ),
                 exc.status_code,
@@ -4083,7 +4070,7 @@ def _restore_locked(
             raise RestoreError(
                 t(
                     "err.orchestrator.docker_refused_restore_undone",
-                    refusal=refusal or _DOCKER_ANSWER_IN_LOG,
+                    refusal=refusal or _docker_answer_in_log(),
                     note=note,
                 ),
                 left=left,
