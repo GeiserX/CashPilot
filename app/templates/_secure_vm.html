@@ -1,0 +1,153 @@
+{# The Linux Secure VM on the Fleet page (scripts/cashpilot-vm, docs/secure-vm.md).
+   fleet.html calls CPSecureVM.flag for each worker's flags and CPSecureVM.row
+   after each worker's rows. A Secure VM's worker gets a flag naming its host;
+   its host gets a row with the VM's fence, its last self-test, a button that
+   asks the host for a new one, and the commands to check or remove it. A host
+   without one gets the install command, or says why it cannot have one. #}
+<script nonce="{{ csp_nonce(request) }}">
+(function() {
+  const isOwner = {{ 'true' if user.r == 'owner' else 'false' }};
+  // The host's guard rewrites the fence state every minute and pushes it into
+  // the VM every 5 minutes; older than 10 is stale (app/layers_ui.py says the same).
+  const STALE_S = 600;
+  const SELFTEST_GAP_S = 300;
+  const commands = {};   // worker id -> {install} | {status, verify, remove} | {error}
+  const asked = {};      // VM worker id -> message after asking for a self-test
+  const open = new Set();
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function vmBlock(sysInfo) {
+    const b = (sysInfo || {}).secure_vm;
+    return ((sysInfo || {}).features || []).includes('secure_vm') && b && typeof b === 'object' ? b : null;
+  }
+
+  function fenceState(vm) {
+    const f = vm.fence;
+    if (!f || typeof f !== 'object') return 'unknown';
+    if (f.state === 'failed') return 'failed';
+    if (f.state !== 'ok') return 'unknown';
+    return Date.now() / 1000 - Number(f.checked_at || 0) > STALE_S ? 'stale' : 'ok';
+  }
+
+  function chip(state, text, tip) {
+    const tone = state === 'ok' ? 'ok' : state === 'failed' ? 'warn' : 'plain';
+    return `<span class="flag flag-${tone}"${tip ? ` title="${esc(tip)}"` : ''}>${esc(text)}</span>`;
+  }
+
+  function flag(w, sysInfo) {
+    const vm = vmBlock(sysInfo);
+    if (!vm) return '';
+    const state = fenceState(vm);
+    const tip = [t('secure_vm.flag_tip', { host: vm.host }), t(`layers.vm.fence_${state}`), (vm.fence || {}).reason || ''].filter(Boolean).join(' · ');
+    return chip(state, t('secure_vm.flag', { host: vm.host }), tip);
+  }
+
+  function commandBox(cmd, label) {
+    return `<div class="layer-cmd-row"><label class="detail-label">${esc(label)}</label>
+      <textarea class="form-input layer-cmd" readonly rows="3" spellcheck="false">${esc(cmd)}</textarea>
+      <button class="btn btn-ghost btn-sm btn-layer-copy">${esc(t('layers.copy'))}</button></div>`;
+  }
+
+  function renderSelftest(vm) {
+    const s = vm.selftest;
+    if (!s || typeof s !== 'object') return `<div class="iso-line muted">${esc(t('secure_vm.selftest.never'))}</div>`;
+    // checked_at is Unix seconds, from the host's guard.
+    const when = Number(s.checked_at) > 0 ? ` <span class="muted">${esc(new Date(s.checked_at * 1000).toLocaleString())}</span>` : '';
+    if (s.ok && !(s.failed || []).length) return `<div class="iso-line text-ok">${esc(t('secure_vm.selftest.green'))}${when}</div>`;
+    const lines = (s.failed || []).map(l => `<li>${esc(l)}</li>`).join('');
+    return `<div class="iso-line text-fail">${esc(t('secure_vm.selftest.red'))}${when}</div>${lines ? `<ul class="layer-check">${lines}</ul>` : ''}`;
+  }
+
+  function renderCommands(id) {
+    const c = commands[id];
+    if (!c) return `<div class="iso-line muted">…</div>`;
+    if (c.error) return `<div class="iso-line muted">${esc(c.error)}</div>`;
+    if (c.install) return `<div class="iso-line">${esc(t('secure_vm.add_intro'))}</div>${commandBox(c.install, t('secure_vm.install'))}`;
+    return commandBox(c.status, t('secure_vm.status')) + commandBox(c.verify, t('secure_vm.verify'))
+      + commandBox(c.remove, t('secure_vm.remove')) + `<div class="iso-line muted">${esc(t('secure_vm.remove_note'))}</div>`;
+  }
+
+  function row(w, sysInfo, workers) {
+    sysInfo = sysInfo || {};
+    if (vmBlock(sysInfo) || sysInfo.device_type === 'desktop' || sysInfo.device_type === 'android'
+        || String(sysInfo.os || '').trim().toLowerCase() === 'android') return '';
+    const vmWorker = (workers || []).find(x => {
+      const b = vmBlock(x.system_info);
+      return b && b.host === w.name;
+    });
+    const kvm = (sysInfo.layers || {}).kvm;
+    if (!vmWorker && (!isOwner || kvm !== true)) {
+      // Nothing to manage. Say why only when it is a fact, never a guess.
+      return isOwner && kvm === false
+        ? `<tr class="worker-detail"><td colspan="7"><div class="iso-line muted">${esc(t('secure_vm.title'))}: ${esc(t('secure_vm.no_kvm'))}</div></td></tr>`
+        : '';
+    }
+    let summary;
+    let body = '';
+    if (vmWorker) {
+      const vm = vmBlock(vmWorker.system_info);
+      const state = fenceState(vm);
+      summary = `<strong>${esc(vmWorker.name)}</strong> ${chip(state, `${t('layers.vm')}: ${t(`layers.vm.fence_${state}`)}`, (vm.fence || {}).reason || '')}`;
+      body += renderSelftest(vm);
+      if (isOwner && vmWorker.status === 'online') {
+        // The guard runs at most one self-test every 5 minutes and drops an
+        // ask that comes sooner, so the button waits that long too.
+        const recent = Date.now() / 1000 - Number((vm.selftest || {}).checked_at || 0) < SELFTEST_GAP_S;
+        const note = asked[vmWorker.id] || (recent ? t('secure_vm.selftest.recent') : '');
+        body += `<div class="iso-line"><button class="btn btn-primary btn-sm btn-cpvm-selftest" data-vm-id="${vmWorker.id}" title="${esc(t('secure_vm.selftest.tip'))}"${note ? ' disabled' : ''}>${esc(t('secure_vm.selftest.button'))}</button>`
+          + (note ? ` <span class="muted">${esc(note)}</span>` : '') + `</div>`;
+      }
+    } else {
+      summary = `<span class="muted">${esc(t('secure_vm.install'))}</span>`;
+    }
+    if (isOwner) body += `<div class="cpvm-commands">${renderCommands(w.id)}</div>`;
+    return `<tr class="worker-detail"><td colspan="7"><details class="layers cpvm" data-host-id="${w.id}"${open.has(String(w.id)) ? ' open' : ''}>
+      <summary><span class="detail-label">${esc(t('secure_vm.title'))}</span> ${summary}</summary>
+      ${body}
+      <a href="https://geiserx.github.io/CashPilot/secure-vm/" target="_blank" rel="noopener noreferrer">${esc(t('secure_vm.docs'))}</a>
+    </details></td></tr>`;
+  }
+
+  async function loadCommands(details) {
+    const id = details.dataset.hostId;
+    if (commands[id]) return;
+    try {
+      commands[id] = await CP.api(`/api/workers/${id}/secure-vm/commands?ui_url=${encodeURIComponent(window.location.origin)}`);
+    } catch (err) {
+      commands[id] = { error: err.message || String(err) };
+    }
+    // The fleet page redraws on its own timer; until then, fill this panel in place.
+    const slot = details.querySelector('.cpvm-commands');
+    if (slot) slot.innerHTML = renderCommands(id);
+  }
+
+  document.addEventListener('toggle', (e) => {
+    const details = e.target;
+    if (!(details instanceof HTMLElement) || !details.matches('details.cpvm')) return;
+    if (details.open) { open.add(details.dataset.hostId); loadCommands(details); } else open.delete(details.dataset.hostId);
+  }, true);
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest && e.target.closest('.btn-cpvm-selftest');
+    if (!btn) return;
+    const id = btn.dataset.vmId;
+    btn.disabled = true;
+    try {
+      await CP.api(`/api/workers/${id}/secure-vm/selftest`, { method: 'POST' });
+      asked[id] = t('secure_vm.selftest.asked');
+      CP.toast(asked[id], 'success');
+    } catch (err) {
+      btn.disabled = false;
+      CP.toast(err.message || String(err), 'error');
+      return;
+    }
+    // A later report carries the result, and its time keeps the button off.
+    setTimeout(() => { delete asked[id]; }, SELFTEST_GAP_S * 1000);
+  });
+
+  globalThis.CPSecureVM = { flag, row };
+})();
+</script>

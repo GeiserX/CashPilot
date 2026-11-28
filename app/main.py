@@ -15011,10 +15011,12 @@ from app.routers import importers as importers_router  # noqa: E402
 from app.routers import layers as layers_router  # noqa: E402
 from app.routers import obligations as obligations_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
+from app.routers import secure_vm as secure_vm_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
 app.include_router(activity_router.router)
 app.include_router(layers_router.router)
+app.include_router(secure_vm_router.router)
 app.include_router(auth_router.router)
 app.include_router(pages_router.router)
 app.include_router(users_router.router)

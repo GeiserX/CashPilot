@@ -55,7 +55,7 @@ COPY --from=builder /build/.venv ./.venv
 COPY app/ ./app/
 COPY services/ ./services/
 # The host helpers the Fleet page offers as one pinned command (app/layer_scripts.py).
-COPY scripts/cashpilot-gvisor ./scripts/
+COPY scripts/cashpilot-gvisor scripts/cashpilot-vm ./scripts/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
