@@ -134,9 +134,11 @@ def test_fence_order_puts_the_two_holes_before_the_drops_and_the_internet_last()
     assert names[0] == "reply"
     assert names[1:3] == ["worker-in", "ui"]
     assert names[-1] == "internet"
-    ui = fwd[2]
-    # The UI hole is one TCP port on one address, nothing wider.
-    assert "-d 192.168.1.50/32 -p tcp -m tcp --dport 8080" in ui
+    # The UI hole is one TCP port on one address, from the guest's tap out of
+    # the namespace, and it accepts: the whole rule, not a substring of it.
+    assert fwd[2] == (
+        "-A FORWARD -i cpvm-tap -o cpvm-ns -d 192.168.1.50/32 -p tcp -m tcp --dport 8080 -m comment --comment cpvm:ui -j ACCEPT"
+    )
     # Replies pass only in the reply direction, so a connection the guest
     # opened meets the drops on every packet.
     assert "--ctdir REPLY" in fwd[0]
@@ -546,6 +548,7 @@ def test_verify_json_prove_red_prints_only_json_and_counts_the_red_run(answered,
 ANSWERED=$1; N=0
 need_root() { :; }; load_conf() { :; }; guest_pid() { echo 1; }; tap_up() { :; }
 nsx() { :; }; iptables() { :; }; flock() { :; }; guard_pass() { :; }; save_selftest() { :; }
+ns_fingerprint() { echo golden; }; echo golden >"$STATE/fence.golden"
 RUN_DIR=$(mktemp -d)
 selftest_once() {
   N=$((N + 1))
@@ -567,3 +570,124 @@ cmd_verify --json --prove-red 2>/dev/null && echo RC=0 || echo RC=1
     assert len(lines) == 2, out
     assert json.loads(lines[0])["ok"] is ok
     assert lines[1] == ("RC=0" if ok else "RC=1")
+
+
+@pytest.mark.parametrize(("left", "ok"), [("none", True), ("drift", False), ("host-rule", False), ("cut", False)])
+def test_the_red_run_reports_the_fence_back_only_when_it_reads_back(left, ok):
+    # A guard pass that cannot take the lock (a second red run holds it)
+    # returns without checking anything. The tap stays up while the fence is
+    # open, so only the fence itself can say it is back.
+    out = _run(
+        """
+LEFT=$1
+need_root() { :; }; load_conf() { :; }; guest_pid() { echo 1; }; nsx() { :; }; flock() { :; }
+save_selftest() { :; }; guard_pass() { return 0; }
+RUN_DIR=$(mktemp -d); echo golden >"$STATE/fence.golden"
+N=0; tap_up() { N=$((N + 1)); [ "$LEFT" != cut ] || [ "$N" = 1 ]; }
+ns_fingerprint() { if [ "$LEFT" = drift ]; then echo open; else echo golden; fi; }
+iptables() { if [ "$LEFT" = host-rule ] && [ "$*" = "-w -S CPVM-IN" ]; then echo "-A CPVM-IN -i cpvm-host -m comment --comment cpvm:red-test -j ACCEPT"; fi; }
+selftest_once() { SELFTEST_LINES="FAIL lan 192.168.1.1:80 answered the guest (reached)"; }
+(cmd_verify --prove-red) >/dev/null 2>&1 && echo RC=0 || echo RC=1
+""",
+        left,
+    )
+    assert out.strip() == ("RC=0" if ok else "RC=1")
+
+
+@pytest.mark.parametrize(("fails", "rc"), [(False, 0), (True, 1)])
+def test_a_host_rule_that_cannot_be_put_back_is_not_reported_ok(fails, rc):
+    # The guard runs with errexit off, so host_rules_ensure must say itself
+    # that an insert failed, and the pass must not end in state ok.
+    out = _run(
+        """
+FAILS=$1; CALLS=$(mktemp)
+sysctl() { echo 1; }; has() { return 1; }
+iptables() {
+  case " $* " in
+    *" -I "*) [ "$FAILS" = no ] || return 1 ;;
+    *" -D "*) return 1 ;;
+  esac
+  return 0
+}
+host_rules_ensure && echo ENSURE=0 || echo ENSURE=1
+# The tail of a guard pass: the fence matches, then the host side.
+CONF=$(mktemp); RUN_DIR=$(mktemp -d); load_conf() { :; }; ns_exists() { :; }; nsx() { :; }
+desired=$(render_ns_rules); printf '%s\n' "$desired" >"$STATE/fence.rules"; echo g >"$STATE/fence.golden"
+ns_fingerprint() { echo g; }; tap_up() { :; }; log() { :; }
+echo yes >"$STATE/provisioned"; push_state_to_guest() { echo pushed >>"$CALLS"; }
+rc=0; guard_pass || rc=$?
+echo "PASS=$rc"; python3 -c 'import json,sys; print("STATE=" + json.load(open(sys.argv[1]))["state"])' "$RUN_DIR/fence.json"
+cat "$CALLS"
+""",
+        "yes" if fails else "no",
+    )
+    assert out.split() == [f"ENSURE={rc}", f"PASS={rc}", "STATE=" + ("failed" if fails else "ok"), "pushed"]
+
+
+@pytest.mark.parametrize(("first_pass", "rc"), [(0, 0), (1, 0)])
+def test_net_up_lets_the_guest_start_cut_off_when_the_first_pass_fails(first_pass, rc):
+    # The guest unit Requires= the net unit, so a failed public-IP lookup at
+    # boot must not fail net-up, or the guest never starts. guest_run keeps an
+    # unchecked tap down, and the guard connects it later.
+    out = _run(
+        """
+FIRST=$1
+need_root() { :; }; load_conf() { :; }; RUN_DIR=$(mktemp -d); net_up() { echo net_up; }
+guard_pass() { return "$FIRST"; }
+# Not in an && list: that would turn errexit off, as it is not when systemd runs it.
+set +e; (set -e; main net-up) 2>/dev/null; echo "RC=$?"
+""",
+        str(first_pass),
+    )
+    assert out.split() == ["net_up", f"RC={rc}"]
+
+
+def test_net_up_still_fails_when_the_namespace_cannot_be_made():
+    out = _run(
+        """
+need_root() { :; }; load_conf() { :; }; RUN_DIR=$(mktemp -d); net_up() { return 1; }; guard_pass() { :; }
+set +e; (set -e; main net-up) 2>/dev/null; echo "RC=$?"
+"""
+    )
+    assert out.strip() == "RC=1"
+
+
+def test_an_install_that_stops_before_the_first_boot_is_over_deletes_the_seed():
+    # The seed disk holds the fleet key in plain text.
+    out = _run(
+        """
+CALLS=$(mktemp); is_unraid() { return 1; }; systemctl() { echo "systemctl $*" >>"$CALLS"; }
+guest_stop() { echo guest_stop >>"$CALLS"; }
+echo key >"$STATE/seed.img"
+install_failed >/dev/null
+[ -e "$STATE/seed.img" ] && echo SEED=left || echo SEED=gone
+cat "$CALLS"
+"""
+    )
+    assert out.splitlines() == ["SEED=gone", "systemctl stop cashpilot-vm.service"]
+    # The trap covers the whole stretch the seed exists, and goes once it is deleted.
+    text = SCRIPT.read_text()
+    body = text[text.index("\ncmd_install() {") :]
+    assert body.index("trap install_failed EXIT") < body.index('write_seed "$api_key"')
+    assert body.index('rm -f "$STATE/seed.img"\n  trap - EXIT') > body.index('write_seed "$api_key"')
+
+
+def test_the_ui_is_not_a_forbidden_target_on_the_lan_either():
+    # A UI on the LAN gateway or on a neighbour answers the guest on its port by
+    # design. That tuple must not count as a leak, but its other ports do.
+    out = _run(
+        """
+UI_IP=192.168.1.50; UI_PORT=443; ss() { :; }
+ip() {
+  case "$*" in
+    "-4 route show default") echo "default via 192.168.1.50 dev eth0" ;;
+    "-4 neigh show"*) echo "192.168.1.60 dev eth0 lladdr 00:11:22:33:44:55 REACHABLE" ;;
+    *) return 1 ;;
+  esac
+}
+probe_targets
+"""
+    )
+    assert "192.168.1.50 443" not in out
+    assert "lan-gateway 192.168.1.50 80" in out
+    assert "lan-device 192.168.1.60 443" in out
