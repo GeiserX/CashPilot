@@ -7703,6 +7703,20 @@ def _worker_failure_text(status: int) -> str:
     return f"Worker request failed (HTTP {status}); the worker's log has the reason"
 
 
+def _worker_texts(key: str, **params: Any) -> tuple[str, str]:
+    """The message ``key`` as a worker can word it.
+
+    A worker answers in the language it is asked in, but a worker older than
+    its translations answers in English, so both count.
+    """
+    return t(key, **params), i18n.format_message(i18n.source()[key], params)  # i18n-keys: err.proxy_tunnel.no_proxied_copy_through_proxy, err.orchestrator.instance_not_found, err.orchestrator.container_not_found, api.worker_not_found  # fmt: skip
+
+
+def _worker_says(detail: Any, key: str, **params: Any) -> bool:
+    """Whether a worker's answer is the message ``key``."""
+    return detail in _worker_texts(key, **params)
+
+
 def _worker_refused_our_key() -> str:
     """The 503 detail when the worker refused our key, in the request's language.
 
@@ -8099,13 +8113,13 @@ async def _worker_deploy_target(
 
     # Old inventory can be cached. A live existence probe prevents a stale
     # empty inventory (or heartbeat) from being mistaken for a first deploy.
-    # The worker's own words for "not there", in the language it answers in (this page's).
-    missing = (
-        t("err.proxy_tunnel.no_proxied_copy_through_proxy", slug=slug, proxy_id=proxy_id)
+    # The worker's own words for "not there".
+    missing_key, missing_args = (
+        ("err.proxy_tunnel.no_proxied_copy_through_proxy", {"slug": slug, "proxy_id": proxy_id})
         if proxy_id is not None
-        else t("err.orchestrator.instance_not_found", instance=instance, slug=slug)
+        else ("err.orchestrator.instance_not_found", {"instance": instance, "slug": slug})
         if instance > 1
-        else t("err.orchestrator.container_not_found", slug=slug)
+        else ("err.orchestrator.container_not_found", {"slug": slug})
     )
     if not (isinstance(state, dict) and state.get("exists") is True):
         if isinstance(state, dict) and state.get("exists") is False:
@@ -8113,7 +8127,7 @@ async def _worker_deploy_target(
         try:
             await _proxy_to_worker(worker_id, "GET", f"{base}/logs", params={**(params or {}), "lines": "1"})
         except HTTPException as exc:
-            if exc.status_code == 404 and exc.detail == missing:
+            if exc.status_code == 404 and _worker_says(exc.detail, missing_key, **missing_args):
                 return "none", False
             raise HTTPException(
                 status_code=409,
@@ -8408,8 +8422,8 @@ async def _proxy_worker_call(
         # id this call asked about, our own words. Masked, a short login such as
         # "copy" would hide that it is gone. Any other text is masked.
         asked = _PROXIED_COPY_PATH.match(path)
-        if asked and exc.detail == t(
-            "err.proxy_tunnel.no_proxied_copy_through_proxy", slug=asked.group(1), proxy_id=asked.group(2)
+        if asked and _worker_says(
+            exc.detail, "err.proxy_tunnel.no_proxied_copy_through_proxy", slug=asked.group(1), proxy_id=asked.group(2)
         ):
             raise
         if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets", "proxied_copy_stopped"):
@@ -9449,8 +9463,8 @@ async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]
                             logger.warning("Could not start %s again through proxy %s: %s", slug, pid, exc.detail)
                 except HTTPException as exc:
                     gone = (
-                        t("err.proxy_tunnel.no_proxied_copy_through_proxy", slug=slug, proxy_id=pid),
-                        t("api.worker_not_found"),
+                        *_worker_texts("err.proxy_tunnel.no_proxied_copy_through_proxy", slug=slug, proxy_id=pid),
+                        *_worker_texts("api.worker_not_found"),
                     )
                     if exc.status_code == 404 and any(text in str(exc.detail) for text in gone):
                         # Already gone from that box, or the box itself is gone: nothing left to stop.
