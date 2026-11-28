@@ -110,11 +110,25 @@ else
   CONF_DIR=/etc/cashpilot-vm
   BIN=/usr/local/sbin/cashpilot-vm
 fi
-STATE="${CPVM_HOME:-/var/lib/cashpilot-vm}"
-case "$STATE" in
-  /*/cashpilot-vm) ;;
-  *) echo "cashpilot-vm: CPVM_HOME must be an absolute path ending in /cashpilot-vm" >&2; exit 1 ;;
-esac
+# set_state: where the guest's disk and the fence files live. On Unraid with no
+# domains share and no CPVM_HOME it is empty: the root file system is in RAM
+# there, so install refuses rather than put the disk in it.
+set_state() {
+  if [ -n "${CPVM_HOME:-}" ]; then
+    STATE=$CPVM_HOME
+  elif is_unraid; then
+    STATE=""
+  else
+    STATE=/var/lib/cashpilot-vm
+  fi
+  case "$STATE" in
+    "") ;;
+    */../* | */./* | *//*) echo "cashpilot-vm: CPVM_HOME must be a plain absolute path ending in /cashpilot-vm" >&2; exit 1 ;;
+    /*/cashpilot-vm) ;;
+    *) echo "cashpilot-vm: CPVM_HOME must be an absolute path ending in /cashpilot-vm" >&2; exit 1 ;;
+  esac
+}
+set_state
 CONF="$CONF_DIR/config"
 RUN_DIR=/run/cashpilot-vm
 LOG_TAG=cashpilot-vm
@@ -139,6 +153,10 @@ load_conf() {
   [ -f "$CONF" ] || return 1
   # shellcheck disable=SC1090
   . "$CONF"
+  # The config holds the CPVM_HOME that install used; STATE follows it, so a
+  # service started without that variable still finds the disk.
+  set_state
+  [ -n "$STATE" ] || die "the config at $CONF names no CPVM_HOME"
   NET_BASE=${NET_BASE:-10.213.0}
   derive_net
   return 0
@@ -220,15 +238,18 @@ host_connected_public() {
   done | sort -u
 }
 
-# The home's public IPv4, cached for ten minutes. A connection to it from
-# inside leaves as internet traffic, and most home routers loop it straight
-# back into the LAN (NAT loopback), so the fence drops it.
+# The home's public IPv4. A connection to it from inside leaves as internet
+# traffic, and most home routers loop it straight back into the LAN (NAT
+# loopback), so the fence drops it. A lookup is reused for two minutes. When
+# every lookup fails, the last address is kept for up to an hour; after that,
+# or when no lookup ever worked, this fails and the guard keeps the guest cut
+# off, because the fence would miss the drop for the current address.
 egress_ip() {
-  local cache="$STATE/egress" age now ip url
+  local cache="$STATE/egress" age=999999 now ip url
   now=$(date +%s)
   if [ -f "$cache" ]; then
     age=$((now - $(stat -c %Y "$cache")))
-    if [ "$age" -lt 600 ]; then cat "$cache"; return 0; fi
+    if [ "$age" -lt 120 ]; then cat "$cache"; return 0; fi
   fi
   for url in "${EGRESS_URLS[@]}"; do
     ip=$(curl -4 -fsS --max-time 5 "$url" 2>/dev/null | tr -d '[:space:]' || true)
@@ -237,9 +258,8 @@ egress_ip() {
       echo "$ip"; return 0
     fi
   done
-  # Keep the last known address rather than dropping the rule.
-  [ -f "$cache" ] && cat "$cache"
-  return 0
+  if [ -f "$cache" ] && [ "$age" -lt 3600 ]; then cat "$cache"; return 0; fi
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -282,10 +302,8 @@ render_ns_rules() {
   for cidr in $(host_connected_public); do
     echo "-A FORWARD -i $TAP -d $cidr -m comment --comment cpvm:connected-$cidr -j DROP"
   done
-  ip=$(egress_ip)
-  if [ -n "$ip" ]; then
-    echo "-A FORWARD -i $TAP -d $ip/32 -m comment --comment cpvm:egress-$ip -j DROP"
-  fi
+  ip=$(egress_ip) || return 1
+  echo "-A FORWARD -i $TAP -d $ip/32 -m comment --comment cpvm:egress-$ip -j DROP"
   echo "-A FORWARD -i $TAP -o $VETH_NS -m comment --comment cpvm:internet -j ACCEPT"
   echo "COMMIT"
 }
@@ -353,8 +371,15 @@ net_up() {
   host_rules_ensure
 }
 
+# Fails only when the tap is still up after this: then the guest itself is
+# stopped, because a guest that cannot be cut off must not keep running.
 link_cut() {
+  local pid
   nsx ip link set "$TAP" down 2>/dev/null || true
+  tap_up || return 0
+  if pid=$(guest_pid); then kill -9 "$pid" 2>/dev/null || true; fi
+  log "FAILED: the tap did not go down, so the guest was stopped"
+  return 1
 }
 
 link_connect() {
@@ -366,8 +391,64 @@ tap_up() {
 }
 
 apply_ns_rules() {
+  # Nothing in the namespace's packet filter survives but the rendered rules:
+  # the nft flush removes every table (the iptables-nft ones too), and
   # iptables-restore replaces each table it names in one step.
+  if has nft; then nsx nft flush ruleset 2>/dev/null || true; fi
   nsx iptables-restore <"$1"
+}
+
+# After apply_ns_rules: the namespace's packet filter holds the rendered rules
+# and nothing else. Same rules by comment and by count, every other table
+# empty with its chains on ACCEPT, no IPv6 rule, and no nft table that
+# iptables did not make.
+ns_filter_matches() {
+  local want=$1 save
+  save=$(nsx iptables-save | { grep -v '^#' || true; })
+  [ "$(expected_comments "$want")" = "$(expected_comments "$save")" ] || return 1
+  [ "$(grep -c '^-A' <<<"$want")" = "$(grep -c '^-A' <<<"$save")" ] || return 1
+  awk '/^\*/ {t = substr($0, 2)} t != "nat" && t != "filter" && (/^-A/ || (/^:/ && $2 != "ACCEPT")) {bad = 1} END {exit bad}' <<<"$save" || return 1
+  # Captured first: with pipefail, grep -q closing the pipe early could turn a match into a failure.
+  save=$(nsx ip6tables-save 2>/dev/null || true)
+  if grep -q '^-A' <<<"$save"; then return 1; fi
+  if has nft; then
+    save=$(nsx nft list tables 2>/dev/null || true)
+    if grep -qvx -e 'table ip nat' -e 'table ip filter' -e '' <<<"$save"; then return 1; fi
+  fi
+  return 0
+}
+
+# The part of the fingerprint outside the packet filter: links, addresses,
+# rules, routes and sysctls.
+ns_base() { sed '/^## iptables$/,$d' <<<"$1"; }
+
+# A section of the fingerprint, without its heading.
+fp_section() { awk -v h="## $2" '$0 == h {on = 1; next} /^## / {on = 0} on' <<<"$1"; }
+
+# The tunnel devices a kernel adds to every new namespace once their module is
+# loaded (Unraid loads ipip, so each namespace gets tunl0). They carry nothing
+# while they are down.
+readonly NS_FALLBACK_LINKS="tunl0 sit0 ip6tnl0 gre0 gretap0 erspan0 ip_vti0 ip6_vti0 ip6gre0"
+
+# The namespace outside the packet filter is the one the fence was checked
+# with: the same as in the last golden copy, or, with none yet, exactly the
+# links, policy rules and sysctls that net_up makes, plus fallback tunnel
+# devices that are down.
+ns_base_ok() {
+  local live=$1 golden="$STATE/fence.golden" l up
+  if [ -s "$golden" ]; then
+    [ "$(ns_base "$live")" = "$(ns_base "$(cat "$golden")")" ]
+    return
+  fi
+  up=$(nsx ip -o link show up | awk '{sub(/@.*/, "", $2); sub(/:$/, "", $2); print $2}')
+  for l in $(fp_section "$live" links); do
+    case " lo $TAP $VETH_NS " in *" $l "*) continue ;; esac
+    case " $NS_FALLBACK_LINKS " in *" $l "*) ;; *) return 1 ;; esac
+    if grep -qx -- "$l" <<<"$up"; then return 1; fi
+  done
+  for l in lo "$TAP" "$VETH_NS"; do grep -qx -- "$l" <<<"$(fp_section "$live" links)" || return 1; done
+  [ "$(nsx ip -4 rule show | awk '{$1 = ""; print}')" = "$(printf ' from all lookup %s\n' local main default)" ] || return 1
+  ! grep -qv -e '=1$' <<<"$(fp_section "$live" sysctl)"
 }
 
 # ---------------------------------------------------------------------------
@@ -452,6 +533,18 @@ host_rules_remove() {
   if has firewall-cmd && firewall-cmd --state >/dev/null 2>&1; then
     firewall-cmd -q --zone=trusted --remove-interface="$VETH_HOST" >/dev/null 2>&1 || true
     firewall-cmd -q --permanent --zone=trusted --remove-interface="$VETH_HOST" >/dev/null 2>&1 || true
+  elif has firewall-offline-cmd; then
+    # firewalld stopped: its saved zone still names the interface.
+    firewall-offline-cmd --zone=trusted --remove-interface="$VETH_HOST" >/dev/null 2>&1 || true
+  fi
+}
+
+# The trusted zone's saved interfaces, with firewalld running or not.
+firewalld_saved_trusted() {
+  if has firewall-cmd && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --permanent --zone=trusted --list-interfaces 2>/dev/null
+  elif has firewall-offline-cmd; then
+    firewall-offline-cmd --zone=trusted --list-interfaces 2>/dev/null
   fi
 }
 
@@ -475,10 +568,28 @@ push_state_to_guest() {
   [ -f "$RUN_DIR/pushed" ] && read -r last prev <"$RUN_DIR/pushed" || true
   cur=$(sed -E 's/"checked_at": [0-9]+//' "$RUN_DIR/fence.json" | cksum | cut -d' ' -f1)
   if [ "$cur" = "$prev" ] && [ $((now - last)) -lt 300 ]; then return 0; fi
-  if guest_ssh "sudo mkdir -p /run/cashpilot-vm && sudo tee /run/cashpilot-vm/fence.json >/dev/null" <"$RUN_DIR/fence.json" 2>/dev/null; then
+  if GUEST_SSH_TIMEOUT=15 guest_ssh "sudo mkdir -p /run/cashpilot-vm && sudo tee /run/cashpilot-vm/fence.json >/dev/null" <"$RUN_DIR/fence.json" 2>/dev/null; then
     echo "$now $cur" >"$RUN_DIR/pushed"
   fi
   return 0
+}
+
+# A red test (verify --prove-red) holds the guard lock while the fence is
+# open, and leaves "pid start" in $RUN_DIR/hold. A hold whose process is gone,
+# or older than 30 minutes, is abandoned: the guard removes it and repairs.
+hold_is_live() {
+  local hp="" ht=""
+  [ -f "$RUN_DIR/hold" ] || return 1
+  read -r hp ht <"$RUN_DIR/hold" || true
+  [[ "$hp" =~ ^[0-9]+$ ]] && [[ "$ht" =~ ^[0-9]+$ ]] || return 1
+  [ -d "/proc/$hp" ] && grep -q cashpilot-vm "/proc/$hp/cmdline" 2>/dev/null || return 1
+  [ $(($(date +%s) - ht)) -lt 1800 ]
+}
+
+# Records a failed pass. The caller returns 1 after it.
+guard_fail() {
+  write_guard_state failed "$1"
+  log "FAILED: $1; the guest stays cut off"
 }
 
 guard_pass() {
@@ -488,27 +599,39 @@ guard_pass() {
   flock -w 50 9 || { warn "another guard pass is still running"; return 0; }
   if [ -f "$RUN_DIR/hold" ]; then
     # A red/green self-test owns the fence right now.
-    return 0
+    hold_is_live && return 0
+    rm -f "$RUN_DIR/hold"
+    log "a red test ended without putting the fence back; the guard repairs it now"
   fi
   if ! ns_exists || ! nsx ip link show "$TAP" >/dev/null 2>&1; then net_up; fi
-  desired=$(render_ns_rules)
+  if ! desired=$(render_ns_rules); then
+    link_cut || true
+    guard_fail "the home's public IP could not be read, so the fence cannot drop it"
+    return 1
+  fi
   if [ ! -f "$STATE/fence.rules" ] || [ ! -f "$STATE/fence.golden" ] || [ "$desired" != "$(cat "$STATE/fence.rules")" ]; then
     reason="fence written"
     [ -f "$STATE/fence.rules" ] && reason="the host's addresses changed; fence rewritten"
-    link_cut
-    printf '%s\n' "$desired" >"$STATE/fence.rules"
-    if ! apply_ns_rules "$STATE/fence.rules"; then
-      write_guard_state failed "the fence could not be written"
-      log "FAILED: the fence could not be written; the guest stays cut off"
+    link_cut || { guard_fail "the guest could not be cut off to rewrite the fence"; return 1; }
+    # The new rules count only once they read back: until then fence.rules
+    # still differs from them, so the next pass tries again with the guest cut off.
+    printf '%s\n' "$desired" >"$STATE/fence.rules.new"
+    if ! apply_ns_rules "$STATE/fence.rules.new"; then
+      rm -f "$STATE/fence.rules.new"
+      guard_fail "the fence could not be written"
       return 1
     fi
     live=$(ns_fingerprint)
-    if [ "$(expected_comments "$desired" | sort -u)" != "$(expected_comments "$live" | sort -u)" ]; then
-      write_guard_state failed "the fence did not read back as written"
-      log "FAILED: the fence did not read back as written; the guest stays cut off"
+    if ! ns_filter_matches "$desired" || ! ns_base_ok "$live"; then
+      rm -f "$STATE/fence.rules.new"
+      guard_fail "the fence did not read back as written"
       return 1
     fi
-    printf '%s\n' "$live" >"$STATE/fence.golden"
+    # The golden copy first: a crash between the two moves leaves fence.rules
+    # old, so the next pass rewrites again.
+    printf '%s\n' "$live" >"$STATE/fence.golden.new"
+    mv "$STATE/fence.golden.new" "$STATE/fence.golden"
+    mv "$STATE/fence.rules.new" "$STATE/fence.rules"
     link_connect
     write_guard_state ok "$reason"
     log "$reason; connected"
@@ -522,7 +645,7 @@ guard_pass() {
       fi
       write_guard_state ok "match"
     else
-      link_cut
+      link_cut || { guard_fail "drift, and the guest could not be cut off"; return 1; }
       log "DRIFT: the namespace no longer matches the fence; guest cut off. Diff: $(diff <(printf '%s\n' "$golden") <(printf '%s\n' "$live") | grep '^[<>]' | head -5 | tr '\n' ' ')"
       apply_ns_rules "$STATE/fence.rules" || true
       net_up
@@ -532,8 +655,7 @@ guard_pass() {
         write_guard_state ok "drift repaired"
         log "fence restored, exact match; connected"
       else
-        write_guard_state failed "drift that rewriting the fence did not repair"
-        log "FAILED: still no exact match after rewriting the fence; the guest stays cut off"
+        guard_fail "drift that rewriting the fence did not repair"
         return 1
       fi
     fi
@@ -547,8 +669,14 @@ guard_pass() {
 # The guest
 # ---------------------------------------------------------------------------
 
+# Every call ends within GUEST_SSH_TIMEOUT seconds (60 by default), so a guest
+# that logs in but never finishes a command cannot stall the guard.
+# --foreground keeps ssh in the terminal's process group: run from a terminal,
+# it would otherwise stop on its first read of stdin.
 guest_ssh() {
-  nsx ssh -q -i "$STATE/ssh/id_ed25519" -o BatchMode=yes -o ConnectTimeout=5 \
+  timeout --foreground -k 5 "${GUEST_SSH_TIMEOUT:-60}" ip netns exec "$NS" \
+    ssh -q -i "$STATE/ssh/id_ed25519" -o BatchMode=yes -o ConnectTimeout=5 \
+    -o ServerAliveInterval=5 -o ServerAliveCountMax=2 \
     -o UserKnownHostsFile="$STATE/ssh/known_hosts" -o StrictHostKeyChecking=yes \
     -o LogLevel=ERROR "cpvm@$GUEST_IP" "$@"
 }
@@ -801,42 +929,56 @@ Docs: $DOCS_URL
 EOF
 }
 
-pkg_install() {
-  # Packages per family for the commands this script needs.
-  local missing=() pm=
-  has apt-get && pm=apt
-  has dnf && pm=dnf
-  has pacman && pm=pacman
-  local cmd
-  for cmd in ip iptables iptables-save curl ssh ssh-keygen qemu-img mkfs.vfat mcopy flock; do
+# pkg_plan sets PKGS (and PKG_MANAGER) to what install adds, before it asks to
+# continue. It changes nothing; pkg_install installs them after the yes.
+pkg_plan() {
+  local missing=() cmd
+  PKGS=() PKG_MANAGER=""
+  for cmd in ip ss curl; do
+    has "$cmd" || die "this needs ip, ss and curl before it starts; install iproute2 and curl, then run it again"
+  done
+  for cmd in iptables iptables-save ssh ssh-keygen qemu-img mkfs.vfat mcopy flock timeout; do
     has "$cmd" || missing+=("$cmd")
   done
   qemu_bin >/dev/null || missing+=(qemu)
   [ ${#missing[@]} -eq 0 ] && return 0
   is_unraid && die "missing on this Unraid: ${missing[*]}"
-  local pkgs=()
-  case "$pm" in
-    apt) pkgs=(qemu-system-x86 qemu-utils dosfstools mtools iptables iproute2 curl openssh-client util-linux) ;;
+  has apt-get && PKG_MANAGER=apt
+  has dnf && PKG_MANAGER=dnf
+  has pacman && PKG_MANAGER=pacman
+  case "$PKG_MANAGER" in
+    apt) PKGS=(qemu-system-x86 qemu-utils dosfstools mtools iptables iproute2 curl openssh-client util-linux coreutils) ;;
     dnf)
       # By ID, not by grep: Rocky and Alma list fedora in ID_LIKE.
       if grep -qx 'ID=fedora' /etc/os-release; then
-        pkgs=(qemu-system-x86-core qemu-img dosfstools mtools iptables-nft iproute curl openssh-clients util-linux)
+        PKGS=(qemu-system-x86-core qemu-img dosfstools mtools iptables-nft iproute curl openssh-clients util-linux coreutils)
       else
-        pkgs=(qemu-kvm qemu-img dosfstools mtools iptables-nft iproute curl openssh-clients util-linux)
+        PKGS=(qemu-kvm qemu-img dosfstools mtools iptables-nft iproute curl openssh-clients util-linux coreutils)
       fi
       ;;
-    pacman) pkgs=(qemu-base dosfstools mtools iptables iproute2 curl openssh util-linux) ;;
+    pacman) PKGS=(qemu-base dosfstools mtools iptables iproute2 curl openssh util-linux coreutils) ;;
     *) die "missing: ${missing[*]}. Install them with your package manager and run this again." ;;
   esac
-  say "Installing: ${pkgs[*]}"
+}
+
+pkg_install() {
+  local cmd
+  [ ${#PKGS[@]} -eq 0 ] && return 0
+  say "Installing: ${PKGS[*]}"
   local out rc=0
-  case "$pm" in
+  case "$PKG_MANAGER" in
     apt) out=$( { DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get update -qq &&
-      DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq --no-install-recommends "${pkgs[@]}"; } 2>&1) || rc=$? ;;
-    dnf) out=$(dnf install -y -q "${pkgs[@]}" 2>&1) || rc=$? ;;
-    pacman) out=$(pacman -Sy --needed --noconfirm "${pkgs[@]}" 2>&1) || rc=$? ;;
+      DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq --no-install-recommends "${PKGS[@]}"; } 2>&1) || rc=$? ;;
+    dnf) out=$(dnf install -y -q "${PKGS[@]}" 2>&1) || rc=$? ;;
+    # No -y: refreshing the package lists without upgrading is a partial
+    # upgrade, which Arch does not support.
+    pacman) out=$(pacman -S --needed --noconfirm "${PKGS[@]}" 2>&1) || rc=$? ;;
   esac
-  [ "$rc" = 0 ] || { printf '%s\n' "$out" | tail -20 >&2; die "the package install failed"; }
+  if [ "$rc" != 0 ]; then
+    printf '%s\n' "$out" | tail -20 >&2
+    [ "$PKG_MANAGER" = pacman ] && die "the package install failed. Bring the system up to date with pacman -Syu, then run this again."
+    die "the package install failed"
+  fi
   for cmd in ip iptables curl ssh qemu-img mkfs.vfat mcopy flock; do
     has "$cmd" || die "$cmd is still missing after the install"
   done
@@ -846,6 +988,19 @@ pkg_install() {
 # The kernel modules behind every match and target the fence uses. Rocky
 # Linux 10's cloud image keeps xt_conntrack in kernel-modules-extra, which it
 # does not install, and without it the fence cannot be written at all.
+# netfilter_plan, before the yes: which modules the kernel cannot load yet.
+# Dies when they cannot be installed either. Loads nothing.
+netfilter_plan() {
+  local m
+  MODS_MISSING=()
+  for m in xt_conntrack xt_comment xt_tcpudp xt_addrtype xt_MASQUERADE xt_nat; do
+    modprobe -n -q "$m" 2>/dev/null || MODS_MISSING+=("$m")
+  done
+  [ ${#MODS_MISSING[@]} -eq 0 ] && return 0
+  has dnf && ! is_unraid && return 0
+  die "the kernel cannot load the netfilter modules the fence needs: ${MODS_MISSING[*]}"
+}
+
 netfilter_modules() {
   local m missing=()
   for m in xt_conntrack xt_comment xt_tcpudp xt_addrtype xt_MASQUERADE xt_nat; do
@@ -926,7 +1081,14 @@ resolve_ui() {
 
 pick_host_port() {
   local p
-  for p in ${HOST_PORT:-} 18081 18091 18181 28081; do
+  if [ -n "${HOST_PORT:-}" ]; then
+    [[ "$HOST_PORT" =~ ^[0-9]+$ ]] && [ "$HOST_PORT" -ge 1 ] && [ "$HOST_PORT" -le 65535 ] || die "--port must be a TCP port number"
+    if ss -Htln "sport = :$HOST_PORT" 2>/dev/null | grep -q .; then
+      die "port $HOST_PORT is in use on this computer; pass another --port, or leave it out to pick a free one"
+    fi
+    return
+  fi
+  for p in 18081 18091 18181 28081; do
     if ! ss -Htln "sport = :$p" 2>/dev/null | grep -q .; then HOST_PORT=$p; return; fi
   done
   die "no free port for the guest's worker; pass --port"
@@ -1136,6 +1298,15 @@ wait_for() {
   die "timed out after ${secs} s waiting for $what. The guest's console log: $STATE/console.log"
 }
 
+# The config, as bash that load_conf sources, with every value quoted by %q.
+write_conf() {
+  local k
+  printf '# cashpilot-vm %s, installed %s\n' "$CPVM_VERSION" "$(date -Is)"
+  for k in CPVM_HOME UI_URL UI_IP UI_PORT UI_LOCAL HOST_WORKER WORKER_NAME HOST_PORT NET_BASE VM_RAM_MB VM_CPUS VM_DISK_GB REF; do
+    printf '%s=%q\n' "$k" "${!k}"
+  done
+}
+
 cmd_install() {
   local UI_URL="" HOST_WORKER="" WORKER_URL="" REF="main" VM_RAM_MB=2048 VM_CPUS=2 VM_DISK_GB=20 HOST_PORT="" yes=0
   NET_BASE=10.213.0
@@ -1169,8 +1340,8 @@ cmd_install() {
   parse_url "$UI_URL"
   UI_URL="${UI_URL%/}"
   check_resources
-  pkg_install
-  netfilter_modules
+  pkg_plan
+  netfilter_plan
   resolve_ui
   check_net_free
   if in_cidr "$UI_IP" "${NET_BASE%.*}.0.0/16"; then
@@ -1203,6 +1374,10 @@ This installs one Secure VM on this computer:
   network    namespace $NS; the guest reaches the internet only, plus $UI_IP:$UI_PORT (the UI)
   this host  forwards port $HOST_PORT to the guest's worker ($WORKER_URL); a guard checks the fence every 60 s
   boot       starts with this computer
+EOF
+  if [ ${#PKGS[@]} -gt 0 ]; then say "  packages   installs ${PKGS[*]}"; fi
+  if [ ${#MODS_MISSING[@]} -gt 0 ]; then say "  kernel     installs kernel-modules-extra-$(uname -r), for ${MODS_MISSING[*]}"; fi
+  cat <<EOF
 Remove it all with: cashpilot-vm remove
 
 EOF
@@ -1222,6 +1397,8 @@ EOF
   [[ "$api_key" =~ ^[A-Za-z0-9._~+/=-]+$ ]] || die "that key has characters a fleet key does not have"
 
   say "Setting up..."
+  pkg_install
+  netfilter_modules
   ensure_user
   mkdir -p "$STATE" "$CONF_DIR" "$STATE/ssh" "$RUN_DIR"
   chmod 700 "$STATE" "$CONF_DIR" "$STATE/ssh"
@@ -1233,9 +1410,12 @@ EOF
   write_seed "$api_key"
   unset api_key
   rm -f "$STATE/ssh/guest_host_ed25519"
-  chown "$SVC_USER" "$STATE" "$STATE/guest.qcow2"
-  chmod 640 "$BASE_IMAGE"; chgrp "$SVC_USER" "$BASE_IMAGE" 2>/dev/null || chown "$SVC_USER" "$BASE_IMAGE"
-  chmod 750 "$STATE/image"; chgrp "$SVC_USER" "$STATE/image" 2>/dev/null || chown "$SVC_USER" "$STATE/image"
+  # The folder stays root's. QEMU runs as $SVC_USER and can only pass through
+  # it to the files it opens (its disk, the seed, the console log and the
+  # Debian image, which it reads); it cannot replace the guard's files beside them.
+  chown "$SVC_USER" "$STATE/guest.qcow2"
+  if chgrp "$SVC_USER" "$STATE" 2>/dev/null; then chmod 710 "$STATE"; else chmod 711 "$STATE"; fi
+  chmod 755 "$STATE/image"; chmod 644 "$BASE_IMAGE"
   if has restorecon && has selinuxenabled && selinuxenabled; then
     if has semanage && semanage fcontext -a -t virt_image_t "$STATE(/.*)?" 2>/dev/null; then
       restorecon -R "$STATE" 2>/dev/null || true
@@ -1243,22 +1423,7 @@ EOF
       chcon -R -t virt_image_t "$STATE" 2>/dev/null || true
     fi
   fi
-  cat >"$CONF" <<EOF
-# cashpilot-vm $CPVM_VERSION, installed $(date -Is)
-CPVM_HOME=$STATE
-UI_URL=$UI_URL
-UI_IP=$UI_IP
-UI_PORT=$UI_PORT
-UI_LOCAL=$UI_LOCAL
-HOST_WORKER="$HOST_WORKER"
-WORKER_NAME="$WORKER_NAME"
-HOST_PORT=$HOST_PORT
-NET_BASE=$NET_BASE
-VM_RAM_MB=$VM_RAM_MB
-VM_CPUS=$VM_CPUS
-VM_DISK_GB=$VM_DISK_GB
-REF=$REF
-EOF
+  CPVM_HOME=$STATE write_conf >"$CONF"
   local self
   self=$(readlink -f "$0")
   grep -q '^readonly CPVM_VERSION=' "$self" 2>/dev/null || die "run this script from its file (sudo bash cashpilot-vm install ...), not from a pipe"
@@ -1289,14 +1454,15 @@ EOF
 # Verify: red/green self-test from inside the guest
 # ---------------------------------------------------------------------------
 
-# One probe: "ip port". Prints reached, blocked or the error.
+# One probe: "ip port". Prints reached (connected), refused (the target
+# answered with a reset), blocked (no answer at all) or the error.
 # shellcheck disable=SC2016 # runs in the guest, expands there
 readonly PROBE_SCRIPT='
 probe() {
   out=$(timeout 3 bash -c "exec 3<>/dev/tcp/$1/$2" 2>&1); rc=$?
   if [ $rc = 0 ]; then echo "$1 $2 reached"
   elif [ $rc = 124 ]; then echo "$1 $2 blocked"
-  elif echo "$out" | grep -qi refused; then echo "$1 $2 reached"
+  elif echo "$out" | grep -qi refused; then echo "$1 $2 refused"
   else echo "$1 $2 error:$(echo "$out" | tail -1 | tr " " "_")"; fi
 }
 while read -r ip port; do [ -n "$ip" ] && probe "$ip" "$port" & done
@@ -1338,31 +1504,37 @@ run_probes_from_guest() {
 }
 
 # The controls: the same targets from outside the fence, from the namespace
-# (the guest's own path, minus the fence) and from the host. A target counts
-# as live when either reaches it, so a blocked result in the guest means the
-# fence stopped it, not that nothing was there.
+# (the guest's own path, minus the fence) and from the host. A target is live
+# when either reaches it or gets a refusal from it, so a blocked result in the
+# guest means the fence stopped it, not that nothing was there.
 run_controls() {
   local in
   in=$(cat)
   { nsx bash -c "$PROBE_SCRIPT" <<<"$in"; bash -c "$PROBE_SCRIPT" <<<"$in"; } |
-    awk '{k = $1 " " $2} $3 == "reached" {r[k] = 1} {s[k] = $3} END {for (k in s) print k, (r[k] ? "reached" : s[k])}'
+    awk '{k = $1 " " $2} $3 == "reached" || $3 == "refused" {r[k] = 1} {s[k] = $3} END {for (k in s) print k, (r[k] ? "live" : s[k])}'
 }
 
-# Returns 0 when every forbidden target is blocked and the internet works.
+# Returns 0 when every forbidden target is blocked, the UI and the internet
+# work, and gVisor is registered in the guest. The fence drops without an
+# answer, so any answer to the guest (a connection, a refusal, an error) came
+# from past it and fails. A missing result fails too. A block counts as proof
+# only with a live control; without one the line says it proves nothing.
 selftest_once() {
-  local label=$1 targets controls results name ip port c r bad=0 lines="" ui
+  local label=$1 targets controls results name ip port c r bad=0 lines="" ui layers
   targets=$(probe_targets)
   controls=$(awk '{print $2, $3}' <<<"$targets" | run_controls | sort -u)
   results=$(awk '{print $2, $3}' <<<"$targets" | run_probes_from_guest | sort -u)
   while read -r name ip port; do
     c=$(awk -v i="$ip" -v p="$port" '$1 == i && $2 == p {print $3}' <<<"$controls")
     r=$(awk -v i="$ip" -v p="$port" '$1 == i && $2 == p {print $3}' <<<"$results")
-    if [ "$r" = reached ]; then
-      bad=1; lines+="FAIL  $name $ip:$port reached from the guest"$'\n'
-    elif [ "$c" = reached ]; then
+    if [ -z "$r" ]; then
+      bad=1; lines+="FAIL  $name $ip:$port no result from the guest"$'\n'
+    elif [ "$r" != blocked ]; then
+      bad=1; lines+="FAIL  $name $ip:$port answered the guest ($r)"$'\n'
+    elif [ "$c" = live ]; then
       lines+="ok    $name $ip:$port blocked (reachable from outside the fence)"$'\n'
     else
-      lines+="ok    $name $ip:$port blocked (no live control: ${c:-none})"$'\n'
+      lines+="skip  $name $ip:$port blocked, but proves nothing: no answer from outside the fence either (${c:-none})"$'\n'
     fi
   done <<<"$targets"
   ui=$(echo "$UI_IP $UI_PORT" | run_probes_from_guest | awk '{print $3}')
@@ -1373,22 +1545,27 @@ selftest_once() {
   else
     bad=1; lines+="FAIL  internet by name does not work"$'\n'
   fi
+  layers=$(guest_layers) || bad=1
+  lines+="$layers"$'\n'
   SELFTEST_LINES="$lines"
   [ "$label" = quiet ] || printf '%s' "$lines"
   return $bad
 }
 
+# The layers inside the guest, as self-test lines. Fails without gVisor. The
+# guest's own LAN fence appears with the first earner, so its absence is a note.
 guest_layers() {
-  local rt fence
+  local rt fence rc=0
   rt=$(guest_ssh "sudo docker info --format '{{range \$k, \$v := .Runtimes}}{{\$k}} {{end}}'" 2>/dev/null || true)
   fence=$(guest_ssh "sudo docker exec cashpilot-worker python -c 'import json,urllib.request;print(json.load(urllib.request.urlopen(\"http://127.0.0.1:8081/api/health\")).get(\"status\"))'" 2>/dev/null || true)
-  if [[ " $rt " == *" runsc-hostnet "* ]]; then say "ok    gVisor registered in the guest ($rt)"; else say "FAIL  gVisor is not registered in the guest"; return 1; fi
+  if [[ " $rt " == *" runsc-hostnet "* ]]; then say "ok    gVisor registered in the guest ($rt)"; else say "FAIL  gVisor is not registered in the guest"; rc=1; fi
   if guest_ssh "sudo nft list table ip cashpilot" >/dev/null 2>&1; then
     say "ok    the guest's own LAN fence (table ip cashpilot) is in place"
   else
     say "note  the guest's own LAN fence appears with the first earner"
   fi
   say "      worker health: ${fence:-unknown}"
+  return $rc
 }
 
 # The last self-test, for the UI: written into the guest, where the worker
@@ -1413,8 +1590,8 @@ selftest_if_asked() {
   local now last=0 rc=0
   load_conf || return 0
   [ -s "$STATE/provisioned" ] && [ ! -f "$RUN_DIR/hold" ] && tap_up || return 0
-  guest_ssh "test -e /run/cashpilot-vm-ask/selftest" 2>/dev/null || return 0
-  guest_ssh "sudo rm -f /run/cashpilot-vm-ask/selftest" 2>/dev/null || true
+  GUEST_SSH_TIMEOUT=15 guest_ssh "test -e /run/cashpilot-vm-ask/selftest" 2>/dev/null || return 0
+  GUEST_SSH_TIMEOUT=15 guest_ssh "sudo rm -f /run/cashpilot-vm-ask/selftest" 2>/dev/null || true
   now=$(date +%s)
   [ -f "$RUN_DIR/selftest.last" ] && read -r last <"$RUN_DIR/selftest.last" || true
   if [ $((now - last)) -lt 300 ]; then
@@ -1444,8 +1621,14 @@ cmd_verify() {
   if [ "$red" = 1 ]; then
     # Only on a throwaway host: the fence is opened for the length of one probe run.
     say "RED: opening the fence for one probe run. Nothing else changes; the guard writes it back."
-    mkdir -p "$RUN_DIR"; touch "$RUN_DIR/hold"
-    trap 'rm -f "$RUN_DIR/hold"; guard_pass >/dev/null || true' EXIT
+    # The guard lock is held from here until the fence is put back, so no
+    # guard pass runs in between. If this process dies, the lock goes with it,
+    # and the next guard pass finds the hold abandoned and repairs the fence.
+    mkdir -p "$RUN_DIR"
+    exec 8>"$RUN_DIR.lock"
+    flock -w 50 8 || die "a guard pass is still running; try again in a minute"
+    echo "$$ $(date +%s)" >"$RUN_DIR/hold"
+    trap 'rm -f "$RUN_DIR/hold"; exec 8>&-; guard_pass >/dev/null || true' EXIT
     nsx iptables -P FORWARD ACCEPT
     nsx iptables -I FORWARD 1 -m comment --comment cpvm:red-test -j ACCEPT
     # The host's own drop for the veth is a second layer; open it too.
@@ -1456,6 +1639,7 @@ cmd_verify() {
       say "RED as expected: with the fence open the guest reaches the targets above."
     fi
     rm -f "$RUN_DIR/hold"
+    exec 8>&-
     guard_pass >/dev/null
     trap - EXIT
     tap_up || die "the guard did not reconnect the guest after the red run"
@@ -1471,7 +1655,6 @@ cmd_verify() {
   local rc=0
   selftest_once loud || rc=1
   save_selftest "$rc"
-  guest_layers || rc=1
   if [ $rc = 0 ]; then say "GREEN: nothing outside the guest is reachable except the UI, and the internet works."; else say "RED: see the FAIL lines above."; fi
   return $rc
 }
@@ -1525,9 +1708,7 @@ leftovers() {
     [ -e "$UNRAID_CRON" ] && left+=("file $UNRAID_CRON")
     [ -e /usr/local/emhttp/plugins/cashpilot-vm ] && left+=("event hooks")
   fi
-  if has firewall-cmd && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --permanent --zone=trusted --list-interfaces 2>/dev/null | grep -qw "$VETH_HOST" && left+=("firewalld trusted interface")
-  fi
+  grep -qw "$VETH_HOST" <<<"$(firewalld_saved_trusted || true)" && left+=("firewalld trusted interface")
   printf '%s\n' "${left[@]}"
 }
 
@@ -1547,7 +1728,7 @@ cmd_remove() {
     # settings then sends the request.
     if guest_pid >/dev/null && tap_up; then
       # shellcheck disable=SC2016 # expands in the guest
-      if guest_ssh 'set -e; e=$(mktemp); trap "rm -f $e" EXIT
+      if GUEST_SSH_TIMEOUT=150 guest_ssh 'set -e; e=$(mktemp); trap "rm -f $e" EXIT
         sudo docker inspect -f "{{range .Config.Env}}{{println .}}{{end}}" cashpilot-worker >"$e"
         img=$(sudo docker inspect -f "{{.Config.Image}}" cashpilot-worker)
         sudo docker stop -t 20 cashpilot-worker >/dev/null
@@ -1557,6 +1738,8 @@ cmd_remove() {
       else
         say "Could not ask the UI to forget \"$WORKER_NAME\": delete it on the Fleet page."
       fi
+    else
+      say "The guest is stopped or cut off, so it cannot ask the UI to forget \"$WORKER_NAME\": delete it on the Fleet page."
     fi
     svc_remove
     guest_stop
