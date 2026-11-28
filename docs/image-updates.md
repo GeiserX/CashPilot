@@ -67,10 +67,13 @@ With **Update automatically**, CashPilot still leaves some apps for you. The
 table shows **Not installed** and the reason:
 
 - The container differs from what a redeploy builds. For example, the catalog
-  added a capability after you deployed the app. Redeploy it from the
+  added a capability after you deployed the app, or you changed the command or
+  data path of your own app and did not redeploy it yet. Redeploy it from the
   dashboard once, and the next build installs by itself.
 - The app runs an image other than the one that a redeploy would use.
 - The app is stopped. An update would start it.
+- The app runs more than one copy on the box. Use **Redeploy** to update the
+  copies.
 - The app runs through a proxy. CashPilot does not yet update a copy behind a
   proxy by itself.
 - The box has no deployment record of the app, for example because you made
@@ -108,7 +111,9 @@ there (`docker image prune`) removes all of them.
   **Off**. A box or an app with its own choice keeps it, so open **Choices per
   box and per app** and set each of those to **Off** too. Then press **Save**.
 - For one box or one app: open **Choices per box and per app**, set that box
-  or app to **Off** and press **Save**.
+  or app to **Off** and press **Save**. An app with its own choice keeps it on
+  a box set to **Off**, because the app's choice wins. To stop that app on that
+  box too, set the app to **Off**. That stops the app on every box.
 
 Off stops the daily check at once. It does not undo an update that already
 happened. To go back to an older build, deploy the app with that image from its

@@ -905,6 +905,23 @@ CREATE INDEX IF NOT EXISTS idx_image_updates_target
 """
 
 
+def _image_updates_seed(fresh_install: bool) -> str:
+    """The statement that writes an install's first image update setting, kept if the owner saved one.
+
+    A literal, so it runs inside the same executescript as the table. The value
+    is CashPilot's own default, never input, and is quoted as SQL quotes it.
+    """
+    from app import image_updates
+
+    def literal(text: str) -> str:
+        return "'" + text.replace("'", "''") + "'"
+
+    value = json.dumps(image_updates.default_settings(fresh_install))
+    return (
+        f"\nINSERT OR IGNORE INTO config (key, value) VALUES ({literal(image_updates.CONFIG_KEY)}, {literal(value)});"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Shared connection management
 # ---------------------------------------------------------------------------
@@ -1233,7 +1250,22 @@ async def init_db() -> None:
             applied.append("usage_daily dropped (replaced by usage_hourly)")
         cursor = await db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         tables_before = {row["name"] for row in await cursor.fetchall()}
-        await db.executescript(_SCHEMA)
+        if "image_updates" in tables_before:
+            await db.executescript(_SCHEMA)
+        else:
+            # The first start with image updates: a new install updates its
+            # earners by itself, an upgraded one is offered it and stays off
+            # until the owner says yes (app/image_updates.py). The table and
+            # that setting commit together: a start cut off between them would
+            # leave the table, and the next start would never write the setting,
+            # or would take a new install for an upgraded one.
+            try:
+                await db.executescript("BEGIN;\n" + _SCHEMA + _image_updates_seed(not tables_before) + "\nCOMMIT;")
+            except BaseException:
+                # The connection is shared: a transaction left open would be
+                # committed by the next write, half a schema with it.
+                await db.rollback()
+                raise
         # _SCHEMA creates any missing table silently (CREATE TABLE IF NOT
         # EXISTS). On an existing database that is a migration (12 -> 13 added
         # state_backups), so the log line names it. A fresh file is not.
@@ -1241,17 +1273,6 @@ async def init_db() -> None:
         created = sorted({row["name"] for row in await cursor.fetchall()} - tables_before - {"sqlite_sequence"})
         if created and tables_before:
             applied.append(("table " if len(created) == 1 else "tables ") + ", ".join(created) + " created")
-        if "image_updates" in created:
-            # The first start with image updates: a new install updates its
-            # earners by itself, an upgraded one is offered it and stays off
-            # until the owner says yes (app/image_updates.py).
-            from app import image_updates
-
-            await db.execute(
-                "INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)",
-                (image_updates.CONFIG_KEY, json.dumps(image_updates.default_settings(not tables_before))),
-            )
-            await db.commit()
         # Migrate workers table: add client_id (UNIQUE) and apps columns
         cursor = await db.execute("PRAGMA table_info(workers)")
         cols = {row["name"] for row in await cursor.fetchall()}

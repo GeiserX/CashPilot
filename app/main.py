@@ -8052,10 +8052,11 @@ async def _proxy_worker_command(
     # for storj). Cut off sooner, a stop that went through answers 504 and is
     # never recorded, so the copy raises a container-down alert.
     timeout = 30 + _catalog_stop_timeout(slug) if command in ("stop", "restart", "remove") else 30
-    if command == "stop" and catalog.fence_gated(catalog.get_service(slug)):
-        # The worker stops a fence-gated node under the lock a redeploy holds
-        # (orchestrator.GATED_DEPLOY_LOCK), so a Stop sent during one waits for it first.
-        timeout += _deploy_timeout(slug)
+    if command == "stop":
+        # The worker stops every copy under the route lock a redeploy holds
+        # (orchestrator.stop_service), and an image update holds it through its
+        # check period, so a Stop sent during one waits for all of it first.
+        timeout += _deploy_timeout(slug) + image_updates.SETTLE_SECONDS + 30
     if command == "remove":
         return await _proxy_to_worker(
             worker_id, "DELETE", f"/api/containers/{slug}", params=params, timeout=timeout, headers=headers
@@ -13763,10 +13764,10 @@ async def _image_update_blocker(worker_id: int, slug: str, answer: dict[str, Any
             continue
         if not isinstance(entry.get("shape"), dict):
             return "this box did not report how it was created"
-        # As the dashboard judges it: a custom service has no catalog entry to drift from.
-        found = drift.container_drift(
-            None if is_custom else svc, entry["shape"], recorded, custom_image=custom_image, worker_arch=arch_name
-        )
+        # A custom service is judged against its saved definition: an edit is kept
+        # until the owner redeploys (api_update_custom_service), so an update
+        # must not be the deploy that brings in a new command or data path.
+        found = drift.container_drift(svc, entry["shape"], recorded, custom_image=custom_image, worker_arch=arch_name)
         if found:
             return "it differs from what a redeploy builds (" + "; ".join(found) + ")"
     return ""

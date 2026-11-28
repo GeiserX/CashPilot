@@ -84,6 +84,7 @@
         <td class="muted">${esc(r.detail)}</td>
       </tr>`).join('');
     root.innerHTML = `
+      <p class="muted" data-updates-load-error hidden></p>
       <div class="power-settings">
         <div><label class="form-label" for="updates-mode">${esc(t('fleet.updates.fleet_label'))}</label>
           <select class="form-input" id="updates-mode">${options(s.mode, false)}</select></div>
@@ -116,13 +117,33 @@
       </table></div>`;
   }
 
+  // Each load is numbered, and only the newest one's answer counts: answers
+  // can arrive out of order, and an older one would draw a choice the server
+  // no longer holds, which the next Save would send back.
+  let loads = 0;
   async function load() {
+    const mine = ++loads;
+    let next;
     try {
-      state = await CP.api('/api/image-updates');
-      if (!unsaved()) render();
+      next = await CP.api('/api/image-updates');
     } catch (err) {
-      root.innerHTML = `<p class="muted">${esc(t('fleet.updates.load_failed', { error: err.message || '' }))}</p>`;
+      if (mine !== loads) return;
+      const message = t('fleet.updates.load_failed', { error: err.message || '' });
+      const line = root.querySelector('[data-updates-load-error]');
+      if (state && line) {
+        // The controls stay, with any change not saved yet; the error shows beside them.
+        line.textContent = message;
+        line.hidden = false;
+      } else if (!state) {
+        root.innerHTML = `<p class="muted">${esc(message)}</p>`;
+      }
+      return;
     }
+    if (mine !== loads) return;
+    state = next;
+    const line = root.querySelector('[data-updates-load-error]');
+    if (line) line.hidden = true;
+    if (!unsaved()) render();
   }
 
   async function save(mode) {
