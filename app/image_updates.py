@@ -170,6 +170,10 @@ async def update_service(hooks: Hooks, worker_id: int, slug: str, mode: str) -> 
     why = await hooks.blocker(worker_id, slug, answer)
     if not why and any(c.get("status") != "running" for c in copies):
         why = "not every copy of it is running, and an update would start it"
+    if not why and len(copies) > 1:
+        # Copies are replaced one by one, so a later copy that fails would leave
+        # the box running two builds of it under one undone result.
+        why = f"it runs {len(copies)} copies here, and only a single copy is updated by itself"
     if why:
         if not await hooks.seen(worker_id, slug, new_id, (SKIPPED,)):
             await hooks.record(worker_id, slug, SKIPPED, detail=why, **facts)

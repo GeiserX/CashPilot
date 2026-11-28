@@ -1719,6 +1719,14 @@ def deploy_raw(
                     else client.containers.run(detach=True, **run_kwargs)
                 )
             created = container
+            if expect_image and str((getattr(container, "attrs", None) or {}).get("Image") or "") != expect_image:
+                # Docker read the tag again at create time, and another pull moved it
+                # since the check above. Undone and not held: nobody tried this build.
+                raise ContainerRuntimeError(
+                    f"The tag {image} moved to another build after the check. The previous container was put "
+                    "back; the next check tries the new build.",
+                    409,
+                )
             if secrets_plan is not None:
                 # Between create and start: the earner never runs without its file.
                 secret_env.provision(container, secrets_plan)
@@ -2008,8 +2016,6 @@ class ImageUpdateFailed(ContainerRuntimeError):
 
 #: Seconds between two looks at a replacement during its check period.
 _SETTLE_POLL_SECONDS = 5.0
-#: The log records a check period reads from the replacement, newest last.
-_SETTLE_LOG_LINES = 200
 
 
 def floating_ref(ref: str) -> bool:
@@ -2043,7 +2049,10 @@ def _settle_problem(container: Any, slug: str, since: float) -> str | None:
     It must run, must not have been restarted by Docker, must not report an
     unhealthy Docker health check, and its log since ``since`` must show none
     of the catalog's failing or account_disabled health signals (an idle one
-    is not a fault).
+    is not a fault). The whole log since ``since`` is read, never a tail, so a
+    failure line is not pushed out by the lines after it, and an ``unless``
+    line anywhere in the period still counts. A log Docker does not return,
+    for a service with signals to look for, is an unreadable look.
     """
     try:
         container.reload()
@@ -2066,9 +2075,9 @@ def _settle_problem(container: Any, slug: str, since: float) -> str | None:
     if not isinstance(signals, list) or not signals:
         return None
     try:
-        raw = container.logs(tail=_SETTLE_LOG_LINES, since=int(since))
-    except Exception:  # noqa: BLE001 - an unreadable log is no finding
-        return None
+        raw = container.logs(since=int(since))
+    except Exception as exc:  # noqa: BLE001 - not readable now is looked at again
+        raise _SettleUnreadable(str(exc)) from None
     text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw or "")
     for signal in signals:
         if not isinstance(signal, dict) or str(signal.get("state") or "failing").lower() == "idle":
@@ -2084,17 +2093,21 @@ def _settle(container: Any, slug: str, seconds: float, since: float, name: str) 
     logger.info("Watching %s for %d s before the previous container is removed", name, int(seconds))
     end = time.monotonic() + seconds
     while True:
+        # Passing needs a look that started once the period was over: one that
+        # began earlier can miss a stop that came while Docker answered it.
+        started = time.monotonic()
         try:
             problem, seen = _settle_problem(container, slug, since), True
         except _SettleUnreadable:
-            # Passing needs a look that worked: the last one must have read the container.
+            # Passing needs a look that worked: the last one must have read the
+            # container and, when it has signals to look for, its log.
             problem, seen = None, False
         if problem:
             logger.warning("%s failed its check after the update: it %s", name, problem)
             raise ImageUpdateFailed(f"The new {name} {problem} within its {int(seconds)} s check, so it was undone.")
-        now = time.monotonic()
-        if now >= end and seen:
+        if started >= end and seen:
             return
+        now = time.monotonic()
         if now >= end + _SETTLE_GRACE_SECONDS:
             raise ImageUpdateFailed(
                 f"Docker did not describe the new {name} at the end of its {int(seconds)} s check, so it was undone."
@@ -2135,7 +2148,8 @@ def _repo_digest(image: Any, ref: str) -> str:
             0
         ].endswith("/" + repo):
             return entry.split("@", 1)[1]
-    return digests[0].split("@", 1)[1] if digests else ""
+    # Another repository's digest is not this one's: no digest beats a wrong one.
+    return ""
 
 
 def check_image(slug: str, timeout: float = 900) -> dict[str, Any]:
