@@ -144,6 +144,11 @@ jobs:
       - name: Route at deploy
         run: node scripts/route_choice_check.mjs
 
+      # The copy form keeps the owner's acknowledgement ticks across the 60 s
+      # refresh, and shows a failed needs lookup with Run off.
+      - name: Copy form acknowledgements
+        run: node scripts/copy_needs_check.mjs
+
       # Device ids reach the page masked, a node-reported one says so, and a
       # deploy that would put one id on a second box asks once and never loops.
       - name: Device ids

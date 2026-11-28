@@ -460,12 +460,53 @@ class TestTheWorkerProxiedRoutes:
                 raise outcome
             return outcome
 
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(proxy_tunnel, "_deploy", deploy)
         monkeypatch.setattr(proxy_tunnel, "_require_running", lambda slug, pid: seen.update(only_if_running=True))
         body = {"earner": BODY, "proxy": PROXY, "routed": routed, **extra}
         return worker("POST", "/api/proxied/honeygain/3/deploy", body), seen
+
+    def _routed_wallet(self, worker, monkeypatch, image, *, routed=True, **extra):
+        """A routed ProxyBase (a wallet on its volume), or a copy of it, with ``image``, through the real check."""
+        seen = {}
+
+        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
+            seen["image"] = earner["image"]
+            return {"container_id": "e"}
+
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
+        monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
+        monkeypatch.setattr(proxy_tunnel, "_deploy", deploy)
+        docker_conf = catalog.get_service("proxybase-xyz")["docker"]
+        earner = {"image": image, "command": docker_conf.get("command"), "env": {}, **extra}
+        body = {"earner": earner, "proxy": PROXY, "routed": routed}
+        resp = worker("POST", "/api/proxied/proxybase-xyz/3/deploy", body)
+        return resp, seen, earner
+
+    @pytest.mark.parametrize("routed", [True, False])
+    def test_a_routed_wallet_service_on_another_image_needs_the_owners_approval(self, worker, monkeypatch, routed):
+        """As a direct deploy (_validate_critical_spec): its container can read or replace the wallet.
+
+        A copy too: its own volume holds the copy's wallet once it has run."""
+        resp, seen, _ = self._routed_wallet(worker, monkeypatch, "attacker/proxybase:1", routed=routed)
+        assert resp.status_code == 403 and _detail(resp)["error"] == "step_up_required", resp.text
+        assert seen == {} and route_gate.routed() == {}
+
+    def test_a_routed_wallet_service_runs_another_image_with_the_owners_approval(self, worker, monkeypatch):
+        docker_conf = catalog.get_service("proxybase-xyz")["docker"]
+        target = step_up.deploy_target("proxybase-xyz", "custom/proxybase:1", docker_conf.get("command"), {}, {})
+        approval = step_up.sign(WORKER_KEY, step_up.ACTION_CUSTOM_IMAGE, target)
+        resp, seen, _ = self._routed_wallet(worker, monkeypatch, "custom/proxybase:1", approval=approval)
+        assert resp.status_code == 200, resp.text
+        assert seen == {"image": "custom/proxybase:1"}
+
+    @pytest.mark.parametrize("routed", [True, False])
+    def test_a_routed_wallet_service_on_the_catalogs_image_needs_no_approval(self, worker, monkeypatch, routed):
+        image = catalog.get_service("proxybase-xyz")["docker"]["image"]
+        resp, seen, _ = self._routed_wallet(worker, monkeypatch, image, routed=routed)
+        assert resp.status_code == 200, resp.text
+        assert seen == {"image": image}
 
     def test_a_routed_deploy_is_recorded_before_the_earner_exists(self, worker, monkeypatch):
         resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
@@ -1283,6 +1324,67 @@ class TestTheUiDeploysARoute:
         assert result["route"]["proxy_id"] == pid
         assert proxies.route_of(record) == pid
 
+    def test_a_routed_wallet_service_on_another_image_goes_out_with_the_owners_signed_approval(self, db):
+        """As on the direct path: the worker checks it against the exact earner it receives."""
+        ui = _Ui(_worker_row(features=("proxy_tunnel", "route_at_deploy", "proxied_isolation")))
+        checked = AsyncMock()
+
+        async def go():
+            pid = await ui.proxy()
+            with patch.object(main, "require_step_up", checked):
+                await ui.deploy(
+                    main.DeployRequest(image="custom/proxybase:1", step_up_password="pw", route=pid),
+                    slug="proxybase-xyz",
+                )
+
+        _run(go)
+        assert checked.await_count == 1
+        earner = ui.calls[-1][2]["earner"]
+        assert earner["image"] == "custom/proxybase:1"
+        target = step_up.deploy_target(
+            "proxybase-xyz", earner["image"], earner.get("command"), earner.get("env"), earner.get("volumes")
+        )
+        step_up.check(WORKER_KEY, earner["approval"], step_up.ACTION_CUSTOM_IMAGE, target)
+
+    def test_a_copy_of_a_wallet_service_on_another_image_goes_out_only_with_the_owners_signed_approval(self, db):
+        """The worker checks a copy as a direct deploy (_validate_critical_spec), so its add asks for the password."""
+        ui = _Ui(_worker_row(features=("proxy_tunnel", "route_at_deploy", "proxied_isolation")))
+        checked = AsyncMock()
+
+        async def go():
+            with patch.object(main, "require_step_up", checked):
+                await ui.deploy(
+                    main.DeployRequest(image="custom/proxybase:1", step_up_password="pw"), slug="proxybase-xyz"
+                )
+            pid = await ui.proxy()
+            ui.calls.clear()
+            with ui.active(), pytest.raises(HTTPException) as refused:
+                await main.api_add_proxied_copy(
+                    _request(), pid, main.ProxyCopyRequest(worker_id=1, slug="proxybase-xyz"), {}
+                )
+            nothing = (list(ui.calls), await database.list_proxied_copies(pid))
+            with ui.active(), patch.object(main, "require_step_up", checked):
+                await main.api_add_proxied_copy(
+                    _request(),
+                    pid,
+                    main.ProxyCopyRequest(worker_id=1, slug="proxybase-xyz", step_up_password="pw"),
+                    {},
+                )
+            return refused.value, nothing, pid
+
+        refused, nothing, pid = _run(go)
+        assert refused.status_code == 403 and refused.detail["error"] == "step_up_required"
+        assert nothing == ([], []), "a refused copy reaches no worker and leaves no record"
+        assert checked.await_count == 2
+        method, path, sent = ui.calls[-1]
+        assert (method, path) == ("POST", f"/api/proxied/proxybase-xyz/{pid}/deploy")
+        earner = sent["earner"]
+        assert earner["image"] == "custom/proxybase:1"
+        target = step_up.deploy_target(
+            "proxybase-xyz", earner["image"], earner.get("command"), earner.get("env"), earner.get("volumes")
+        )
+        step_up.check(WORKER_KEY, earner["approval"], step_up.ACTION_CUSTOM_IMAGE, target)
+
     def test_a_redeploy_keeps_the_route_without_being_asked(self, db):
         ui = _Ui()
 
@@ -1340,7 +1442,69 @@ class TestTheUiDeploysARoute:
             return exc.value
 
         error = _run(go)
-        assert error.status_code == 400 and "keeps data in a volume" in str(error.detail)
+        assert error.status_code == 400 and "terms forbid running it in Docker" in str(error.detail)
+        assert ui.calls == []
+
+    @pytest.mark.real_honeygain_terms
+    def test_honeygain_is_routed_only_with_its_account_risk_tick(self, db):
+        """Its terms can suspend the account; an older worker needs no new feature for it."""
+        ui = _Ui()
+
+        async def go():
+            pid = await ui.proxy()
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            refused = exc.value
+            assert ui.calls == []
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid, route_acknowledged=["account_risk"]))
+            return refused, ui.calls[-1][2]
+
+        refused, sent = _run(go)
+        assert refused.status_code == 400 and refused.detail["needs"] == ["account_risk"]
+        assert sent["acknowledged"] == ["account_risk"]
+
+    def test_a_service_that_lowers_its_isolation_is_routed_only_with_its_tick(self, db):
+        ui = _Ui(_worker_row(features=("proxy_tunnel", "route_at_deploy", "proxied_isolation")))
+        env = {"BITPING_EMAIL": "a@b.c", "BITPING_PASSWORD": "pw"}
+
+        async def go():
+            pid = await ui.proxy()
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(main.DeployRequest(env=env, route=pid), slug="bitping")
+            refused = exc.value
+            assert ui.calls == []
+            await ui.deploy(main.DeployRequest(env=env, route=pid, route_acknowledged=["net_raw"]), slug="bitping")
+            sent = ui.calls[-1][2]
+            # A redeploy that sends no ticks keeps the recorded ones.
+            await ui.deploy(main.DeployRequest(env={}), slug="bitping")
+            again = ui.calls[-1][2]
+            return pid, refused, sent, again, await database.get_deployment_spec("bitping", worker_id=1)
+
+        pid, refused, sent, again, record = _run(go)
+        assert refused.status_code == 400 and refused.detail["needs"] == ["net_raw"]
+        assert sent["routed"] is True and sent["acknowledged"] == ["net_raw"]
+        assert sent["earner"]["cap_add"] == ["NET_RAW"]
+        assert again["acknowledged"] == ["net_raw"]
+        assert record["route"]["acknowledged"] == ["net_raw"] and proxies.route_of(record) == pid
+
+    def test_a_worker_too_old_for_isolation_gets_no_routed_service_that_needs_it(self, db):
+        ui = _Ui()
+
+        async def go():
+            pid = await ui.proxy()
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(
+                    main.DeployRequest(
+                        env={"BITPING_EMAIL": "a@b.c", "BITPING_PASSWORD": "pw"},
+                        route=pid,
+                        route_acknowledged=["net_raw"],
+                    ),
+                    slug="bitping",
+                )
+            return exc.value
+
+        error = _run(go)
+        assert error.status_code == 409 and "too old" in error.detail
         assert ui.calls == []
 
     def test_a_service_already_running_from_the_boxs_ip_is_not_routed_beside_it(self, db):
@@ -1469,7 +1633,7 @@ class TestARemovalAfterTheUiGaveUpOnTheDeploy:
                 service_lock.release()
 
         monkeypatch.setattr(route_gate, "deploying", lambda slug: Watched())
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(worker_api.proxy_tunnel, "routed_copies", lambda slug, marked: [])
         monkeypatch.setattr(
@@ -1507,7 +1671,7 @@ class TestARemovalAfterTheUiGaveUpOnTheDeploy:
 
     def test_a_deploy_that_arrives_during_the_removal_is_refused(self, worker, monkeypatch):
         """Counted but never made: an earner it made after the removal answered would run with no record in the UI."""
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         created, during = [], []
         monkeypatch.setattr(
@@ -1573,7 +1737,7 @@ class TestARemovalAfterTheUiGaveUpOnTheDeploy:
 
     def test_a_copy_deploy_that_starts_and_ends_during_the_removal_still_keeps_the_records(self, worker, monkeypatch):
         """In neither the set read before the removal nor the one read after it: its start is counted."""
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(worker_api.proxy_tunnel, "deploy", lambda *a, **k: {"container_id": "e"})
         monkeypatch.setattr(worker_api.orchestrator, "remove_extra_instances", lambda slug: [])
@@ -2403,7 +2567,7 @@ class TestTheUiManagesARoutedService:
         async def go():
             pid = await setup()
             with ui.active(), pytest.raises(HTTPException) as exc:
-                await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=1, slug="honeygain"), {})
+                await main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=1, slug="honeygain"), {})
             return exc.value
 
         error = _run(go)
@@ -2434,7 +2598,7 @@ class TestTheUiManagesARoutedService:
                 ui.calls.clear()
                 # Reads the record before the routed one is saved, then waits for the copy's lock.
                 copy = asyncio.create_task(
-                    main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=1, slug="honeygain"), {})
+                    main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=1, slug="honeygain"), {})
                 )
                 lock = main._proxy_copy_lock(pid, 1, "honeygain")
                 while not getattr(lock, "_waiters", None):
@@ -2854,7 +3018,7 @@ class TestLabelsNeverHideADirectEarner:
         direct = _labelled_direct({"cashpilot.proxy": "3"})
         worker.docker.containers.list.return_value = [direct]
         monkeypatch.setattr(worker_api.orchestrator, "service_instances", _SERVICE_INSTANCES)
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(
             worker_api.proxy_tunnel, "deploy", MagicMock(side_effect=AssertionError("deployed beside it"))
@@ -3243,7 +3407,7 @@ class TestARoutedDeployEndsByTheDeadlineCountedAtItsArrival:
     """
 
     def _routed_deploy(self, worker, monkeypatch, sidecar=None):
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(proxy_tunnel, "secret_files", lambda *a, **k: {"settings": "s"})
         monkeypatch.setattr(proxy_tunnel, "tunnel_image", lambda: "drumsergio/cashpilot-tunnel:1.64.0")

@@ -345,6 +345,11 @@
 #     through a proxy or VPN. The dashboard then refuses a proxied copy of the
 #     service (docs/proxies.md). Absent means nobody has documented it, never
 #     that it is allowed.
+#   proxy_risk:  (optional)
+#     source: "https://..."  (the provider's own terms that say so)
+#     Set when the provider's terms forbid proxies or VPNs and can suspend the
+#     account, and the owner may still choose that risk. A copy or a route
+#     through a proxy then runs only after its owner ticks it (docs/proxies.md).
 #   note: ""  (footnote text for special cases in README table)
 #   note_column: ""  (which column footnote applies to: vps_ip, devices_per_ip)
 #   hosting_note: ""  (advice shown when the selected worker reports a hosting exit)

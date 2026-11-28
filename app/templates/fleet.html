@@ -118,7 +118,8 @@
       <div><label class="form-label" for="copy-worker">{{ t('fleet.copy.box') }}</label><select class="form-input" id="copy-worker"></select></div>
       <div><label class="form-label" for="copy-slug">{{ t('fleet.copy.service') }}</label><select class="form-input" id="copy-slug"></select></div>
       <div><label class="form-label" for="copy-proxy">{{ t('fleet.copy.proxy') }}</label><select class="form-input" id="copy-proxy"></select></div>
-      <button class="btn btn-primary btn-sm" type="submit">{{ t('fleet.copy.run') }}</button>
+      <div id="copy-needs" style="grid-column:1/-1;"></div>
+      <button class="btn btn-primary btn-sm" type="submit" id="copy-run">{{ t('fleet.copy.run') }}</button>
       <span class="muted">{{ t('fleet.copy.limits') }}</span>
     </form>
   </details>
@@ -1325,7 +1326,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const e = entries.find((x) => x.slug === slug && x.proxy_id === proxyId);
     if (!e) return {status: 'unknown', via: ''};
     const via = e.exit_ip ? `${e.exit_ip}${e.exit_country ? ' · ' + e.exit_country : ''}` : t('fleet.proxy.exit_unseen');
-    return {status: e.status, via, recoverySkipped: e.recovery_skipped};
+    return {status: e.status, via, recoverySkipped: e.recovery_skipped, tripped: !!e.tripped};
   }
 
   function render() {
@@ -1345,10 +1346,14 @@ CASHPILOT_WORKER_NAME=server-name</code>
           // Asked to remove, worker not confirmed yet: no buttons, it goes once the worker confirms.
           if (c.removing) return `<div>${esc(t('fleet.proxy.copy_on', { slug: c.slug, box: workerName(c.worker_id) }))} <span class="muted">${t('fleet.proxy.removing')}</span></div>`;
           const capped = c.stopped_by_cap ? ` <span class="muted">${t('fleet.proxy.stopped_by_cap')}</span>` : '';
-          return `<div>${esc(t('fleet.proxy.copy_on', { slug: c.slug, box: workerName(c.worker_id) }))} ${esc(t('fleet.proxy.copy_via', { status: st.status, via: st.via }))}${capped}
+          // What its owner acknowledged, and how to take it back: removing the copy (its volume stays).
+          const acks = c.acknowledged || [];
+          const reduced = acks.length ? ` <span class="badge badge-warning" title="${esc(acks.map((k) => ackText(k)).join(' ') + ' ' + t('fleet.copy.withdraw_hint'))}">${t('fleet.copy.reduced')}</span>` : '';
+          const trip = st.tripped ? `<div class="text-warn">${t('fleet.copy.tripped')}</div>` : '';
+          return `<div>${esc(t('fleet.proxy.copy_on', { slug: c.slug, box: workerName(c.worker_id) }))} ${esc(t('fleet.proxy.copy_via', { status: st.status, via: st.via }))}${capped}${reduced}
             <button class="btn btn-ghost btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="${st.status === 'running' ? 'stop' : 'start'}">${st.status === 'running' ? t('fleet.proxy.stop') : t('fleet.proxy.start')}</button>
-            <button class="btn btn-danger btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="remove">${t('fleet.row.remove')}</button>
-            ${st.recoverySkipped ? `<div class="text-warn">${esc(st.recoverySkipped)}</div>` : ''}</div>`;
+            <button class="btn btn-danger btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="remove">${acks.length ? t('fleet.copy.withdraw') : t('fleet.row.remove')}</button>
+            ${trip}${st.recoverySkipped ? `<div class="text-warn">${esc(st.recoverySkipped)}</div>` : ''}</div>`;
         }).join('') || `<span class="muted">${t('fleet.row.none')}</span>`;
         return `<tr><td><strong>${esc(p.name)}</strong><br><span class="muted">${target}</span></td><td>${exit}</td>
           <td>${esc(capLine(p))}${p.cap.enabled || p.cap.capped_at ? ` <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="reset">${t('fleet.proxy.reset_usage')}</button>` : ''}</td>
@@ -1375,7 +1380,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
     ws.innerHTML = _workers.filter((w) => (w.system_info && (w.system_info.features || []).includes('proxy_tunnel')))
       .map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('') || `<option value="">${t('fleet.copy.no_box')}</option>`;
     if (keep) ws.value = keep;
+    // The 60 s refresh keeps what the owner chose (and fillNeeds their ticks).
+    const keepProxy = ps.value;
     ps.innerHTML = _proxies.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    if (keepProxy && _proxies.some((p) => String(p.id) === keepProxy)) ps.value = keepProxy;
     fillSlugs();
   }
 
@@ -1383,7 +1391,78 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const id = Number(document.getElementById('copy-worker').value);
     const w = _workers.find((x) => x.id === id);
     const slugs = [...new Set(((w && w.containers) || []).map((c) => c.slug).filter(Boolean))].sort();
-    document.getElementById('copy-slug').innerHTML = slugs.map((s) => `<option>${esc(s)}</option>`).join('');
+    const select = document.getElementById('copy-slug');
+    const keep = select.value;
+    select.innerHTML = slugs.map((s) => `<option>${esc(s)}</option>`).join('');
+    if (keep && slugs.includes(keep)) select.value = keep;
+    fillNeeds();
+  }
+
+  function ackText(key) {
+    return {
+      net_admin: t('app.route.ack.net_admin'),
+      net_raw: t('app.route.ack.net_raw'),
+      tun_device: t('app.route.ack.tun_device'),
+      no_inbound: t('app.route.ack.no_inbound'),
+      account_risk: t('app.route.ack.account_risk'),
+    }[key] || key;
+  }
+
+  // What the chosen service needs behind the chosen proxy: why it cannot run,
+  // or one checkbox per thing that lowers its isolation. The server refuses
+  // the copy without every one of them (api_add_proxied_copy).
+  let _needsAsked = 0;
+  let _needsFor = '';
+  async function fillNeeds() {
+    const box = document.getElementById('copy-needs');
+    const run = document.getElementById('copy-run');
+    const slug = document.getElementById('copy-slug').value;
+    const proxyId = document.getElementById('copy-proxy').value;
+    // A refresh of the same service and proxy keeps the ticks; another one
+    // clears them, since they answer that one's needs.
+    const key = `${slug}|${proxyId}`;
+    const same = key === _needsFor;
+    const ticked = same
+      ? new Set([...box.querySelectorAll('input[data-ack]:checked')].map((el) => el.dataset.ack))
+      : new Set();
+    _needsFor = key;
+    if (!same) box.innerHTML = '';
+    if (!slug || !proxyId) {
+      box.innerHTML = '';
+      run.disabled = false;
+      return;
+    }
+    // Off until the needs are known: without them the copy would go out unticked.
+    run.disabled = true;
+    const asked = ++_needsAsked;
+    let out;
+    try {
+      out = await CP.api(`/api/proxies/${proxyId}/copies/needs?slug=${encodeURIComponent(slug)}`);
+    } catch (err) {
+      if (asked !== _needsAsked) return;
+      box.innerHTML = `<p class="text-warn">${esc(t('fleet.copy.needs_failed', { error: err.message }))} <button type="button" class="btn btn-sm" id="copy-needs-retry">${t('app.retry')}</button></p>`;
+      document.getElementById('copy-needs-retry').addEventListener('click', fillNeeds);
+      return;
+    }
+    if (asked !== _needsAsked) return;
+    // Ticks changed while the request ran count, for the same service and proxy.
+    if (same && box.querySelectorAll('input[data-ack]').length) {
+      ticked.clear();
+      box.querySelectorAll('input[data-ack]:checked').forEach((el) => ticked.add(el.dataset.ack));
+    }
+    run.disabled = false;
+    if (out.refusal) {
+      box.innerHTML = `<p class="text-warn">${esc(out.refusal)}</p>`;
+      run.disabled = true;
+      return;
+    }
+    const parts = [];
+    if ((out.volumes || []).length) parts.push(`<p class="muted">${esc(t('fleet.copy.own_volume', { names: out.volumes.join(', ') }))}</p>`);
+    if ((out.needs || []).length) {
+      parts.push(`<p class="form-label">${t('app.route.ack_title')}</p>`);
+      out.needs.forEach((need) => parts.push(`<label class="form-label" style="display:block;font-weight:normal;"><input type="checkbox" data-ack="${esc(need)}"${ticked.has(need) ? ' checked' : ''}> ${esc(ackText(need))}</label>`));
+    }
+    box.innerHTML = parts.join('');
   }
 
   async function load() {
@@ -1428,6 +1507,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
   document.getElementById('proxy-kind').addEventListener('change', showKind);
   document.getElementById('copy-worker').addEventListener('change', fillSlugs);
+  document.getElementById('copy-slug').addEventListener('change', fillNeeds);
+  document.getElementById('copy-proxy').addEventListener('change', fillNeeds);
 
   document.getElementById('proxy-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -1455,6 +1536,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     ev.preventDefault();
     const proxyId = document.getElementById('copy-proxy').value;
     const body = {worker_id: Number(document.getElementById('copy-worker').value), slug: document.getElementById('copy-slug').value};
+    body.acknowledged = [...document.querySelectorAll('#copy-needs input[data-ack]:checked')].map((el) => el.dataset.ack);
     CP.toast(t('fleet.copy.starting'), 'info');
     try {
       const out = await CP.api(`/api/proxies/${proxyId}/copies`, {method: 'POST', body});

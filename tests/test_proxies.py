@@ -170,19 +170,104 @@ class TestDefinition:
 class TestEarner:
     @pytest.mark.parametrize(
         "docker",
-        [{"network_mode": "host"}, {"ports": ["8080:8080"]}, {"volumes": ["/x:/y"]}, {"devices": ["/dev/net/tun"]}],
+        [
+            {"network_mode": "host"},
+            {"ports": ["8080:8080"]},
+            {"volumes": ["/x:/y"]},
+            {"volumes": ["${DIR}:/y"]},
+            {"devices": ["/dev/dri"]},
+            {"cap_add": ["SYS_ADMIN"]},
+            {"cap_add": ["ALL"]},
+        ],
     )
     def test_services_that_need_the_host_are_refused(self, docker):
         assert proxies.refusal({"name": "X", "docker": {"image": "x", **docker}})
 
+    def test_host_networking_is_refused_with_the_closest_option(self):
+        why = proxies.refusal({"name": "X", "docker": {"image": "x", "network_mode": "host"}})
+        assert "Run it directly on the box instead" in why
+
     def test_a_documented_prohibition_is_refused_with_its_source(self):
         svc = {"name": "X", "docker": {"image": "x"}, "requirements": {"proxy_prohibited": {"source": "https://x/tos"}}}
         assert "https://x/tos" in proxies.refusal(svc)
+        assert "https://x/tos" in proxies.refusal(svc, routed=True)
 
-    @pytest.mark.parametrize("cap", ["NET_ADMIN", "NET_RAW", "SYS_ADMIN", "cap_net_admin"])
-    def test_an_earner_that_could_touch_the_tunnel_firewall_is_refused(self, cap):
-        why = proxies.refusal({"name": "X", "docker": {"image": "x", "cap_add": [cap]}})
-        assert why and "firewall" in why
+    def test_terms_that_forbid_docker_lock_it_too(self):
+        svc = {"name": "X", "docker": {"image": "x"}, "requirements": {"container_prohibited": True}}
+        assert "terms forbid running it in Docker" in proxies.refusal(svc)
+
+    @pytest.mark.real_honeygain_terms
+    def test_honeygain_runs_behind_a_proxy_only_with_its_account_risk_ticked(self):
+        """Its help centre forbids VPNs and can suspend the account: the owner picks that risk."""
+        import json
+        from pathlib import Path
+
+        from app import catalog
+
+        honeygain = catalog.get_service("honeygain")
+        assert proxies.refusal(honeygain) is None
+        assert proxies.acknowledgements(honeygain) == ["account_risk"]
+        assert proxies.missing_acknowledgements(honeygain, []) == ["account_risk"]
+        assert proxies.missing_acknowledgements(honeygain, ["account_risk"]) == []
+        source = honeygain["requirements"]["proxy_risk"]["source"]
+        assert urllib.parse.urlparse(source).hostname == "support.honeygain.com"
+        # The tick says plainly what the owner risks, and cites the catalog's source.
+        en = json.loads((Path(__file__).resolve().parent.parent / "app" / "i18n" / "en.json").read_text())
+        text = en["app.route.ack.account_risk"]
+        assert "account may be suspended" in text and text.endswith(source)
+
+    def test_the_catalog_locks_earnapp_by_its_terms(self):
+        from app import catalog
+
+        why = proxies.refusal(catalog.get_service("earnapp"))
+        assert why and "terms forbid" in why
+
+    @pytest.mark.parametrize("cap", ["NET_ADMIN", "NET_RAW", "cap_net_admin"])
+    def test_net_admin_and_net_raw_need_an_acknowledgement_not_a_refusal(self, cap):
+        svc = {"name": "X", "docker": {"image": "x", "cap_add": [cap]}}
+        assert proxies.refusal(svc) is None
+        assert proxies.acknowledgements(svc) == ["net_admin" if "admin" in cap.lower() else "net_raw"]
+        assert proxies.missing_acknowledgements(svc, []) == proxies.acknowledgements(svc)
+        assert proxies.missing_acknowledgements(svc, proxies.acknowledgements(svc)) == []
+
+    def test_a_named_volume_is_the_copys_own_not_a_refusal(self):
+        svc = {"name": "X", "docker": {"image": "x", "volumes": ["x-data:/data"]}}
+        assert proxies.refusal(svc) is None and proxies.acknowledgements(svc) == []
+        assert proxies.copy_volume_names(svc, 3) == ["x-data-p3"]
+
+    def test_a_host_folder_can_be_routed_but_never_copied(self):
+        svc = {"name": "X", "docker": {"image": "x", "volumes": ["/data/x:/app"]}}
+        assert proxies.refusal(svc) and proxies.refusal(svc, routed=True) is None
+
+    def test_a_udp_service_needs_an_exit_node_and_says_it_loses_inbound(self):
+        svc = {
+            "name": "X",
+            "docker": {"image": "x", "cap_add": ["NET_ADMIN"], "devices": ["/dev/net/tun"], "udp_port_range": {}},
+        }
+        svc["docker"]["udp_port_range"] = {"env": "UDP_PORTS"}
+        assert "Tailscale exit node" in proxies.refusal(svc, kind="socks5")
+        assert "Tailscale exit node" in proxies.refusal(svc, kind="http")
+        assert proxies.refusal(svc, kind="tailscale") is None
+        assert proxies.acknowledgements(svc) == ["net_admin", "tun_device", "no_inbound"]
+
+    def test_the_ten_earners_of_the_catalog_get_their_documented_outcome(self):
+        from app import catalog
+
+        def outcome(slug, kind="tailscale"):
+            svc = catalog.get_service(slug)
+            return proxies.refusal(svc, kind=kind), proxies.acknowledgements(svc)
+
+        assert outcome("urnetwork") == (None, [])
+        assert outcome("proxybase-xyz") == (None, [])
+        assert outcome("bitping") == (None, ["net_raw"])
+        assert outcome("mysterium") == (None, ["net_admin", "tun_device", "no_inbound"])
+        assert "UDP" in outcome("mysterium", "socks5")[0]
+        for slug in ("storj", "sia-hostd", "anyone-protocol"):
+            assert "published port" in outcome(slug)[0], slug
+        for slug in ("kryptex-pearl", "srbminer-multi"):
+            assert "GPU" in outcome(slug)[0], slug
+        assert "host" in proxies.refusal(catalog.get_service("presearch"))
+        assert proxies.refusal(catalog.get_service("presearch"), routed=True) is None
 
     def test_a_plain_earner_is_allowed(self):
         assert proxies.refusal({"name": "X", "docker": {"image": "x", "env": []}}) is None
@@ -196,7 +281,7 @@ class TestEarner:
             "image": "x/x:1",
             "env": {"DEVICE": "cashpilot-box", "TOKEN": "t0k"},
             "ports": {"1/tcp": 1},
-            "volumes": {"/a": {"bind": "/b", "mode": "rw"}},
+            "volumes": {"x-data": {"bind": "/b", "mode": "rw"}},
             "network_mode": "bridge",
             "command": "run --device cashpilot-box --token t0k",
             "hostname": "box",
@@ -205,7 +290,14 @@ class TestEarner:
         spec = proxies.earner_spec(recorded, docker_conf, 4)
         assert spec["env"] == {"DEVICE": "cashpilot-box-p4", "TOKEN": "t0k"}
         assert spec["command"] == "run --device cashpilot-box-p4 --token t0k"
-        assert not {"ports", "volumes", "network_mode", "hostname", "instances"} & set(spec)
+        # Its own volume, never the original's: a new device to the provider.
+        assert spec["volumes"] == {"x-data-p4": {"bind": "/b", "mode": "rw"}}
+        assert not {"ports", "network_mode", "hostname", "instances"} & set(spec)
+
+    def test_a_copy_of_a_service_with_a_host_folder_is_refused(self):
+        recorded = {"image": "x/x:1", "env": {}, "volumes": {"/a": {"bind": "/b", "mode": "rw"}}}
+        with pytest.raises(ValueError, match="host"):
+            proxies.earner_spec(recorded, {}, 4)
 
     def test_the_copy_reports_its_own_device_id_not_the_original(self):
         original = "AB" * 32  # ProxyRack's own generator writes 64 uppercase hex
@@ -917,7 +1009,9 @@ class TestStorageAndRoutes:
                 patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
                 pytest.raises(HTTPException) as err,
             ):
-                await main.api_add_proxied_copy(created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                )
             return err.value.status_code
 
         assert _run(go) == 409
@@ -933,7 +1027,9 @@ class TestStorageAndRoutes:
                 patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"instances"}),
                 pytest.raises(HTTPException) as err,
             ):
-                await main.api_add_proxied_copy(created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                )
             return err.value.status_code, err.value.detail
 
         status, detail = _run(go)
@@ -966,7 +1062,9 @@ class TestStorageAndRoutes:
                 patch.object(main, "_proxy_to_worker", call),
                 patch.object(main.database, "record_identities", record),
             ):
-                await main.api_add_proxied_copy(created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                )
 
         _run(go)
         assert held == [True]
@@ -992,7 +1090,7 @@ class TestStorageAndRoutes:
                 patch.object(main, "_proxy_to_worker", call),
             ):
                 result = await main.api_add_proxied_copy(
-                    created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
                 )
             return created["id"], result, await database.list_proxied_copies()
 
@@ -1012,6 +1110,7 @@ class TestStorageAndRoutes:
                 "stopped_by_cap": 0,
                 "removing_since": None,
                 "rename_pending": 0,
+                "acknowledged": [],
                 "created_at": copies[0]["created_at"],
             }
         ]
@@ -1040,7 +1139,7 @@ class TestStorageAndRoutes:
                     patch.object(main, "_proxy_to_worker", call),
                     pytest.raises(HTTPException) if call is failing else contextlib.nullcontext(),
                 ):
-                    await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                    await main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
                 marks.append([c["rename_pending"] for c in await database.list_proxied_copies(pid)])
             return marks
 
@@ -1074,7 +1173,7 @@ class TestStorageAndRoutes:
                 patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
                 patch.object(main, "_proxy_to_worker", side_effect=rename_lands),
             ):
-                await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
             return [c["rename_pending"] for c in await database.list_proxied_copies(pid)]
 
         assert _run(go) == [1], "built from the older record, so it is still on the old name"
@@ -1272,7 +1371,7 @@ class TestStorageAndRoutes:
                 patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
                 patch.object(main, "_proxy_to_worker", deploy),
             ):
-                await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
             return [c["rename_pending"] for c in await database.list_proxied_copies(pid)]
 
         marks = _run(go)
@@ -1345,6 +1444,7 @@ class TestStorageAndRoutes:
                     await _within(in_rebuild.wait(), "the rebuild to reach the worker")
                     add = asyncio.create_task(
                         main.api_add_proxied_copy(
+                            None,
                             pid,
                             main.ProxyCopyRequest(
                                 worker_id=7, slug="honeygain", expected_containers={f"p{pid}": "b" * 64}
@@ -1448,6 +1548,7 @@ class TestStorageAndRoutes:
                     tasks.append(
                         asyncio.create_task(
                             main.api_add_proxied_copy(
+                                None,
                                 pid,
                                 main.ProxyCopyRequest(
                                     worker_id=7, slug="honeygain", expected_containers={f"p{pid}": "b" * 64}
@@ -1515,7 +1616,9 @@ class TestStorageAndRoutes:
                     await _within(in_delete.wait(), "the removal to reach the worker")
                     tasks.append(
                         asyncio.create_task(
-                            main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                            main.api_add_proxied_copy(
+                                None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                            )
                         )
                     )
                     await _within(saved.wait(), "the add to save its record")
@@ -1574,7 +1677,7 @@ class TestStorageAndRoutes:
                 await lock.acquire()
                 held = True
                 add = asyncio.create_task(
-                    main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                    main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
                 )
                 try:
                     await _within(saved.wait(), "the add to save its record")
@@ -1636,7 +1739,7 @@ class TestStorageAndRoutes:
                 patch.object(main, "_register_device", register),
             ):
                 return await main.api_add_proxied_copy(
-                    created["id"], main.ProxyCopyRequest(worker_id=7, slug="proxyrack"), user
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="proxyrack"), user
                 )
 
         result = _run(go)
@@ -2094,7 +2197,9 @@ class TestReviewFollowUps:
             created = await main.api_create_proxy(_Req(_socks()), {})
             a, b, c, d, e, f = self._add(created["id"], call)
             with a, b, c, d, e, f, pytest.raises(HTTPException):
-                await main.api_add_proxied_copy(created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                )
             return await database.list_proxied_copies()
 
         assert bool(_run(go)) is kept
@@ -2111,7 +2216,7 @@ class TestReviewFollowUps:
 
             a, b, c, d, e, f = self._add(pid, AsyncMock(side_effect=slow_deploy))
             with a, b, c, d, e, f:
-                await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
             return await database.get_proxy(pid)
 
         assert _run(go) is not None
@@ -2333,3 +2438,260 @@ class TestStartAcrossVersions:
     def test_another_refusal_of_a_cap_reset_is_not_an_approval_fault(self):
         _cap_reset(lambda path, body: HTTPException(503, "The tunnel is not ready"))
         assert main._proxy_start_needs_approval == set()
+
+
+# ---------------------------------------------------------------------------
+# Reduced isolation: what the owner acknowledges, on the UI and the worker
+# ---------------------------------------------------------------------------
+
+BITPING = {
+    "slug": "bitping",
+    "name": "Bitping",
+    "status": "active",
+    "docker": {"image": "bitping/bitpingd:1", "cap_add": ["NET_RAW"], "volumes": ["bitping-data:/root/.bitping"]},
+}
+BITPING_RECORD = {
+    "image": "bitping/bitpingd:1",
+    "env": {"EMAIL": "a@b"},
+    "cap_add": ["NET_RAW"],
+    "volumes": {"bitping-data": {"bind": "/root/.bitping", "mode": "rw"}},
+}
+ISOLATING = {"proxy_tunnel", "proxied_isolation"}
+
+
+def _add_copy(acknowledged, features=ISOLATING, svc=BITPING, record=BITPING_RECORD):
+    call = AsyncMock(return_value={"status": "deployed", "exit": {"ip": "93.184.215.14", "country": "ES"}})
+
+    async def go():
+        created = await main.api_create_proxy(_Req(_socks(username=USERNAME, password=PASSWORD)), {})
+        await database.save_deployment(svc["slug"], "c1", spec=record, worker_id=7)
+        result = error = None
+        with (
+            patch.object(main.catalog, "get_service", return_value=svc),
+            patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+            patch.object(main, "_worker_features", new_callable=AsyncMock, return_value=set(features)),
+            patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
+            patch.object(main, "_proxy_to_worker", call),
+        ):
+            try:
+                result = await main.api_add_proxied_copy(
+                    None,
+                    created["id"],
+                    main.ProxyCopyRequest(worker_id=7, slug=svc["slug"], acknowledged=acknowledged),
+                    {},
+                )
+            except HTTPException as exc:
+                error = exc
+        return created["id"], result, error, await database.list_proxied_copies()
+
+    pid, result, error, copies = _run(go)
+    return pid, result, error, copies, call
+
+
+class TestReducedIsolation:
+    def test_a_copy_that_needs_an_acknowledgement_is_refused_without_it(self, db):
+        _pid, result, error, copies, call = _add_copy([])
+        assert result is None and error.status_code == 400
+        assert error.detail["error"] == "acknowledge_reduced_isolation"
+        assert error.detail["needs"] == ["net_raw"]
+        assert copies == [] and not call.called
+
+    def test_with_the_acknowledgement_the_copy_runs_on_its_own_volume_and_the_tick_is_kept(self, db):
+        # A tick for something this service does not need never travels.
+        pid, result, error, copies, call = _add_copy(["net_raw", "net_admin"])
+        assert error is None and result["exit_ip"] == "93.184.215.14"
+        sent = call.call_args.kwargs["json"]
+        assert sent["acknowledged"] == ["net_raw"]
+        assert sent["earner"]["cap_add"] == ["NET_RAW"]
+        assert sent["earner"]["volumes"] == {f"bitping-data-p{pid}": {"bind": "/root/.bitping", "mode": "rw"}}
+        assert [c["acknowledged"] for c in copies] == [["net_raw"]]
+        # The service page reads the tick back, for the badge.
+        assert proxies.public_view({"id": pid, "definition": _socks(), "state": {}}, copies)["copies"][0][
+            "acknowledged"
+        ] == ["net_raw"]
+
+    def test_a_worker_too_old_for_isolated_copies_is_refused_before_anything_is_recorded(self, db):
+        _pid, _result, error, copies, call = _add_copy(["net_raw"], features={"proxy_tunnel"})
+        assert error.status_code == 409 and "too old" in error.detail
+        assert copies == [] and not call.called
+
+    @pytest.mark.parametrize("needs_more", [False, True])
+    def test_the_rebuild_sends_the_recorded_acknowledgement_or_says_a_new_one_is_needed(self, db, needs_more):
+        pid, _result, _error, _copies, _call = _add_copy(["net_raw"])
+        svc = BITPING
+        if needs_more:
+            # The catalog entry now also asks for NET_ADMIN, which the owner never ticked.
+            svc = {**BITPING, "docker": {**BITPING["docker"], "cap_add": ["NET_RAW", "NET_ADMIN"]}}
+        call = AsyncMock(return_value={"status": "deployed", "exit": {}})
+        entry = {"proxy_id": pid, "slug": "bitping", "held": False, "status": "running"}
+
+        async def go():
+            with (
+                patch.object(main, "_proxied_reportable", return_value=[entry]),
+                patch.object(main.database, "get_worker", new_callable=AsyncMock, return_value={"id": 7}),
+                patch.object(
+                    main, "_worker_features", new_callable=AsyncMock, return_value={*ISOLATING, "proxied_if_running"}
+                ),
+                patch.object(main, "_send_worker_deploy", call),
+            ):
+                return await main._refresh_proxied_copies(
+                    "bitping", 7, svc, svc["docker"], BITPING_RECORD, expected={f"p{pid}": "c0ffeec0ffee"}
+                )
+
+        notes = _run(go)
+        if needs_more:
+            assert not call.called
+            assert notes == [
+                f"proxied copy p{pid}: keeps its old device name or id (it now needs an acknowledgement it does "
+                "not have (net_admin); add it again)"
+            ]
+        else:
+            assert notes == [], notes
+            assert call.call_args.args[2]["acknowledged"] == ["net_raw"]
+
+    def test_the_needs_endpoint_lists_the_ticks_and_the_volumes_or_why_it_cannot_run(self, db):
+        storj = {
+            "slug": "storj",
+            "name": "Storj",
+            "status": "active",
+            "docker": {"image": "x", "ports": ["28967:28967"]},
+        }
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(username=USERNAME, password=PASSWORD)), {})
+            with patch.object(
+                main.catalog, "get_service", side_effect=lambda s: {"bitping": BITPING, "storj": storj}[s]
+            ):
+                needs = await main.api_proxied_copy_needs(created["id"], "bitping", {})
+                refused = await main.api_proxied_copy_needs(created["id"], "storj", {})
+            return created["id"], needs, refused
+
+        pid, needs, refused = _run(go)
+        assert needs == {"refusal": None, "needs": ["net_raw"], "volumes": [f"bitping-data-p{pid}"]}
+        assert refused["refusal"] and refused["needs"] == [] and refused["volumes"] == []
+
+    def test_an_old_database_gets_the_acknowledged_column_with_nothing_acknowledged(self, db):
+        import aiosqlite
+
+        async def go():
+            async with aiosqlite.connect(db / "cashpilot.db") as old:
+                await old.execute(
+                    "CREATE TABLE proxied_copies (proxy_id INTEGER NOT NULL, worker_id INTEGER NOT NULL, "
+                    "slug TEXT NOT NULL, stopped_by_cap INTEGER NOT NULL DEFAULT 0, removing_since TEXT, "
+                    "rename_pending INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+                    "PRIMARY KEY (proxy_id, worker_id, slug))"
+                )
+                await old.execute("INSERT INTO proxied_copies (proxy_id, worker_id, slug) VALUES (1, 7, 'honeygain')")
+                await old.commit()
+            await database.init_db()
+            try:
+                return await database.list_proxied_copies()
+            finally:
+                await database.close_shared()
+
+        copies = asyncio.run(go())
+        assert [(c["slug"], c["acknowledged"]) for c in copies] == [("honeygain", [])]
+
+
+class TestWorkerChecksTheAcknowledgements:
+    """The worker refuses on its own, whatever the UI sent (worker_api._validate_proxied)."""
+
+    @staticmethod
+    def _spec(slug, *, cap_add=None, devices=None, volumes=None, acknowledged=(), routed=False, kind="socks5"):
+        from app import catalog, worker_api
+
+        image = catalog.get_service(slug)["docker"]["image"]
+        proxy = (
+            worker_api.ProxySpec(kind="tailscale", auth_key="tskey-auth-test", exit_node="100.64.0.7")
+            if kind == "tailscale"
+            else worker_api.ProxySpec(kind=kind, host="proxy.example", port=1080)
+        )
+        return worker_api.ProxiedDeploySpec(
+            earner=worker_api.DeploySpec(image=image, cap_add=cap_add, devices=devices, volumes=volumes or {}),
+            proxy=proxy,
+            acknowledged=list(acknowledged),
+            routed=routed,
+        )
+
+    def _check(self, slug, spec, proxy_id=3):
+        from app import worker_api
+
+        try:
+            worker_api._validate_proxied(slug, spec, proxy_id)
+        except HTTPException as exc:
+            return exc
+        return None
+
+    def test_net_raw_is_refused_without_its_tick_and_taken_with_it(self):
+        refused = self._check("bitping", self._spec("bitping", cap_add=["NET_RAW"]))
+        assert refused.status_code == 400
+        assert refused.detail["error"] == "acknowledge_reduced_isolation" and refused.detail["needs"] == ["net_raw"]
+        assert self._check("bitping", self._spec("bitping", cap_add=["NET_RAW"], acknowledged=["net_raw"])) is None
+
+    def test_mysterium_needs_net_admin_the_tun_device_and_no_inbound_ticked(self):
+        def spec(acks, kind="tailscale"):
+            return self._spec(
+                "mysterium",
+                cap_add=["NET_ADMIN", "SETUID", "SETGID"],
+                devices=["/dev/net/tun"],
+                acknowledged=acks,
+                kind=kind,
+            )
+
+        assert self._check("mysterium", spec([])).detail["needs"] == ["net_admin"]
+        assert self._check("mysterium", spec(["net_admin"])).detail["needs"] == ["tun_device"]
+        assert self._check("mysterium", spec(["net_admin", "tun_device"])).detail["needs"] == ["no_inbound"]
+        assert self._check("mysterium", spec(["net_admin", "tun_device", "no_inbound"])) is None
+
+    @pytest.mark.parametrize("kind", ["socks5", "http"])
+    def test_a_udp_service_runs_only_through_an_exit_node_even_with_every_tick(self, kind):
+        acks = ["net_admin", "tun_device", "no_inbound"]
+        refused = self._check(
+            "mysterium",
+            self._spec(
+                "mysterium",
+                cap_add=["NET_ADMIN", "SETUID", "SETGID"],
+                devices=["/dev/net/tun"],
+                acknowledged=acks,
+                kind=kind,
+            ),
+        )
+        assert refused.status_code == 400 and "Use a Tailscale exit node instead" in refused.detail
+
+    @pytest.mark.parametrize("cap", ["SYS_ADMIN", "ALL"])
+    def test_sys_admin_and_all_are_never_taken_even_ticked(self, cap):
+        refused = self._check(
+            "bitping", self._spec("bitping", cap_add=[cap], acknowledged=["net_admin", "net_raw", "tun_device"])
+        )
+        assert refused.status_code == 400 and "reaches past any network namespace" in refused.detail
+
+    @pytest.mark.real_honeygain_terms
+    def test_honeygain_is_refused_without_its_account_risk_tick_and_taken_with_it(self):
+        refused = self._check("honeygain", self._spec("honeygain"))
+        assert refused.status_code == 400
+        assert refused.detail["error"] == "acknowledge_reduced_isolation"
+        assert refused.detail["needs"] == ["account_risk"]
+        assert self._check("honeygain", self._spec("honeygain", acknowledged=["account_risk"])) is None
+
+    def test_no_host_device_but_the_tun_device(self):
+        refused = self._check(
+            "mysterium", self._spec("mysterium", devices=["/dev/dri/renderD128"], acknowledged=["tun_device"])
+        )
+        assert refused.status_code == 400 and refused.detail == "A proxied copy gets no host devices but /dev/net/tun"
+
+    def test_a_copy_volume_is_its_own_and_never_a_host_folder(self):
+        mount = {"bind": "/root/.bitping", "mode": "rw"}
+        own = self._spec("bitping", cap_add=["NET_RAW"], acknowledged=["net_raw"], volumes={"bitping-data-p3": mount})
+        assert self._check("bitping", own) is None
+        shared = self._spec("bitping", cap_add=["NET_RAW"], acknowledged=["net_raw"], volumes={"bitping-data": mount})
+        assert "never the direct service's" in self._check("bitping", shared).detail
+        folder = self._spec("bitping", cap_add=["NET_RAW"], acknowledged=["net_raw"], volumes={"/mnt/x-p3": mount})
+        assert "never a host folder" in self._check("bitping", folder).detail
+
+
+def test_a_copy_volume_name_the_original_already_mounts_is_refused():
+    """data -> data-p3 is a fresh volume, unless the service already mounts a data-p3 of its own."""
+    mount = {"bind": "/d", "mode": "rw"}
+    assert proxies.copy_volumes({"volumes": {"data": mount}}, 3) == {"data-p3": mount}
+    with pytest.raises(ValueError, match="data-p3"):
+        proxies.copy_volumes({"volumes": {"data": mount, "data-p3": {"bind": "/e", "mode": "rw"}}}, 3)

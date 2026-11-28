@@ -1,0 +1,78 @@
+#!/bin/sh
+# The earner's side of an isolated copy (docs/proxies.md "Copies that need
+# NET_ADMIN or NET_RAW"). cp-tunnel runs this when its settings say role=inner.
+#
+# The copy joins this container's network namespace. Its only interface is on
+# an internal Docker network that it shares with one other container, its
+# gate: a cp-tunnel that forwards what arrives there into the proxy and
+# nothing else. So this namespace has no firewall to protect. The copy may
+# hold NET_ADMIN or NET_RAW and change anything here; every packet it sends
+# still reaches only the gate, and the gate's firewall is in the gate's
+# namespace, out of its reach.
+#
+# This script only gives the namespace its way out (a default route to the
+# gate, and DNS sent through it), proves that the exit is not the box's own
+# address (/run/ready), and then watches that exit (cp-watch egress).
+set -eu
+
+S=/run/cashpilot-secret
+DNS_TARGET=1.1.1.1
+
+read_key() {
+    [ -f "$S/$1" ] && cat "$S/$1" || true
+}
+
+die() {
+    echo "cp-inner: $*" >&2
+    exit 1
+}
+
+OWN_IP=$(read_key own_ip)
+GATE_IP=$(read_key gate_ip)
+case "$GATE_IP" in *[!0-9.]* | "") die "gate_ip is not an IPv4 address" ;; esac
+DEV=$(ip -4 -o addr show scope global | awk '{print $2; exit}')
+[ -n "$DEV" ] || die "no interface on the gate's network"
+
+# Docker's resolver (127.0.0.11) does not answer for the internet on an
+# internal network, so lookups go to a public resolver, through the gate.
+cat >/run/cp-inner.nft <<EOF
+table inet cashpilot
+delete table inet cashpilot
+table inet cashpilot {
+    chain dns {
+        type nat hook output priority -150; policy accept;
+        ip daddr 127.0.0.11 udp dport 53 dnat ip to $DNS_TARGET
+        ip daddr 127.0.0.11 tcp dport 53 dnat ip to $DNS_TARGET
+    }
+    chain dns_src {
+        type nat hook postrouting priority 100; policy accept;
+        oifname "$DEV" ip saddr 127.0.0.0/8 masquerade
+    }
+}
+EOF
+nft -f /run/cp-inner.nft || die "could not load the DNS rules"
+ip route replace default via "$GATE_IP" dev "$DEV" || die "could not route through the gate at $GATE_IP"
+
+# One deadline for every attempt: a gate that runs but forwards nothing must
+# not keep this copy unready for long.
+END=$(($(date +%s) + 120))
+while [ "$(date +%s)" -lt "$END" ]; do
+    if out=$(CP_DEADLINE=$END cp-probe 2>/dev/null); then
+        exit_ip=$(printf '%s' "$out" | sed -n 's/.*"ip":"\([^"]*\)".*/\1/p')
+        if [ -n "$exit_ip" ] && [ "$exit_ip" != "$OWN_IP" ]; then
+            printf '%s\n' "$out" >/run/ready.tmp && mv /run/ready.tmp /run/ready
+            break
+        fi
+        echo "cp-inner: the probe left from this box's own address; not ready" >&2
+    fi
+    sleep 1
+done
+# No exit: stopped, so the worker starts it again with a new gate (an exit
+# code but 86, which is the watchdog's).
+[ -f /run/ready ] || die "no working exit through the gate within 120 s"
+
+trap 'exit 0' TERM INT
+cp-watch 0 egress &
+wait $! || true
+[ -f /run/tripped ] && exit 86
+die "the watchdog exited; the copy stays cut off until this container restarts"

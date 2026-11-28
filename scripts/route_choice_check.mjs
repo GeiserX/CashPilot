@@ -89,13 +89,20 @@ const document = {
 const deploy = new Function(
   'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink', 'wizardState',
   '_confirmDeviceRenames',
-  `${grab('_routeSelect')}\n${grab('_routeChoice')}\nconst _walletRequest = () => undefined;\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
+  `${grab('_routeSelect')}\n${grab('_routeChoice')}\n${grab('_routeAcks')}\nconst _walletRequest = () => undefined;\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
 )(escapeHtml, document, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
   async () => false);
-await deploy('honeygain', [1], { routeRoot: formRoot({ value: '3' }) });
+// The Route box's ticked acknowledgements go with the route (the worker refuses a
+// service that needs one without it).
+const ticked = keys => ({
+  querySelectorAll: sel => (sel === 'input[data-route-ack]:checked' ? keys.map(k => ({ dataset: { routeAck: k } })) : []),
+});
+const routeBox = (value, keys) => ({ value, closest: sel => (sel === '.route-choice' ? ticked(keys) : null) });
+await deploy('honeygain', [1], { routeRoot: formRoot(routeBox('3', ['net_raw'])) });
 assert.equal(sent.length, 1);
 assert.equal(sent[0].path, '/api/deploy/honeygain?worker_id=1');
 assert.equal(sent[0].body.route, 3, 'the chosen proxy goes with the deploy');
+assert.deepEqual(sent[0].body.route_acknowledged, ['net_raw'], 'with the ticks of its Route box');
 console.log('Deploy: the chosen route is sent; the box\'s own IP sends none.');
 
 // ---- Leaving a route: Direct is its own choice where the service is routed ----
@@ -203,7 +210,7 @@ async function pick(routeValue, tick = []) {
   const live = new Function(
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
     'wizardState', '_confirmDeviceRenames',
-    ['_routeSwitchBoxes', '_routeSelect', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
+    ['_routeSwitchBoxes', '_routeSelect', '_routeChoice', '_routeAcks', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
       'deployServiceToWorkers'].map(grab).join('\n') + '\nconst _walletRequest = () => undefined;'
       + '\nreturn { _routeSwitchBoxes, deployServiceToWorkers };',
   )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
@@ -265,7 +272,7 @@ for (const [routeValue, want] of [['0', []], ['', [{ path: '/api/deploy/honeygai
   const live = new Function(
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
     'wizardState', '_confirmDeviceRenames', 'window',
-    ['_routeSwitchBoxes', '_routeSelect', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
+    ['_routeSwitchBoxes', '_routeSelect', '_routeChoice', '_routeAcks', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
       'deployServiceToWorkers'].map(grab).join('\n') + '\nconst _walletRequest = () => undefined;'
       + '\nreturn { _routeSwitchBoxes, deployServiceToWorkers };',
   )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
@@ -290,7 +297,7 @@ console.log('Instances: a changed count rescales a routed box on its route, neve
   const live = new Function(
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
     'wizardState', '_confirmDeviceRenames',
-    ['_routeSelect', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
+    ['_routeSelect', '_routeChoice', '_routeAcks', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
       'deployServiceToWorkers', 'deployService'].map(grab).join('\n') + '\nconst _walletRequest = () => undefined;'
       + '\nreturn { deployServiceToWorkers, deployService };',
   )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
@@ -303,14 +310,14 @@ console.log('Instances: a changed count rescales a routed box on its route, neve
 
 // ---- The route is read once for every box of one deploy -------------------------
 {
-  const select = { value: '7' };
+  const select = { value: '7', closest: () => null };
   const calls = [];
   // The owner switches the Route box back while the first box deploys.
   const api = async (path, opts) => { calls.push({ path, route: opts.body.route }); select.value = ''; return {}; };
   const deploy = new Function(
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
     'wizardState', '_confirmDeviceRenames',
-    `${grab('_routeSelect')}\n${grab('_routeChoice')}\nconst _walletRequest = () => undefined;\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
+    `${grab('_routeSelect')}\n${grab('_routeChoice')}\n${grab('_routeAcks')}\nconst _walletRequest = () => undefined;\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
   )(escapeHtml, { getElementById: () => null, querySelectorAll: () => [] }, api, () => {},
     async () => { select.value = '7'; return true; }, () => undefined, () => undefined, () => {}, { deployed: [] },
     async () => false);

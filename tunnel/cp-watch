@@ -1,0 +1,72 @@
+#!/bin/sh
+# Watches a running tunnel and stops it, failing closed, when it can no longer
+# be trusted (docs/proxies.md "The tunnel watchdog").
+#
+#   cp-watch <pid> firewall    cp-tunnel: also the firewall it loaded
+#   cp-watch 0 egress          cp-inner: only the exit address; nothing to kill
+#
+# Every 5 s the firewall (table inet cashpilot, counters left out) must be the
+# one this run loaded; every 10 minutes a probe through the tunnel must not
+# leave from the box's own address. On either failure it writes /run/tripped,
+# removes /run/ready, stops <pid> and exits 86. The tunnel's entrypoint then
+# exits 86 too, so Docker keeps that status, and the worker reads it: it stops
+# every copy in the tunnel and starts none of them again until the owner does.
+set -u
+
+PID=$1
+MODE=${2:-firewall}
+OWN_IP=$(cat /run/cashpilot-secret/own_ip 2>/dev/null || true)
+
+# Fails when nft cannot read the table: a failed read would hash to the same
+# empty digest every time, and hide a change.
+fw_sum() {
+    rules=$(nft -s list table inet cashpilot 2>/dev/null) && [ -n "$rules" ] || return 1
+    printf '%s\n' "$rules" | sha256sum | cut -c1-64
+}
+
+trip() {
+    echo "cp-watch: $1. The tunnel stops so that nothing leaves; CashPilot stops its copies." >&2
+    : >/run/tripped
+    rm -f /run/ready
+    # An ephemeral tailnet device is deleted only by a logout.
+    if [ -S /run/ts/ts.sock ]; then
+        timeout 5 tailscale --socket=/run/ts/ts.sock logout >/dev/null 2>&1 || true
+    fi
+    # cp-inner passes 0 and waits for this exit instead: a kill of 0 would
+    # signal its whole process group, cp-inner too, before it reads the marker.
+    [ "$PID" -gt 0 ] && kill "$PID" 2>/dev/null
+    exit 86
+}
+
+BASE=
+if [ "$MODE" = firewall ]; then
+    BASE=$(fw_sum) || trip "the tunnel's firewall could not be read"
+fi
+# The probe runs in the background, so a slow echo site never holds up the
+# firewall check; its answer is read on a later pass, and only this loop trips.
+PROBE=/run/cp-watch-probe
+EVERY=${CP_WATCH_PROBE_EVERY:-120}
+rm -f "$PROBE" "$PROBE.rc"
+probing=
+n=0
+while sleep 5; do
+    if [ "$MODE" = firewall ]; then
+        now=$(fw_sum) || trip "the tunnel's firewall could not be read"
+        [ "$now" = "$BASE" ] || trip "the tunnel's firewall changed while it ran"
+    fi
+    if [ -e "$PROBE.rc" ]; then
+        if [ "$(cat "$PROBE.rc")" = 0 ]; then
+            ip=$(sed -n 's/.*"ip":"\([^"]*\)".*/\1/p' "$PROBE")
+            [ "$ip" = "$OWN_IP" ] && trip "a probe through the tunnel left from this box's own address ($ip)"
+        fi
+        rm -f "$PROBE" "$PROBE.rc"
+        probing=
+    fi
+    n=$((n + 1))
+    [ $((n % EVERY)) -eq 0 ] && [ -n "$OWN_IP" ] && [ -z "$probing" ] || continue
+    probing=1
+    (
+        cp-probe >"$PROBE" 2>/dev/null
+        echo $? >"$PROBE.tmp" && mv "$PROBE.tmp" "$PROBE.rc"
+    ) &
+done
