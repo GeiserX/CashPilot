@@ -572,7 +572,7 @@ const vmView = {workers: {'7': {...layersView.workers['7'], secure_vm: {host: 'b
 const vmOffline = buildLayers(esc, CP, vmView, true)({id: 7}, layerInfo, false);
 check('an offline worker inside a Secure VM shows its fence as unknown, never ok',
   !vmOffline.includes('flag-ok') && !vmOffline.includes('· in the Secure VM')
-  && vmOffline.includes('· Secure VM fence unknown'), vmOffline);
+  && vmOffline.includes('· Secure VM fence unknown') && vmOffline.includes('Secure VM: unknown'), vmOffline);
 const vmOnline = buildLayers(esc, CP, vmView, true)({id: 7}, layerInfo, true);
 check('an online worker inside a Secure VM shows a fresh fence as ok', vmOnline.includes('· in the Secure VM'), vmOnline);
 const stoppedView = {workers: {'7': {...layersView.workers['7'],
