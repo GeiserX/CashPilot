@@ -1,5 +1,5 @@
 ---
-source_hash: 05d0f97e7d36
+source_hash: 5a764f1d0f5a
 ---
 # Pindah dari money4band { #moving-from-money4band }
 
@@ -36,10 +36,10 @@ money4band 5.0 mengenkripsi `config/user-config.json` di disk
 dan menghapus `.env` miliknya setelah setiap kali dijalankan
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
 CashPilot tidak dapat membaca file terenkripsi itu. Di folder money4band Anda, jalankan
-perintah `config edit`: `./Money4Band-<os>-<arch> config edit` untuk binary
-rilis, atau `python main.py config edit` dari kode sumber. Perintah itu membuka file yang
-sudah didekripsi di editor Anda
-([referensi CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+perintah `config edit`. Untuk binary rilis, gunakan file untuk sistem Anda, misalnya `./Money4Band-linux-amd64 config edit`, atau `.\Money4Band-windows-amd64.exe config edit` di Windows.
+Dari kode sumber, jalankan `python run.py config edit`.
+Perintah itu menjalankan money4band lewat uv, atau lewat lingkungan pip jika uv tidak ada ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69)).
+Perintah `config edit` membuka file yang sudah didekripsi di editor Anda ([referensi CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Salin seluruh teksnya, tempelkan di halaman **Import from another tool** (Impor dari alat lain), lalu tutup editornya.
 
 Utamakan file JSON. Di `.env`, Docker Compose mengekspansi `$` dalam nilai tanpa tanda kutip,

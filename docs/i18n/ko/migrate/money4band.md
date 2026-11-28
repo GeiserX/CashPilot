@@ -1,5 +1,5 @@
 ---
-source_hash: 05d0f97e7d36
+source_hash: 5a764f1d0f5a
 ---
 # money4band에서 옮겨 오기 { #moving-from-money4band }
 
@@ -36,9 +36,10 @@ money4band 5.0은 디스크에 있는 `config/user-config.json`을 암호화하�
 시작할 때마다 자신의 `.env`를 삭제합니다
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
 CashPilot은 암호화된 파일을 읽을 수 없습니다. money4band 폴더에서 해당 `config edit`
-명령을 실행하십시오. 릴리스 바이너리는 `./Money4Band-<os>-<arch> config edit`,
-소스에서 실행할 때는 `python main.py config edit`입니다. 복호화된 파일이 편집기에서 열립니다
-([CLI 참조](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+명령을 실행하십시오. 릴리스 바이너리는 사용하는 시스템에 맞는 파일을 사용합니다. 예를 들어 `./Money4Band-linux-amd64 config edit`, Windows에서는 `.\Money4Band-windows-amd64.exe config edit`입니다.
+소스에서 실행할 때는 `python run.py config edit` 명령을 실행하십시오.
+이 명령은 uv로 money4band를 실행하고, uv가 없으면 pip 환경으로 실행합니다 ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69)).
+`config edit` 명령을 실행하면 복호화된 파일이 편집기에서 열립니다 ([CLI 참조](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 그 텍스트를 모두 복사해 **Import from another tool** (다른 도구에서 가져오기) 페이지에 붙여 넣은 다음, 편집기를 닫으십시오.
 
 JSON 파일을 우선 사용하십시오. `.env`에서는 Docker Compose가 따옴표 없는 값의 `$`를
