@@ -546,8 +546,18 @@ jobs:
             echo "::error::a pin did not move to $SERIES (still on: $STRAY)"; exit 1
           fi
 
+          # scripts/cashpilot-vm pins docker-compose.worker.yml by hash: the
+          # Secure VM's guest downloads it from the release tag and checks it.
+          # Move the hash with the pins, or tests/test_cashpilot_vm.py fails on
+          # main, and the next tag ships a script that refuses its own compose.
+          HASH=$(sha256sum docker-compose.worker.yml | cut -d' ' -f1)
+          sed -i -E "s|^readonly COMPOSE_SHA256=[0-9a-f]{64}$|readonly COMPOSE_SHA256=$HASH|" scripts/cashpilot-vm
+          if ! grep -qx "readonly COMPOSE_SHA256=$HASH" scripts/cashpilot-vm; then
+            echo "::error::the compose hash in scripts/cashpilot-vm did not move to $HASH"; exit 1
+          fi
+
           # Staged only. The last step commits it together with the changelog.
-          git add docker-compose.yml docker-compose.fleet.yml docker-compose.worker.yml
+          git add docker-compose.yml docker-compose.fleet.yml docker-compose.worker.yml scripts/cashpilot-vm
           echo "Pins moved [$CURRENT] -> $SERIES"
 
       # STRAIGHT TO MAIN, with a deploy key on the "Protect main" ruleset's
