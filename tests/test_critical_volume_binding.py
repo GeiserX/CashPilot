@@ -241,6 +241,15 @@ class TestConflicts:
             orchestrator.refuse_critical_mounts("honeygain", volumes, _docker())
         orchestrator.refuse_critical_mounts("proxybase-xyz", volumes, _docker())
 
+    def test_a_node_that_already_owns_a_volume_with_that_name_keeps_it(self):
+        """The name is a guess only when no node mounts the volume: a running owner wins."""
+        node = _container(
+            "mysterium", [{"Type": "volume", "Name": "proxybase-data-p12", "Destination": "/var/lib/mysterium-node"}]
+        )
+        orchestrator.refuse_critical_mounts("mysterium", ["proxybase-data-p12:/var/lib/mysterium-node"], _docker(node))
+        with pytest.raises(orchestrator.CriticalMountError, match="mysterium"):
+            orchestrator.refuse_critical_mounts("proxybase-xyz", ["proxybase-data-p12:/d"], _docker(node))
+
     def test_its_own_service_can(self):
         orchestrator.refuse_critical_mounts("proxybase-xyz", {"proxybase-data": {"bind": "/x"}}, _docker())
         orchestrator.refuse_critical_mounts("storj", {"/mnt/user/storj/identity": {"bind": "/id"}}, _docker(STORJ))

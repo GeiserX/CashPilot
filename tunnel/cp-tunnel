@@ -258,6 +258,9 @@ probe_until_ready() {
             exit_ip=$(printf '%s' "$out" | sed -n 's/.*"ip":"\([^"]*\)".*/\1/p')
             if [ -n "$exit_ip" ] && [ "$exit_ip" != "$OWN_IP" ]; then
                 printf '%s\n' "$out" >/run/ready.tmp && mv /run/ready.tmp /run/ready
+                # cp-watch writes /run/tripped before it removes /run/ready, so
+                # a ready written in between is taken back here.
+                [ -e /run/tripped ] && rm -f /run/ready && return 1
                 return 0
             fi
             echo "cp-tunnel: the probe left from this box's own address; not ready" >&2
@@ -307,6 +310,15 @@ if [ "$KIND" = tailscale ]; then
     LOGIN=$(read_key login_server)
     [ -n "$LOGIN" ] && set -- "$@" --login-server="$LOGIN"
     tailscale "$@" || die "tailscale up failed: the auth key was refused. It must be reusable (every start of this tunnel joins as a new ephemeral node) and not expired; put a new one in the proxy's settings"
+    # Through an exit node, Tailscale's table 52 sends every address to
+    # tailscale0, the copy's subnet too (its rule 5270 comes before main). A
+    # gate's replies to its copy must leave on the copy's network, so that
+    # subnet is looked up in main first.
+    if [ -n "$INNER" ]; then
+        INNER_NET=$(ip -4 -o route show dev "$INNER" scope link | awk '{print $1; exit}')
+        [ -n "$INNER_NET" ] || die "no route to the copy's network on $INNER"
+        ip rule add to "$INNER_NET" lookup main priority 5200 || die "could not route the copy's replies to its network"
+    fi
 else
     ip route replace "$PROXY_IP/32" via "$GW" dev "$DEV"
     ip route del default

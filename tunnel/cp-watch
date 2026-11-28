@@ -17,8 +17,11 @@ PID=$1
 MODE=${2:-firewall}
 OWN_IP=$(cat /run/cashpilot-secret/own_ip 2>/dev/null || true)
 
+# Fails when nft cannot read the table: a failed read would hash to the same
+# empty digest every time, and hide a change.
 fw_sum() {
-    nft -s list table inet cashpilot 2>/dev/null | sha256sum | cut -c1-64
+    rules=$(nft -s list table inet cashpilot 2>/dev/null) && [ -n "$rules" ] || return 1
+    printf '%s\n' "$rules" | sha256sum | cut -c1-64
 }
 
 trip() {
@@ -36,11 +39,14 @@ trip() {
 }
 
 BASE=
-[ "$MODE" = firewall ] && BASE=$(fw_sum)
+if [ "$MODE" = firewall ]; then
+    BASE=$(fw_sum) || trip "the tunnel's firewall could not be read"
+fi
 n=0
 while sleep 5; do
-    if [ "$MODE" = firewall ] && [ "$(fw_sum)" != "$BASE" ]; then
-        trip "the tunnel's firewall changed while it ran"
+    if [ "$MODE" = firewall ]; then
+        now=$(fw_sum) || trip "the tunnel's firewall could not be read"
+        [ "$now" = "$BASE" ] || trip "the tunnel's firewall changed while it ran"
     fi
     n=$((n + 1))
     [ $((n % 120)) -eq 0 ] && [ -n "$OWN_IP" ] || continue

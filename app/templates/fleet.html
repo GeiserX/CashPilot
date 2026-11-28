@@ -1444,6 +1444,11 @@ CASHPILOT_WORKER_NAME=server-name</code>
       return;
     }
     if (asked !== _needsAsked) return;
+    // Ticks changed while the request ran count, for the same service and proxy.
+    if (same && box.querySelectorAll('input[data-ack]').length) {
+      ticked.clear();
+      box.querySelectorAll('input[data-ack]:checked').forEach((el) => ticked.add(el.dataset.ack));
+    }
     run.disabled = false;
     if (out.refusal) {
       box.innerHTML = `<p class="text-warn">${esc(out.refusal)}</p>`;

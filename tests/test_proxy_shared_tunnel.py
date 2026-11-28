@@ -6138,6 +6138,74 @@ class TestIsolatedTunnel:
         proxy_tunnel.start("bitping", 3, _socks(), None)
         assert tunnel.status == "running" and _gate(docker, tunnel).status == "running"
 
+    def test_stopping_a_copy_whose_inner_already_exited_stops_its_gate(self, docker):
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        gate = _gate(docker, tunnel)
+        tunnel.status = "exited"  # the inner ended on its own; its gate still holds the proxy session
+        proxy_tunnel.stop("bitping", 3)
+        assert gate.status == "exited"
+
+    def test_a_tunnel_stopped_for_a_failed_start_stops_its_gate(self, docker):
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        gate = _gate(docker, tunnel)
+        proxy_tunnel._set_held("cashpilot-bitping-p3", True, strict=True)
+        proxy_tunnel._stop_if_unwanted(docker, tunnel)
+        assert tunnel.status == "exited" and gate.status == "exited"
+
+    def test_a_docker_error_making_the_gate_puts_the_old_settings_back(self, docker):
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        earner = docker.named("cashpilot-bitping-p3")
+        old_auth = tunnel.files["proxy_auth"]
+        real = docker.create
+        refused = []
+
+        def create(**kw):
+            if kw["name"].startswith(proxy_tunnel.TUNNEL_PREFIX + "gate-") and not refused:
+                refused.append(kw["name"])
+                raise APIError("500 Server Error: no space left on device")
+            return real(**kw)
+
+        with (
+            patch.object(docker, "create", create),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="The gate could not start"),
+        ):
+            _deploy_isolated(proxy=_socks(password="changed"))
+        assert refused
+        assert tunnel.files["proxy_auth"] == old_auth
+        assert tunnel.status == "running" and _gate(docker, tunnel).status == "running"
+        assert earner.status == "running"
+
+    def test_an_orphan_gate_that_cannot_be_removed_never_stops_the_heartbeat(self, docker):
+        _deploy("earnfm")
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        gate = _gate(docker, tunnel)
+        del docker.by_id[tunnel.id]
+        gate.attrs["Created"] = (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z")
+
+        def stuck(force=False, v=False):
+            raise APIError("409 Conflict: removal of container is already in progress")
+
+        gate.remove = stuck
+        entries = _heartbeat()
+        assert "earnfm" in [e["slug"] for e in entries]
+        assert gate.id in docker.by_id
+
+    def test_a_deploy_into_a_tripped_tunnel_holds_the_other_copies(self, docker):
+        """The heartbeat has not read the trip yet; the owner redeploys one copy."""
+        _deploy("earnfm")
+        _deploy("honeygain")
+        _tripped(docker.named("cashpilot-tunnel-p3"))
+        _deploy("earnfm")
+        assert "cashpilot-honeygain-p3" in proxy_tunnel.held()
+        assert "cashpilot-earnfm-p3" not in proxy_tunnel.held()
+        assert docker.named("cashpilot-earnfm-p3").status == "running"
+        _heartbeat()
+        assert docker.named("cashpilot-honeygain-p3").status != "running"
+
     def test_a_tripped_inner_has_its_gate_stopped_too(self, docker):
         _deploy_isolated()
         tunnel = docker.named(OWN_TUNNEL)
