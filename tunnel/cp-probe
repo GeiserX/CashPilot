@@ -22,7 +22,24 @@ cap() {
 # no exit, and the next endpoint gets its turn.
 is_ip() {
     case "$1" in
-    *:*:*) case "$1" in *[!0-9a-fA-F:]*) return 1 ;; esac ;;
+    *:*:*)
+        # Hex groups of up to 4 between colons, at most one "::" and 8 groups
+        # (7 colons when nothing is compressed); ":::" and a lone edge colon are not.
+        case "$1" in *[!0-9a-fA-F:]* | *:::* | *::*::* | :[!:]* | *[!:]:) return 1 ;; esac
+        colons=$(printf '%s' "$1" | tr -cd ':' | wc -c)
+        case "$1" in
+        *::*) [ "$colons" -le 7 ] || return 1 ;;
+        *) [ "$colons" -eq 7 ] || return 1 ;;
+        esac
+        old_ifs=$IFS
+        IFS=:
+        # shellcheck disable=SC2086 # split on the colons
+        set -- $1
+        IFS=$old_ifs
+        for group in "$@"; do
+            [ "${#group}" -le 4 ] || return 1
+        done
+        ;;
     *.*.*.*)
         case "$1" in *[!0-9.]* | *..* | .* | *.) return 1 ;; esac
         old_ifs=$IFS

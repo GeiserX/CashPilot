@@ -1885,7 +1885,26 @@ class TestTheProbeNeverRunsPastTheWorkersWait:
         assert '"ip":"203.0.113.7"' in proc.stdout
         assert int(clock.read_text()) < proxy_tunnel.READY_TIMEOUT
 
-    @pytest.mark.parametrize("answer", ["e", "deadbeef", "1.2.3", "1.2.3.4.5", "256.1.1.1", "1..2.3", "1234.1.1.1"])
+    @pytest.mark.parametrize(
+        "answer",
+        [
+            "e",
+            "deadbeef",
+            "1.2.3",
+            "1.2.3.4.5",
+            "256.1.1.1",
+            "1..2.3",
+            "1234.1.1.1",
+            ":::",
+            "1:::2",
+            "1::2::3",
+            ":1::2",
+            "1::2:",
+            "1:2:3",
+            "12345::1",
+            "1:2:3:4:5:6:7:8:9",
+        ],
+    )
     def test_an_answer_that_is_no_address_gives_the_next_endpoint_its_turn(self, tmp_path, answer):
         """An error page cut down to its hex letters is no exit: the probe never prints it as one."""
         import subprocess
@@ -1901,7 +1920,9 @@ class TestTheProbeNeverRunsPastTheWorkersWait:
         assert proc.returncode == 0, proc.stderr
         assert '"ip":"203.0.113.7"' in proc.stdout
 
-    @pytest.mark.parametrize("answer", ["203.0.113.7", "0.0.0.0", "2001:db8::7"])
+    @pytest.mark.parametrize(
+        "answer", ["203.0.113.7", "0.0.0.0", "2001:db8::7", "::1", "fe80::", "2001:db8:0:0:0:0:0:7", "::"]
+    )
     def test_an_address_is_the_answer(self, tmp_path, answer):
         import subprocess
 
