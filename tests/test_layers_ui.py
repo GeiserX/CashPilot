@@ -121,6 +121,28 @@ class TestLocks:
         why = layers_ui.worker_view(w, NONE)["earners"][0]["locked"]
         assert "kernel WireGuard" in why
 
+    def test_the_catalog_reason_is_shown_in_the_owner_s_language(self, tmp_path, monkeypatch):
+        from app import catalog, i18n
+
+        english = catalog.get_service("mysterium")["docker"]["runtime_reason"]
+        d = tmp_path / "_i18n"
+        d.mkdir()
+        (d / "es.yml").write_text(
+            f'mysterium.docker.runtime_reason:\n  text: "gVisor no le da WireGuard."\n'
+            f'  source: "{catalog.i18n_source_hash(english)}"\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(catalog, "I18N_DIR", d)
+        catalog._i18n_tables.clear()
+        token = i18n._current.set("es")
+        try:
+            w = _worker(_layers(), [{"slug": "mysterium", "runtime": "runc", "network": "cashpilot-isolated"}])
+            why = layers_ui.worker_view(w, NONE)["earners"][0]["locked"]
+        finally:
+            i18n._current.reset(token)
+            catalog._i18n_tables.clear()
+        assert "gVisor no le da WireGuard." in why and "kernel WireGuard" not in why
+
     def test_an_env_override_locks_and_names_the_variable(self):
         pins = {"default": None, "overrides": {"honeygain": "runsc-hostnet"}}
         w = _worker(

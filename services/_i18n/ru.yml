@@ -892,6 +892,9 @@ kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
 kryptex-pearl.docker.env.WORKER_NAME.description:
   text: "Дайте каждой машине отдельное имя в аккаунте Kryptex."
   source: "277ed1b0adb3"
+kryptex-pearl.docker.runtime_reason:
+  text: "gVisor не может передать ему GPU."
+  source: "302a2b5c988f"
 kryptex-pearl.payment.minimum_payout:
   text: "0.00001 BTC через Lightning (для других способов по-разному)"
   source: "134616d8ae98"
@@ -961,6 +964,9 @@ mysterium.docker.env.UI_ADDRESS.description:
 mysterium.docker.env.UDP_PORTS.description:
   text: "UDP-порты, которые узел использует для VPN-сессий, в формате start:end. Пробросьте на роутере этот же диапазон. Каждая сессия занимает около двух портов, поэтому 30 портов по умолчанию выдерживают около 15 сессий одновременно — больше, чем получает домашний узел. Более широкий диапазон ничего не исправит и обойдётся дороже: каждый опубликованный порт замедляет запуск и удаление узла (300 портов запускаются около 12 с), CashPilot принимает не более 300, а со стандартным userland proxy Docker каждый порт ещё и занимает около 2.5 MB памяти. Если все сессии завершаются ошибкой, дело в роутере, а не в нехватке портов: см. «Routers that rewrite UDP source ports» в руководстве по Mysterium. Держите диапазон ниже 32768: порты 32768-60999 — это эфемерный диапазон Linux, где любая программа на хосте может ненадолго занять порт, а один занятый порт срывает запуск узла. Узел, у которого диапазон уже задан, сохраняет его."
   source: "530524e2e718"
+mysterium.docker.runtime_reason:
+  text: "gVisor не даёт ему ни iptables-nft, ни WireGuard ядра, а они нужны ему для передачи трафика."
+  source: "d8a72a275579"
 mysterium.docker.critical_volumes.0.holds:
   text: "Хранилище ключей идентификатора узла. Если его уничтожить, будет создан совершенно новый идентификатор: узел потеряет репутацию и весь заработок, который ещё числится за старым."
   source: "97272764fec0"
@@ -1831,6 +1837,9 @@ srbminer-multi.docker.env.WALLET.description:
 srbminer-multi.docker.env.ALGO.description:
   text: "pearlhash для Pearl, progpow_zano для Zano, kawpow для Ravencoin."
   source: "31c8ee0aa660"
+srbminer-multi.docker.runtime_reason:
+  text: "gVisor не может передать ему GPU."
+  source: "302a2b5c988f"
 srbminer-multi.earnings.notes:
   text: "Валовая оценка без учёта электричества. 2026-11-25 hashrate.no оценивал заработок на Pearl для RTX 4070, потребляющей около 142 W, примерно в $2.45 в день. Мы это не измеряли. Pearl — новая монета, её цена и сложность быстро меняются. Проверьте энергопотребление своего GPU и цену электричества, чтобы понять, окупится ли это."
   source: "e7b856e43825"

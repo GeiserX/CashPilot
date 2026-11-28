@@ -892,6 +892,9 @@ kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
 kryptex-pearl.docker.env.WORKER_NAME.description:
   text: "امنح كل جهاز اسمًا مميزًا في حسابك على Kryptex."
   source: "277ed1b0adb3"
+kryptex-pearl.docker.runtime_reason:
+  text: "لا يستطيع gVisor تمرير وحدة معالجة الرسومات (GPU) إليه."
+  source: "302a2b5c988f"
 kryptex-pearl.payment.minimum_payout:
   text: "0.00001 BTC عبر Lightning (تختلف الطرق الأخرى)"
   source: "134616d8ae98"
@@ -961,6 +964,9 @@ mysterium.docker.env.UI_ADDRESS.description:
 mysterium.docker.env.UDP_PORTS.description:
   text: "منافذ UDP التي تستخدمها العقدة لجلسات VPN، بالصيغة start:end. أعد توجيه النطاق نفسه على جهاز التوجيه (الراوتر). تأخذ كل جلسة نحو منفذين، لذا تحمل المنافذ الثلاثون الافتراضية نحو 15 جلسة في وقت واحد، وهذا أكثر مما تحصل عليه عقدة منزلية. النطاق الأوسع لا يصلح شيئًا ويكلّف أكثر: كل منفذ منشور يبطئ بدء تشغيل العقدة وإزالتها (300 منفذ تستغرق نحو 12 s للبدء)، ولا يقبل CashPilot أكثر من 300، ومع بروكسي userland الافتراضي في Docker يأخذ كل منفذ أيضًا نحو 2.5 MB من الذاكرة. الجلسات التي تفشل كلها مشكلة في جهاز التوجيه، وليست بسبب قلة المنافذ: راجع \"Routers that rewrite UDP source ports\" في دليل Mysterium. أبقِه أقل من 32768: فالمنافذ 32768-60999 هي النطاق المؤقت في Linux، حيث يمكن لأي برنامج على الجهاز المضيف أن يحجز أحدها لحظة، ومنفذ واحد محجوز يُفشل بدء تشغيل العقدة. العقدة التي لديها نطاق بالفعل تحتفظ به."
   source: "530524e2e718"
+mysterium.docker.runtime_reason:
+  text: "لا يوفّر gVisor له iptables-nft ولا WireGuard النواة، وهو يحتاج إليهما لنقل حركة المرور."
+  source: "d8a72a275579"
 mysterium.docker.critical_volumes.0.holds:
   text: "مخزن مفاتيح هوية العقدة. حذفه يُنشئ هوية جديدة تمامًا: تفقد العقدة سمعتها وأي أرباح لا تزال محتجزة على الهوية القديمة."
   source: "97272764fec0"
@@ -1831,6 +1837,9 @@ srbminer-multi.docker.env.WALLET.description:
 srbminer-multi.docker.env.ALGO.description:
   text: "pearlhash لـ Pearl، وprogpow_zano لـ Zano، وkawpow لـ Ravencoin."
   source: "31c8ee0aa660"
+srbminer-multi.docker.runtime_reason:
+  text: "لا يستطيع gVisor تمرير وحدة معالجة الرسومات (GPU) إليه."
+  source: "302a2b5c988f"
 srbminer-multi.earnings.notes:
   text: "تقدير إجمالي قبل احتساب الكهرباء. في 2026-11-25 قدّر hashrate.no نحو $2.45 يوميًا على Pearl لبطاقة RTX 4070 تستهلك نحو 142 W. لم نقِس ذلك بأنفسنا. Pearl عملة جديدة، ويتغير سعرها وصعوبة تعدينها بسرعة. تحقّق من استهلاك GPU للطاقة ومن سعر الكهرباء لديك لترى إن كان التعدين مجديًا."
   source: "e7b856e43825"

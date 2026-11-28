@@ -892,6 +892,9 @@ kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
 kryptex-pearl.docker.env.WORKER_NAME.description:
   text: "Kryptex hesabınızda her makineye farklı bir ad verin."
   source: "277ed1b0adb3"
+kryptex-pearl.docker.runtime_reason:
+  text: "gVisor GPU'yu ona aktaramaz."
+  source: "302a2b5c988f"
 kryptex-pearl.payment.minimum_payout:
   text: "Lightning ile 0.00001 BTC (diğer yöntemler değişir)"
   source: "134616d8ae98"
@@ -961,6 +964,9 @@ mysterium.docker.env.UI_ADDRESS.description:
 mysterium.docker.env.UDP_PORTS.description:
   text: "Düğümün VPN oturumları için kullandığı UDP portları, start:end biçiminde. Aynı aralığı yönlendiricinizde de yönlendirin. Her oturum yaklaşık iki port kullanır; bu yüzden varsayılan 30 port aynı anda yaklaşık 15 oturum taşır, bu da bir ev düğümünün aldığından fazladır. Daha geniş bir aralık hiçbir şeyi düzeltmez ve maliyeti artırır: yayımlanan her port düğümün başlatılmasını ve kaldırılmasını yavaşlatır (300 portun başlatılması yaklaşık 12 s sürer), CashPilot en fazla 300 port kabul eder ve Docker'ın varsayılan userland proxy'si ile her port ayrıca yaklaşık 2.5 MB bellek kullanır. Tüm oturumların başarısız olması port azlığından değil, yönlendiriciden kaynaklanır: Mysterium rehberindeki \"Routers that rewrite UDP source ports\" bölümüne bakın. Aralığı 32768'in altında tutun: 32768-60999 portları Linux'un geçici port aralığıdır; ana makinedeki herhangi bir program bunlardan birini kısa süreliğine tutabilir ve tek bir dolu port düğümün başlatılmasını başarısız kılar. Zaten bir aralığı olan düğüm onu korur."
   source: "530524e2e718"
+mysterium.docker.runtime_reason:
+  text: "gVisor ona iptables-nft ve çekirdek WireGuard sağlamaz; trafiği taşımak için ikisine de ihtiyacı var."
+  source: "d8a72a275579"
 mysterium.docker.critical_volumes.0.holds:
   text: "Düğüm kimliği anahtar deposu. Silinirse yepyeni bir kimlik oluşturulur: düğüm itibarını ve eski kimliğe bağlı olarak hâlâ tutulan kazançlarını kaybeder."
   source: "97272764fec0"
@@ -1831,6 +1837,9 @@ srbminer-multi.docker.env.WALLET.description:
 srbminer-multi.docker.env.ALGO.description:
   text: "Pearl için pearlhash, Zano için progpow_zano, Ravencoin için kawpow."
   source: "31c8ee0aa660"
+srbminer-multi.docker.runtime_reason:
+  text: "gVisor GPU'yu ona aktaramaz."
+  source: "302a2b5c988f"
 srbminer-multi.earnings.notes:
   text: "Elektrik öncesi brüt tahmin. 2026-11-25 tarihinde hashrate.no, yaklaşık 142 W çeken bir RTX 4070 için Pearl'de günde yaklaşık $2.45 tahmin etti. Bunu biz ölçmedik. Pearl yeni bir coin'dir; fiyatı ve zorluğu hızla değişir. Kârlı olup olmadığını görmek için GPU'nuzun güç tüketimini ve elektrik fiyatınızı kontrol edin."
   source: "e7b856e43825"

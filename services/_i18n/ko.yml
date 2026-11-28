@@ -892,6 +892,9 @@ kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
 kryptex-pearl.docker.env.WORKER_NAME.description:
   text: "Kryptex 계정에서 머신마다 서로 다른 이름을 지정하십시오."
   source: "277ed1b0adb3"
+kryptex-pearl.docker.runtime_reason:
+  text: "gVisor는 GPU를 이 서비스에 전달할 수 없습니다."
+  source: "302a2b5c988f"
 kryptex-pearl.payment.minimum_payout:
   text: "Lightning으로 0.00001 BTC(다른 방법은 다름)"
   source: "134616d8ae98"
@@ -961,6 +964,9 @@ mysterium.docker.env.UI_ADDRESS.description:
 mysterium.docker.env.UDP_PORTS.description:
   text: "노드가 VPN 세션에 사용하는 UDP 포트이며, start:end 형식입니다. 라우터에서 같은 범위를 포워딩하십시오. 세션마다 약 두 개의 포트를 사용하므로 기본값 30개로 동시에 약 15개의 세션을 처리할 수 있으며, 이는 가정용 노드가 받는 양보다 많습니다. 범위를 넓혀도 해결되는 것은 없고 비용만 늘어납니다: 게시된 포트마다 노드의 시작과 제거가 느려지고(300개 포트는 시작에 약 12 s 소요), CashPilot은 최대 300개만 허용하며, Docker의 기본 userland 프록시에서는 포트마다 약 2.5 MB의 메모리도 사용합니다. 모든 세션이 실패한다면 포트 부족이 아니라 라우터 문제입니다: Mysterium 가이드의 \"Routers that rewrite UDP source ports\"를 참조하십시오. 32768 미만으로 유지하십시오: 32768-60999 포트는 Linux의 임시(ephemeral) 포트 범위로, 호스트의 어떤 프로그램이든 잠시 점유할 수 있으며, 포트 하나만 점유되어도 노드 시작이 실패합니다. 이미 범위가 있는 노드는 그 범위를 유지합니다."
   source: "530524e2e718"
+mysterium.docker.runtime_reason:
+  text: "gVisor는 iptables-nft와 커널 WireGuard를 제공하지 않으며, 둘 다 트래픽을 전달하는 데 필요합니다."
+  source: "d8a72a275579"
 mysterium.docker.critical_volumes.0.holds:
   text: "노드 신원 키 저장소입니다. 이를 삭제하면 완전히 새로운 신원이 만들어집니다: 노드는 평판과, 이전 신원에 아직 보류된 모든 수익을 잃습니다."
   source: "97272764fec0"
@@ -1831,6 +1837,9 @@ srbminer-multi.docker.env.WALLET.description:
 srbminer-multi.docker.env.ALGO.description:
   text: "Pearl은 pearlhash, Zano는 progpow_zano, Ravencoin은 kawpow."
   source: "31c8ee0aa660"
+srbminer-multi.docker.runtime_reason:
+  text: "gVisor는 GPU를 이 서비스에 전달할 수 없습니다."
+  source: "302a2b5c988f"
 srbminer-multi.earnings.notes:
   text: "전기 요금을 빼기 전의 총 추정치입니다. 2026-11-25 hashrate.no는 약 142 W를 소비하는 RTX 4070의 Pearl 수익을 하루 약 $2.45로 추정했습니다. 저희가 직접 측정하지는 않았습니다. Pearl은 새로운 코인이며 가격과 난이도가 빠르게 바뀝니다. 수익이 나는지 보려면 GPU의 소비 전력과 전기 요금을 확인하십시오."
   source: "e7b856e43825"

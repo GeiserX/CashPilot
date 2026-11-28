@@ -892,6 +892,9 @@ kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
 kryptex-pearl.docker.env.WORKER_NAME.description:
   text: "Bigyan ng magkakaibang pangalan ang bawat makina sa iyong Kryptex account."
   source: "277ed1b0adb3"
+kryptex-pearl.docker.runtime_reason:
+  text: "Hindi kayang ipasa ng gVisor ang GPU dito."
+  source: "302a2b5c988f"
 kryptex-pearl.payment.minimum_payout:
   text: "0.00001 BTC sa Lightning (iba-iba sa ibang paraan)"
   source: "134616d8ae98"
@@ -961,6 +964,9 @@ mysterium.docker.env.UI_ADDRESS.description:
 mysterium.docker.env.UDP_PORTS.description:
   text: "Ang mga UDP port na ginagamit ng node para sa mga VPN session, bilang start:end. I-forward ang parehong saklaw na ito sa iyong router. Mga dalawang port ang ginagamit ng bawat session, kaya kaya ng default na 30 ang mga 15 session nang sabay-sabay, higit pa sa natatanggap ng isang home node. Walang naaayos ang mas malawak na saklaw at mas magastos pa: pinababagal ng bawat inilathalang port ang pag-start at pag-alis ng node (mga 12 s bago mag-start ang 300 port), hanggang 300 lang ang tinatanggap ng CashPilot, at sa default na userland proxy ng Docker, gumagamit din ang bawat port ng mga 2.5 MB na memory. Kapag pumapalya ang lahat ng session, problema iyon ng router, hindi kakulangan ng port: tingnan ang \"Routers that rewrite UDP source ports\" sa Mysterium guide. Panatilihin itong mas mababa sa 32768: ang mga port na 32768-60999 ay ang ephemeral range ng Linux, kung saan puwedeng humawak saglit ng isa ang kahit anong program sa host, at isang nakuhang port lang ay magpapapalya sa pag-start ng node. Pinapanatili ng node na may saklaw na ang saklaw nito."
   source: "530524e2e718"
+mysterium.docker.runtime_reason:
+  text: "Hindi ito binibigyan ng gVisor ng iptables-nft at ng kernel WireGuard, na kailangan nito para magdala ng traffic."
+  source: "d8a72a275579"
 mysterium.docker.critical_volumes.0.holds:
   text: "Ang identity keystore ng node. Kapag nasira ito, gagawa ng bagong-bagong identity: mawawala sa node ang reputasyon nito at ang anumang kitang nakahawak pa sa luma."
   source: "97272764fec0"
@@ -1831,6 +1837,9 @@ srbminer-multi.docker.env.WALLET.description:
 srbminer-multi.docker.env.ALGO.description:
   text: "pearlhash para sa Pearl, progpow_zano para sa Zano, kawpow para sa Ravencoin."
   source: "31c8ee0aa660"
+srbminer-multi.docker.runtime_reason:
+  text: "Hindi kayang ipasa ng gVisor ang GPU dito."
+  source: "302a2b5c988f"
 srbminer-multi.earnings.notes:
   text: "Gross na tantiya bago ang kuryente. Noong 2026-11-25, tinantiya ng hashrate.no na mga $2.45 kada araw sa Pearl para sa RTX 4070 na kumukonsumo ng mga 142 W. Hindi pa namin ito nasusukat. Bagong coin ang Pearl, at mabilis magbago ang presyo at difficulty nito. Tingnan ang konsumo ng iyong GPU at ang presyo ng kuryente mo para malaman kung sulit ito."
   source: "e7b856e43825"
