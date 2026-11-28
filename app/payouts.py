@@ -34,6 +34,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from app.i18n import t
+
 # Minimum history before a trailing rate means anything. Below this a single
 # good day sets the projection, and the number swings wildly day to day.
 MIN_DAYS_FOR_PROJECTION = 3
@@ -217,11 +219,10 @@ def detect(
         "platform": service.get("slug") if service else None,
         "amount": amount,
         "confirmed": False,
-        "reason": (
-            f"The balance fell by {format_amount(amount, currency)}, which is at least this service's "
-            f"{format_amount(threshold, threshold_unit)} minimum cashout. "
-            "That usually means you were paid — but a provider correction can look identical, so "
-            "CashPilot will not record it as income until you say so."
+        "reason": t(
+            "alert.payout.reason",
+            amount=format_amount(amount, currency),
+            threshold=format_amount(threshold, threshold_unit),
         ),
     }
 
@@ -329,21 +330,21 @@ def project(
         return {
             "state": NO_THRESHOLD,
             "days": None,
-            "summary": "This service does not publish a minimum cashout, so there is nothing to count down to.",
+            "summary": t("payouts.service_does_not_publish_minimum"),
         }
     if threshold == 0:
         return {
             "state": NO_MINIMUM_REQUIRED,
             "days": 0,
             "remaining": 0.0,
-            "summary": "This service has no minimum — whatever has accrued can be cashed out at any time.",
+            "summary": t("payouts.service_has_no_minimum_whatever"),
         }
     if balance >= threshold:
         return {
             "state": REACHED,
             "days": 0,
             "remaining": 0.0,
-            "summary": f"You have reached the {minimum(threshold)} minimum — this can be cashed out now.",
+            "summary": t("payouts.you_have_reached_minimum_can", threshold=minimum(threshold)),
         }
 
     remaining = threshold - balance
@@ -353,20 +354,14 @@ def project(
             "state": NOT_ENOUGH_DATA,
             "days": None,
             "remaining": round(remaining, 12),
-            "summary": (
-                f"{amount(remaining)} to go. There is not enough history yet to say how long that will take — "
-                f"come back after a few more days of collection."
-            ),
+            "summary": (t("payouts.go_there_not_enough_history", remaining=amount(remaining))),
         }
     if rate <= 0:
         return {
             "state": NOT_EARNING,
             "days": None,
             "remaining": round(remaining, 12),
-            "summary": (
-                f"{amount(remaining)} to go, but this has earned nothing recently, so at the current rate it "
-                "will not get there at all."
-            ),
+            "summary": (t("payouts.go_but_has_earned_nothing", remaining=amount(remaining))),
         }
 
     days = remaining / rate
@@ -376,15 +371,14 @@ def project(
             "days": None,
             "remaining": round(remaining, 12),
             "rate_per_day": round(rate, 12),
-            "summary": (
-                f"At {per_day(rate)} a day it would take over a year to reach the {minimum(threshold)} minimum. "
-                "That is worth knowing before you leave it running."
-            ),
+            "summary": (t("payouts.day_would_take_over_year", rate=per_day(rate), threshold=minimum(threshold))),
         }
     return {
         "state": PROJECTED,
         "days": round(days, 1),
         "remaining": round(remaining, 12),
         "rate_per_day": round(rate, 12),
-        "summary": f"About {days:.0f} day(s) to the {minimum(threshold)} minimum, at {per_day(rate)} a day.",
+        "summary": t(
+            "payouts.days_to_minimum", days=int(format(days, ".0f")), threshold=minimum(threshold), rate=per_day(rate)
+        ),
     }

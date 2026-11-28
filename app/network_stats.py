@@ -104,7 +104,7 @@ async def bitcoin(*, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
     if hit and hit[0] > _now():
         return dict(hit[1])
     if _backoff_until.get(base, 0) > _now():
-        return {"state": UNREACHABLE, "detail": "Backing off after a recent failure from this endpoint."}
+        return {"state": UNREACHABLE, "detail": t("network_stats.backing_off_after_recent_failure")}
     owns_client = client is None
     client = client or httpx.AsyncClient(timeout=TIMEOUT)
     try:
@@ -113,7 +113,7 @@ async def bitcoin(*, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
         _backoff_until[base] = _now() + BACKOFF
         # The type only: the text of an httpx error carries the URL.
         logger.warning("Could not read Bitcoin network stats: %s", type(exc).__name__)
-        return {"state": UNREACHABLE, "detail": f"{type(exc).__name__} while reading the network stats."}
+        return {"state": UNREACHABLE, "detail": t("network_stats.while_reading_network_stats", name=type(exc).__name__)}
     finally:
         if owns_client:
             await client.aclose()

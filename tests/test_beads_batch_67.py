@@ -117,8 +117,11 @@ class TestTheQuotedLogLinesAreReal:
     strings drift, the reader is hunting for something that never appears."""
 
     def test_the_decrypt_error_is_quoted_accurately(self):
-        assert "Failed to decrypt a stored credential" in DATABASE.read_text(encoding="utf-8")
-        assert "Failed to decrypt a stored credential" in page()
+        """A restore without its key now stops the start; the page quotes that refusal."""
+        db = DATABASE.read_text(encoding="utf-8")
+        for line in ("decrypts none of the", "This database was encrypted with another"):
+            assert line in db
+            assert line in page()
 
     def test_the_schema_lines_are_quoted_accurately(self):
         db = DATABASE.read_text(encoding="utf-8")

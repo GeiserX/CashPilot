@@ -45,6 +45,16 @@ async def _page(request: Request, template: str, user: dict) -> HTMLResponse:
     saved_language = prefs.get("language") if prefs else None
     locale = i18n.from_request(request, saved_language)
     i18n.use(locale)
+    previous = i18n.background()
+    if user.get("r") == "owner" and i18n.set_background(locale):
+        # Alerts and pushes follow the owner's language, also after a restart.
+        try:
+            await database.set_config(i18n.BACKGROUND_KEY, locale)
+        except Exception as exc:  # losing it only leaves the alerts in the old language
+            # Go back to the stored language, so the next owner page sees a
+            # change and tries the write again.
+            i18n.set_background(previous)
+            logger.warning("Could not keep the owner's language for alerts: %s", type(exc).__name__)
     response = deps.templates.TemplateResponse(
         request,
         template,
