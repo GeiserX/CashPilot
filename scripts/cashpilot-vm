@@ -1,0 +1,1614 @@
+#!/usr/bin/env bash
+# cashpilot-vm: the Linux Secure VM. One fenced QEMU/KVM guest per computer
+# that runs a CashPilot worker, so earners deployed to it run in a VM.
+#
+#   sudo bash cashpilot-vm install --ui http://ui-host:8080 [--host-worker NAME]
+#   sudo bash cashpilot-vm verify [--json]
+#   sudo bash cashpilot-vm status [--json]
+#   sudo bash cashpilot-vm remove
+#
+# docs/secure-vm.md explains the design. The short version:
+#
+# * The guest's only network link is a tap inside a network namespace of its
+#   own, `cashpilot-vm`. The fence lives in that namespace, so a host firewall
+#   reload or `nft flush ruleset` never touches it: those act on the host's own
+#   namespace. Only the NAT on the host side can vanish that way, and without
+#   it the guest is offline, not on the LAN.
+# * The fence drops every private, link-local, CGNAT (tailnet) and multicast
+#   address, the host's own addresses, the subnets directly connected to the
+#   host and the home's public IP. Two holes: the guest may open a TCP
+#   connection to the UI's address and port, and the UI may reach the guest's
+#   worker through one port on the host.
+# * A guard checks the namespace every 60 s and at boot. Its state (links,
+#   addresses, routes, sysctls and the whole ruleset) must match the state
+#   recorded when the fence was written, exactly. On any drift it takes the
+#   guest's link down, writes the fence again and brings the link back only on
+#   an exact match.
+# * Inside the guest the worker runs its own LAN fence, and earners run under
+#   gVisor (runsc) unless their catalog entry needs runc.
+
+set -euo pipefail
+umask 077
+export LC_ALL=C
+
+readonly CPVM_VERSION=1
+readonly NS=cashpilot-vm
+readonly TAP=cpvm-tap
+readonly VETH_HOST=cpvm-host
+readonly VETH_NS=cpvm-ns
+readonly SVC_USER=cashpilot-vm
+readonly GUEST_WORKER_PORT=8081
+readonly GUEST_MAC=52:54:00:c9:76:02
+readonly TAG=cashpilot-vm
+
+# The guest image: Debian 13 (trixie) genericcloud, pinned by build serial and
+# SHA-512 (https://cloud.debian.org/images/cloud/trixie/<serial>/SHA512SUMS).
+readonly IMAGE_SERIAL=20261123-2671
+readonly IMAGE_URL_AMD64="https://cloud.debian.org/images/cloud/trixie/${IMAGE_SERIAL}/debian-13-genericcloud-amd64-${IMAGE_SERIAL}.qcow2"
+readonly IMAGE_SHA512_AMD64=76488ba3bea2349cc595fedad7748b8ba98d6b36da398eaf2bbbae3db896ba1017d4ff41cd277926784cef2c1c11145a0d600f9b4afde9b8f174d698db0cda03
+
+# gVisor for the guest, pinned by release and SHA-512.
+readonly GVISOR_RELEASE=20261123.1
+readonly GVISOR_SHA512_X86_64=e8ed92b5a4287c33b03803cd936a68b094b3206e3f09e5d862d7aba7a9b1404b5511b8da59282d26171fe21e4ed63b5a266182ab03de088b923c467fb56eafdd
+
+# docker-compose.worker.yml of the same release as this script. The guest
+# downloads it from the release tag (--ref) and checks it against this hash.
+# tests/test_cashpilot_vm.py fails when the two drift apart.
+readonly COMPOSE_SHA256=cdfb4cc424a758a8ed595ad4da0352283766ef2c3578d8aa11e950717144f659
+
+# Ranges the fence drops for anything leaving the guest. Name, CIDR.
+readonly BLOCKED=(
+  "this-net 0.0.0.0/8"
+  "rfc1918-10 10.0.0.0/8"
+  "cgnat-tailnet 100.64.0.0/10"
+  "loopback 127.0.0.0/8"
+  "link-local-metadata 169.254.0.0/16"
+  "rfc1918-172 172.16.0.0/12"
+  "ietf 192.0.0.0/24"
+  "rfc1918-192 192.168.0.0/16"
+  "benchmark 198.18.0.0/15"
+  "multicast 224.0.0.0/4"
+  "reserved 240.0.0.0/4"
+)
+readonly EGRESS_URLS=(https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com)
+
+DOCS_URL="https://github.com/GeiserX/CashPilot/blob/main/docs/secure-vm.md"
+
+# ---------------------------------------------------------------------------
+# Paths. Unraid runs from RAM, so its state lives on the flash and on a pool.
+# ---------------------------------------------------------------------------
+
+is_unraid() { [ -f /etc/unraid-version ]; }
+
+# unraid_home CFG MNT: where the guest's disk goes on Unraid, or nothing.
+# The disk goes in the domains share. When that share lives on a pool
+# (Unraid's "only" or "prefer"), the disk goes straight onto the pool, not
+# through /mnt/user, a FUSE layer that slows every guest write. Any other
+# setting lets the mover move a stopped guest's disk to the array, so the disk
+# is reached through /mnt/user, where it stays found. Unraid's .cfg files end
+# their lines in CRLF.
+unraid_home() {
+  local cfg pool
+  cfg=$(tr -d '\r' <"$1" 2>/dev/null || true)
+  pool=$(sed -n 's/^shareCachePool="\([A-Za-z0-9_-]*\)"$/\1/p' <<<"$cfg")
+  case "$(sed -n 's/^shareUseCache="\([a-z]*\)"$/\1/p' <<<"$cfg")" in
+    only | prefer) ;;
+    *) pool="" ;;
+  esac
+  if [ -n "$pool" ] && [ -d "$2/$pool/domains" ]; then
+    echo "$2/$pool/domains/cashpilot-vm"
+  elif [ -d "$2/user/domains" ]; then
+    echo "$2/user/domains/cashpilot-vm"
+  fi
+}
+
+if is_unraid; then
+  CONF_DIR=/boot/config/cashpilot-vm
+  [ -n "${CPVM_HOME:-}" ] || CPVM_HOME=$(unraid_home /boot/config/shares/domains.cfg /mnt)
+  BIN=/usr/local/sbin/cashpilot-vm
+else
+  CONF_DIR=/etc/cashpilot-vm
+  BIN=/usr/local/sbin/cashpilot-vm
+fi
+STATE="${CPVM_HOME:-/var/lib/cashpilot-vm}"
+case "$STATE" in
+  /*/cashpilot-vm) ;;
+  *) echo "cashpilot-vm: CPVM_HOME must be an absolute path ending in /cashpilot-vm" >&2; exit 1 ;;
+esac
+CONF="$CONF_DIR/config"
+RUN_DIR=/run/cashpilot-vm
+LOG_TAG=cashpilot-vm
+
+# ---------------------------------------------------------------------------
+# Small helpers
+# ---------------------------------------------------------------------------
+
+say() { printf '%s\n' "$*"; }
+warn() { printf 'cashpilot-vm: %s\n' "$*" >&2; }
+die() { printf 'cashpilot-vm: %s\n' "$*" >&2; exit 1; }
+log() {
+  # The guard's log: the journal on systemd hosts, syslog on Unraid.
+  if command -v logger >/dev/null 2>&1; then logger -t "$LOG_TAG" -- "$*" || true; fi
+  [ -t 1 ] && say "$*" || true
+}
+need_root() { [ "$(id -u)" = 0 ] || die "run this as root (sudo bash $0 ...)"; }
+nsx() { ip netns exec "$NS" "$@"; }
+has() { command -v "$1" >/dev/null 2>&1; }
+
+load_conf() {
+  [ -f "$CONF" ] || return 1
+  # shellcheck disable=SC1090
+  . "$CONF"
+  NET_BASE=${NET_BASE:-10.213.0}
+  derive_net
+  return 0
+}
+
+derive_net() {
+  TAP_GW="$NET_BASE.1"      # the namespace's side of the tap
+  GUEST_IP="$NET_BASE.2"    # the guest
+  VH_IP="$NET_BASE.5"       # the host's side of the veth
+  VN_IP="$NET_BASE.6"       # the namespace's side of the veth
+  VETH_NET="$NET_BASE.4/30"
+  # The guest's own Docker networks, away from the UI's address and the tap.
+  GUEST_DOCKER_BIP="${NET_BASE%.*}.63.1/24"
+  GUEST_DOCKER_POOL="${NET_BASE%.*}.64.0/18"
+}
+
+ip_to_int() {
+  local IFS=. a b c d
+  read -r a b c d <<<"$1"
+  echo $(((a << 24) | (b << 16) | (c << 8) | d))
+}
+
+# in_cidr IP CIDR
+in_cidr() {
+  local ip net len n i m
+  ip=$(ip_to_int "$1"); net=${2%/*}; len=${2#*/}
+  n=$(ip_to_int "$net")
+  if [ "$len" = 0 ]; then return 0; fi
+  m=$(((0xffffffff << (32 - len)) & 0xffffffff))
+  i=$((ip & m)); [ "$i" = $((n & m)) ]
+}
+
+is_ipv4() {
+  [[ "$1" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || return 1
+  local o
+  for o in "${BASH_REMATCH[@]:1}"; do [ "$o" -le 255 ] || return 1; done
+}
+
+# A public IPv4: outside every range the fence drops anyway.
+is_public_ipv4() {
+  is_ipv4 "$1" || return 1
+  local entry
+  for entry in "${BLOCKED[@]}"; do in_cidr "$1" "${entry#* }" && return 1; done
+  return 0
+}
+
+# Overlap of two CIDRs.
+cidr_overlap() {
+  local a=${1%/*} al=${1#*/} b=${2%/*} bl=${2#*/} l
+  l=$((al < bl ? al : bl))
+  in_cidr "$a" "$b/$l" || in_cidr "$b" "$a/$l"
+}
+
+json_str() {
+  local s=$1
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/\\n}; s=${s//$'\t'/\\t}
+  printf '"%s"' "$s"
+}
+
+# ---------------------------------------------------------------------------
+# Host facts the fence is rendered from
+# ---------------------------------------------------------------------------
+
+host_addrs() {
+  ip -4 -o addr show | awk '{split($4, a, "/"); print a[1]}' |
+    { grep -v -e '^127\.' -e "^${NET_BASE//./\\.}\." || true; } | sort -u
+}
+
+# Subnets directly connected to the host that are public space: a LAN
+# numbered in public addresses, or a VPS's neighbours on its provider's segment.
+host_connected_public() {
+  local dst
+  ip -4 route show table main scope link | awk '{print $1, $3}' | while read -r dst dev; do
+    [ "$dev" = "$VETH_HOST" ] && continue
+    case "$dst" in */*) ;; *) dst="$dst/32" ;; esac
+    [ "${dst#*/}" -ge 8 ] || continue
+    is_public_ipv4 "${dst%/*}" || continue
+    echo "$dst"
+  done | sort -u
+}
+
+# The home's public IPv4, cached for ten minutes. A connection to it from
+# inside leaves as internet traffic, and most home routers loop it straight
+# back into the LAN (NAT loopback), so the fence drops it.
+egress_ip() {
+  local cache="$STATE/egress" age now ip url
+  now=$(date +%s)
+  if [ -f "$cache" ]; then
+    age=$((now - $(stat -c %Y "$cache")))
+    if [ "$age" -lt 600 ]; then cat "$cache"; return 0; fi
+  fi
+  for url in "${EGRESS_URLS[@]}"; do
+    ip=$(curl -4 -fsS --max-time 5 "$url" 2>/dev/null | tr -d '[:space:]' || true)
+    if is_public_ipv4 "$ip"; then
+      printf '%s\n' "$ip" >"$cache.tmp" && mv "$cache.tmp" "$cache"
+      echo "$ip"; return 0
+    fi
+  done
+  # Keep the last known address rather than dropping the rule.
+  [ -f "$cache" ] && cat "$cache"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# The fence, inside the namespace
+# ---------------------------------------------------------------------------
+
+render_ns_rules() {
+  local entry name cidr ip
+  echo "*nat"
+  echo ":PREROUTING ACCEPT [0:0]"
+  echo ":INPUT ACCEPT [0:0]"
+  echo ":OUTPUT ACCEPT [0:0]"
+  echo ":POSTROUTING ACCEPT [0:0]"
+  echo "-A PREROUTING -i $VETH_NS -d $VN_IP/32 -p tcp -m tcp --dport $GUEST_WORKER_PORT -m comment --comment cpvm:worker-dnat -j DNAT --to-destination $GUEST_IP:$GUEST_WORKER_PORT"
+  echo "-A POSTROUTING -s $GUEST_IP/32 -o $VETH_NS -m comment --comment cpvm:masquerade -j MASQUERADE"
+  # The UI's connections reach the guest from the tap's own address. With its
+  # real source (a container on the host's Docker bridge, say) the guest's
+  # reply could land in one of the guest's own Docker networks.
+  echo "-A POSTROUTING -o $TAP -m conntrack --ctstate DNAT -m comment --comment cpvm:worker-snat -j MASQUERADE"
+  echo "COMMIT"
+  echo "*filter"
+  echo ":INPUT DROP [0:0]"
+  echo ":FORWARD DROP [0:0]"
+  echo ":OUTPUT ACCEPT [0:0]"
+  echo "-A INPUT -i lo -m comment --comment cpvm:lo -j ACCEPT"
+  echo "-A INPUT -m conntrack --ctstate RELATED,ESTABLISHED --ctdir REPLY -m comment --comment cpvm:input-reply -j ACCEPT"
+  # Replies to connections that started outside the guest (the UI asking the
+  # worker, the host's own checks). Matched by direction, so a connection the
+  # guest opened gets no pass: each of its packets meets the drops below.
+  echo "-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED --ctdir REPLY -m comment --comment cpvm:reply -j ACCEPT"
+  echo "-A FORWARD -i $VETH_NS -o $TAP -d $GUEST_IP/32 -p tcp -m tcp --dport $GUEST_WORKER_PORT -m conntrack --ctstate DNAT -m comment --comment cpvm:worker-in -j ACCEPT"
+  echo "-A FORWARD -i $TAP -o $VETH_NS -d $UI_IP/32 -p tcp -m tcp --dport $UI_PORT -m comment --comment cpvm:ui -j ACCEPT"
+  for entry in "${BLOCKED[@]}"; do
+    name=${entry%% *}; cidr=${entry#* }
+    echo "-A FORWARD -i $TAP -d $cidr -m comment --comment cpvm:$name -j DROP"
+  done
+  for ip in $(host_addrs); do
+    echo "-A FORWARD -i $TAP -d $ip/32 -m comment --comment cpvm:host-$ip -j DROP"
+  done
+  for cidr in $(host_connected_public); do
+    echo "-A FORWARD -i $TAP -d $cidr -m comment --comment cpvm:connected-$cidr -j DROP"
+  done
+  ip=$(egress_ip)
+  if [ -n "$ip" ]; then
+    echo "-A FORWARD -i $TAP -d $ip/32 -m comment --comment cpvm:egress-$ip -j DROP"
+  fi
+  echo "-A FORWARD -i $TAP -o $VETH_NS -m comment --comment cpvm:internet -j ACCEPT"
+  echo "COMMIT"
+}
+
+expected_comments() {
+  { grep -o 'cpvm:[^ "]*' <<<"$1" || true; } | sort
+}
+
+# Everything in the namespace that decides where a packet from the guest can
+# go, in a stable form. The tap's up/down flag and its kernel routes are left
+# out: they are what the guard switches.
+ns_fingerprint() {
+  {
+    echo "## links"
+    nsx ip -o link show | awk '{sub(/@.*/, "", $2); sub(/:$/, "", $2); print $2}' | sort
+    echo "## addresses"
+    nsx ip -o addr show | awk '{print $2, $3, $4}' | sort
+    echo "## rules"
+    nsx ip -4 rule show
+    nsx ip -6 rule show 2>/dev/null || true
+    echo "## routes"
+    nsx ip -4 route show table all | { grep -v -e "dev $TAP proto kernel" -e "^local $TAP_GW dev $TAP" -e "^broadcast .* dev $TAP" || true; } | sort
+    echo "## sysctl"
+    for k in net.ipv4.ip_forward net.ipv6.conf.all.disable_ipv6 net.ipv6.conf.default.disable_ipv6 \
+      "net.ipv6.conf.$TAP.disable_ipv6" "net.ipv6.conf.$VETH_NS.disable_ipv6"; do
+      printf '%s=%s\n' "$k" "$(nsx sysctl -n "$k" 2>/dev/null || echo missing)"
+    done
+    echo "## iptables"
+    nsx iptables-save | { grep -v -e '^#' || true; } | sed -E 's/\[[0-9]+:[0-9]+\]//'
+    echo "## ip6tables"
+    nsx ip6tables-save 2>/dev/null | grep -v -e '^#' | sed -E 's/\[[0-9]+:[0-9]+\]//' || true
+    if has nft; then
+      echo "## nft"
+      nsx nft -s list ruleset 2>/dev/null || true
+    fi
+  } 2>&1
+}
+
+ns_exists() { [ -e "/run/netns/$NS" ]; }
+
+# The namespace, the veth pair and the tap. The tap is created down; only the
+# guard brings it up.
+net_up() {
+  if ! ns_exists; then
+    ip netns add "$NS"
+  fi
+  nsx sysctl -qw net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1
+  nsx ip link set lo up
+  if ! ip link show "$VETH_HOST" >/dev/null 2>&1; then
+    ip link add "$VETH_HOST" type veth peer name "$VETH_NS"
+    ip link set "$VETH_NS" netns "$NS"
+  fi
+  sysctl -qw "net.ipv6.conf.$VETH_HOST.disable_ipv6=1" || true
+  ip addr replace "$VH_IP/30" dev "$VETH_HOST"
+  ip link set "$VETH_HOST" up
+  nsx ip addr replace "$VN_IP/30" dev "$VETH_NS"
+  nsx ip link set "$VETH_NS" up
+  nsx ip route replace default via "$VH_IP" dev "$VETH_NS"
+  if ! nsx ip link show "$TAP" >/dev/null 2>&1; then
+    nsx ip tuntap add dev "$TAP" mode tap
+  fi
+  nsx ip link set "$TAP" down
+  nsx ip addr replace "$TAP_GW/30" dev "$TAP"
+  nsx sysctl -qw net.ipv4.ip_forward=1
+  host_rules_ensure
+}
+
+link_cut() {
+  nsx ip link set "$TAP" down 2>/dev/null || true
+}
+
+link_connect() {
+  nsx ip link set "$TAP" up
+}
+
+tap_up() {
+  nsx ip -o link show "$TAP" 2>/dev/null | grep -q '[<,]UP[,>]'
+}
+
+apply_ns_rules() {
+  # iptables-restore replaces each table it names in one step.
+  nsx iptables-restore <"$1"
+}
+
+# ---------------------------------------------------------------------------
+# The host side: forwarding, NAT and the worker's port. Losing any of it
+# (a firewall reload) takes the guest offline, never onto the LAN.
+# ---------------------------------------------------------------------------
+
+host_chain_rules() {
+  case "$1" in
+    nat-CPVM-POST) echo "-A CPVM-POST -s $VETH_NET ! -o $VETH_HOST -m comment --comment $TAG -j MASQUERADE" ;;
+    nat-CPVM-PRE) echo "-A CPVM-PRE -p tcp -m addrtype --dst-type LOCAL -m tcp --dport $HOST_PORT -m comment --comment $TAG -j DNAT --to-destination $VN_IP:$GUEST_WORKER_PORT" ;;
+    nat-CPVM-OUT) echo "-A CPVM-OUT -p tcp -m addrtype --dst-type LOCAL -m tcp --dport $HOST_PORT -m comment --comment $TAG -j DNAT --to-destination $VN_IP:$GUEST_WORKER_PORT" ;;
+    filter-CPVM-FWD)
+      echo "-A CPVM-FWD -i $VETH_HOST -m comment --comment $TAG -j ACCEPT"
+      echo "-A CPVM-FWD -o $VETH_HOST -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment $TAG -j ACCEPT"
+      echo "-A CPVM-FWD -d $VN_IP/32 -o $VETH_HOST -p tcp -m tcp --dport $GUEST_WORKER_PORT -m conntrack --ctstate DNAT -m comment --comment $TAG -j ACCEPT"
+      ;;
+    filter-CPVM-IN)
+      echo "-A CPVM-IN -i $VETH_HOST -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment $TAG -j ACCEPT"
+      if [ "${UI_LOCAL:-0}" = 1 ]; then
+        echo "-A CPVM-IN -d $UI_IP/32 -i $VETH_HOST -p tcp -m tcp --dport $UI_PORT -m comment --comment $TAG -j ACCEPT"
+      fi
+      echo "-A CPVM-IN -i $VETH_HOST -m comment --comment $TAG -j DROP"
+      ;;
+  esac
+}
+
+# table chain hook-chain match
+readonly HOST_CHAINS=(
+  "nat CPVM-POST POSTROUTING"
+  "nat CPVM-PRE PREROUTING"
+  "nat CPVM-OUT OUTPUT"
+  "filter CPVM-FWD FORWARD"
+  "filter CPVM-IN INPUT"
+)
+
+host_rules_ensure() {
+  local entry table chain hook want have changed=0
+  if [ "$(sysctl -n net.ipv4.ip_forward)" != 1 ]; then
+    sysctl -qw net.ipv4.ip_forward=1; changed=1
+  fi
+  for entry in "${HOST_CHAINS[@]}"; do
+    read -r table chain hook <<<"$entry"
+    iptables -w -t "$table" -N "$chain" 2>/dev/null || true
+    want=$(host_chain_rules "$table-$chain")
+    have=$(iptables -w -t "$table" -S "$chain" | { grep -v -- "^-N $chain" || true; })
+    if [ "$want" != "$have" ]; then
+      iptables -w -t "$table" -F "$chain"
+      while IFS= read -r rule; do
+        [ -n "$rule" ] || continue
+        # shellcheck disable=SC2086
+        iptables -w -t "$table" ${rule}
+      done <<<"$want"
+      changed=1
+    fi
+    # Our jump goes first, so no other chain decides before ours.
+    if [ "$(iptables -w -t "$table" -S "$hook" | sed -n 2p)" != "-A $hook -j $chain" ]; then
+      while iptables -w -t "$table" -D "$hook" -j "$chain" 2>/dev/null; do :; done
+      iptables -w -t "$table" -I "$hook" 1 -j "$chain"
+      changed=1
+    fi
+  done
+  if has firewall-cmd && firewall-cmd --state >/dev/null 2>&1; then
+    if [ "$(firewall-cmd --get-zone-of-interface="$VETH_HOST" 2>/dev/null || true)" != trusted ]; then
+      firewall-cmd -q --zone=trusted --add-interface="$VETH_HOST" >/dev/null 2>&1 || true
+      firewall-cmd -q --permanent --zone=trusted --add-interface="$VETH_HOST" >/dev/null 2>&1 || true
+      changed=1
+    fi
+  fi
+  [ "$changed" = 0 ] || log "host side: forwarding, NAT or the worker port put back"
+  return 0
+}
+
+host_rules_remove() {
+  local entry table chain hook
+  for entry in "${HOST_CHAINS[@]}"; do
+    read -r table chain hook <<<"$entry"
+    while iptables -w -t "$table" -D "$hook" -j "$chain" 2>/dev/null; do :; done
+    iptables -w -t "$table" -F "$chain" 2>/dev/null || true
+    iptables -w -t "$table" -X "$chain" 2>/dev/null || true
+  done
+  if has firewall-cmd && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd -q --zone=trusted --remove-interface="$VETH_HOST" >/dev/null 2>&1 || true
+    firewall-cmd -q --permanent --zone=trusted --remove-interface="$VETH_HOST" >/dev/null 2>&1 || true
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# The guard
+# ---------------------------------------------------------------------------
+
+write_guard_state() {
+  local state=$1 reason=$2
+  mkdir -p "$RUN_DIR"
+  printf '{"state": %s, "reason": %s, "checked_at": %s}\n' \
+    "$(json_str "$state")" "$(json_str "$reason")" "$(date +%s)" >"$RUN_DIR/fence.json.tmp"
+  mv "$RUN_DIR/fence.json.tmp" "$RUN_DIR/fence.json"
+}
+
+# Tell the guest's worker what the outer fence looks like, so the UI can show
+# it. At most every 5 minutes unless the state changed. Never fails the guard.
+push_state_to_guest() {
+  local now last=0 cur prev=""
+  now=$(date +%s)
+  [ -f "$RUN_DIR/pushed" ] && read -r last prev <"$RUN_DIR/pushed" || true
+  cur=$(sed -E 's/"checked_at": [0-9]+//' "$RUN_DIR/fence.json" | cksum | cut -d' ' -f1)
+  if [ "$cur" = "$prev" ] && [ $((now - last)) -lt 300 ]; then return 0; fi
+  if guest_ssh "sudo mkdir -p /run/cashpilot-vm && sudo tee /run/cashpilot-vm/fence.json >/dev/null" <"$RUN_DIR/fence.json" 2>/dev/null; then
+    echo "$now $cur" >"$RUN_DIR/pushed"
+  fi
+  return 0
+}
+
+guard_pass() {
+  local desired golden live reason
+  load_conf || { warn "not installed"; return 0; }
+  exec 9>"$RUN_DIR.lock"
+  flock -w 50 9 || { warn "another guard pass is still running"; return 0; }
+  if [ -f "$RUN_DIR/hold" ]; then
+    # A red/green self-test owns the fence right now.
+    return 0
+  fi
+  if ! ns_exists || ! nsx ip link show "$TAP" >/dev/null 2>&1; then net_up; fi
+  desired=$(render_ns_rules)
+  if [ ! -f "$STATE/fence.rules" ] || [ ! -f "$STATE/fence.golden" ] || [ "$desired" != "$(cat "$STATE/fence.rules")" ]; then
+    reason="fence written"
+    [ -f "$STATE/fence.rules" ] && reason="the host's addresses changed; fence rewritten"
+    link_cut
+    printf '%s\n' "$desired" >"$STATE/fence.rules"
+    if ! apply_ns_rules "$STATE/fence.rules"; then
+      write_guard_state failed "the fence could not be written"
+      log "FAILED: the fence could not be written; the guest stays cut off"
+      return 1
+    fi
+    live=$(ns_fingerprint)
+    if [ "$(expected_comments "$desired" | sort -u)" != "$(expected_comments "$live" | sort -u)" ]; then
+      write_guard_state failed "the fence did not read back as written"
+      log "FAILED: the fence did not read back as written; the guest stays cut off"
+      return 1
+    fi
+    printf '%s\n' "$live" >"$STATE/fence.golden"
+    link_connect
+    write_guard_state ok "$reason"
+    log "$reason; connected"
+  else
+    golden=$(cat "$STATE/fence.golden")
+    live=$(ns_fingerprint)
+    if [ "$live" = "$golden" ]; then
+      if ! tap_up; then
+        link_connect
+        log "match; connected"
+      fi
+      write_guard_state ok "match"
+    else
+      link_cut
+      log "DRIFT: the namespace no longer matches the fence; guest cut off. Diff: $(diff <(printf '%s\n' "$golden") <(printf '%s\n' "$live") | grep '^[<>]' | head -5 | tr '\n' ' ')"
+      apply_ns_rules "$STATE/fence.rules" || true
+      net_up
+      live=$(ns_fingerprint)
+      if [ "$live" = "$golden" ]; then
+        link_connect
+        write_guard_state ok "drift repaired"
+        log "fence restored, exact match; connected"
+      else
+        write_guard_state failed "drift that rewriting the fence did not repair"
+        log "FAILED: still no exact match after rewriting the fence; the guest stays cut off"
+        return 1
+      fi
+    fi
+  fi
+  host_rules_ensure
+  [ -s "$STATE/provisioned" ] && push_state_to_guest
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# The guest
+# ---------------------------------------------------------------------------
+
+guest_ssh() {
+  nsx ssh -q -i "$STATE/ssh/id_ed25519" -o BatchMode=yes -o ConnectTimeout=5 \
+    -o UserKnownHostsFile="$STATE/ssh/known_hosts" -o StrictHostKeyChecking=yes \
+    -o LogLevel=ERROR "cpvm@$GUEST_IP" "$@"
+}
+
+qemu_bin() {
+  local b
+  for b in qemu-system-x86_64 /usr/libexec/qemu-kvm /usr/bin/qemu-kvm; do
+    if has "$b"; then command -v "$b"; return 0; fi
+  done
+  return 1
+}
+
+qemu_args() {
+  local q=$1 drop=() sandbox=()
+  # -run-with took user= in QEMU 9.1; older ones have only -runas. The help
+  # wraps -run-with's options over several lines from QEMU 10.
+  if "$q" -help 2>/dev/null | grep -A3 -- '^-run-with' | grep -q 'user='; then
+    drop=(-run-with "user=$SVC_USER")
+  else
+    drop=(-runas "$SVC_USER")
+  fi
+  # No elevateprivileges=deny: QEMU drops to $SVC_USER after the filter is in
+  # place, and that setuid would be refused.
+  if "$q" -help 2>/dev/null | grep -q -- '^-sandbox'; then
+    sandbox=(-sandbox "on,obsolete=deny,spawn=deny,resourcecontrol=deny")
+  fi
+  local seed=()
+  if [ -f "$STATE/seed.img" ]; then
+    seed=(-drive "file=$STATE/seed.img,if=virtio,format=raw,readonly=on")
+  fi
+  # smm=off: SeaBIOS needs no System Management Mode here. With no VGA
+  # device, Debian's GRUB lands in SeaBIOS's SMM handler, which faults under
+  # KVM, and the guest resets right after "Booting". A VGA device also avoids
+  # it, but adds a device the guest does not need.
+  # free-page-reporting: the guest hands memory it frees back to the host, so
+  # the host pays for what the earners use, not for the first boot's peak.
+  printf '%s\0' -name cashpilot-vm,process=cashpilot-vm \
+    -machine q35,accel=kvm,smm=off -cpu host -smp "$VM_CPUS" -m "$VM_RAM_MB" \
+    -nodefaults -no-user-config -display none -vga none \
+    -chardev "file,id=con0,path=$STATE/console.log" -serial chardev:con0 \
+    -drive "file=$STATE/guest.qcow2,if=virtio,format=qcow2,discard=unmap" \
+    "${seed[@]}" \
+    -netdev "tap,id=net0,ifname=$TAP,script=no,downscript=no,vhost=on" \
+    -device "virtio-net-pci,netdev=net0,mac=$GUEST_MAC" \
+    -device virtio-rng-pci \
+    -device virtio-balloon-pci,free-page-reporting=on \
+    -qmp "unix:$RUN_DIR/qmp.sock,server=on,wait=off" \
+    -pidfile "$RUN_DIR/qemu.pid" \
+    "${drop[@]}" "${sandbox[@]}"
+}
+
+# Runs in the foreground (systemd) or, with --daemonize, detached (Unraid).
+guest_run() {
+  load_conf || die "not installed"
+  local q args=()
+  q=$(qemu_bin) || die "QEMU is not installed"
+  mkdir -p "$RUN_DIR"
+  ns_exists || net_up
+  # The console log is for first-boot problems; keep it small.
+  if [ -f "$STATE/console.log" ] && [ "$(stat -c %s "$STATE/console.log")" -gt 1048576 ]; then
+    : >"$STATE/console.log"
+  fi
+  touch "$STATE/console.log"; chown "$SVC_USER" "$STATE/console.log"
+  while IFS= read -r -d '' a; do args+=("$a"); done < <(qemu_args "$q")
+  if [ "${1:-}" = --daemonize ]; then
+    # Not QEMU's -daemonize: it forks after the sandbox is on, spawn=deny
+    # refuses that fork, and QEMU exits 1 without a word.
+    rm -f "$RUN_DIR/qemu.pid"
+    setsid ip netns exec "$NS" "$q" "${args[@]}" </dev/null >"$STATE/qemu.log" 2>&1 &
+    local i
+    for ((i = 0; i < 20; i++)); do
+      guest_pid >/dev/null && return 0
+      kill -0 $! 2>/dev/null || break
+      sleep 0.5
+    done
+    die "QEMU did not start: $(tail -n 3 "$STATE/qemu.log" 2>/dev/null)"
+  fi
+  exec ip netns exec "$NS" "$q" "${args[@]}"
+}
+
+guest_pid() {
+  local pid
+  [ -f "$RUN_DIR/qemu.pid" ] || return 1
+  pid=$(cat "$RUN_DIR/qemu.pid" 2>/dev/null) || return 1
+  [ -n "$pid" ] && [ -d "/proc/$pid" ] && grep -q cashpilot-vm "/proc/$pid/cmdline" 2>/dev/null && echo "$pid"
+}
+
+guest_stop() {
+  local pid i
+  pid=$(guest_pid) || return 0
+  guest_ssh "sudo systemctl poweroff" >/dev/null 2>&1 || true
+  for i in $(seq 1 60); do
+    [ -d "/proc/$pid" ] || return 0
+    sleep 1
+  done
+  kill "$pid" 2>/dev/null || true
+  for i in $(seq 1 10); do
+    [ -d "/proc/$pid" ] || return 0
+    sleep 1
+  done
+  kill -9 "$pid" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Service manager: systemd, or Unraid's boot file, event hooks and cron
+# ---------------------------------------------------------------------------
+
+svc_install() {
+  if is_unraid; then
+    unraid_install
+    return
+  fi
+  cat >/etc/systemd/system/cashpilot-vm-net.service <<EOF
+[Unit]
+Description=CashPilot Secure VM: network namespace and fence
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=$BIN net-up
+ExecStop=$BIN net-down
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  cat >/etc/systemd/system/cashpilot-vm.service <<EOF
+[Unit]
+Description=CashPilot Secure VM: the guest
+Requires=cashpilot-vm-net.service
+After=cashpilot-vm-net.service
+
+[Service]
+Type=simple
+ExecStart=$BIN run
+ExecStop=$BIN shutdown
+TimeoutStopSec=90
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  cat >/etc/systemd/system/cashpilot-vm-guard.service <<EOF
+[Unit]
+Description=CashPilot Secure VM: fence guard
+After=cashpilot-vm-net.service
+
+[Service]
+Type=oneshot
+ExecStart=$BIN guard
+EOF
+  cat >/etc/systemd/system/cashpilot-vm-guard.timer <<EOF
+[Unit]
+Description=CashPilot Secure VM: fence guard every 60 s
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable -q cashpilot-vm-net.service cashpilot-vm.service cashpilot-vm-guard.timer
+}
+
+svc_start() {
+  if is_unraid; then
+    "$BIN" net-up
+    guest_pid >/dev/null || "$BIN" run --daemonize
+  else
+    systemctl start cashpilot-vm-net.service
+    systemctl start cashpilot-vm-guard.timer
+    systemctl start cashpilot-vm.service
+  fi
+}
+
+svc_remove() {
+  if is_unraid; then
+    unraid_remove
+    return
+  fi
+  local u
+  for u in cashpilot-vm-guard.timer cashpilot-vm-guard.service cashpilot-vm.service cashpilot-vm-net.service; do
+    systemctl disable -q --now "$u" 2>/dev/null || true
+    rm -f "/etc/systemd/system/$u"
+  done
+  systemctl daemon-reload
+  systemctl reset-failed 2>/dev/null || true
+}
+
+readonly UNRAID_GO_LINE="bash /boot/config/cashpilot-vm/cashpilot-vm unraid-boot # cashpilot-vm"
+readonly UNRAID_EVENT_DIR=/usr/local/emhttp/plugins/cashpilot-vm/event
+# Unraid rebuilds root's crontab from these files (update_cron), so a line
+# added with crontab - would vanish at the next plugin or settings change.
+readonly UNRAID_CRON=/boot/config/plugins/dynamix/cashpilot-vm.cron
+
+unraid_install() {
+  cp "$BIN" "$CONF_DIR/cashpilot-vm"
+  if ! grep -qxF "$UNRAID_GO_LINE" /boot/config/go; then
+    [ -z "$(tail -c 1 /boot/config/go)" ] || echo >>/boot/config/go
+    echo "$UNRAID_GO_LINE" >>/boot/config/go
+  fi
+  unraid_boot
+}
+
+# From /boot/config/go at every boot: /usr/local is RAM, so the script, the
+# event hooks and the cron line are put back each time. The guest starts when
+# the array (which holds its disk) is mounted, and stops before it unmounts.
+unraid_boot() {
+  install -m 755 "$CONF_DIR/cashpilot-vm" "$BIN"
+  mkdir -p "$UNRAID_EVENT_DIR/disks_mounted" "$UNRAID_EVENT_DIR/unmounting_disks"
+  printf '#!/bin/bash\n%s start >/dev/null 2>&1 &\n' "$BIN" >"$UNRAID_EVENT_DIR/disks_mounted/cashpilot-vm"
+  printf '#!/bin/bash\n%s stop\n' "$BIN" >"$UNRAID_EVENT_DIR/unmounting_disks/cashpilot-vm"
+  chmod 755 "$UNRAID_EVENT_DIR"/*/cashpilot-vm
+  printf '# cashpilot-vm: the Secure VM guard\n* * * * * %s guard >/dev/null 2>&1\n' "$BIN" >"$UNRAID_CRON"
+  update_cron
+}
+
+unraid_remove() {
+  local tmp
+  rm -rf /usr/local/emhttp/plugins/cashpilot-vm
+  if [ -f "$UNRAID_CRON" ]; then rm -f "$UNRAID_CRON"; update_cron; fi
+  if grep -qxF "$UNRAID_GO_LINE" /boot/config/go; then
+    tmp=$(mktemp)
+    grep -vxF "$UNRAID_GO_LINE" /boot/config/go >"$tmp" || true
+    cat "$tmp" >/boot/config/go
+    rm -f "$tmp"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Install
+# ---------------------------------------------------------------------------
+
+usage() {
+  cat <<EOF
+cashpilot-vm $CPVM_VERSION: the Linux Secure VM for CashPilot
+
+  install --ui URL [--host-worker NAME] [--ref TAG] [--ram MB] [--cpus N]
+          [--disk GB] [--port PORT] [--worker-url URL] [--net 10.213.0] [--yes]
+  verify [--json] [--prove-red]
+  status [--json]
+  remove [--yes]
+
+Docs: $DOCS_URL
+EOF
+}
+
+pkg_install() {
+  # Packages per family for the commands this script needs.
+  local missing=() pm=
+  has apt-get && pm=apt
+  has dnf && pm=dnf
+  has pacman && pm=pacman
+  local cmd
+  for cmd in ip iptables iptables-save curl ssh ssh-keygen qemu-img mkfs.vfat mcopy flock; do
+    has "$cmd" || missing+=("$cmd")
+  done
+  qemu_bin >/dev/null || missing+=(qemu)
+  [ ${#missing[@]} -eq 0 ] && return 0
+  is_unraid && die "missing on this Unraid: ${missing[*]}"
+  local pkgs=()
+  case "$pm" in
+    apt) pkgs=(qemu-system-x86 qemu-utils dosfstools mtools iptables iproute2 curl openssh-client util-linux) ;;
+    dnf)
+      # By ID, not by grep: Rocky and Alma list fedora in ID_LIKE.
+      if grep -qx 'ID=fedora' /etc/os-release; then
+        pkgs=(qemu-system-x86-core qemu-img dosfstools mtools iptables-nft iproute curl openssh-clients util-linux)
+      else
+        pkgs=(qemu-kvm qemu-img dosfstools mtools iptables-nft iproute curl openssh-clients util-linux)
+      fi
+      ;;
+    pacman) pkgs=(qemu-base dosfstools mtools iptables iproute2 curl openssh util-linux) ;;
+    *) die "missing: ${missing[*]}. Install them with your package manager and run this again." ;;
+  esac
+  say "Installing: ${pkgs[*]}"
+  local out rc=0
+  case "$pm" in
+    apt) out=$( { DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get update -qq &&
+      DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq --no-install-recommends "${pkgs[@]}"; } 2>&1) || rc=$? ;;
+    dnf) out=$(dnf install -y -q "${pkgs[@]}" 2>&1) || rc=$? ;;
+    pacman) out=$(pacman -Sy --needed --noconfirm "${pkgs[@]}" 2>&1) || rc=$? ;;
+  esac
+  [ "$rc" = 0 ] || { printf '%s\n' "$out" | tail -20 >&2; die "the package install failed"; }
+  for cmd in ip iptables curl ssh qemu-img mkfs.vfat mcopy flock; do
+    has "$cmd" || die "$cmd is still missing after the install"
+  done
+  qemu_bin >/dev/null || die "QEMU is still missing after the install"
+}
+
+# The kernel modules behind every match and target the fence uses. Rocky
+# Linux 10's cloud image keeps xt_conntrack in kernel-modules-extra, which it
+# does not install, and without it the fence cannot be written at all.
+netfilter_modules() {
+  local m missing=()
+  for m in xt_conntrack xt_comment xt_tcpudp xt_addrtype xt_MASQUERADE xt_nat; do
+    modprobe -q "$m" 2>/dev/null || missing+=("$m")
+  done
+  [ ${#missing[@]} -eq 0 ] && return 0
+  if has dnf && ! is_unraid; then
+    say "Installing the running kernel's netfilter modules (kernel-modules-extra-$(uname -r))..."
+    dnf install -y -q "kernel-modules-extra-$(uname -r)" >/dev/null 2>&1 ||
+      die "the kernel lacks ${missing[*]}, and kernel-modules-extra for the running kernel ($(uname -r)) could not be installed. If a newer kernel is installed, reboot into it and run this again."
+    for m in "${missing[@]}"; do
+      modprobe -q "$m" || die "the kernel still cannot load $m after installing kernel-modules-extra"
+    done
+    return 0
+  fi
+  die "the kernel cannot load the netfilter modules the fence needs: ${missing[*]}"
+}
+
+mem_available_mb() { awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo; }
+disk_free_mb() { df -Pm "$1" | awk 'NR == 2 {print $4}'; }
+
+preflight() {
+  local arch
+  arch=$(uname -m)
+  [ "$arch" = x86_64 ] || die "this computer is $arch. The Secure VM supports x86_64 hosts for now. Use gVisor and the LAN fence instead: $DOCS_URL"
+  if [ ! -c /dev/kvm ]; then
+    die "this computer has no /dev/kvm, so it cannot run a fast VM. Many VPS plans and some small boards have no KVM.
+Use gVisor and the LAN fence instead; they need no VM: $DOCS_URL"
+  fi
+  if ! is_unraid && ! has systemctl; then
+    die "this computer has no systemd, which the Secure VM uses to start at boot"
+  fi
+  if load_conf 2>/dev/null; then
+    die "a Secure VM is already installed here (one per computer). Remove it first: cashpilot-vm remove"
+  fi
+  [ -n "$STATE" ] || die "no disk for the guest: set CPVM_HOME to a folder on a pool"
+}
+
+check_resources() {
+  local avail need free need_disk parent
+  avail=$(mem_available_mb)
+  need=$((VM_RAM_MB + 512))
+  if [ "$avail" -lt "$need" ]; then
+    die "not enough free memory: the guest needs ${VM_RAM_MB} MB and the host keeps 512 MB, ${need} MB in all; ${avail} MB is available now. Free some, or pass --ram with less (1024 at least)."
+  fi
+  parent=$STATE
+  while [ ! -d "$parent" ]; do parent=$(dirname "$parent"); done
+  free=$(disk_free_mb "$parent")
+  # The image (about 0.4 GB), the guest's first boot with Docker, gVisor and
+  # the worker (about 2.5 GB, measured), and room for earners' images.
+  need_disk=$((VM_DISK_GB * 1024 / 3 > 6144 ? VM_DISK_GB * 1024 / 3 : 6144))
+  if [ "$free" -lt "$need_disk" ]; then
+    die "not enough free disk at $parent: the guest needs ${need_disk} MB to start, ${free} MB is free."
+  fi
+  say "Memory: ${avail} MB free, the guest takes ${VM_RAM_MB} MB. Disk: ${free} MB free at $parent."
+}
+
+parse_url() {
+  # Sets UI_SCHEME, UI_HOST, UI_PORT.
+  local url=$1 rest hostport
+  [[ "$url" =~ ^(https?)://([^/]+)(/.*)?$ ]] || die "--ui must look like http://host:8080, not '$url'"
+  UI_SCHEME=${BASH_REMATCH[1]}
+  hostport=${BASH_REMATCH[2]}
+  rest=${hostport##*@}
+  if [[ "$rest" =~ ^\[ ]]; then die "the UI must be reachable over IPv4"; fi
+  UI_HOST=${rest%%:*}
+  if [[ "$rest" == *:* ]]; then UI_PORT=${rest##*:}; else
+    UI_PORT=80; [ "$UI_SCHEME" = https ] && UI_PORT=443
+  fi
+  [[ "$UI_PORT" =~ ^[0-9]+$ ]] || die "bad port in --ui"
+}
+
+resolve_ui() {
+  if is_ipv4 "$UI_HOST"; then UI_IP=$UI_HOST; return; fi
+  UI_IP=$(getent ahostsv4 "$UI_HOST" 2>/dev/null | awk 'NR == 1 {print $1}')
+  is_ipv4 "${UI_IP:-}" || die "cannot resolve $UI_HOST to an IPv4 address from this computer"
+}
+
+pick_host_port() {
+  local p
+  for p in ${HOST_PORT:-} 18081 18091 18181 28081; do
+    if ! ss -Htln "sport = :$p" 2>/dev/null | grep -q .; then HOST_PORT=$p; return; fi
+  done
+  die "no free port for the guest's worker; pass --port"
+}
+
+check_net_free() {
+  local r
+  while read -r r _; do
+    case "$r" in default) continue ;; */*) ;; *) r="$r/32" ;; esac
+    if cidr_overlap "$r" "$NET_BASE.0/29"; then
+      die "$NET_BASE.0/29 overlaps $r on this computer; pass --net with another 10.x.y prefix"
+    fi
+  done < <(ip -4 route show table all | awk '$1 != "local" && $1 != "broadcast" {print $1} $1 == "local" || $1 == "broadcast" {print $2}')
+}
+
+download_image() {
+  mkdir -p "$STATE/image"
+  local img="$STATE/image/debian-13-genericcloud-amd64-$IMAGE_SERIAL.qcow2"
+  if [ ! -f "$img" ]; then
+    say "Downloading the Debian 13 cloud image ($IMAGE_SERIAL)..."
+    curl -fL --retry 3 -sS -o "$img.part" "$IMAGE_URL_AMD64"
+    mv "$img.part" "$img.unchecked"
+    img_tmp="$img.unchecked"
+  else
+    img_tmp="$img"
+  fi
+  echo "$IMAGE_SHA512_AMD64  $img_tmp" | sha512sum -c --quiet - ||
+    { rm -f "$img_tmp"; die "the image's SHA-512 does not match the pinned one; nothing was started"; }
+  [ "$img_tmp" = "$img" ] || mv "$img_tmp" "$img"
+  say "Image checksum matches the pinned SHA-512."
+  BASE_IMAGE=$img
+}
+
+write_seed() {
+  local d
+  d=$(mktemp -d)
+  local api_key=$1 guest_hostkey_priv guest_hostkey_pub host_pub hosts_line=""
+  host_pub=$(cat "$STATE/ssh/id_ed25519.pub")
+  guest_hostkey_priv=$(sed 's/^/      /' "$STATE/ssh/guest_host_ed25519")
+  guest_hostkey_pub=$(cat "$STATE/ssh/guest_host_ed25519.pub")
+  if ! is_ipv4 "$UI_HOST"; then hosts_line="$UI_IP $UI_HOST"; fi
+  cat >"$d/meta-data" <<EOF
+instance-id: cashpilot-vm-$(date +%s)
+local-hostname: cashpilot-vm
+EOF
+  cat >"$d/network-config" <<EOF
+version: 2
+ethernets:
+  nic0:
+    match:
+      macaddress: "$GUEST_MAC"
+    addresses: [$GUEST_IP/30]
+    routes:
+      - to: default
+        via: $TAP_GW
+    nameservers:
+      addresses: [1.1.1.1, 9.9.9.9]
+EOF
+  cat >"$d/user-data" <<EOF
+#cloud-config
+hostname: cashpilot-vm
+ssh_pwauth: false
+disable_root: true
+users:
+  - name: cpvm
+    lock_passwd: true
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys:
+      - $host_pub
+ssh_deletekeys: true
+ssh_genkeytypes: []
+ssh_keys:
+  ed25519_private: |
+$guest_hostkey_priv
+  ed25519_public: $guest_hostkey_pub
+package_update: true
+package_upgrade: true
+packages: [docker.io, docker-compose, zstd, curl, ca-certificates, unattended-upgrades, nftables]
+write_files:
+  - path: /etc/sysctl.d/90-cashpilot-vm.conf
+    content: |
+      net.ipv6.conf.all.disable_ipv6 = 1
+      net.ipv6.conf.default.disable_ipv6 = 1
+  - path: /opt/cashpilot/.env
+    permissions: "0600"
+    content: |
+      CASHPILOT_UI_URL=$UI_URL
+      CASHPILOT_API_KEY=$api_key
+      CASHPILOT_WORKER_NAME=$WORKER_NAME
+      CASHPILOT_WORKER_URL=$WORKER_URL
+      CASHPILOT_WORKER_BIND_ADDR=0.0.0.0
+      CASHPILOT_COMPOSE_DIR=/opt/cashpilot
+      CASHPILOT_PROXY_BIND_MOUNTS=/run/cashpilot-vm
+      CASHPILOT_SECURE_VM_OF=$HOST_WORKER
+  # The worker drops root, and this is the one folder it may write for the
+  # host: a self-test request. Anyone may add a file there, nobody may list it.
+  - path: /etc/tmpfiles.d/cashpilot-vm.conf
+    content: |
+      d /run/cashpilot-vm-ask 1733 root root -
+  - path: /opt/cashpilot/docker-compose.override.yml
+    content: |
+      services:
+        cashpilot-worker:
+          environment:
+            - CASHPILOT_SECURE_VM_OF=\${CASHPILOT_SECURE_VM_OF}
+            - CASHPILOT_ISOLATION=on
+            - CASHPILOT_CONTAINER_RUNTIME=runsc-hostnet
+            - CASHPILOT_CONTAINER_RUNTIME_OVERRIDES=bitping=runsc-hostnet-raw
+          volumes:
+            - type: bind
+              source: /run/cashpilot-vm
+              target: /run/cashpilot-vm
+              read_only: true
+              bind:
+                create_host_path: true
+            - type: bind
+              source: /run/cashpilot-vm-ask
+              target: /run/cashpilot-vm-ask
+              bind:
+                create_host_path: true
+  - path: /usr/local/sbin/cashpilot-vm-provision
+    permissions: "0700"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      exec >>/var/log/cashpilot-vm-provision.log 2>&1
+      # The host waits for one of the two markers, so a failure ends its wait.
+      trap 'echo "provision failed at line \$LINENO"; date -Is >/var/lib/cashpilot-vm-provision-failed' ERR
+      retry() { local i; for i in 1 2 3 4 5; do "\$@" && return 0; sleep 15; done; return 1; }
+      echo "provision start \$(date -Is)"
+      ${hosts_line:+grep -qF "$hosts_line" /etc/hosts || echo "$hosts_line" >>/etc/hosts}
+      sysctl -q --system
+      systemd-tmpfiles --create /etc/tmpfiles.d/cashpilot-vm.conf
+      arch=\$(uname -m)
+      url=https://storage.googleapis.com/gvisor/releases/release/$GVISOR_RELEASE/\$arch
+      cd /tmp
+      curl -fsSL --retry 3 -o gvisor.tar.zstd "\$url/gvisor.tar.zstd"
+      echo "$GVISOR_SHA512_X86_64  gvisor.tar.zstd" | sha512sum -c --quiet -
+      tar --zstd -xf gvisor.tar.zstd -C /usr/local/bin
+      rm -f gvisor.tar.zstd
+      chmod 755 /usr/local/bin/runsc /usr/local/bin/containerd-shim-runsc-v1
+      cat >/etc/docker/daemon.json <<'JSON'
+      {
+        "runtimes": {
+          "runsc": {"path": "/usr/local/bin/runsc"},
+          "runsc-hostnet": {"path": "/usr/local/bin/runsc", "runtimeArgs": ["--network=host"]},
+          "runsc-hostnet-raw": {"path": "/usr/local/bin/runsc", "runtimeArgs": ["--network=host", "--net-raw"]}
+        },
+        "bip": "$GUEST_DOCKER_BIP",
+        "default-address-pools": [{"base": "$GUEST_DOCKER_POOL", "size": 24}],
+        "log-driver": "json-file",
+        "log-opts": {"max-size": "10m", "max-file": "3"}
+      }
+      JSON
+      systemctl restart docker
+      cd /opt/cashpilot
+      curl -fsSL --retry 3 -o docker-compose.worker.yml https://raw.githubusercontent.com/GeiserX/CashPilot/$REF/docker-compose.worker.yml
+      echo "$COMPOSE_SHA256  docker-compose.worker.yml" | sha256sum -c --quiet -
+      mkdir -p /run/cashpilot-vm
+      if docker compose version >/dev/null 2>&1; then dc="docker compose"; else dc=docker-compose; fi
+      retry \$dc -f docker-compose.worker.yml -f docker-compose.override.yml pull -q
+      # gVisor must start a container before any earner relies on it. The
+      # worker's own pinned image serves; nothing else is pulled.
+      img=\$(\$dc -f docker-compose.worker.yml -f docker-compose.override.yml config --images | grep -m1 cashpilot-worker)
+      docker run --rm --runtime=runsc --network=none --entrypoint /bin/true "\$img"
+      \$dc -f docker-compose.worker.yml -f docker-compose.override.yml up -d
+      touch /etc/cloud/cloud-init.disabled
+      rm -f /var/lib/cloud/instance/user-data.txt /var/lib/cloud/instance/user-data.txt.i
+      echo "provision done \$(date -Is)"
+      date -Is >/var/lib/cashpilot-vm-provisioned
+runcmd:
+  - [/usr/local/sbin/cashpilot-vm-provision]
+EOF
+  rm -f "$STATE/seed.img"
+  mkfs.vfat -n CIDATA -C "$STATE/seed.img" 2048 >/dev/null
+  mcopy -i "$STATE/seed.img" "$d/user-data" "$d/meta-data" "$d/network-config" ::
+  rm -rf "$d"
+  chown "$SVC_USER" "$STATE/seed.img"
+  chmod 600 "$STATE/seed.img"
+}
+
+ensure_user() {
+  if ! id "$SVC_USER" >/dev/null 2>&1; then
+    if has useradd; then
+      useradd --system --no-create-home --home-dir "$STATE" --shell /usr/sbin/nologin "$SVC_USER" 2>/dev/null ||
+        useradd -r -M -d "$STATE" -s /bin/false "$SVC_USER"
+    else
+      die "cannot create the user $SVC_USER: no useradd"
+    fi
+  fi
+  if getent group kvm >/dev/null; then usermod -aG kvm "$SVC_USER" 2>/dev/null || true; fi
+}
+
+first_boot_over() {
+  guest_ssh "test -s /var/lib/cashpilot-vm-provisioned || test -e /var/lib/cashpilot-vm-provision-failed"
+}
+
+wait_for() {
+  # wait_for SECONDS DESCRIPTION COMMAND...
+  local secs=$1 what=$2 i
+  shift 2
+  for ((i = 0; i < secs; i += 5)); do
+    if "$@" >/dev/null 2>&1; then return 0; fi
+    sleep 5
+  done
+  die "timed out after ${secs} s waiting for $what. The guest's console log: $STATE/console.log"
+}
+
+cmd_install() {
+  local UI_URL="" HOST_WORKER="" WORKER_URL="" REF="main" VM_RAM_MB=2048 VM_CPUS=2 VM_DISK_GB=20 HOST_PORT="" yes=0
+  NET_BASE=10.213.0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --ui) UI_URL=$2; shift 2 ;;
+      --host-worker) HOST_WORKER=$2; shift 2 ;;
+      --worker-url) WORKER_URL=$2; shift 2 ;;
+      --ref) REF=$2; shift 2 ;;
+      --ram) VM_RAM_MB=$2; shift 2 ;;
+      --cpus) VM_CPUS=$2; shift 2 ;;
+      --disk) VM_DISK_GB=$2; shift 2 ;;
+      --port) HOST_PORT=$2; shift 2 ;;
+      --net) NET_BASE=$2; shift 2 ;;
+      --yes|-y) yes=1; shift ;;
+      *) die "unknown option $1 (cashpilot-vm help)" ;;
+    esac
+  done
+  [ -n "$UI_URL" ] || die "--ui is required: the URL of your CashPilot UI, as your workers use it"
+  [[ "$VM_RAM_MB" =~ ^[0-9]+$ ]] && [ "$VM_RAM_MB" -ge 1024 ] || die "--ram must be 1024 MB or more"
+  [[ "$VM_CPUS" =~ ^[0-9]+$ ]] && [ "$VM_CPUS" -ge 1 ] || die "--cpus must be 1 or more"
+  [[ "$VM_DISK_GB" =~ ^[0-9]+$ ]] && [ "$VM_DISK_GB" -ge 10 ] || die "--disk must be 10 GB or more"
+  [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]] || die "bad --ref"
+  [[ "$NET_BASE" =~ ^10\.([0-9]{1,3})\.([0-9]{1,2})$ ]] && [ "${BASH_REMATCH[1]}" -le 255 ] && [ "${BASH_REMATCH[2]}" -lt 63 ] ||
+    die "--net must be 10.x.y with y below 63 (the guest's Docker networks use 10.x.63.0 and up)"
+  derive_net
+  preflight
+  HOST_WORKER=${HOST_WORKER:-$(hostname -s)}
+  [[ "$HOST_WORKER" =~ ^[A-Za-z0-9._\ -]+$ ]] || die "--host-worker may hold letters, digits, spaces, dots, dashes and underscores"
+  local WORKER_NAME="$HOST_WORKER-secure-vm"
+  parse_url "$UI_URL"
+  UI_URL="${UI_URL%/}"
+  check_resources
+  pkg_install
+  netfilter_modules
+  resolve_ui
+  check_net_free
+  if in_cidr "$UI_IP" "${NET_BASE%.*}.0.0/16"; then
+    die "the UI's address $UI_IP is inside ${NET_BASE%.*}.0.0/16, which the guest uses; pass --net with another 10.x.y prefix"
+  fi
+  pick_host_port
+  local UI_LOCAL=0 WORKER_URL_HOST
+  if ip -4 -o addr show | awk '{split($4, a, "/"); print a[1]}' | grep -qxF "$UI_IP" || in_cidr "$UI_IP" 127.0.0.0/8; then
+    UI_LOCAL=1
+  fi
+  if in_cidr "$UI_IP" 127.0.0.0/8; then
+    die "--ui points at loopback. Give the address your other workers use, such as http://<this computer's LAN IP>:8080, so the guest can reach it."
+  fi
+  WORKER_URL_HOST=$(ip -4 route get "$UI_IP" | { grep -o 'src [0-9.]*' || true; } | awk '{print $2}')
+  [ "$UI_LOCAL" = 1 ] && WORKER_URL_HOST=$UI_IP
+  is_ipv4 "$WORKER_URL_HOST" || die "cannot tell which of this computer's addresses the UI reaches"
+  # The address the UI reaches this computer's forwarded port on. Behind NAT
+  # or a port forward, --worker-url says it.
+  WORKER_URL=${WORKER_URL:-http://$WORKER_URL_HOST:$HOST_PORT}
+  [[ "$WORKER_URL" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || die "--worker-url must look like http://host:port"
+  if ! curl -fsS --max-time 10 -o /dev/null "$UI_URL/api/health" 2>/dev/null; then
+    warn "the UI at $UI_URL did not answer /api/health from this computer. Continuing; the guest's worker will retry."
+  fi
+
+  cat <<EOF
+
+This installs one Secure VM on this computer:
+  guest      Debian 13, ${VM_RAM_MB} MB RAM, ${VM_CPUS} CPUs, ${VM_DISK_GB} GB disk (grows as used), at $STATE
+  worker     "$WORKER_NAME", the Secure VM of "$HOST_WORKER", reporting to $UI_URL
+  network    namespace $NS; the guest reaches the internet only, plus $UI_IP:$UI_PORT (the UI)
+  this host  forwards port $HOST_PORT to the guest's worker ($WORKER_URL); a guard checks the fence every 60 s
+  boot       starts with this computer
+Remove it all with: cashpilot-vm remove
+
+EOF
+  if [ "$yes" != 1 ]; then
+    [ -r /dev/tty ] || die "pass --yes to install without a terminal"
+    local answer
+    read -r -p "Continue? [y/N] " answer </dev/tty
+    [[ "$answer" =~ ^[Yy] ]] || die "nothing was changed"
+  fi
+  local api_key="${CASHPILOT_API_KEY:-}"
+  if [ -z "$api_key" ]; then
+    [ -r /dev/tty ] || die "set CASHPILOT_API_KEY or run this from a terminal"
+    read -r -s -p "Paste your fleet key (the CASHPILOT_API_KEY your workers use): " api_key </dev/tty
+    echo
+  fi
+  [ ${#api_key} -ge 16 ] || die "that key is too short"
+  [[ "$api_key" =~ ^[A-Za-z0-9._~+/=-]+$ ]] || die "that key has characters a fleet key does not have"
+
+  say "Setting up..."
+  ensure_user
+  mkdir -p "$STATE" "$CONF_DIR" "$STATE/ssh" "$RUN_DIR"
+  chmod 700 "$STATE" "$CONF_DIR" "$STATE/ssh"
+  download_image
+  qemu-img create -q -f qcow2 -F qcow2 -b "$BASE_IMAGE" "$STATE/guest.qcow2" "${VM_DISK_GB}G"
+  ssh-keygen -q -t ed25519 -N "" -C cashpilot-vm-host -f "$STATE/ssh/id_ed25519"
+  ssh-keygen -q -t ed25519 -N "" -C cashpilot-vm-guest -f "$STATE/ssh/guest_host_ed25519"
+  printf '%s %s\n' "$GUEST_IP" "$(cut -d' ' -f1,2 "$STATE/ssh/guest_host_ed25519.pub")" >"$STATE/ssh/known_hosts"
+  write_seed "$api_key"
+  unset api_key
+  rm -f "$STATE/ssh/guest_host_ed25519"
+  chown "$SVC_USER" "$STATE" "$STATE/guest.qcow2"
+  chmod 640 "$BASE_IMAGE"; chgrp "$SVC_USER" "$BASE_IMAGE" 2>/dev/null || chown "$SVC_USER" "$BASE_IMAGE"
+  chmod 750 "$STATE/image"; chgrp "$SVC_USER" "$STATE/image" 2>/dev/null || chown "$SVC_USER" "$STATE/image"
+  if has restorecon && has selinuxenabled && selinuxenabled; then
+    if has semanage && semanage fcontext -a -t virt_image_t "$STATE(/.*)?" 2>/dev/null; then
+      restorecon -R "$STATE" 2>/dev/null || true
+    else
+      chcon -R -t virt_image_t "$STATE" 2>/dev/null || true
+    fi
+  fi
+  cat >"$CONF" <<EOF
+# cashpilot-vm $CPVM_VERSION, installed $(date -Is)
+CPVM_HOME=$STATE
+UI_URL=$UI_URL
+UI_IP=$UI_IP
+UI_PORT=$UI_PORT
+UI_LOCAL=$UI_LOCAL
+HOST_WORKER="$HOST_WORKER"
+WORKER_NAME="$WORKER_NAME"
+HOST_PORT=$HOST_PORT
+NET_BASE=$NET_BASE
+VM_RAM_MB=$VM_RAM_MB
+VM_CPUS=$VM_CPUS
+VM_DISK_GB=$VM_DISK_GB
+REF=$REF
+EOF
+  local self
+  self=$(readlink -f "$0")
+  grep -q '^readonly CPVM_VERSION=' "$self" 2>/dev/null || die "run this script from its file (sudo bash cashpilot-vm install ...), not from a pipe"
+  install -m 755 "$self" "$BIN"
+  svc_install
+  say "Writing the fence and starting the guest..."
+  svc_start
+  wait_for 60 "the fence" tap_up
+  say "Fence written and checked. First boot installs Docker, gVisor and the worker (a few minutes)..."
+  wait_for 1200 "the guest to finish its first boot" first_boot_over
+  if ! guest_ssh test -s /var/lib/cashpilot-vm-provisioned; then
+    die "the guest's first boot failed. Its log ends: $(guest_ssh 'sudo tail -4 /var/log/cashpilot-vm-provision.log' 2>/dev/null | tr '\n' ' '). Run cashpilot-vm remove, then install again."
+  fi
+  rm -f "$STATE/seed.img"
+  say "First boot done. Waiting for the worker to enrol with the UI..."
+  wait_for 300 "the worker to enrol" guest_ssh "sudo docker exec cashpilot-worker test -s /data/.worker_key"
+  date -Is >"$STATE/provisioned"
+  guard_pass >/dev/null || true
+  say ""
+  say "The Secure VM is running and enrolled as \"$WORKER_NAME\"."
+  cmd_status
+  say ""
+  say "Running the self-test..."
+  cmd_verify || true
+}
+
+# ---------------------------------------------------------------------------
+# Verify: red/green self-test from inside the guest
+# ---------------------------------------------------------------------------
+
+# One probe: "ip port". Prints reached, blocked or the error.
+# shellcheck disable=SC2016 # runs in the guest, expands there
+readonly PROBE_SCRIPT='
+probe() {
+  out=$(timeout 3 bash -c "exec 3<>/dev/tcp/$1/$2" 2>&1); rc=$?
+  if [ $rc = 0 ]; then echo "$1 $2 reached"
+  elif [ $rc = 124 ]; then echo "$1 $2 blocked"
+  elif echo "$out" | grep -qi refused; then echo "$1 $2 reached"
+  else echo "$1 $2 error:$(echo "$out" | tail -1 | tr " " "_")"; fi
+}
+while read -r ip port; do [ -n "$ip" ] && probe "$ip" "$port" & done
+wait
+'
+
+# name ip port: what the guest must NOT reach. Each comes with a live control.
+probe_targets() {
+  local ip gw port n=0 nb p
+  # The host's own addresses, on a port that listens there.
+  port=$(ss -Htln 2>/dev/null | awk '{print $4}' | { grep -E '^(0\.0\.0\.0|\*):' || true; } | sed 's/.*://' | sort -n | head -1)
+  for ip in $(host_addrs); do
+    echo "host $ip ${port:-22}"
+  done
+  echo "host-veth $VH_IP ${port:-22}"
+  echo "namespace-gateway $TAP_GW 22"
+  gw=$(ip -4 route show default | awk 'NR == 1 {print $3}')
+  if [ -n "$gw" ]; then
+    for p in 53 80 443; do echo "lan-gateway $gw $p"; done
+  fi
+  for nb in $(ip -4 neigh show nud reachable nud stale nud delay 2>/dev/null | awk '{print $1}' | grep -v -e "^$gw$" -e "^${NET_BASE//./\\.}\." | sort -u | head -4); do
+    for p in 22 80 443 445; do echo "lan-device $nb $p"; done
+    n=$((n + 1))
+  done
+  if ip link show tailscale0 >/dev/null 2>&1; then
+    echo "tailnet-dns 100.100.100.100 53"
+  fi
+  echo "metadata 169.254.169.254 80"
+  ip=$(cat "$STATE/egress" 2>/dev/null || true)
+  if [ -n "$ip" ]; then
+    echo "home-public-ip $ip 80"
+    echo "home-public-ip $ip 443"
+  fi
+}
+
+run_probes_from_guest() {
+  # stdin: "ip port" lines
+  guest_ssh "bash -c '$PROBE_SCRIPT'"
+}
+
+# The controls: the same targets from outside the fence, from the namespace
+# (the guest's own path, minus the fence) and from the host. A target counts
+# as live when either reaches it, so a blocked result in the guest means the
+# fence stopped it, not that nothing was there.
+run_controls() {
+  local in
+  in=$(cat)
+  { nsx bash -c "$PROBE_SCRIPT" <<<"$in"; bash -c "$PROBE_SCRIPT" <<<"$in"; } |
+    awk '{k = $1 " " $2} $3 == "reached" {r[k] = 1} {s[k] = $3} END {for (k in s) print k, (r[k] ? "reached" : s[k])}'
+}
+
+# Returns 0 when every forbidden target is blocked and the internet works.
+selftest_once() {
+  local label=$1 targets controls results name ip port c r bad=0 lines="" ui
+  targets=$(probe_targets)
+  controls=$(awk '{print $2, $3}' <<<"$targets" | run_controls | sort -u)
+  results=$(awk '{print $2, $3}' <<<"$targets" | run_probes_from_guest | sort -u)
+  while read -r name ip port; do
+    c=$(awk -v i="$ip" -v p="$port" '$1 == i && $2 == p {print $3}' <<<"$controls")
+    r=$(awk -v i="$ip" -v p="$port" '$1 == i && $2 == p {print $3}' <<<"$results")
+    if [ "$r" = reached ]; then
+      bad=1; lines+="FAIL  $name $ip:$port reached from the guest"$'\n'
+    elif [ "$c" = reached ]; then
+      lines+="ok    $name $ip:$port blocked (reachable from outside the fence)"$'\n'
+    else
+      lines+="ok    $name $ip:$port blocked (no live control: ${c:-none})"$'\n'
+    fi
+  done <<<"$targets"
+  ui=$(echo "$UI_IP $UI_PORT" | run_probes_from_guest | awk '{print $3}')
+  if [ "$ui" = reached ]; then lines+="ok    ui $UI_IP:$UI_PORT reachable (the one allowed hole)"$'\n'
+  else bad=1; lines+="FAIL  ui $UI_IP:$UI_PORT not reachable: the worker cannot report ($ui)"$'\n'; fi
+  if guest_ssh "getent ahostsv4 deb.debian.org >/dev/null && curl -fsS --max-time 10 -o /dev/null https://deb.debian.org/"; then
+    lines+="ok    internet https://deb.debian.org/ by name"$'\n'
+  else
+    bad=1; lines+="FAIL  internet by name does not work"$'\n'
+  fi
+  SELFTEST_LINES="$lines"
+  [ "$label" = quiet ] || printf '%s' "$lines"
+  return $bad
+}
+
+guest_layers() {
+  local rt fence
+  rt=$(guest_ssh "sudo docker info --format '{{range \$k, \$v := .Runtimes}}{{\$k}} {{end}}'" 2>/dev/null || true)
+  fence=$(guest_ssh "sudo docker exec cashpilot-worker python -c 'import json,urllib.request;print(json.load(urllib.request.urlopen(\"http://127.0.0.1:8081/api/health\")).get(\"status\"))'" 2>/dev/null || true)
+  if [[ " $rt " == *" runsc-hostnet "* ]]; then say "ok    gVisor registered in the guest ($rt)"; else say "FAIL  gVisor is not registered in the guest"; return 1; fi
+  if guest_ssh "sudo nft list table ip cashpilot" >/dev/null 2>&1; then
+    say "ok    the guest's own LAN fence (table ip cashpilot) is in place"
+  else
+    say "note  the guest's own LAN fence appears with the first earner"
+  fi
+  say "      worker health: ${fence:-unknown}"
+}
+
+# The last self-test, for the UI: written into the guest, where the worker
+# reports it with its heartbeat.
+save_selftest() {
+  local rc=$1 line failed=""
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    failed+="${failed:+, }$(json_str "$line")"
+  done < <(grep '^FAIL' <<<"$SELFTEST_LINES" || true)
+  mkdir -p "$RUN_DIR"
+  printf '{"ok": %s, "checked_at": %s, "failed": [%s]}\n' \
+    "$([ "$rc" = 0 ] && echo true || echo false)" "$(date +%s)" "$failed" >"$RUN_DIR/selftest.json"
+  guest_ssh "sudo mkdir -p /run/cashpilot-vm && sudo tee /run/cashpilot-vm/selftest.json >/dev/null" \
+    <"$RUN_DIR/selftest.json" 2>/dev/null || true
+}
+
+# The UI asks through the guest's worker, which can only leave a file in the
+# guest. The guard looks for it after each pass and runs one self-test, at
+# most every 5 minutes.
+selftest_if_asked() {
+  local now last=0 rc=0
+  load_conf || return 0
+  [ -s "$STATE/provisioned" ] && [ ! -f "$RUN_DIR/hold" ] && tap_up || return 0
+  guest_ssh "test -e /run/cashpilot-vm-ask/selftest" 2>/dev/null || return 0
+  guest_ssh "sudo rm -f /run/cashpilot-vm-ask/selftest" 2>/dev/null || true
+  now=$(date +%s)
+  [ -f "$RUN_DIR/selftest.last" ] && read -r last <"$RUN_DIR/selftest.last" || true
+  if [ $((now - last)) -lt 300 ]; then
+    log "self-test asked again within 5 minutes; skipped"
+    return 0
+  fi
+  echo "$now" >"$RUN_DIR/selftest.last"
+  selftest_once quiet || rc=1
+  save_selftest "$rc"
+  if [ "$rc" = 0 ]; then log "self-test from the UI: green"; else log "self-test from the UI: RED: $(grep '^FAIL' <<<"$SELFTEST_LINES" | head -3 | tr '\n' ' ')"; fi
+}
+
+cmd_verify() {
+  local json=0 red=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) json=1 ;;
+      --prove-red) red=1 ;;
+      *) die "unknown option $1" ;;
+    esac
+    shift
+  done
+  need_root
+  load_conf || die "not installed"
+  guest_pid >/dev/null || die "the guest is not running"
+  tap_up || die "the guest is cut off right now (the guard found drift); see: cashpilot-vm status"
+  if [ "$red" = 1 ]; then
+    # Only on a throwaway host: the fence is opened for the length of one probe run.
+    say "RED: opening the fence for one probe run. Nothing else changes; the guard writes it back."
+    mkdir -p "$RUN_DIR"; touch "$RUN_DIR/hold"
+    trap 'rm -f "$RUN_DIR/hold"; guard_pass >/dev/null || true' EXIT
+    nsx iptables -P FORWARD ACCEPT
+    nsx iptables -I FORWARD 1 -m comment --comment cpvm:red-test -j ACCEPT
+    # The host's own drop for the veth is a second layer; open it too.
+    iptables -w -I CPVM-IN 1 -m comment --comment cpvm:red-test -j ACCEPT
+    if selftest_once loud; then
+      say "RED FAILED: with the fence open the guest still reached nothing, so these probes cannot tell."
+    else
+      say "RED as expected: with the fence open the guest reaches the targets above."
+    fi
+    rm -f "$RUN_DIR/hold"
+    guard_pass >/dev/null
+    trap - EXIT
+    tap_up || die "the guard did not reconnect the guest after the red run"
+    say "Fence written back by the guard (exact match). GREEN run:"
+  fi
+  if [ "$json" = 1 ]; then
+    local rc=0
+    selftest_once quiet || rc=1
+    save_selftest "$rc"
+    printf '{"ok": %s, "checked_at": %s, "lines": %s}\n' "$([ $rc = 0 ] && echo true || echo false)" "$(date +%s)" "$(json_str "$SELFTEST_LINES")"
+    return $rc
+  fi
+  local rc=0
+  selftest_once loud || rc=1
+  save_selftest "$rc"
+  guest_layers || rc=1
+  if [ $rc = 0 ]; then say "GREEN: nothing outside the guest is reachable except the UI, and the internet works."; else say "RED: see the FAIL lines above."; fi
+  return $rc
+}
+
+# ---------------------------------------------------------------------------
+# Status and remove
+# ---------------------------------------------------------------------------
+
+cmd_status() {
+  local json=0 pid rss="" disk="" fence="unknown" guest=stopped
+  [ "${1:-}" = --json ] && json=1
+  if ! load_conf; then
+    if [ "$json" = 1 ]; then echo '{"installed": false}'; else say "No Secure VM is installed on this computer."; fi
+    return 0
+  fi
+  if pid=$(guest_pid); then
+    guest=running
+    rss=$(awk '/^VmRSS:/ {print int($2 / 1024)}' "/proc/$pid/status")
+  fi
+  disk=$(du -sm "$STATE" 2>/dev/null | awk '{print $1}')
+  [ -f "$RUN_DIR/fence.json" ] && fence=$(sed -E 's/.*"state": "([^"]*)".*/\1/' "$RUN_DIR/fence.json")
+  if [ "$json" = 1 ]; then
+    printf '{"installed": true, "guest": "%s", "fence": "%s", "worker": %s, "host_worker": %s, "ram_mb": %s, "rss_mb": %s, "disk_mb": %s, "port": %s}\n' \
+      "$guest" "$fence" "$(json_str "$WORKER_NAME")" "$(json_str "$HOST_WORKER")" "$VM_RAM_MB" "${rss:-null}" "${disk:-null}" "$HOST_PORT"
+    return 0
+  fi
+  say "Secure VM \"$WORKER_NAME\" (the Secure VM of \"$HOST_WORKER\")"
+  say "  guest:  $guest${rss:+, using ${rss} MB of RAM on the host (of ${VM_RAM_MB} MB given)}"
+  say "  disk:   ${disk:-?} MB at $STATE"
+  say "  fence:  $fence$(tap_up 2>/dev/null && echo ', guest connected' || echo ', guest cut off')"
+  say "  worker: port $HOST_PORT on this computer"
+}
+
+leftovers() {
+  local left=()
+  ns_exists && left+=("network namespace $NS")
+  ip link show "$VETH_HOST" >/dev/null 2>&1 && left+=("interface $VETH_HOST")
+  iptables-save 2>/dev/null | grep -q -e CPVM -e "$TAG" && left+=("host firewall rules")
+  for u in cashpilot-vm.service cashpilot-vm-net.service cashpilot-vm-guard.service cashpilot-vm-guard.timer; do
+    [ -e "/etc/systemd/system/$u" ] && left+=("unit $u")
+  done
+  [ -e "$STATE" ] && left+=("folder $STATE")
+  [ -e "$CONF_DIR" ] && left+=("folder $CONF_DIR")
+  [ -e "$BIN" ] && left+=("file $BIN")
+  [ -e "$RUN_DIR" ] && left+=("folder $RUN_DIR")
+  pgrep -f 'process=cashpilot-vm' >/dev/null 2>&1 && left+=("a running guest")
+  id "$SVC_USER" >/dev/null 2>&1 && left+=("user $SVC_USER")
+  if is_unraid; then
+    grep -qF '# cashpilot-vm' /boot/config/go && left+=("line in /boot/config/go")
+    crontab -l 2>/dev/null | grep -q cashpilot-vm && left+=("cron line")
+    [ -e "$UNRAID_CRON" ] && left+=("file $UNRAID_CRON")
+    [ -e /usr/local/emhttp/plugins/cashpilot-vm ] && left+=("event hooks")
+  fi
+  if has firewall-cmd && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --permanent --zone=trusted --list-interfaces 2>/dev/null | grep -qw "$VETH_HOST" && left+=("firewalld trusted interface")
+  fi
+  printf '%s\n' "${left[@]}"
+}
+
+cmd_remove() {
+  local yes=0
+  [ "${1:-}" = --yes ] || [ "${1:-}" = -y ] && yes=1
+  need_root
+  if load_conf; then
+    if [ "$yes" != 1 ] && [ -r /dev/tty ]; then
+      local answer
+      read -r -p "Remove the Secure VM \"$WORKER_NAME\", its disk and its earners? [y/N] " answer </dev/tty
+      [[ "$answer" =~ ^[Yy] ]] || die "nothing was changed"
+    fi
+    # Ask the UI to forget this worker, with the worker's own key. The worker
+    # stops first: a heartbeat still on its way would write the worker back
+    # after the UI deleted it. A one-shot copy with the worker's data and
+    # settings then sends the request.
+    if guest_pid >/dev/null && tap_up; then
+      # shellcheck disable=SC2016 # expands in the guest
+      if guest_ssh 'set -e; e=$(mktemp); trap "rm -f $e" EXIT
+        sudo docker inspect -f "{{range .Config.Env}}{{println .}}{{end}}" cashpilot-worker >"$e"
+        img=$(sudo docker inspect -f "{{.Config.Image}}" cashpilot-worker)
+        sudo docker stop -t 20 cashpilot-worker >/dev/null
+        sudo docker run --rm --network host --volumes-from cashpilot-worker --env-file "$e" \
+          --entrypoint python "$img" -m app.worker_retire' >/dev/null 2>&1; then
+        say "The UI forgot the worker \"$WORKER_NAME\"."
+      else
+        say "Could not ask the UI to forget \"$WORKER_NAME\": delete it on the Fleet page."
+      fi
+    fi
+    svc_remove
+    guest_stop
+  fi
+  # Everything below also runs for a half-finished install.
+  pkill -f 'process=cashpilot-vm' 2>/dev/null || true
+  [ -n "${NET_BASE:-}" ] || { NET_BASE=10.213.0; derive_net; }
+  HOST_PORT=${HOST_PORT:-0}
+  host_rules_remove
+  ns_exists && ip netns del "$NS"
+  ip link del "$VETH_HOST" 2>/dev/null || true
+  if has semanage && [ -n "$STATE" ]; then semanage fcontext -d "$STATE(/.*)?" 2>/dev/null || true; fi
+  rm -rf "$STATE" "$CONF_DIR" "$RUN_DIR" "$RUN_DIR.lock"
+  # The domains share's folder is the user's: install never makes it, so remove never takes it.
+  if is_unraid; then unraid_remove; fi
+  rm -f "$BIN"
+  if id "$SVC_USER" >/dev/null 2>&1; then userdel "$SVC_USER" 2>/dev/null || true; fi
+  local left
+  left=$(leftovers)
+  if [ -n "$left" ]; then
+    say "Removed, but these are still here:"
+    printf '  %s\n' "$left"
+    return 1
+  fi
+  say "Removed. Checked: no namespace, interface, firewall rule, unit, file, user or guest is left."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+
+main() {
+  local cmd=${1:-help}
+  shift || true
+  case "$cmd" in
+    install|create) need_root; cmd_install "$@" ;;
+    verify|selftest) cmd_verify "$@" ;;
+    status) cmd_status "$@" ;;
+    remove|uninstall) cmd_remove "$@" ;;
+    guard) need_root; rc=0; guard_pass || rc=$?; selftest_if_asked; exit "$rc" ;;
+    net-up) need_root; load_conf || die "not installed"; mkdir -p "$RUN_DIR"; net_up; guard_pass ;;
+    net-down) need_root; load_conf || exit 0; link_cut ;;
+    run) need_root; guest_run "$@" ;;
+    shutdown) need_root; load_conf || exit 0; guest_stop ;;
+    start) need_root; load_conf || die "not installed"; svc_start ;;
+    stop) need_root; load_conf || exit 0; guest_stop; link_cut ;;
+    unraid-boot) need_root; unraid_boot ;;
+    render) load_conf || die "not installed"; render_ns_rules ;;
+    version) echo "$CPVM_VERSION" ;;
+    help|-h|--help) usage ;;
+    *) usage; exit 2 ;;
+  esac
+}
+
+# Sourced by tests/test_cashpilot_vm.py, which calls the functions with stubs.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi

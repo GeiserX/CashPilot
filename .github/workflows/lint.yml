@@ -31,3 +31,13 @@ jobs:
 
       - name: Ruff format check
         run: uv run ruff format --check .
+
+  shellcheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # It runs as root on the user's host, so a quoting slip is a real bug.
+      - name: Shellcheck the Secure VM installer
+        run: shellcheck scripts/cashpilot-vm
