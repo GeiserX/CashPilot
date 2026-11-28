@@ -32,8 +32,10 @@ money4band 5.0 encrypts `config/user-config.json` on disk
 ([security notes](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
 and it deletes its `.env` after each start
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
-CashPilot cannot read the encrypted file. Run `m4b config edit` in your
-money4band folder: it opens the decrypted file in your editor
+CashPilot cannot read the encrypted file. In your money4band folder, run its
+`config edit` command: `./Money4Band-<os>-<arch> config edit` for the release
+binary, or `python main.py config edit` from source. It opens the decrypted
+file in your editor
 ([CLI reference](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Copy all of its text, paste it on the **Import from another tool** page, then close the editor.
 
