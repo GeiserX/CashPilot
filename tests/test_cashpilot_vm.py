@@ -470,6 +470,7 @@ cat "$CALLS"
     assert out.split() == ["STOPPED", "CONF-KEPT"]
 
 
+@pytest.mark.skipif(shutil.which("ssh-keygen") is None, reason="needs ssh-keygen")
 @pytest.mark.parametrize("fail", ["mkfs.vfat", "mcopy", "none"])
 def test_the_seed_folder_with_the_fleet_key_never_stays_behind(fail):
     # write_seed stages the fleet key in plain text before it copies it onto
@@ -547,7 +548,7 @@ def test_verify_json_prove_red_prints_only_json_and_counts_the_red_run(answered,
         """
 ANSWERED=$1; N=0
 need_root() { :; }; load_conf() { :; }; guest_pid() { echo 1; }; tap_up() { :; }
-nsx() { :; }; iptables() { :; }; flock() { :; }; guard_pass() { :; }; save_selftest() { :; }
+nsx() { :; }; iptables() { :; }; flock() { :; }; guard_pass() { GUARD_LOCKED=1; }; save_selftest() { :; }
 ns_fingerprint() { echo golden; }; echo golden >"$STATE/fence.golden"
 RUN_DIR=$(mktemp -d)
 selftest_once() {
@@ -572,7 +573,10 @@ cmd_verify --json --prove-red 2>/dev/null && echo RC=0 || echo RC=1
     assert lines[1] == ("RC=0" if ok else "RC=1")
 
 
-@pytest.mark.parametrize(("left", "ok"), [("none", True), ("drift", False), ("host-rule", False), ("cut", False)])
+@pytest.mark.parametrize(
+    ("left", "ok"),
+    [("none", True), ("drift", False), ("host-rule", False), ("cut", False), ("no-lock", False), ("guard-failed", False)],
+)
 def test_the_red_run_reports_the_fence_back_only_when_it_reads_back(left, ok):
     # A guard pass that cannot take the lock (a second red run holds it)
     # returns without checking anything. The tap stays up while the fence is
@@ -581,7 +585,14 @@ def test_the_red_run_reports_the_fence_back_only_when_it_reads_back(left, ok):
         """
 LEFT=$1
 need_root() { :; }; load_conf() { :; }; guest_pid() { echo 1; }; nsx() { :; }; flock() { :; }
-save_selftest() { :; }; guard_pass() { return 0; }
+save_selftest() { :; }
+guard_pass() {
+  case "$LEFT" in
+    no-lock) return 0 ;;  # waited out another red run: took no lock, checked nothing
+    guard-failed) GUARD_LOCKED=1; return 1 ;;
+    *) GUARD_LOCKED=1 ;;
+  esac
+}
 RUN_DIR=$(mktemp -d); echo golden >"$STATE/fence.golden"
 N=0; tap_up() { N=$((N + 1)); [ "$LEFT" != cut ] || [ "$N" = 1 ]; }
 ns_fingerprint() { if [ "$LEFT" = drift ]; then echo open; else echo golden; fi; }
@@ -613,15 +624,18 @@ host_rules_ensure && echo ENSURE=0 || echo ENSURE=1
 # The tail of a guard pass: the fence matches, then the host side.
 CONF=$(mktemp); RUN_DIR=$(mktemp -d); load_conf() { :; }; ns_exists() { :; }; nsx() { :; }
 desired=$(render_ns_rules); printf '%s\n' "$desired" >"$STATE/fence.rules"; echo g >"$STATE/fence.golden"
-ns_fingerprint() { echo g; }; tap_up() { :; }; log() { :; }
+ns_fingerprint() { echo g; }; tap_up() { :; }; log() { :; }; ns_ready() { :; }
 echo yes >"$STATE/provisioned"; push_state_to_guest() { echo pushed >>"$CALLS"; }
+eval "real_$(declare -f write_guard_state)"; write_guard_state() { echo "state:$1" >>"$CALLS"; real_write_guard_state "$@"; }
 rc=0; guard_pass || rc=$?
 echo "PASS=$rc"; python3 -c 'import json,sys; print("STATE=" + json.load(open(sys.argv[1]))["state"])' "$RUN_DIR/fence.json"
 cat "$CALLS"
 """,
         "yes" if fails else "no",
     )
-    assert out.split() == [f"ENSURE={rc}", f"PASS={rc}", "STATE=" + ("failed" if fails else "ok"), "pushed"]
+    # One state write, after the host rules: never an ok that a failure follows.
+    state = "failed" if fails else "ok"
+    assert out.split() == [f"ENSURE={rc}", f"PASS={rc}", f"STATE={state}", f"state:{state}", "pushed"]
 
 
 @pytest.mark.parametrize(("first_pass", "rc"), [(0, 0), (1, 0)])
@@ -691,3 +705,111 @@ probe_targets
     assert "192.168.1.50 443" not in out
     assert "lan-gateway 192.168.1.50 80" in out
     assert "lan-device 192.168.1.60 443" in out
+
+
+@pytest.mark.parametrize("step", ["tap-gateway", "veth", "none"])
+def test_net_up_fails_when_any_step_fails_and_the_guard_then_stops(step):
+    # The guard calls net_up with errexit off, so the last command's status is
+    # not enough: a missing tap gateway must not become the golden copy.
+    out = _run(
+        """
+STEP=$1; CALLS=$(mktemp)
+ns_exists() { :; }; sysctl() { :; }; warn() { :; }; host_rules_ensure() { :; }
+ip() { [ "$STEP" = veth ] && [ "$*" = "addr replace 10.213.0.5/30 dev cpvm-host" ] && return 1; return 0; }
+nsx() { [ "$STEP" = tap-gateway ] && [ "$*" = "ip addr replace 10.213.0.1/30 dev cpvm-tap" ] && return 1; return 0; }
+net_up && echo NET=0 || echo NET=1
+# The guard: a namespace that is not ready runs net_up, and stops on its failure.
+CONF=$(mktemp); RUN_DIR=$(mktemp -d); load_conf() { :; }; ns_ready() { return 1; }; log() { :; }
+link_cut() { echo link_cut >>"$CALLS"; }; link_connect() { echo link_connect >>"$CALLS"; }
+render_ns_rules() { echo rules; }; apply_ns_rules() { echo apply >>"$CALLS"; }
+rc=0; guard_pass >/dev/null 2>&1 || rc=$?
+echo "PASS=$rc"; cat "$CALLS"
+""",
+        step,
+    )
+    if step == "none":
+        assert out.split()[:2] == ["NET=0", "PASS=1"]  # the stubbed fence does not read back
+        assert "apply" in out.split()
+    else:
+        assert out.split() == ["NET=1", "PASS=1", "link_cut"]
+
+
+def test_a_tap_without_its_gateway_address_is_not_ready():
+    out = _run(
+        """
+ns_exists() { :; }
+nsx() { [ "$1 $2 $3" = "ip -4 -o" ] && printf '%s\n' "$ADDR"; }
+ADDR="4: cpvm-tap    inet 10.213.0.1/30 scope global cpvm-tap\\       valid_lft forever"; ns_ready && echo yes || echo no
+ADDR=""; ns_ready && echo yes || echo no
+ADDR="4: cpvm-tap    inet 10.213.0.13/30 scope global cpvm-tap"; ns_ready && echo yes || echo no
+"""
+    )
+    assert out.split() == ["yes", "no", "no"]
+
+
+def test_net_up_does_not_fail_on_the_host_rules():
+    # They carry the guest's traffic, not its fence; the guard puts them back.
+    out = _run(
+        """
+ns_exists() { :; }; sysctl() { :; }; ip() { :; }; nsx() { :; }; host_rules_ensure() { return 1; }
+net_up 2>/dev/null && echo NET=0 || echo NET=1
+"""
+    )
+    assert out.strip() == "NET=0"
+
+
+@pytest.mark.parametrize("json_out", [False, True])
+def test_a_plain_verify_holds_the_guard_lock_through_its_probes(json_out):
+    # Without it, a plain verify that runs during a red run reports the open
+    # fence as a leak, and saves that for the UI.
+    out = _run(
+        """
+JSON=$1; CALLS=$(mktemp)
+need_root() { :; }; load_conf() { :; }; guest_pid() { echo 1; }; tap_up() { :; }; save_selftest() { :; }
+RUN_DIR=$(mktemp -d)
+flock() { echo "flock $*" >>"$CALLS"; }
+selftest_once() { echo "probes locked=$GUARD_LOCKED" >>"$CALLS"; SELFTEST_LINES=ok; }
+if [ "$JSON" = yes ]; then cmd_verify --json >/dev/null; else cmd_verify >/dev/null; fi
+cat "$CALLS"
+""",
+        "yes" if json_out else "no",
+    )
+    assert out.splitlines() == ["flock -w 50 9", "probes locked=1"]
+
+
+def test_a_selftest_with_no_live_control_is_not_green():
+    rc, lines = _selftest("192.168.1.1 53 blocked\n192.168.1.20 22 blocked\n", "")
+    assert rc == 1 and "FAIL  no forbidden target answered from outside the fence" in lines
+
+
+@pytest.mark.parametrize("disk_deletes", [False, True])
+def test_remove_keeps_the_disk_path_until_the_disk_is_gone(disk_deletes):
+    # A remove that cannot delete the disk must leave a record of where it is,
+    # or the next run looks in the default place and calls the host clean.
+    out = _run(
+        """
+DELETES=$1
+need_root() { :; }; flock() { :; }; guest_pid() { return 1; }; svc_remove() { :; }; guest_stop() { :; }
+host_rules_remove() { :; }; ns_exists() { return 1; }; ip() { :; }; pkill() { :; }; has() { return 1; }
+is_unraid() { return 1; }; id() { return 1; }; leftovers() { [ -e "$STATE" ] && echo "folder $STATE"; true; }
+BIN=$(mktemp); RUN_DIR=$(mktemp -d)/run
+CONF_DIR=$(mktemp -d)/cashpilot-vm; mkdir -p "$CONF_DIR"; CONF=$CONF_DIR/config
+DISK=$(mktemp -d)/custom/cashpilot-vm; mkdir -p "$DISK"
+printf 'CPVM_HOME=%q\nWORKER_NAME=w\n' "$DISK" >"$CONF"
+set_state() { STATE=$CPVM_HOME; }
+eval "real_$(declare -f cmd_remove)"
+rm() { if [ "$DELETES" = no ] && [ "$*" = "-rf $DISK" ]; then return 1; fi; command rm "$@"; }
+(real_cmd_remove --yes) >/dev/null 2>&1 && echo RC=0 || echo RC=1
+[ -f "$CONF.removing" ] && grep -q "$DISK" "$CONF.removing" && echo MARKER || echo NO-MARKER
+[ -e "$CONF_DIR" ] && echo CONF_DIR-KEPT || echo CONF_DIR-GONE
+# The retry finds the disk through the marker.
+unset -f rm; DELETES=yes
+(real_cmd_remove --yes) >/dev/null 2>&1 && echo RETRY=0 || echo RETRY=1
+[ -e "$DISK" ] && echo DISK-LEFT || echo DISK-GONE
+""",
+        "yes" if disk_deletes else "no",
+    )
+    if disk_deletes:
+        assert out.split()[:3] == ["RC=0", "NO-MARKER", "CONF_DIR-GONE"]
+    else:
+        assert out.split() == ["RC=1", "MARKER", "CONF_DIR-KEPT", "RETRY=0", "DISK-GONE"]

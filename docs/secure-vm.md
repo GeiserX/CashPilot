@@ -184,7 +184,9 @@ the line says `ok`. When the control gets no answer either, the line says
 `skip`: the target was not there to reach, so the probe proves nothing. The
 fence drops packets without an answer. So any answer to the guest (a
 connection, a refusal or an error) fails the test, and so does a target with no
-result.
+result. If no target at all answers its control, the test fails too, because
+then none of the blocks proves anything. The self-test holds the guard's lock
+while it runs, so no guard pass or red test changes the fence under it.
 
 The Fleet page's self-test button runs the same checks, and the page shows the
 result. The guard runs at most one self-test every 5 minutes. A request that
@@ -214,6 +216,8 @@ that cannot forget a worker on request (3.0.x and older) gets no request.
 `remove` then says so, and you delete the worker on the Fleet page.
 If a guard pass or a red test is still running after 60 seconds, `remove`
 changes nothing: it does not stop the guest or delete anything. Run it again.
+If `remove` cannot delete the guest's disk, it keeps a note of where the disk
+is and says so. Run it again once the disk can be deleted.
 
 ## Unraid
 

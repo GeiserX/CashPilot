@@ -130,6 +130,8 @@ set_state() {
 }
 set_state
 CONF="$CONF_DIR/config"
+# 1 once this process holds the guard lock (guard_pass, verify_lock).
+GUARD_LOCKED=0
 RUN_DIR=/run/cashpilot-vm
 LOG_TAG=cashpilot-vm
 
@@ -350,28 +352,36 @@ ns_exists() { [ -e "/run/netns/$NS" ]; }
 # The namespace, the veth pair and the tap. The tap is created down; only the
 # guard brings it up.
 net_up() {
+  # Each step is checked by hand: the guard calls this with errexit off.
   if ! ns_exists; then
-    ip netns add "$NS"
+    ip netns add "$NS" || return 1
   fi
-  nsx sysctl -qw net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1
-  nsx ip link set lo up
+  nsx sysctl -qw net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1 || return 1
+  nsx ip link set lo up || return 1
   if ! ip link show "$VETH_HOST" >/dev/null 2>&1; then
-    ip link add "$VETH_HOST" type veth peer name "$VETH_NS"
-    ip link set "$VETH_NS" netns "$NS"
+    ip link add "$VETH_HOST" type veth peer name "$VETH_NS" || return 1
+    ip link set "$VETH_NS" netns "$NS" || return 1
   fi
   sysctl -qw "net.ipv6.conf.$VETH_HOST.disable_ipv6=1" || true
-  ip addr replace "$VH_IP/30" dev "$VETH_HOST"
-  ip link set "$VETH_HOST" up
-  nsx ip addr replace "$VN_IP/30" dev "$VETH_NS"
-  nsx ip link set "$VETH_NS" up
-  nsx ip route replace default via "$VH_IP" dev "$VETH_NS"
+  ip addr replace "$VH_IP/30" dev "$VETH_HOST" || return 1
+  ip link set "$VETH_HOST" up || return 1
+  nsx ip addr replace "$VN_IP/30" dev "$VETH_NS" || return 1
+  nsx ip link set "$VETH_NS" up || return 1
+  nsx ip route replace default via "$VH_IP" dev "$VETH_NS" || return 1
   if ! nsx ip link show "$TAP" >/dev/null 2>&1; then
-    nsx ip tuntap add dev "$TAP" mode tap
+    nsx ip tuntap add dev "$TAP" mode tap || return 1
   fi
-  nsx ip link set "$TAP" down
-  nsx ip addr replace "$TAP_GW/30" dev "$TAP"
-  nsx sysctl -qw net.ipv4.ip_forward=1
-  host_rules_ensure
+  nsx ip link set "$TAP" down || return 1
+  nsx ip addr replace "$TAP_GW/30" dev "$TAP" || return 1
+  nsx sysctl -qw net.ipv4.ip_forward=1 || return 1
+  # The host's rules carry the guest's traffic, not its fence. If they cannot
+  # be put in now, the guest still starts cut off, and the guard tries again.
+  host_rules_ensure || warn "the host's forwarding, NAT or worker-port rules could not be put in; the guard tries again"
+}
+
+# The namespace is set up when the tap exists and has its gateway address.
+ns_ready() {
+  ns_exists && nsx ip -4 -o addr show dev "$TAP" 2>/dev/null | grep -qF "inet $TAP_GW/30 "
 }
 
 # Fails only when the tap is still up after this: then the guest itself is
@@ -602,6 +612,8 @@ guard_pass() {
   load_conf || { warn "not installed"; return 0; }
   exec 9>"$RUN_DIR.lock"
   flock -w 50 9 || { warn "another guard pass is still running"; return 0; }
+  # This process holds the guard lock from here on (fd 9 stays open).
+  GUARD_LOCKED=1
   # remove holds this lock while it takes the host rules out: a pass that
   # loaded the config before that must not put them back.
   [ -f "$CONF" ] || return 0
@@ -611,7 +623,13 @@ guard_pass() {
     rm -f "$RUN_DIR/hold"
     log "a red test ended without putting the fence back; the guard repairs it now"
   fi
-  if ! ns_exists || ! nsx ip link show "$TAP" >/dev/null 2>&1; then net_up; fi
+  if ! ns_ready; then
+    if ! net_up; then
+      link_cut || true
+      guard_fail "the guest's network namespace could not be set up"
+      return 1
+    fi
+  fi
   if ! desired=$(render_ns_rules); then
     link_cut || true
     guard_fail "the host's addresses or the home's public IP could not be read, so the fence cannot drop them"
@@ -641,7 +659,6 @@ guard_pass() {
     mv "$STATE/fence.golden.new" "$STATE/fence.golden"
     mv "$STATE/fence.rules.new" "$STATE/fence.rules"
     link_connect || { guard_fail "the guest's link would not come up"; return 1; }
-    write_guard_state ok "$reason"
     log "$reason; connected"
   else
     golden=$(cat "$STATE/fence.golden")
@@ -651,7 +668,7 @@ guard_pass() {
         link_connect || { guard_fail "the guest's link would not come up"; return 1; }
         log "match; connected"
       fi
-      write_guard_state ok "match"
+      reason="match"
     else
       link_cut || { guard_fail "drift, and the guest could not be cut off"; return 1; }
       log "DRIFT: the namespace no longer matches the fence; guest cut off. Diff: $(diff <(printf '%s\n' "$golden") <(printf '%s\n' "$live") | grep '^[<>]' | head -5 | tr '\n' ' ')"
@@ -660,7 +677,7 @@ guard_pass() {
       live=$(ns_fingerprint)
       if [ "$live" = "$golden" ]; then
         link_connect || { guard_fail "the guest's link would not come up"; return 1; }
-        write_guard_state ok "drift repaired"
+        reason="drift repaired"
         log "fence restored, exact match; connected"
       else
         guard_fail "drift that rewriting the fence did not repair"
@@ -671,8 +688,11 @@ guard_pass() {
   # The host's rules carry the guest's traffic and the worker port; they are
   # not the fence. A failed repair leaves the guest offline, never on the LAN,
   # so the link stays up, the guest hears of it, and the next pass tries again.
+  # So the state says ok only once they check out too.
   local rc=0
-  if ! host_rules_ensure; then
+  if host_rules_ensure; then
+    write_guard_state ok "$reason"
+  else
     write_guard_state failed "the host's forwarding, NAT or worker-port rules could not be put back"
     log "FAILED: the host's forwarding, NAT or worker-port rules could not be put back; the next pass tries again"
     rc=1
@@ -1481,6 +1501,16 @@ EOF
   cmd_verify || true
 }
 
+# A self-test holds the guard lock through its probes, so no guard pass or red
+# test changes the fence under them. A process that holds it already keeps it.
+verify_lock() {
+  [ "$GUARD_LOCKED" = 1 ] && return 0
+  mkdir -p "$RUN_DIR"
+  exec 9>"$RUN_DIR.lock"
+  flock -w 50 9 || die "a guard pass or red test still holds its lock; try again in a minute"
+  GUARD_LOCKED=1
+}
+
 # The EXIT trap of an install that stops before the first boot is over.
 install_failed() {
   [ -f "$STATE/seed.img" ] || return 0
@@ -1565,7 +1595,7 @@ run_controls() {
 # from past it and fails. A missing result fails too. A block counts as proof
 # only with a live control; without one the line says it proves nothing.
 selftest_once() {
-  local label=$1 targets controls results name ip port c r bad=0 lines="" ui layers
+  local label=$1 targets controls results name ip port c r bad=0 lines="" ui layers live=0
   targets=$(probe_targets)
   controls=$(awk '{print $2, $3}' <<<"$targets" | run_controls | sort -u)
   results=$(awk '{print $2, $3}' <<<"$targets" | run_probes_from_guest | sort -u)
@@ -1577,11 +1607,15 @@ selftest_once() {
     elif [ "$r" != blocked ]; then
       bad=1; lines+="FAIL  $name $ip:$port answered the guest ($r)"$'\n'
     elif [ "$c" = live ]; then
+      live=$((live + 1))
       lines+="ok    $name $ip:$port blocked (reachable from outside the fence)"$'\n'
     else
       lines+="skip  $name $ip:$port blocked, but proves nothing: no answer from outside the fence either (${c:-none})"$'\n'
     fi
   done <<<"$targets"
+  if [ "$live" = 0 ]; then
+    bad=1; lines+="FAIL  no forbidden target answered from outside the fence, so the blocks above prove nothing"$'\n'
+  fi
   ui=$(echo "$UI_IP $UI_PORT" | run_probes_from_guest | awk '{print $3}')
   if [ "$ui" = reached ]; then lines+="ok    ui $UI_IP:$UI_PORT reachable (the one allowed hole)"$'\n'
   else bad=1; lines+="FAIL  ui $UI_IP:$UI_PORT not reachable: the worker cannot report ($ui)"$'\n'; fi
@@ -1691,10 +1725,15 @@ cmd_verify() {
     fi
     rm -f "$RUN_DIR/hold"
     exec 8>&-
-    guard_pass >/dev/null || true
+    # The guard pass must take the lock and succeed: one that waited out
+    # another red run, or could not write the fence, checked nothing. It keeps
+    # the lock, so the green run below sees the fence it checked.
+    GUARD_LOCKED=0
+    if ! guard_pass >/dev/null || [ "$GUARD_LOCKED" != 1 ]; then
+      trap - EXIT
+      die "the guard could not check the fence after the red run; it writes it back within a minute (see: cashpilot-vm status)"
+    fi
     trap - EXIT
-    # A guard pass that could not take the lock (another red run holds it)
-    # checks nothing, so the fence counts as back only when it reads back.
     if [ "$(ns_fingerprint)" != "$(cat "$STATE/fence.golden" 2>/dev/null)" ] ||
       iptables -w -S CPVM-IN | grep -q cpvm:red-test || ! tap_up; then
       die "the fence is not back after the red run; the guard writes it back within a minute (see: cashpilot-vm status)"
@@ -1702,6 +1741,7 @@ cmd_verify() {
     say "Fence written back by the guard (exact match). GREEN run:"
     if [ "$json" = 1 ]; then exec 1>&3 3>&-; fi
   fi
+  verify_lock
   if [ "$json" = 1 ]; then
     local rc=0
     selftest_once quiet || rc=1
@@ -1780,6 +1820,9 @@ cmd_remove() {
   [ "${1:-}" = --yes ] || [ "${1:-}" = -y ] && yes=1
   need_root
   local installed=0
+  # A remove that stopped half way left its config as a marker, so this run
+  # still finds the disk where install put it.
+  if [ ! -f "$CONF" ] && [ -f "$CONF.removing" ]; then cp -p "$CONF.removing" "$CONF"; fi
   if load_conf; then
     installed=1
     if [ "$yes" != 1 ] && [ -r /dev/tty ]; then
@@ -1818,8 +1861,9 @@ cmd_remove() {
     svc_remove
     guest_stop
   fi
-  # Everything below also runs for a half-finished install.
-  rm -f "$CONF"
+  # Everything below also runs for a half-finished install. A guard pass stops
+  # when the config is gone; the marker keeps the disk path until the disk goes.
+  if [ -f "$CONF" ]; then mv -f "$CONF" "$CONF.removing"; fi
   pkill -f 'process=cashpilot-vm' 2>/dev/null || true
   [ -n "${NET_BASE:-}" ] || { NET_BASE=10.213.0; derive_net; }
   HOST_PORT=${HOST_PORT:-0}
@@ -1827,7 +1871,12 @@ cmd_remove() {
   ns_exists && ip netns del "$NS"
   ip link del "$VETH_HOST" 2>/dev/null || true
   if has semanage && [ -n "$STATE" ]; then semanage fcontext -d "$STATE(/.*)?" 2>/dev/null || true; fi
-  rm -rf "$STATE" "$CONF_DIR" "$RUN_DIR" "$RUN_DIR.lock"
+  if rm -rf "$STATE"; then
+    rm -rf "$CONF_DIR"
+  else
+    say "Could not delete $STATE. Run remove again once it can be written: it still knows where the disk is."
+  fi
+  rm -rf "$RUN_DIR" "$RUN_DIR.lock"
   # The domains share's folder is the user's: install never makes it, so remove never takes it.
   if is_unraid; then unraid_remove; fi
   rm -f "$BIN"
