@@ -342,9 +342,14 @@ const CP = (() => {
     note.style.display = message ? '' : 'none';
   }
 
+  let _ratesLoaded = false;
+
   async function loadExchangeRates() {
     try {
       _exchangeRates = await api('/api/exchange-rates');
+      // The catalog may have drawn its estimates before the first rates came.
+      if (!_ratesLoaded && document.body.dataset.page === 'catalog' && catalogServices.length) filterCatalog();
+      _ratesLoaded = true;
     } catch (err) {
       console.warn('Could not refresh exchange rates, keeping previous values:', err);
     }
