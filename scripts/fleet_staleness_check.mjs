@@ -551,7 +551,7 @@ const buildLayers = new Function(
     'return renderLayers;'].join('\n'),
 );
 const layersView = {workers: {'7': {
-  gvisor: {state: 'installed', why: ''}, kvm: true, default: null, default_locked: null, can_check: false, check: null,
+  gvisor: {state: 'installed', why: ''}, kvm: true, default: null, default_locks: {runc: null, gvisor: null}, can_check: false, check: null,
   earners: [{slug: 'honeygain', service: 'Honeygain', fence: true, runtime: 'runc', choice: 'gvisor', status: 'running', locked: null}],
 }}, commands: {install: 'i', undo: 'u', status: 's'}};
 const renderLayers = buildLayers(esc, CP, layersView, true);
@@ -567,6 +567,14 @@ check('an offline worker shows its stale proxy, fence and gVisor as unknown, nev
 check('an offline worker shows each earner\'s fence as unknown, not its last report',
   onlineLayers.includes('Honeygain</strong>: fenced') && !offlineLayers.includes('Honeygain</strong>: fenced')
   && offlineLayers.includes('Honeygain</strong>: fence unknown'), offlineLayers);
+check('an offline worker shows each earner\'s runtime as unknown, not its last report',
+  onlineLayers.includes('fenced · Standard (runc)') && offlineLayers.includes('fence unknown · unknown')
+  && !offlineLayers.includes('· Standard (runc)'), offlineLayers);
+check('the default select disables a choice the worker refuses, with the reason',
+  buildLayers(esc, CP, {workers: {'7': {...layersView.workers['7'], default: 'gvisor',
+    default_locks: {runc: 'Pinned by CASHPILOT_CONTAINER_RUNTIME', gvisor: null}}}, commands: layersView.commands},
+  true)({id: 7}, layerInfo, true).includes('value="runc" disabled title="Pinned by CASHPILOT_CONTAINER_RUNTIME"'),
+  'runc option not disabled');
 const vmView = {workers: {'7': {...layersView.workers['7'], secure_vm: {host: 'big-box', state: 'ok', reason: ''},
   earners: [{...layersView.workers['7'].earners[0], vm: true}]}}, commands: layersView.commands};
 const vmOffline = buildLayers(esc, CP, vmView, true)({id: 7}, layerInfo, false);

@@ -8251,7 +8251,9 @@ async def _runtime_choice_for(worker_id: int, slug: str, *, routed: bool = False
     if placement.is_desktop(info) or placement.is_android(info):
         return None
     if routed:
-        if (await layers_ui.choices(worker))["earners"].get(slug) == layers_ui.GVISOR:
+        stored = (await layers_ui.choices(worker))["earners"].get(slug)
+        # A choice the catalog or an env pin overrules is not the earner's runtime: no refusal.
+        if stored == layers_ui.GVISOR and not layers_ui.overruled(slug, info, stored):
             raise HTTPException(
                 status_code=409, detail=t("api.runtime_choice_routed", worker=worker.get("name") or f"#{worker_id}")
             )
@@ -8292,6 +8294,7 @@ async def _send_worker_deploy(
         await _runtime_choice_for(worker_id, slug, routed=True)
     elif "runtime_choice" not in body and (choice := await _runtime_choice_for(worker_id, slug)):
         body["runtime_choice"] = choice
+    sent = body.get("runtime_choice") if proxy_id is None else None
 
     async def send(*, checked: bool) -> dict[str, Any]:
         if proxy_id is not None:
@@ -8328,7 +8331,18 @@ async def _send_worker_deploy(
         if not checked and current != "none" and proxy_id is None:
             # The intermediate worker protocol also requires this flag.
             body["replace_existing"] = True
-        return await send(checked=checked)
+        result = await send(checked=checked)
+    # The worker took it: a default this earner inherited is now its own (app/layers_ui.py).
+    await _remember_runtime_choice(worker_id, slug, sent)
+    return result
+
+
+async def _remember_runtime_choice(worker_id: int, slug: str, choice: Any) -> None:
+    if not isinstance(choice, str):
+        return
+    worker = await database.get_worker(worker_id)
+    if worker:
+        await layers_ui.remember(worker, slug, choice)
 
 
 async def _proxy_worker_deploy(
@@ -8431,6 +8445,7 @@ async def _proxy_worker_restore(
     # The worker restored it: whatever fails after this, the restore happened.
     restore["answered"] = True
     restore["state_id"] = result.get("state_id") if isinstance(result, dict) else None
+    await _remember_runtime_choice(worker_id, slug, body.get("runtime_choice"))
     return result
 
 

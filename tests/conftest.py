@@ -107,7 +107,11 @@ def _no_runtime_choice(request, monkeypatch):
     async def none(worker_id, slug, **_):
         return None
 
+    async def noop(worker_id, slug, choice):
+        return None
+
     monkeypatch.setattr(main, "_runtime_choice_for", none)
+    monkeypatch.setattr(main, "_remember_runtime_choice", noop)
 
 
 @pytest.fixture(autouse=True)

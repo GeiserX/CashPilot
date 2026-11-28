@@ -55,7 +55,12 @@ def _features(info: dict[str, Any]) -> set[str]:
 
 
 async def choices(worker: dict[str, Any]) -> dict[str, Any]:
-    """``{"default": runc|gvisor|None, "earners": {slug: choice}}`` for one worker."""
+    """``{"default": runc|gvisor|None, "earners": {slug: choice}}`` for one worker.
+
+    An earner's choice is None when it keeps Docker's default: the owner reset
+    it, or it was already there with a runtime the worker did not report when
+    the default was set. Either way the worker default does not move it.
+    """
     raw = await database.get_config(config_key(worker))
     try:
         data = json.loads(raw) if isinstance(raw, str) and raw else {}
@@ -65,7 +70,7 @@ async def choices(worker: dict[str, Any]) -> dict[str, Any]:
         data = {}
     default = data.get("default") if data.get("default") in CHOICES else None
     earners = data.get("earners") if isinstance(data.get("earners"), dict) else {}
-    return {"default": default, "earners": {str(k): v for k, v in earners.items() if v in CHOICES}}
+    return {"default": default, "earners": {str(k): v for k, v in earners.items() if v is None or v in CHOICES}}
 
 
 async def save(worker: dict[str, Any], data: dict[str, Any]) -> None:
@@ -188,6 +193,9 @@ def fence(container: dict[str, Any], info: dict[str, Any]) -> bool | None:
     if network is None:
         return None
     iso = info.get("isolation") if isinstance(info.get("isolation"), dict) else {}
+    if iso.get("mode") is None:
+        # The worker did not say whether its fence is on: unknown, not off.
+        return None
     if network == FENCE_NETWORK:
         # With isolation off the network keeps its masquerade but loses its filter.
         if iso.get("mode") != "on":
@@ -273,7 +281,8 @@ def worker_view(worker: dict[str, Any], stored: dict[str, Any]) -> dict[str, Any
         "secure_vm": vm,
         "pins": (report or {}).get("pins"),
         "default": stored["default"],
-        "default_locked": locked("", info, GVISOR) if stored["default"] != GVISOR else None,
+        # Why the owner cannot pick each default, as the POST answers; the stored one stays selectable.
+        "default_locks": {c: locked("", info, c) if stored["default"] != c else None for c in CHOICES},
         "earners": earners,
     }
 
@@ -312,8 +321,10 @@ async def set_default(worker: dict[str, Any], choice: str | None) -> dict[str, A
             # Only CashPilot's own earners: an external container is not deployed from here.
             if c.get("deployed_by") == "external":
                 continue
-            if slug and slug not in stored["earners"] and (now := kind(c.get("runtime"), report)):
-                stored["earners"][slug] = now
+            if slug and slug not in stored["earners"]:
+                # Already here: it keeps what it runs under, or Docker's default
+                # when the worker did not say, never the new default.
+                stored["earners"][slug] = kind(c.get("runtime"), report)
         stored["default"] = choice
         await save(worker, stored)
         return stored
@@ -322,16 +333,18 @@ async def set_default(worker: dict[str, Any], choice: str | None) -> dict[str, A
 async def set_earner(worker: dict[str, Any], slug: str, choice: str | None) -> dict[str, Any]:
     async with _lock():
         stored = await choices(worker)
-        if choice is None:
-            stored["earners"].pop(slug, None)
-        else:
-            stored["earners"][slug] = choice
+        # None is kept, not removed: a reset earner takes Docker's default, never the worker default.
+        stored["earners"][slug] = choice
         await save(worker, stored)
         return stored
 
 
 async def for_new_deploy(worker: dict[str, Any], slug: str) -> str | None:
-    """The choice a deploy sends: the earner's own, else the worker's default, recorded as the earner's.
+    """The choice a deploy sends: the earner's own, else the worker's default.
+
+    Nothing is written here: ``remember`` records an inherited default as the
+    earner's own only once the worker took the deploy, so a refused or failed
+    first deploy does not keep a choice the owner never made.
 
     A stored choice that the catalog or an env pin now overrules is not sent:
     the worker applies the pin, and refusing every redeploy would keep the
@@ -342,7 +355,7 @@ async def for_new_deploy(worker: dict[str, Any], slug: str) -> str | None:
         stored = await choices(worker)
         if slug in stored["earners"]:
             choice = stored["earners"][slug]
-            return None if overruled(slug, info, choice) else choice
+            return None if choice is None or overruled(slug, info, choice) else choice
         default = stored["default"]
         if default is None:
             return None
@@ -353,6 +366,19 @@ async def for_new_deploy(worker: dict[str, Any], slug: str) -> str | None:
             # gVisor is gone or not ready on this worker: the deploy refuses and says
             # why, rather than run the earner without the layer the owner chose.
             return default if default == GVISOR else None
-        stored["earners"][slug] = default
-        await save(worker, stored)
         return default
+
+
+async def remember(worker: dict[str, Any], slug: str, choice: str | None) -> None:
+    """Record the choice a deploy the worker took was sent with, for an earner with none yet.
+
+    A later change of the worker default then leaves this earner where it is.
+    An earner that already has a choice, the owner's or a recorded one, keeps it.
+    """
+    if choice is None:
+        return
+    async with _lock():
+        stored = await choices(worker)
+        if slug not in stored["earners"]:
+            stored["earners"][slug] = choice
+            await save(worker, stored)

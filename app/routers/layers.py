@@ -43,8 +43,10 @@ async def api_layers(request: Request) -> dict[str, Any]:
 class RuntimeChoice(BaseModel):
     # An earner's slug, or None for the worker's runtime for new earners.
     slug: str | None = None
-    # "runc", "gvisor", or None to forget the choice (Docker's default).
-    choice: str | None = None
+    # "runc", "gvisor", or None for Docker's default. Required, so a request
+    # that leaves it out is refused instead of resetting the setting. For an
+    # earner, None keeps Docker's default: the worker default never moves it.
+    choice: str | None
 
 
 @router.post("/api/workers/{worker_id}/runtime-choice")
