@@ -906,6 +906,44 @@ class TestImageCheckEndpoint:
         detail = str(err.value.detail)
         assert "hunter2" not in detail and "registry.example" in detail
         assert "s3cr3t" not in detail and "key" not in detail and "cdn.example/b" in detail
+        assert err.value.status_code == 502 and err.value.detail["error"] == "image_check_failed"
+
+    def test_the_dashboard_forwards_the_reason_of_a_failed_pull(self):
+        from app import main
+
+        resp = MagicMock(status_code=502)
+        resp.json.return_value = {"detail": {"error": "image_check_failed", "message": "manifest unknown"}}
+        assert main._safe_worker_detail(resp) == {"error": "image_check_failed", "message": "manifest unknown"}
+
+    def test_a_failed_check_names_the_workers_reason(self, monkeypatch):
+        from fastapi import HTTPException
+
+        from app import main
+
+        async def refused(*args, **kwargs):
+            raise HTTPException(status_code=502, detail={"error": "image_check_failed", "message": "manifest unknown"})
+
+        monkeypatch.setattr(main, "_proxy_to_worker", refused)
+        with pytest.raises(RuntimeError, match="manifest unknown"):
+            asyncio.run(main._image_update_check(1, "honeygain"))
+
+
+@pytest.mark.asyncio
+class TestStartupBell:
+    async def test_the_startup_bell_waits_for_a_run_in_progress(self, monkeypatch):
+        from app import main
+
+        refresh, run = AsyncMock(), AsyncMock()
+        monkeypatch.setattr(main, "_refresh_image_update_bell", refresh)
+        monkeypatch.setattr(main, "_run_image_updates", run)
+        monkeypatch.setattr(main, "_image_update_bell_loaded", False)
+        async with main._image_update_lock:
+            # A forced run holds the lock, and rebuilds the bell when it ends.
+            await main._image_update_tick()
+        refresh.assert_not_awaited()
+        # Control: with no run in progress, the startup read happens.
+        await main._image_update_tick()
+        refresh.assert_awaited_once()
 
 
 @pytest.mark.asyncio

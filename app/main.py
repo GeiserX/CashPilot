@@ -7665,6 +7665,8 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "copy_not_found",
         # An app image update the worker undid after its check period (app/image_updates.py).
         "image_update_rolled_back",
+        # The pull of an app image check failed; the worker redacted the reason.
+        "image_check_failed",
     ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
@@ -13761,7 +13763,12 @@ def _image_update_targets(worker: dict[str, Any]) -> list[str] | None:
 
 async def _image_update_check(worker_id: int, slug: str) -> dict[str, Any]:
     # The check pulls the tag, which can take minutes on a slow line.
-    answer = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/image-check", timeout=960)
+    try:
+        answer = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/image-check", timeout=960)
+    except HTTPException as exc:
+        # The worker's own reason, such as the registry refusing the pull, for the log.
+        reason = exc.detail.get("message") if isinstance(exc.detail, dict) else exc.detail
+        raise RuntimeError(f"the image check failed (HTTP {exc.status_code}): {reason}") from None
     return answer if isinstance(answer, dict) else {}
 
 
@@ -13985,8 +13992,12 @@ async def _run_image_updates(*, force: bool = False) -> dict[int, dict[str, str]
 async def _image_update_tick() -> None:
     """Every few minutes: start the daily run once its hour has come. Never raises."""
     try:
-        if not _image_update_bell_loaded:
-            await _refresh_image_update_bell()
+        # Under the run's lock: a run in progress rebuilds the bell when it ends,
+        # and this older read must not overwrite it.
+        if not _image_update_bell_loaded and not _image_update_lock.locked():
+            async with _image_update_lock:
+                if not _image_update_bell_loaded:
+                    await _refresh_image_update_bell()
         await _run_image_updates()
     except Exception as exc:  # noqa: BLE001 - a failed tick waits for the next one
         logger.warning("Image update run failed: %s", exc)

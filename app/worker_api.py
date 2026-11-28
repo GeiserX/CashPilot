@@ -3102,7 +3102,10 @@ async def api_image_check(request: Request, slug: str) -> dict[str, Any]:
         # A pull error can quote a registry or proxy address with its login, or
         # a signed URL with its credential in the query.
         detail = re.sub(r"(https?://[^\s?#'\"]+)\?[^\s'\"]*", r"\1?<redacted>", proxy_tunnel.redact(str(exc)))[:400]
-        raise HTTPException(status_code=exc.status_code, detail=detail) from None
+        # Structured, so the UI forwards the reason even for a 502 (main._safe_worker_detail).
+        raise HTTPException(
+            status_code=exc.status_code, detail={"error": "image_check_failed", "message": detail}
+        ) from None
     except (DockerException, requests.exceptions.RequestException):
         raise HTTPException(status_code=503, detail="The worker's Docker daemon did not answer.") from None
 
