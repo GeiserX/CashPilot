@@ -181,8 +181,9 @@ class TestTheEndpoint:
 class TestTheProbeContainer:
     """Two workers on one Docker daemon must never remove each other's probe."""
 
-    def _probe(self, worker_id):
+    def _probe(self, worker_id, stale_labels=None):
         client = MagicMock()
+        client.containers.get.return_value.attrs = {"Config": {"Labels": stale_labels or {}}}
         container = client.containers.run.return_value
         container.wait.return_value = {"StatusCode": 0}
         container.logs.return_value = b'{"release": "4.19.0-gvisor"}'
@@ -204,3 +205,31 @@ class TestTheProbeContainer:
         assert kwargs["labels"][gvisor_check.activity.WORKER_LABEL] == "worker-a"
         assert kwargs["dns"] == ["1.1.1.1"]
         assert {c.args[0] for c in client.containers.get.call_args_list} == {name}
+
+    def test_it_removes_the_container_it_created_by_its_handle(self):
+        client, _ = self._probe("worker-a")
+        client.containers.run.return_value.remove.assert_called_once_with(force=True, v=True)
+
+    def test_a_stale_probe_of_its_own_is_removed_first(self):
+        labels = {gvisor_check.PROBE_LABEL: "gvisor-check", gvisor_check.activity.WORKER_LABEL: "worker-a"}
+        client, _ = self._probe("worker-a", stale_labels=labels)
+        client.containers.get.return_value.remove.assert_called_once_with(force=True, v=True)
+
+    def test_a_container_that_only_shares_the_name_is_left_alone(self):
+        labels = {gvisor_check.PROBE_LABEL: "gvisor-check", gvisor_check.activity.WORKER_LABEL: "worker-b"}
+        client, _ = self._probe("worker-a", stale_labels=labels)
+        client.containers.get.return_value.remove.assert_not_called()
+
+    def test_a_create_that_failed_halfway_is_cleaned_up_by_name(self):
+        client = MagicMock()
+        client.containers.run.side_effect = gvisor_check.DockerException("start failed")
+        stale = client.containers.get.return_value
+        with patch.object(gvisor_check.activity, "WORKER_ID", "worker-a"):
+            stale.attrs = {
+                "Config": {
+                    "Labels": {gvisor_check.PROBE_LABEL: "gvisor-check", gvisor_check.activity.WORKER_LABEL: "worker-a"}
+                }
+            }
+            result = gvisor_check._probe(client, "img", "runsc-hostnet", "", [])
+        assert "error" in result
+        assert stale.remove.call_count == 2  # once before the run, once after it failed
