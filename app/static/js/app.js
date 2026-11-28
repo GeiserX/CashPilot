@@ -606,7 +606,8 @@ const CP = (() => {
     const host = server.containers.filter(c => c.no_counters).map(c => c.service);
     const parts = [t('app.usage.sum_note')];
     if (host.length) {
-      parts.push(t('app.usage.host_network_some', { names: [...new Set(host)].join(', ') }));
+      const names = [...new Set(host)];
+      parts.push(t('app.usage.host_network_some', { names: names.join(', '), n: names.length }));
     }
     return parts.join(' ');
   }
@@ -4598,7 +4599,7 @@ const CP = (() => {
 
   function renderCatalogCard(svc) {
     const earning = svc.earnings
-      ? t('app.cat.estimate', { low: svc.earnings.monthly_low, high: svc.earnings.monthly_high, per: escapeHtml(svc.earnings.per || t('app.cat.month')) })
+      ? t('app.cat.estimate', { low: formatCurrency(svc.earnings.monthly_low, 'USD', 0), high: formatCurrency(svc.earnings.monthly_high, 'USD', 0), per: escapeHtml(svc.earnings.per || t('app.cat.month')) })
       : t('app.cat.varies');
     const isDeployed = svc.deployed || false;
     const broken = svc.status === 'broken';
@@ -4946,7 +4947,7 @@ const CP = (() => {
 
   function renderServiceDetail(svc, workers) {
     const earning = svc.earnings
-      ? t('app.detail.estimate', { low: svc.earnings.monthly_low, high: svc.earnings.monthly_high, per: svc.earnings.per || t('app.cat.month') })
+      ? t('app.detail.estimate', { low: formatCurrency(svc.earnings.monthly_low, 'USD', 0), high: formatCurrency(svc.earnings.monthly_high, 'USD', 0), per: svc.earnings.per || t('app.cat.month') })
       : t('app.detail.varies');
 
     const isDeployed = svc.deployed || false;

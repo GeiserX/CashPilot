@@ -393,13 +393,13 @@ def _set_held(name: str, on: bool, *, strict: bool = False, rewrite: bool = Fals
             _write_names(HELD_MARKER, names | {name} if on else names - {name})
         except OSError as exc:
             if strict:
-                what = "was stopped" if on else "is no longer stopped"
+                stopped = "yes" if on else "no"
                 if isinstance(exc, _NotFlushed):
                     raise _RecordNotFlushed(
-                        t("err.proxy_tunnel.could_not_record_good", name=name, what=what, exc=exc)
+                        t("err.proxy_tunnel.could_not_record_good", name=name, stopped=stopped, exc=exc)
                     ) from None
                 raise ProxyTunnelError(
-                    t("err.proxy_tunnel.could_not_record_left", name=name, what=what, exc=exc)
+                    t("err.proxy_tunnel.could_not_record_left", name=name, stopped=stopped, exc=exc)
                 ) from None
             logger.warning("Could not clear the stop of %s: %s", name, exc)
 
@@ -1218,19 +1218,19 @@ def _refuse_unmovable(member: Any) -> None:
     that copy, and deploys it again if they want it."""
     hc = (getattr(member, "attrs", None) or {}).get("HostConfig") or {}
     name = str(member.name)
-    what = ""
+    held, caps = "", ""
     if hc.get("Devices"):
-        what = "host devices"
+        held = "devices"
     elif hc.get("DeviceRequests"):
-        what = "device requests"
+        held = "requests"
     elif gpu.grant(_labels(member).get(LABEL_SERVICE)):
-        what = "a catalog GPU grant"
+        held = "gpu"
     elif risky := sorted(
         {str(c).upper().removeprefix("CAP_") for c in hc.get("CapAdd") or []} & PROXIED_FORBIDDEN_CAPS
     ):
-        what = ", ".join(risky)
-    if what:
-        raise ProxyTunnelError(t("err.proxy_tunnel.holds_which_proxied_copy_never", name=name, what=what))
+        held, caps = "caps", ", ".join(risky)
+    if held:
+        raise ProxyTunnelError(t("err.proxy_tunnel.holds_which_proxied_copy_never", name=name, held=held, caps=caps))
 
 
 def _put_back(client: Any, member: Any, name: str, was_running: bool) -> None:
@@ -1760,7 +1760,7 @@ def _finish_staged(
             t(
                 "err.proxy_tunnel.recovery_skipped_still_being_moved",
                 half=", ".join(sorted(half)),
-                value="is" if len(half) == 1 else "are",
+                n=len(half),
             )
         )
     members = _members(client, current) if current is not None else []
