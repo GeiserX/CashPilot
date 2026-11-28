@@ -274,10 +274,12 @@ def lang_code(locale: str) -> str | None:
 # Claude, through nd
 
 
-# The only Claude Code seats the job may use: the neutralbase and neutralstate ones. Never the
-# enterprise seat, a personal one or a Kimi one, whatever `nd pick` would offer.
+# The only Claude Code seats the job may use: the neutralbase and neutralstate ones, and the three
+# personal ones. Never the enterprise seat `cc` and never a Kimi one (`km-*`), whatever `nd pick`
+# would offer.
 SEATS = (*(f"cc-neutralagent{n}" for n in range(1, 8)), "cc-neutralstack")
 SEATS += tuple(f"cc-ns-{name}" for name in ("admin", "diego", "lucas", "mateo", "sara"))
+SEATS += ("cc-alex-personal", "cc-te-esullivan", "cc-ethan-wilson")
 
 
 class NoSeat(Exception):
