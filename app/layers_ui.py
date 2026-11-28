@@ -61,6 +61,8 @@ async def choices(worker: dict[str, Any]) -> dict[str, Any]:
         data = json.loads(raw) if isinstance(raw, str) and raw else {}
     except ValueError:
         data = {}
+    if not isinstance(data, dict):
+        data = {}
     default = data.get("default") if data.get("default") in CHOICES else None
     earners = data.get("earners") if isinstance(data.get("earners"), dict) else {}
     return {"default": default, "earners": {str(k): v for k, v in earners.items() if v in CHOICES}}
@@ -344,9 +346,13 @@ async def for_new_deploy(worker: dict[str, Any], slug: str) -> str | None:
         default = stored["default"]
         if default is None:
             return None
-        if locked(slug, info, default):
+        if overruled(slug, info, default):
             # The default does not fit this earner (Mysterium, a pin): Docker's default, as before.
             return None
+        if locked(slug, info, default):
+            # gVisor is gone or not ready on this worker: the deploy refuses and says
+            # why, rather than run the earner without the layer the owner chose.
+            return default if default == GVISOR else None
         stored["earners"][slug] = default
         await save(worker, stored)
         return default
