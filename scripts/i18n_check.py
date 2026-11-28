@@ -674,13 +674,17 @@ class IcuError(Exception):
     pass
 
 
-def _icu_scan(s: str, i: int, plural: str | None, out: set, depth: int, pick: dict | None = None) -> int:
+def _icu_scan(
+    s: str, i: int, plural: str | None, out: set, depth: int, pick: dict | None = None, marks: list | None = None
+) -> int:
     """Scan message text from i until an unmatched '}' (returned) or the end.
 
     `plural` names the plural whose branch this is, for "#". With `pick` set,
     a select it names adds only the placeholders of
     the branch that keyword chooses (or "other"): what renders for it.
-    `pick` maps each chosen select's name to its keyword.
+    `pick` maps each chosen select's name to its keyword. `marks` holds the
+    placeholders that were not ICU ({{x}}, ${x}, %s, tags): placeholders()
+    leaves a marker where each one was, so a branch records them too.
     """
     n = len(s)
     while i < n:
@@ -700,10 +704,15 @@ def _icu_scan(s: str, i: int, plural: str | None, out: set, depth: int, pick: di
                 continue
             i += 1
             continue
+        if c == "\x02" and marks is not None:
+            end = s.index("\x03", i)
+            out.add(marks[int(s[i + 1 : end])])
+            i = end + 1
+            continue
         if c == "#" and plural:
             out.add(("plural-number", plural))  # the count shown in a plural branch
         if c == "{":
-            i = _icu_argument(s, i + 1, out, depth, pick)
+            i = _icu_argument(s, i + 1, out, depth, pick, marks)
             continue
         if c == "}":
             if depth == 0:
@@ -725,7 +734,7 @@ _ICU_MAX_DEPTH = 16
 _SELECT_COMBOS = 64
 
 
-def _icu_argument(s: str, i: int, out: set, depth: int, pick: dict | None = None) -> int:
+def _icu_argument(s: str, i: int, out: set, depth: int, pick: dict | None = None, marks: list | None = None) -> int:
     """Parse one argument starting just after its '{'; return the index after its '}'."""
     if depth >= _ICU_MAX_DEPTH:
         raise IcuError(f"nested more than {_ICU_MAX_DEPTH} levels deep")
@@ -763,10 +772,10 @@ def _icu_argument(s: str, i: int, out: set, depth: int, pick: dict | None = None
             keys.append(o.group(1))
             if kind == "select":
                 inner: set = set()
-                j = _icu_scan(s, j + 1, None, inner, depth + 1, pick) + 1
+                j = _icu_scan(s, j + 1, None, inner, depth + 1, pick, marks) + 1
                 branches[o.group(1)] = inner
             else:
-                j = _icu_scan(s, j + 1, name, out, depth + 1, pick) + 1
+                j = _icu_scan(s, j + 1, name, out, depth + 1, pick, marks) + 1
         if kind == "select":
             if pick and name in pick:
                 out.update(branches.get(pick[name], branches.get("other", set())))
@@ -802,11 +811,19 @@ def placeholders(text: str) -> frozenset:
     # the branches. So an ICU message checks links only by destination, which
     # the "tag" entries already do, and counts none.
     icu = bool(_ICU_COMPLEX.search(text))
+    # Each placeholder found below is replaced by a marker, so the ICU scan
+    # sees where it sits: inside which select branch, or outside all of them.
+    marks: list = []
+
+    def mark(*tokens: tuple) -> str:
+        out.update(tokens)
+        marks.extend(tokens)
+        return "".join(f"\x02{len(marks) - len(tokens) + n}\x03" for n in range(len(tokens)))
 
     def tag(m: re.Match) -> str:
         href = _HREF.search(m.group(3))
         dest = (href.group(1) or href.group(2)) if href else ""
-        out.add(("tag", m.group(1) + m.group(2).lower(), dest))
+        here = mark(("tag", m.group(1) + m.group(2).lower(), dest))
         if href and not icu:
             # links to A, A, B differ from links to A, B, B
             links[dest] = links.get(dest, 0) + 1
@@ -815,42 +832,45 @@ def placeholders(text: str) -> frozenset:
         # tag becomes its attribute values, unquoted and in place, so implicit
         # printf positions keep their order.
         values = [a or b for a, b in _ATTR_VALUE.findall(_HREF.sub("", m.group(3)))]
-        return " " + " ".join(values) + " " if values else ""
+        return here + (" " + " ".join(values) + " " if values else "")
 
     text = _TAG.sub(tag, text)
-    for m in _SHELL.finditer(text):
-        out.add(("shell", m.group(1)))
-    body = _SHELL.sub("", text)
+    body = _SHELL.sub(lambda m: mark(("shell", m.group(1))), text)
     # In an ICU plural or select, "{{" is a branch opening on an argument
     # ("other {{who} has #}"), not a mustache placeholder.
     if not _ICU_COMPLEX.search(body):
-        for m in _MUSTACHE.finditer(body):
-            out.add(("mustache", m.group(1)))
-        body = _MUSTACHE.sub("", body)
+        body = _MUSTACHE.sub(lambda m: mark(("mustache", m.group(1))), body)
     body = body.replace("%%", "")  # a literal percent sign, never a conversion
-    for m in _PY_NAMED.finditer(body):
+
+    def py(m: re.Match) -> str:
         conv = m.group(2)
-        out.add(("py", m.group(1), "s" if conv == "s" else ("d" if conv in "diu" else conv)))
-    body = _PY_NAMED.sub("", body)
+        return mark(("py", m.group(1), "s" if conv == "s" else ("d" if conv in "diu" else conv)))
+
+    body = _PY_NAMED.sub(py, body)
     # Unindexed conversions take the next argument in turn, and a "*" width or
     # precision takes one too (an integer); %2$s does not move that counter.
     implicit = 0
-    for m in _PRINTF.finditer(body):
+
+    def printf(m: re.Match) -> str:
+        nonlocal implicit
+        found = []
         for star in (m.group(3), m.group(4)):
             if star == "*":
                 implicit += 1
-                out.add(("printf", implicit, "d"))
+                found.append(("printf", implicit, "d"))
         conv = m.group(5)
         if m.group(1):
             pos = int(m.group(1))
         else:
             implicit += 1
             pos = implicit
-        out.add(("printf", pos, "s" if conv in "s@" else ("d" if conv in "diu" else conv)))
-    body = _PRINTF.sub("", body)
+        found.append(("printf", pos, "s" if conv in "s@" else ("d" if conv in "diu" else conv)))
+        return mark(*found)
+
+    body = _PRINTF.sub(printf, body)
     if "{" in body or "}" in body:
         try:
-            _icu_scan(body, 0, None, out, 0)
+            _icu_scan(body, 0, None, out, 0, None, marks)
             # Each select keyword must render the same placeholders as in the
             # English. A select may wrap more of the sentence in another
             # language, so compare what renders for the keyword, not the
@@ -864,6 +884,10 @@ def placeholders(text: str) -> frozenset:
                 if t[0] == "select":
                     selects.setdefault(t[1], set()).update(t[2])
             names = sorted(selects)
+            # One "select" entry per name, so a translation may join two
+            # selects of one name into one, or split one into two.
+            out -= {t for t in out if t[0] == "select"}
+            out.update(("select", n, tuple(sorted(selects[n]))) for n in names)
             picks = []
             if math.prod(len(selects[n]) for n in names) > _SELECT_COMBOS:
                 out.add(("too-many-selects",))
@@ -872,7 +896,8 @@ def placeholders(text: str) -> frozenset:
                 picks = [dict(zip(names, keys, strict=True)) for keys in itertools.product(*keysets)]
             for pick in picks:
                 shown: set = set()
-                _icu_scan(body, 0, None, shown, 0, pick)
+                _icu_scan(body, 0, None, shown, 0, pick, marks)
+                shown = {t for t in shown if t[0] != "select"}
                 out.add(("select-branch", tuple(sorted(pick.items())), frozenset(shown)))
         except IcuError:
             out.add(("broken-braces",))

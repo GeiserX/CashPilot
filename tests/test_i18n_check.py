@@ -927,3 +927,20 @@ def test_two_selects_with_one_name_share_their_keywords(tmp_path):
     )
     code, out = run(en, es)
     assert code == 1 and "g = y" in out
+
+
+def test_one_select_may_take_the_place_of_two_with_its_name(tmp_path):
+    en = write(
+        tmp_path / "en.json", json.dumps({"k": "{g, select, x {{p}} other {{q}}} {g, select, y {{r}} other {{s}}}"})
+    )
+    es = write(tmp_path / "es.json", json.dumps({"k": "{g, select, x {{p} {s}} y {{q} {r}} other {{q} {s}}}"}))
+    assert run(en, es)[0] == 0
+
+
+@pytest.mark.parametrize("p, q", [("${p}", "${q}"), ("%(p)s", "%(q)s"), ("<b>", "<i>")])
+def test_a_placeholder_of_another_kind_moved_between_select_keywords_fails(tmp_path, p, q):
+    en = write(tmp_path / "en.json", json.dumps({"k": f"{{g, select, x {{a {p}}} other {{b {q}}}}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"k": f"{{g, select, x {{a {q}}} other {{b {p}}}}}"}))
+    assert run(en, es)[0] == 1
+    write(es, json.dumps({"k": f"{{g, select, other {{b {q}}} x {{a {p}}}}}"}))
+    assert run(en, es)[0] == 0
