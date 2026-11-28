@@ -1731,12 +1731,23 @@ cmd_remove() {
   local yes=0
   [ "${1:-}" = --yes ] || [ "${1:-}" = -y ] && yes=1
   need_root
+  local installed=0
   if load_conf; then
+    installed=1
     if [ "$yes" != 1 ] && [ -r /dev/tty ]; then
       local answer
       read -r -p "Remove the Secure VM \"$WORKER_NAME\", its disk and its earners? [y/N] " answer </dev/tty
       [[ "$answer" =~ ^[Yy] ]] || die "nothing was changed"
     fi
+  fi
+  # The guard lock keeps a guard pass or a red test that is already running
+  # from putting the host rules back while they go. Such a pass finds the
+  # config gone once it gets the lock. Without the lock nothing is changed,
+  # so a second run can do the whole job.
+  mkdir -p "$RUN_DIR"
+  exec 9>"$RUN_DIR.lock"
+  flock -w 60 9 || die "a guard pass or red test still holds its lock after 60 s; nothing was changed, so run remove again"
+  if [ "$installed" = 1 ]; then
     # Ask the UI to forget this worker, with the worker's own key. The worker
     # stops first: a heartbeat still on its way would write the worker back
     # after the UI deleted it. A one-shot copy with the worker's data and
@@ -1759,13 +1770,7 @@ cmd_remove() {
     svc_remove
     guest_stop
   fi
-  # Everything below also runs for a half-finished install. The guard lock
-  # keeps a guard pass that was already running from putting the host rules
-  # back; such a pass finds the config gone once it gets the lock. Without
-  # the lock nothing is deleted, so a second run can finish the job.
-  mkdir -p "$RUN_DIR"
-  exec 9>"$RUN_DIR.lock"
-  flock -w 60 9 || die "a guard pass or red test still holds its lock after 60 s; nothing more was removed, so run remove again"
+  # Everything below also runs for a half-finished install.
   rm -f "$CONF"
   pkill -f 'process=cashpilot-vm' 2>/dev/null || true
   [ -n "${NET_BASE:-}" ] || { NET_BASE=10.213.0; derive_net; }

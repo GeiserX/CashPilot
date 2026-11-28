@@ -414,18 +414,28 @@ def test_the_uis_own_address_and_port_is_not_a_forbidden_target():
     assert "192.168.1.10 8080" not in out
 
 
-def test_remove_stops_before_deleting_anything_when_the_guard_lock_is_held():
+@pytest.mark.parametrize("installed", [True, False])
+def test_remove_changes_nothing_while_the_guard_lock_is_held(installed):
     # A guard pass that still holds the lock can write the host rules back
-    # while remove takes them away, so remove must stop and keep the config.
+    # while remove takes them away. So remove must stop before it asks the UI
+    # to forget the worker, stops the units or the guest, or deletes anything.
     out = _run(
         """
+INSTALLED=$1; CALLS=$(mktemp)
 need_root() { :; }
-load_conf() { return 1; }
+load_conf() { [ "$INSTALLED" = yes ] && WORKER_NAME=w; }
 flock() { return 1; }
-host_rules_remove() { echo RULES-REMOVED; }
+guest_pid() { echo guest_pid >>"$CALLS"; }
+tap_up() { :; }
+guest_ssh() { echo guest_ssh >>"$CALLS"; }
+svc_remove() { echo svc_remove >>"$CALLS"; }
+guest_stop() { echo guest_stop >>"$CALLS"; }
+host_rules_remove() { echo host_rules_remove >>"$CALLS"; }
 RUN_DIR=$(mktemp -d)/run; CONF=$(mktemp)
 if (cmd_remove --yes) 2>/dev/null; then echo RAN; else echo STOPPED; fi
 [ -f "$CONF" ] && echo CONF-KEPT
-"""
+cat "$CALLS"
+""",
+        "yes" if installed else "no",
     )
     assert out.split() == ["STOPPED", "CONF-KEPT"]
