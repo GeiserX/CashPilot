@@ -1792,6 +1792,12 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 .fleet-table .w-seen { color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--fs-2); }
 /* Dates and versions break at their spaces only, never inside "10/31/2026,". */
 .fleet-table .w-seen, .fleet-table .w-ver { overflow-wrap: normal; }
+/* App image update history: on a wide window names and digests stay whole and the
+   reason wraps; a narrow one wraps every cell, as the other fleet tables do. */
+@media (min-width: 900px) {
+  .updates-history td { overflow-wrap: normal; }
+  .updates-history td:last-child { overflow-wrap: anywhere; }
+}
 /* The watts input and its unit, the checkbox and its label, and save wrap as
    three units, never inside one. */
 .fleet-table .w-watts, .fleet-table .w-dedicated { display: inline-block; white-space: nowrap; }

@@ -147,6 +147,7 @@ nav = [
       { "Custom services" = "custom-services.md" },
       { "Proxied copies" = "proxies.md" },
       { "GPU services" = "gpu.md" },
+      { "App image updates" = "image-updates.md" },
     ] },
   { Security = [
       { "Security defaults" = "security-defaults.md" },
