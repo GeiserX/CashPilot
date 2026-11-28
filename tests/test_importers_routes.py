@@ -170,7 +170,7 @@ class TestPreview:
         token = "M4B_ENCRYPTED:gAAAAAB" + "A" * 200 + "=="
         res = owner.post("/api/import/preview", json={"files": [{"name": "user-config.json", "content": token}]})
         assert res.status_code == 400
-        assert "m4b config edit" in res.json()["detail"]
+        assert "Money4Band-<os>-<arch> config edit" in res.json()["detail"]
         assert "gAAAAAB" not in res.text
 
 
