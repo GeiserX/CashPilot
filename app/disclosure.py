@@ -21,6 +21,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.i18n import t
+
 # The questions a user actually has before running one of these. Each is
 # answerable in plain words; where it is not, that is itself the answer.
 FIELDS: dict[str, str] = {
@@ -56,7 +58,7 @@ def for_service(service: dict[str, Any] | None) -> dict[str, Any]:
             "routes_third_party_traffic": None,
             "critical_unanswered": True,
             "questions": dict(FIELDS),
-            "summary": "No disclosure for this service.",
+            "summary": t("disclosure.no_disclosure_service"),
         }
 
     slug = service.get("slug")

@@ -207,9 +207,25 @@ def test_a_server_message_is_a_sentence_and_never_a_code():
     assert not codes, f"these server messages look like codes: {codes}"
 
 
+def _outside_plurals(parts) -> str:
+    """The literal text of a parsed message that no plural form holds."""
+    text = ""
+    for part in parts:
+        if isinstance(part, str):
+            text += part
+        elif part[0] == "select":
+            text += "".join(_outside_plurals(option) for option in part[2].values())
+    return text
+
+
 def test_a_count_is_a_plural_and_never_an_s_in_parentheses():
-    """ "{n} service(s)" reads wrong in English and cannot be translated: a count takes a plural."""
-    found = sorted(k for k, v in EN.items() if re.search(r"\w\((?:s|es)\)", v))
+    """ "{n} service(s)" cannot be translated: a count takes a plural, where each language writes its forms.
+
+    Inside a plural form the English may keep "(s)" when a test pins that wording.
+    """
+    from app import i18n
+
+    found = sorted(k for k, v in EN.items() if re.search(r"\w\((?:s|es)\)", _outside_plurals(i18n.parse(v))))
     assert not found, f"use {{n, plural, one {{...}} other {{...}}}} instead of (s): {found}"
 
 

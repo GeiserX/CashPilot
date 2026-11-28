@@ -214,12 +214,30 @@ def from_request(request: Any, saved: str | None = None) -> str:
     return resolve(saved, request.cookies.get(COOKIE), request.headers.get("accept-language"))
 
 
-_current: contextvars.ContextVar[str] = contextvars.ContextVar("cashpilot_locale", default=SOURCE)
+_current: contextvars.ContextVar[str | None] = contextvars.ContextVar("cashpilot_locale", default=None)
+#: The language of what CashPilot writes with no request behind it: alerts, the
+#: bell, and the ntfy, Telegram and webhook pushes. It follows the owner: the
+#: language of the owner's last page, kept under BACKGROUND_KEY in the config table.
+_background = SOURCE
+BACKGROUND_KEY = "_background_locale"
 
 
 def current() -> str:
-    """The locale of the request being served (English outside one)."""
-    return _current.get()
+    """The locale of the request being served; outside one, the background locale."""
+    return _current.get() or _background
+
+
+def background() -> str:
+    return _background
+
+
+def set_background(locale: str) -> bool:
+    """Make ``locale`` the language of text written outside a request. True when that changed it."""
+    global _background
+    chosen = locale if locale in NAMES else SOURCE
+    changed = chosen != _background
+    _background = chosen
+    return changed
 
 
 def use(locale: str) -> None:

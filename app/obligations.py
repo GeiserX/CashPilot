@@ -33,6 +33,8 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
+from app.i18n import t
+
 #: The cash-out nudge waits for at least this much, in USD, whatever the
 #: catalog minimum. A provider with a 5-cent minimum would otherwise nag at the
 #: first cent. When the catalog minimum is higher, the minimum wins.
@@ -358,8 +360,8 @@ def _cashout_item(svc: dict[str, Any], facts: ServiceFacts, state: dict, today: 
         rule=CASH_OUT,
         kind=CASH_OUT,
         action="withdraw",
-        title=f"Cash out your {name} balance",
-        loss="Money left at a provider can be lost if it bans the account, stalls payouts or closes.",
+        title=t("obligations.cash_out.title", name=name),
+        loss=t("obligations.cash_out.loss"),
         how=str(cashout.get("notes") or "").strip(),
         url=cashout.get("dashboard_url") or svc.get("website") or "",
         occurrence=start.isoformat(),
@@ -391,9 +393,9 @@ def _credential_items(svc: dict[str, Any], facts: ServiceFacts, state: dict, tod
             rule=rule,
             kind="credential",
             action="renew",
-            title=f"Renew the {name} {row['field']} in CashPilot",
-            loss="CashPilot stops reading this balance, so its other reminders go stale.",
-            how="Paste a fresh value under Settings, Earnings collection.",
+            title=t("obligations.credential.title", name=name, field=row["field"]),
+            loss=t("obligations.credential.loss"),
+            how=t("obligations.credential.how"),
             occurrence=str(row.get("occurrence") or ""),
             stage="expired" if expired else "expiring",
             due=due,
@@ -458,11 +460,11 @@ def evaluate(
         svc = by_slug[slug]
         title = next((r["title"] for r in svc.get("obligations") or [] if r["id"] == rule), None)
         if rule == WHOLE_SERVICE:
-            title = "Every reminder"
+            title = t("obligations.muted.every")
         elif rule == CASH_OUT:
-            title = "Cash-out reminder"
+            title = t("obligations.muted.cash_out")
         elif rule.startswith(CREDENTIAL_PREFIX):
-            title = f"Credential reminder ({rule.removeprefix(CREDENTIAL_PREFIX)})"
+            title = t("obligations.muted.credential", field=rule.removeprefix(CREDENTIAL_PREFIX))
         if title:
             out.muted.append({"slug": slug, "rule": rule, "name": svc.get("name") or slug, "title": title})
     return out
@@ -477,36 +479,58 @@ def push_subject(item: Item) -> str:
     return f"{item.slug}:{item.rule}:{item.occurrence}:{item.stage}"
 
 
-_VERBS = {"claim": "claim", "withdraw": "withdraw", "keep-active": "keep it active", "renew": "renew the credential"}
+_MONTHS = (
+    "obligations.month.1",
+    "obligations.month.2",
+    "obligations.month.3",
+    "obligations.month.4",
+    "obligations.month.5",
+    "obligations.month.6",
+    "obligations.month.7",
+    "obligations.month.8",
+    "obligations.month.9",
+    "obligations.month.10",
+    "obligations.month.11",
+    "obligations.month.12",
+)
+
+
+def _month(day: date) -> str:
+    key = _MONTHS[day.month - 1]
+    return t(key)  # i18n-keys: obligations.month.1, obligations.month.2, obligations.month.3, obligations.month.4, obligations.month.5, obligations.month.6, obligations.month.7, obligations.month.8, obligations.month.9, obligations.month.10, obligations.month.11, obligations.month.12  # fmt: skip
 
 
 def _due_text(item: Item) -> str:
     if item.due is None:
         return ""
-    text = f"{item.due.day} {item.due:%b %Y}"
-    return f"{text} or earlier" if item.censored else text
+    day, month, year = item.due.day, _month(item.due), item.due.year
+    if item.censored:
+        return t("obligations.due_or_earlier", day=day, month=month, year=year)
+    return t("obligations.due", day=day, month=month, year=year)
 
 
 def push_text(item: Item) -> tuple[str, str]:
     """``(title, body)`` for one push. Catalog text and dates only: never a balance."""
-    verb = _VERBS.get(item.action, item.action)
+    name, action = item.name, item.action
     if item.stage == "recheck":
-        title = f"CashPilot: {item.name}, did the payout arrive?"
+        title = t("obligations.push.recheck", name=name)
     elif item.kind == CASH_OUT:
-        title = f"CashPilot: {item.name} can be cashed out"
+        title = t("obligations.push.cash_out", name=name)
     elif item.stage == "overdue":
-        title = f"CashPilot: {item.name}, {verb} now, the deadline passed"
+        title = t("obligations.push.overdue", name=name, action=action)
+    elif item.days_left == 0:
+        title = t("obligations.push.today", name=name, action=action)
     elif item.days_left is not None and item.days_left <= 1:
-        title = f"CashPilot: {item.name}, {verb} by {'today' if item.days_left == 0 else 'tomorrow'}"
+        title = t("obligations.push.tomorrow", name=name, action=action)
     elif item.days_left is not None:
-        title = f"CashPilot: {item.name}, {verb} within {item.days_left} days"
+        title = t("obligations.push.within", name=name, action=action, days=item.days_left)
     else:
-        title = f"CashPilot: {item.name}, {verb}"
+        title = t("obligations.push.plain", name=name, action=action)
     lines = [item.title + ".", item.loss]
     if item.stage == "overdue":
-        lines.append("The provider may already have written this off.")
+        lines.append(t("obligations.push.written_off"))
     if due := _due_text(item):
-        lines.append(f"Due by {due}.")
+        lines.append(t("obligations.push.due_by", due=due))
     if item.url:
         lines.append(item.url)
     return title, "\n".join(lines)
@@ -518,6 +542,6 @@ def summary_text(items: list[Item]) -> tuple[str, str]:
     for item in items:
         if item.name not in names:
             names.append(item.name)
-    title = f"CashPilot: {len(items)} things to do before you lose money"
-    body = ", ".join(names) + ". Open the CashPilot dashboard, Money waiting, to see each one."
+    title = t("obligations.summary.title", n=len(items))
+    body = t("obligations.summary.body", names=", ".join(names))
     return title, body
