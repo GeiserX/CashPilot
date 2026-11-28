@@ -491,32 +491,34 @@ readonly HOST_CHAINS=(
 host_rules_ensure() {
   local entry table chain hook want have changed=0
   if [ "$(sysctl -n net.ipv4.ip_forward)" != 1 ]; then
-    sysctl -qw net.ipv4.ip_forward=1; changed=1
+    sysctl -qw net.ipv4.ip_forward=1 || return 1; changed=1
   fi
   for entry in "${HOST_CHAINS[@]}"; do
     read -r table chain hook <<<"$entry"
+    # Each step is checked by hand: the guard calls this with errexit off.
     iptables -w -t "$table" -N "$chain" 2>/dev/null || true
-    want=$(host_chain_rules "$table-$chain")
-    have=$(iptables -w -t "$table" -S "$chain" | { grep -v -- "^-N $chain" || true; })
+    want=$(host_chain_rules "$table-$chain") || return 1
+    have=$(iptables -w -t "$table" -S "$chain") || return 1
+    have=$(grep -v -- "^-N $chain" <<<"$have" || true)
     if [ "$want" != "$have" ]; then
-      iptables -w -t "$table" -F "$chain"
+      iptables -w -t "$table" -F "$chain" || return 1
       while IFS= read -r rule; do
         [ -n "$rule" ] || continue
         # shellcheck disable=SC2086
-        iptables -w -t "$table" ${rule}
+        iptables -w -t "$table" ${rule} || return 1
       done <<<"$want"
       changed=1
     fi
     # Our jump goes first, so no other chain decides before ours.
     if [ "$(iptables -w -t "$table" -S "$hook" | sed -n 2p)" != "-A $hook -j $chain" ]; then
       while iptables -w -t "$table" -D "$hook" -j "$chain" 2>/dev/null; do :; done
-      iptables -w -t "$table" -I "$hook" 1 -j "$chain"
+      iptables -w -t "$table" -I "$hook" 1 -j "$chain" || return 1
       changed=1
     fi
   done
   if has firewall-cmd && firewall-cmd --state >/dev/null 2>&1; then
     if [ "$(firewall-cmd --get-zone-of-interface="$VETH_HOST" 2>/dev/null || true)" != trusted ]; then
-      firewall-cmd -q --zone=trusted --add-interface="$VETH_HOST" >/dev/null 2>&1 || true
+      firewall-cmd -q --zone=trusted --add-interface="$VETH_HOST" >/dev/null 2>&1 || return 1
       firewall-cmd -q --permanent --zone=trusted --add-interface="$VETH_HOST" >/dev/null 2>&1 || true
       changed=1
     fi
@@ -666,9 +668,17 @@ guard_pass() {
       fi
     fi
   fi
-  host_rules_ensure
+  # The host's rules carry the guest's traffic and the worker port; they are
+  # not the fence. A failed repair leaves the guest offline, never on the LAN,
+  # so the link stays up, the guest hears of it, and the next pass tries again.
+  local rc=0
+  if ! host_rules_ensure; then
+    write_guard_state failed "the host's forwarding, NAT or worker-port rules could not be put back"
+    log "FAILED: the host's forwarding, NAT or worker-port rules could not be put back; the next pass tries again"
+    rc=1
+  fi
   [ -s "$STATE/provisioned" ] && push_state_to_guest
-  return 0
+  return "$rc"
 }
 
 # ---------------------------------------------------------------------------
@@ -1424,6 +1434,9 @@ EOF
   ssh-keygen -q -t ed25519 -N "" -C cashpilot-vm-host -f "$STATE/ssh/id_ed25519"
   ssh-keygen -q -t ed25519 -N "" -C cashpilot-vm-guest -f "$STATE/ssh/guest_host_ed25519"
   printf '%s %s\n' "$GUEST_IP" "$(cut -d' ' -f1,2 "$STATE/ssh/guest_host_ed25519.pub")" >"$STATE/ssh/known_hosts"
+  # The seed disk holds the fleet key in plain text until the first boot is
+  # over. If the install stops before that, stop the guest and delete it.
+  trap install_failed EXIT
   write_seed "$api_key"
   unset api_key
   rm -f "$STATE/ssh/guest_host_ed25519"
@@ -1455,6 +1468,7 @@ EOF
     die "the guest's first boot failed. Its log ends: $(guest_ssh 'sudo tail -4 /var/log/cashpilot-vm-provision.log' 2>/dev/null | tr '\n' ' '). Run cashpilot-vm remove, then install again."
   fi
   rm -f "$STATE/seed.img"
+  trap - EXIT
   say "First boot done. Waiting for the worker to enrol with the UI..."
   wait_for 300 "the worker to enrol" guest_ssh "sudo docker exec cashpilot-worker test -s /data/.worker_key"
   date -Is >"$STATE/provisioned"
@@ -1465,6 +1479,14 @@ EOF
   say ""
   say "Running the self-test..."
   cmd_verify || true
+}
+
+# The EXIT trap of an install that stops before the first boot is over.
+install_failed() {
+  [ -f "$STATE/seed.img" ] || return 0
+  if is_unraid; then guest_stop; else systemctl stop cashpilot-vm.service >/dev/null 2>&1 || guest_stop; fi
+  rm -f "$STATE/seed.img"
+  say "The guest is stopped, and its first-boot disk, which held the fleet key, is deleted."
 }
 
 # ---------------------------------------------------------------------------
@@ -1487,13 +1509,17 @@ wait
 '
 
 # name ip port: what the guest must NOT reach. Each comes with a live control.
+# The UI's own address and port is the one allowed hole, checked apart, so it
+# is never a forbidden target, whichever list it turns up in.
 probe_targets() {
+  all_probe_targets | awk -v ip="$UI_IP" -v port="$UI_PORT" '!($2 == ip && $3 == port)'
+}
+
+all_probe_targets() {
   local ip gw port n=0 nb p
   # The host's own addresses, on a port that listens there.
   port=$(ss -Htln 2>/dev/null | awk '{print $4}' | { grep -E '^(0\.0\.0\.0|\*):' || true; } | sed 's/.*://' | sort -n | head -1)
   for ip in $(host_addrs); do
-    # The UI's own address and port is the one allowed hole, checked apart.
-    [ "$ip" = "$UI_IP" ] && [ "${port:-22}" = "$UI_PORT" ] && continue
     echo "host $ip ${port:-22}"
   done
   echo "host-veth $VH_IP ${port:-22}"
@@ -1665,9 +1691,14 @@ cmd_verify() {
     fi
     rm -f "$RUN_DIR/hold"
     exec 8>&-
-    guard_pass >/dev/null
+    guard_pass >/dev/null || true
     trap - EXIT
-    tap_up || die "the guard did not reconnect the guest after the red run"
+    # A guard pass that could not take the lock (another red run holds it)
+    # checks nothing, so the fence counts as back only when it reads back.
+    if [ "$(ns_fingerprint)" != "$(cat "$STATE/fence.golden" 2>/dev/null)" ] ||
+      iptables -w -S CPVM-IN | grep -q cpvm:red-test || ! tap_up; then
+      die "the fence is not back after the red run; the guard writes it back within a minute (see: cashpilot-vm status)"
+    fi
     say "Fence written back by the guard (exact match). GREEN run:"
     if [ "$json" = 1 ]; then exec 1>&3 3>&-; fi
   fi
@@ -1823,7 +1854,13 @@ main() {
     status) cmd_status "$@" ;;
     remove|uninstall) cmd_remove "$@" ;;
     guard) need_root; rc=0; guard_pass || rc=$?; selftest_if_asked; exit "$rc" ;;
-    net-up) need_root; load_conf || die "not installed"; mkdir -p "$RUN_DIR"; net_up; guard_pass ;;
+    net-up)
+      need_root; load_conf || die "not installed"; mkdir -p "$RUN_DIR"; net_up
+      # A failed first pass (the public IP cannot be read yet at boot) must not
+      # stop the guest from starting: it starts cut off, and the guard
+      # connects it once the fence checks out.
+      guard_pass || warn "the fence is not checked yet; the guest starts cut off and the guard tries again every 60 s"
+      ;;
     net-down) need_root; load_conf || exit 0; link_cut ;;
     run) need_root; guest_run "$@" ;;
     shutdown) need_root; load_conf || exit 0; guest_stop ;;

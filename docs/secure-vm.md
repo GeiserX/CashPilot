@@ -71,6 +71,10 @@ line, so it is not in your shell history. Then it:
 5. Waits for the worker to enrol with your UI.
 6. Runs the self-test.
 
+If the first boot fails or takes too long, the install stops the guest and
+deletes its first-boot disk, which holds the fleet key. Run `remove`, then
+`install` again.
+
 Options:
 
 - `--ref TAG`: the release that the guest takes its compose file from. Give
@@ -108,13 +112,16 @@ The fence drops everything the guest sends to:
 - your home's own public IP. Most home routers loop a connection to their own
   public address back into the LAN (NAT loopback).
 
-Two holes, both one TCP port on one address:
+Two holes, both one TCP port:
 
 - The guest can open a connection to the UI's address and port, because its
   worker must report.
 - The UI can open a connection to the guest's worker through one port on the
-  host (18081). The guest sees those connections come from the namespace, never
-  from the UI's own address.
+  host (18081). That port opens on every IPv4 address of the host, not only on
+  the one in `--worker-url`. On a host with a public address, the worker port
+  is open there too, so close it in the provider's firewall if the UI does not
+  need it. A caller still needs the worker's key. The guest sees those
+  connections come from the namespace, never from the caller's own address.
 
 The guest's replies on those connections pass as replies only. Every packet of
 a connection that the guest opens itself goes through the drops. IPv6 is off in the namespace and in the guest. The
@@ -143,9 +150,14 @@ when it wrote the fence, exactly.
   writes the new fence and reconnects. This takes well under a second.
 - The guard looks up your public IP every 2 minutes. If every lookup fails, the
   guest stays cut off until one works. The address may have changed, and the
-  fence cannot drop an address it does not know.
+  fence cannot drop an address it does not know. At boot the guest still
+  starts, cut off, and the guard connects it once a lookup works.
+- If the host's forwarding, NAT or worker-port rules cannot be put back, the
+  guard reports the fence as failed. The guest is then offline, but still
+  behind its fence, and the next pass tries again.
 - `verify --prove-red` holds the guard off while the fence is open. If that run
-  dies, the next guard pass finds it gone and puts the fence back.
+  dies, the next guard pass finds it gone and puts the fence back. The red run
+  says the fence is back only when it reads back as written.
 
 It logs each change to the journal (`journalctl -t cashpilot-vm`), or to syslog
 on Unraid.
