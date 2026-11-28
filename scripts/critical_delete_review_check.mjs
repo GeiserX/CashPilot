@@ -123,7 +123,7 @@ const replacedToast = toastOf(await run('removeService', ['mysterium', 7, 'box-a
   removedWith({failed_volumes: ['mysterium-data'], replaced_volumes: ['mysterium-data']})));
 check('a replaced volume is not sent back to Remove again', !replacedToast.includes('Try Remove again'), replacedToast);
 check('a replaced volume is named as another client\'s, kept by the box',
-  replacedToast.includes('another client replaced its volume mysterium-data'), replacedToast);
+  replacedToast.includes('Another client replaced its volume mysterium-data'), replacedToast);
 // A leftover row's first Remove is a plain DELETE with no review: a volume the
 // restore left that another client had replaced is named there too, never a
 // plain success.
@@ -133,7 +133,7 @@ const leftoverToasts = leftoverEvents.filter((e) => e.kind === 'toast');
 check('a leftover Remove that kept a replaced volume is not a success',
   leftoverToasts.length === 1 && leftoverToasts[0].type === 'error', JSON.stringify(leftoverToasts));
 check('a leftover Remove names the replaced volume without claiming a review',
-  toastOf(leftoverEvents).includes('another client replaced its volume mysterium-data, so the box kept that volume'),
+  toastOf(leftoverEvents).includes('Another client replaced its volume mysterium-data, so the box kept that volume'),
   toastOf(leftoverEvents));
 const failedToast = toastOf(await run('removeService', ['mysterium', 7, 'box-a'],
   removedWith({failed_volumes: ['mysterium-data'], replaced_volumes: []})));
@@ -177,7 +177,7 @@ const customRetry = await run('removeCustomFromBox', ['my-app', 7, 'box-a'],
 const customRetryToasts = customRetry.filter((e) => e.kind === 'toast');
 check('a custom Remove\'s reviewed retry names the replaced volume, not a success',
   customRetryToasts.length === 1 && customRetryToasts[0].type === 'error'
-    && customRetryToasts[0].text.includes('another client replaced its volume mysterium-data'), JSON.stringify(customRetryToasts));
+    && customRetryToasts[0].text.includes('Another client replaced its volume mysterium-data'), JSON.stringify(customRetryToasts));
 const customClean = await run('removeCustomFromBox', ['my-app', 7, 'box-a'], box(null));
 check('control: a custom Remove that deleted everything is a success',
   customClean.filter((e) => e.kind === 'toast').map((e) => e.type).join() === 'success', JSON.stringify(customClean));
