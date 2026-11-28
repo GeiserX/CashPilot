@@ -13745,6 +13745,23 @@ async def _image_update_blocker(worker_id: int, slug: str, answer: dict[str, Any
         return "this box has no deployment record of it, so a redeploy cannot rebuild it"
     if proxies.route_of(recorded) is not None:
         return "it runs through a proxy, and a copy behind a proxy is not updated by itself yet"
+    if int(recorded.get("instances") or 1) > 1:
+        # A redeploy rebuilds every recorded copy, one by one, even one that is
+        # not running now, so a later copy that fails would leave two builds.
+        return (
+            f"it is deployed as {int(recorded['instances'])} copies here, and only a single copy is updated by itself"
+        )
+    if is_custom:
+        # A custom service's saved definition is the only source of a redeploy
+        # (_deploy), so a saved value not deployed yet would arrive with the update.
+        revealed = await _custom_service(slug, reveal=True) or {}
+        saved = {str(v["key"]): str(v.get("default") or "") for v in (revealed.get("docker") or {}).get("env") or []}
+        deployed = {str(k): str(v or "") for k, v in (recorded.get("env") or {}).items()}
+        # A value with {hostname} is recorded filled in (_deploy), so only its key compares.
+        if set(saved) != set(deployed) or any(
+            "{hostname}" not in value and deployed[key] != value for key, value in saved.items()
+        ):
+            return "a saved setting of it was not deployed yet; redeploy it to apply it"
     docker_conf = svc.get("docker") or {}
     custom_image = None if is_custom else (_custom_image(None, recorded) or None)
     asked = {"image": custom_image or docker_conf.get("image") or ""}
@@ -13767,6 +13784,16 @@ async def _image_update_blocker(worker_id: int, slug: str, answer: dict[str, Any
         found = drift.container_drift(svc, entry["shape"], recorded, custom_image=custom_image, worker_arch=arch_name)
         if found:
             return "it differs from what a redeploy builds (" + "; ".join(found) + ")"
+        if is_custom:
+            # A folder outside its data path (an image VOLUME) is an anonymous
+            # volume: the new container gets an empty one, and the old one is
+            # removed with the old container (orchestrator._remove_container).
+            kept = drift._volume_targets(docker_conf.get("volumes")) | drift._volume_targets(recorded.get("volumes"))
+            if loose := sorted(set(entry["shape"].get("mounts") or []) - kept):
+                return (
+                    f"it keeps data at {', '.join(loose)} outside its data path, "
+                    "and a new container would start that folder empty"
+                )
     return ""
 
 

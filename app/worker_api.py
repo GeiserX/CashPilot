@@ -3089,8 +3089,10 @@ async def api_image_check(request: Request, slug: str) -> dict[str, Any]:
     except orchestrator.ContainerNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
     except orchestrator.ContainerRuntimeError as exc:
-        # A pull error can quote a registry or proxy address with its login.
-        raise HTTPException(status_code=exc.status_code, detail=proxy_tunnel.redact(str(exc))) from None
+        # A pull error can quote a registry or proxy address with its login, or
+        # a signed URL with its credential in the query.
+        detail = re.sub(r"(https?://[^\s?#'\"]+)\?[^\s'\"]*", r"\1?<redacted>", proxy_tunnel.redact(str(exc)))
+        raise HTTPException(status_code=exc.status_code, detail=detail) from None
     except (DockerException, requests.exceptions.RequestException):
         raise HTTPException(status_code=503, detail="The worker's Docker daemon did not answer.") from None
 
