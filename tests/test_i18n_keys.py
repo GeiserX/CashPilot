@@ -256,7 +256,7 @@ def _silent_ones(parts, found):
         if isinstance(part, str) or part[0] in ("#", "arg"):
             continue
         kind, name, options = part
-        if kind == "plural" and "one" in options and "=1" not in options and not _shows_count(options["one"], name):
+        if kind == "plural" and "one" in options and not _shows_count(options["one"], name):
             found.append(name)
         for sub in options.values():
             _silent_ones(sub, found)
@@ -271,3 +271,5 @@ def test_a_plural_that_hides_its_number_names_exactly_one_with_eq_1():
     assert not found, f"use =1, or show the number with #, in the one form of: {found}"
     assert _silent_ones(i18n.parse("{n, plural, one {it} other {them}}"), []) == ["n"]
     assert _silent_ones(i18n.parse("{n, plural, =1 {it} other {them}}"), []) == []
+    # =1 takes exactly one, but 21 still picks "one" in Russian.
+    assert _silent_ones(i18n.parse("{n, plural, =1 {it} one {that box} other {# boxes}}"), []) == ["n"]

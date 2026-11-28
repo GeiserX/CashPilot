@@ -558,6 +558,57 @@ class TestSpikes:
         assert [(a["kind"], a["subject"]) for a in alerts] == [("activity_spike", "box:c:bytes")]
         assert "received 5.0 GiB" in alerts[0]["message"]
 
+    def _byte_spike(self, tmp_path):
+        from app import main
+
+        now = 1_900_000_000.0
+        last = int(now // 3600) * 3600 - 3600
+
+        async def go():
+            db = await database._get_db()
+            for i in range(1, 100):
+                await db.execute(
+                    "INSERT INTO usage_hourly (worker_id, container, hour, slug, rx_bytes, tx_bytes) VALUES (1, 'c', ?, 'x', ?, ?)",
+                    (last - i * 3600, 10 * 1024**2, None),
+                )
+            await db.execute(
+                "INSERT INTO usage_hourly (worker_id, container, hour, slug, rx_bytes, tx_bytes) VALUES (1, 'c', ?, 'x', ?, NULL)",
+                (last, 5 * 1024**3),
+            )
+            await db.commit()
+            await main._activity_spikes([{"id": 1, "client_id": "box", "name": "box"}], now=now)
+            return await rows("alerts")
+
+        return run_db(tmp_path, go)[0]["message"]
+
+    def test_a_spike_alert_reads_as_one_sentence(self, tmp_path):
+        assert self._byte_spike(tmp_path) == (
+            "On box: c received 5.0 GiB in the last hour, more than 10 times its usual hour this week."
+        )
+
+    def test_a_spike_alert_is_in_the_owners_language(self, tmp_path, monkeypatch):
+        from pathlib import Path
+
+        from app import i18n
+
+        source = json.loads((Path(i18n.__file__).parent / "en.json").read_text(encoding="utf-8"))
+        directory = tmp_path / "i18n"
+        directory.mkdir()
+        (directory / "en.json").write_text(json.dumps(source), encoding="utf-8")
+        key = "alert.activity.spike"
+        marked = {key: {"text": f"«{source[key]}»", "source": i18n.source_hash(source[key])}}
+        (directory / "es.json").write_text(json.dumps(marked, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setattr(i18n, "DIR", directory)
+        i18n.reload()
+        i18n.set_background("es")
+        try:
+            assert self._byte_spike(tmp_path) == (
+                "«On box: c received 5.0 GiB in the last hour, more than 10 times its usual hour this week.»"
+            )
+        finally:
+            monkeypatch.undo()
+            i18n.reload()
+
 
 # ---------------------------------------------------------------------------
 # the API gate

@@ -13455,13 +13455,14 @@ async def _activity_spikes(workers: list[dict[str, Any]], now: float | None = No
             floor = activity_ui.SPIKE_OPENS_FLOOR if what == "opens" else activity_ui.SPIKE_BYTES_FLOOR
             if not activity_ui.spike(history, latest, floor):
                 continue
-            if what == "opens":
-                detail = f"opened {int(latest or 0)} connections in the last hour"
-            else:
-                detail = f"{what} {activity_ui.human_bytes(latest or 0)} in the last hour"
-            message = (
-                f"On {w.get('name') or cid}: {container} {detail}, more than {activity_ui.SPIKE_RATIO} times "
-                "its usual hour this week."
+            message = t(
+                "alert.activity.spike",
+                box=w.get("name") or cid,
+                container=container,
+                what=what,
+                count=int(latest or 0),
+                amount=activity_ui.human_bytes(latest or 0),
+                ratio=str(activity_ui.SPIKE_RATIO),
             )
             await database.record_alert(
                 "activity_spike",
