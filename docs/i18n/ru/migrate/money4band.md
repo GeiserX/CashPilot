@@ -1,5 +1,5 @@
 ---
-source_hash: 374e39e6eac9
+source_hash: 1a7f6b462b56
 ---
 # Переход с money4band { #moving-from-money4band }
 
@@ -21,12 +21,24 @@ CashPilot. Две копии за одним подключением зараб
 
 ## Какой файл использовать { #which-file-to-use }
 
-Используйте `config/user-config.json` в папке money4band. money4band записывает его,
-когда вы запускаете **Setup Apps**, и в нём ровно то, что вы ввели. `.env`
-рядом с ним генерируется из этого файла и тоже подходит, как и отредактированный вручную
-`.env` из money4band 3.x. Оба остаются только на вашем диске: их перечисляет
+Используйте `config/user-config.json` в папке money4band. Как передать его в
+CashPilot, зависит от вашей версии money4band.
+
+В money4band 4.x money4band записывает этот файл, когда вы запускаете **Setup Apps**, и
+в нём ровно то, что вы ввели. `.env` рядом с ним генерируется из этого файла и тоже
+подходит, как и отредактированный вручную `.env` из money4band 3.x. Оба остаются только
+на вашем диске: их перечисляет
 [.gitignore](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/.gitignore)
 money4band.
+
+money4band 5.0 шифрует `config/user-config.json` на диске
+([заметки о безопасности](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption))
+и удаляет свой `.env` после каждого запуска
+([сборщик env](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
+CashPilot не может прочитать зашифрованный файл. Запустите `m4b config edit` в папке
+money4band: эта команда открывает расшифрованный файл в вашем редакторе
+([справка по CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+Скопируйте весь его текст, вставьте его на странице импорта, затем закройте редактор.
 
 Лучше используйте файл JSON. В `.env` Docker Compose раскрывает `$` в значениях без кавычек,
 поэтому пароль с `$` — это не то, что показывает файл. CashPilot
@@ -48,7 +60,9 @@ money4band.
 [шаблона user-config](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/template/user-config.json)
 money4band и из имён `.env`, которые записывает его
 [генератор](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/utils/generator.py#L535-L545)
-(`<APP>_<FLAG>`, например `REPOCKET_APIKEY`).
+(`<APP>_<FLAG>`, например `REPOCKET_APIKEY`). money4band 5.0 сохраняет те же имена
+полей в своём
+[каталоге приложений](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/config/catalog/supported).
 
 | Приложение money4band | Сервис CashPilot | Что переносится |
 |---|---|---|
