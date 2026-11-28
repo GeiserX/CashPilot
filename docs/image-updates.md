@@ -49,6 +49,8 @@ to turn the updates on. CashPilot never turns them on for you.
    old container stays on the box, stopped.
 4. If the new container stops, restarts, shows an unhealthy Docker health
    check, or logs one of the app's known failure lines, the worker removes it.
+   A health check that has still not passed 30 seconds after the period counts
+   as a failure too.
    Then it starts the old container again, with its old image. The table and
    the bell show **Undone**. An undo puts back the container, not the data:
    the old and the new container use the same volume, so anything the new

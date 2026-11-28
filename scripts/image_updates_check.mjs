@@ -134,6 +134,28 @@ await p.answer();
 check('an older load that answers last draws nothing', p.root.renders === 2, `drawn ${p.root.renders} times`);
 check('the newest answer is the one shown', p.root.innerHTML.includes('value="off" selected'), 'the fleet choice is not the newest answer');
 
+// 6b. A stored choice with no control on the page is sent back with a save:
+// the server replaces the whole map, so leaving it out would drop it.
+p = makePage();
+await p.answer({...p.data, settings: {...p.data.settings, services: {gone: 'off'}, workers: {9: 'notify'}}});
+p.click('save');
+const put = p.calls.at(-1);
+check('a save keeps an app choice with no control', put.body?.services?.gone === 'off', JSON.stringify(put.body));
+check('a save keeps a box choice with no control', put.body?.workers?.[9] === 'notify', JSON.stringify(put.body));
+
+// 6c. Two saves run one after the other, in the order they were asked for.
+p = makePage();
+await p.answer();
+p.change();
+p.click('save');
+p.change();
+p.click('save');
+const puts = () => p.calls.filter((c) => c.method === 'PUT').length;
+check('a second save waits for the first', puts() === 1, `${puts()} PUTs in flight`);
+await p.answer({});
+await p.answer();
+check('the second save goes once the first is done', puts() === 2, `${puts()} PUTs sent`);
+
 // 7. A reload that fails keeps the controls and a change not saved, and says so.
 p = makePage();
 await p.answer();

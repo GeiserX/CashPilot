@@ -146,9 +146,22 @@
     if (!unsaved()) render();
   }
 
-  async function save(mode) {
-    const pick = (sel) => {
-      const out = {};
+  // Saves run one after another, in the order the owner asked for them: two
+  // PUTs in flight could reach the server in the other order.
+  let saving = Promise.resolve();
+  let queued = 0;
+  function save(mode) {
+    queued += 1;
+    const run = queued === 1 ? saveNow(mode) : saving.then(() => saveNow(mode));
+    saving = run.finally(() => { queued -= 1; });
+    return saving;
+  }
+
+  async function saveNow(mode) {
+    // A stored choice with no control on the page (an app or box not listed
+    // now) is sent back as it is: the server replaces the whole map.
+    const pick = (sel, stored) => {
+      const out = { ...(stored || {}) };
       root.querySelectorAll(sel).forEach((el) => {
         const key = el.dataset.updatesWorker || el.dataset.updatesService;
         out[key] = el.value || null;
@@ -159,8 +172,8 @@
     const body = {
       mode: mode || (modeEl ? modeEl.value : state.settings.mode),
       hour: parseInt((document.getElementById('updates-hour') || {}).value ?? state.settings.hour, 10),
-      workers: pick('[data-updates-worker]'),
-      services: pick('[data-updates-service]'),
+      workers: pick('[data-updates-worker]', state.settings.workers),
+      services: pick('[data-updates-service]', state.settings.services),
     };
     const sent = edits;
     try {
