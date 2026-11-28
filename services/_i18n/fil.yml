@@ -776,7 +776,7 @@ ionet.short_description:
   text: "Decentralized GPU network para sa AI - kailangan ng NVIDIA GPU"
   source: "fe3c9f266aaf"
 ionet.earnings.notes:
-  text: "Kailangan ng NVIDIA GPU na may 8GB+ VRAM. May mga nagsasabing $500-1000/buwan para sa RTX 4090 (malamang mas mababa sa totoo)."
+  text: "Kailangan ng NVIDIA GPU na may 8GB+ VRAM. May mga nagsasabing $500-1000/buwan para sa RTX 4090 (sa totoo, malamang mas mababa ang aktwal na kita)."
   source: "758e456cefa1"
 ionet.payment.frequency:
   text: "Batay sa epoch"
