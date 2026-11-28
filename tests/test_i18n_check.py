@@ -853,3 +853,29 @@ def test_restamp_leaves_a_still_broken_translation_stale(tmp_path):
     data = yaml.safe_load(es.read_text(encoding="utf-8"))
     assert data["iproyal.notes"]["source"] == "000000000000"
     assert data["iproyal.description"]["source"] == ic.source_hash("Share bandwidth")
+
+
+def test_a_select_that_wraps_more_of_the_sentence_passes(tmp_path):
+    # Filipino puts the verb first, so its select holds the whole sentence.
+    en = (
+        "{n, plural, =1 {{slug}} other {Copy {n} of {slug}}} on {worker} {cmd, select, stop {stopped} other {removed}}."
+    )
+    branch = "{n, plural, =1 {{slug}} other {kopya {n} ng {slug}}} sa {worker}"
+    fil = f"{{cmd, select, stop {{Inihinto ang {branch}.}} other {{Inalis ang {branch}.}}}}"
+    en_f = write(tmp_path / "en.json", json.dumps({"a": en}))
+    fil_f = write(tmp_path / "fil.json", json.dumps({"a": fil}))
+    assert run(en_f, fil_f)[0] == 0
+    # Dropping {worker} from one keyword still fails.
+    write(fil_f, json.dumps({"a": fil.replace(f"Inalis ang {branch}", "Inalis ang {slug}")}))
+    assert run(en_f, fil_f)[0] == 1
+
+
+def test_a_hash_belongs_to_its_own_plural(tmp_path):
+    en = write(
+        tmp_path / "en.json", json.dumps({"a": "{f, plural, other {# files}} in {d, plural, other {{d} folders}}"})
+    )
+    es = write(
+        tmp_path / "es.json", json.dumps({"a": "{f, plural, other {{f} archivos}} en {d, plural, other {# carpetas}}"})
+    )
+    code, out = run(en, es)
+    assert code == 1 and "# of f" in out

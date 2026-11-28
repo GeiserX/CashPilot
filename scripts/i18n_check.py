@@ -672,8 +672,13 @@ class IcuError(Exception):
     pass
 
 
-def _icu_scan(s: str, i: int, in_plural: bool, out: set, depth: int) -> int:
-    """Scan message text from i until an unmatched '}' (returned) or the end."""
+def _icu_scan(s: str, i: int, plural: str | None, out: set, depth: int, pick: tuple | None = None) -> int:
+    """Scan message text from i until an unmatched '}' (returned) or the end.
+
+    `plural` names the plural whose branch this is, for "#". With `pick` set
+    to (name, keyword), a select of that name adds only the placeholders of
+    the branch that keyword chooses (or "other"): what renders for it.
+    """
     n = len(s)
     while i < n:
         c = s[i]
@@ -682,7 +687,7 @@ def _icu_scan(s: str, i: int, in_plural: bool, out: set, depth: int) -> int:
             if nxt == "'":
                 i += 2
                 continue
-            if nxt in ("{", "}") or (in_plural and nxt == "#"):
+            if nxt in ("{", "}") or (plural and nxt == "#"):
                 end = s.find("'", i + 1)
                 while end != -1 and s[end + 1 : end + 2] == "'":
                     end = s.find("'", end + 2)
@@ -692,10 +697,10 @@ def _icu_scan(s: str, i: int, in_plural: bool, out: set, depth: int) -> int:
                 continue
             i += 1
             continue
-        if c == "#" and in_plural:
-            out.add(("plural-number",))  # the count shown in a plural branch
+        if c == "#" and plural:
+            out.add(("plural-number", plural))  # the count shown in a plural branch
         if c == "{":
-            i = _icu_argument(s, i + 1, out, depth)
+            i = _icu_argument(s, i + 1, out, depth, pick)
             continue
         if c == "}":
             if depth == 0:
@@ -711,7 +716,7 @@ _ICU_HEAD = re.compile(r"\s*([\w.\-]+)\s*(?:,\s*(\w+)\s*)?")
 _ICU_OPTION = re.compile(r"\s*(offset:\s*\d+|=?[\w\-]+)\s*")
 
 
-def _icu_argument(s: str, i: int, out: set, depth: int) -> int:
+def _icu_argument(s: str, i: int, out: set, depth: int, pick: tuple | None = None) -> int:
     """Parse one argument starting just after its '{'; return the index after its '}'."""
     m = _ICU_HEAD.match(s, i)
     if not m:
@@ -728,6 +733,7 @@ def _icu_argument(s: str, i: int, out: set, depth: int) -> int:
             raise IcuError(f"{kind} {name!r} has no options")
         j += 1
         keys: list[str] = []
+        branches: dict = {}
         while True:
             while j < len(s) and s[j].isspace():
                 j += 1
@@ -745,15 +751,17 @@ def _icu_argument(s: str, i: int, out: set, depth: int) -> int:
                 raise IcuError(f"{kind} option {o.group(1)!r} needs a {{message}}")
             keys.append(o.group(1))
             if kind == "select":
-                # Each select keyword must keep its own placeholders: {name}
-                # moved from one keyword to another is a different message.
                 inner: set = set()
-                j = _icu_scan(s, j + 1, False, inner, depth + 1) + 1
-                out.update(inner)
-                out.add(("select-branch", name, o.group(1), frozenset(inner)))
+                j = _icu_scan(s, j + 1, None, inner, depth + 1, pick) + 1
+                branches[o.group(1)] = inner
             else:
-                j = _icu_scan(s, j + 1, True, out, depth + 1) + 1
+                j = _icu_scan(s, j + 1, name, out, depth + 1, pick) + 1
         if kind == "select":
+            if pick and pick[0] == name:
+                out.update(branches.get(pick[1], branches.get("other", set())))
+            else:
+                for inner in branches.values():
+                    out.update(inner)
             out.add(("select", name, tuple(sorted(keys))))
         else:
             out.add((kind, name))
@@ -831,7 +839,16 @@ def placeholders(text: str) -> frozenset:
     body = _PRINTF.sub("", body)
     if "{" in body or "}" in body:
         try:
-            _icu_scan(body, 0, False, out, 0)
+            _icu_scan(body, 0, None, out, 0)
+            # Each select keyword must render the same placeholders as in the
+            # English. A select may wrap more of the sentence in another
+            # language, so compare what renders for the keyword, not the
+            # branch alone: {name} moved from one keyword to another fails.
+            for sel in [t for t in out if t[0] == "select"]:
+                for key in sel[2]:
+                    shown: set = set()
+                    _icu_scan(body, 0, None, shown, 0, (sel[1], key))
+                    out.add(("select-branch", sel[1], key, frozenset(shown)))
         except IcuError:
             out.add(("broken-braces",))
             out.update(("arg", n) for n in re.findall(r"\{\s*([\w.\-]+)\s*\}", body))
@@ -875,7 +892,7 @@ def _describe(sig: frozenset) -> str:
         if kind == "link":
             return f"(link {t[1]} #{t[2]})"
         if kind == "plural-number":
-            return "(# in a plural)"
+            return f"(# of {t[1]})"
         return str(t)
 
     return ", ".join(sorted(one(t) for t in sig)) or "none"
