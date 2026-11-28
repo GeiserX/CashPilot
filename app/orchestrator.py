@@ -1301,6 +1301,8 @@ def deploy_raw(
     wallet_seed: dict[str, Any] | None = None,
     wallet: dict[str, Any] | None = None,
     on_created: Callable[[str], None] | None = None,
+    settle_seconds: float = 0,
+    image_update: dict[str, Any] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -1344,6 +1346,13 @@ def deploy_raw(
     routed through a proxy, or a proxied-only worker, refuses to run from the
     box's own IP (route_gate.check). ``leave_route`` is set only by the worker
     API, after it checked the owner's password approval for that switch.
+
+    ``settle_seconds`` is for an image update (the UI's app/image_updates.py):
+    a replacement must stay healthy that long (_settle) before the previous
+    container is removed, or it is undone like a failed start and
+    ImageUpdateFailed is raised. Once it passed, the image the previous
+    container ran is deleted when nothing else uses it; ``image_update``, when
+    given, is filled with the old and new image IDs and why an old one stayed.
     """
     if deadline is None:
         deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
@@ -1655,6 +1664,8 @@ def deploy_raw(
     created = None
     created_id: str | None = None
     began = time.monotonic()
+    # A second early, so a log line written as the container starts is inside.
+    began_wall = time.time() - 1
     try:
         # Again here: the volumes and the old container's stop come after the
         # check above, and can take long. Past it, the old one is put back.
@@ -1698,6 +1709,8 @@ def deploy_raw(
 
             if problem := lan_fence._started_unattached(container, gated_mode):
                 raise ContainerRuntimeError(t("err.orchestrator.did_not_come_up_network", name=name, problem=problem))
+        if settle_seconds > 0 and replaced is not None and start and not joined:
+            _settle(container, slug, settle_seconds, began_wall, name)
     except ContainerNetworkError:
         # The fence went between the checks above and the start: the new node is
         # created and the guard starts it once the fence reads complete.
@@ -1732,7 +1745,13 @@ def deploy_raw(
         raise _deploy_failure(exc, restored, slug) from exc
     if gated:
         _mark_failed(name, False)
+    old_image = str((getattr(replaced, "attrs", None) or {}).get("Image") or "") if replaced is not None else ""
     _remove_replaced(replaced, name, slug)
+    if settle_seconds > 0 and replaced is not None:
+        new_image = str((getattr(container, "attrs", None) or {}).get("Image") or "")
+        kept = _remove_old_image(client, old_image) if old_image and new_image and old_image != new_image else None
+        if image_update is not None:
+            image_update.update({"old_image": old_image, "new_image": new_image, "old_kept": kept or ""})
     logger.info("Container %s started: %s", name, container.short_id)
     return container.id
 
@@ -1938,8 +1957,186 @@ def _roll_back(
     )
 
 
+class ImageUpdateFailed(ContainerRuntimeError):
+    """A replacement that did not stay healthy for its check period (deploy_raw ``settle_seconds``).
+
+    deploy_raw undoes it as it undoes a failed start: the new container goes
+    and the previous one, with its own image, gets its name back and runs again.
+    """
+
+
+#: Seconds between two looks at a replacement during its check period.
+_SETTLE_POLL_SECONDS = 5.0
+#: The log records a check period reads from the replacement, newest last.
+_SETTLE_LOG_LINES = 200
+
+
+def floating_ref(ref: str) -> bool:
+    """Whether an image reference follows a tag a registry can move: not a digest, not a bare image ID."""
+    ref = (ref or "").strip()
+    return bool(ref) and "@" not in ref and not ref.startswith("sha256:")
+
+
+def _signal_hit(logs: str, signal: dict[str, Any]) -> bool:
+    """Whether one catalog health signal holds on ``logs``: its pattern matches and its ``unless`` does not."""
+    try:
+        if not re.search(str(signal.get("pattern") or "(?!)"), logs, re.IGNORECASE):
+            return False
+        unless = signal.get("unless")
+        return not (unless and re.search(str(unless), logs, re.IGNORECASE))
+    except re.error:
+        return False
+
+
+def _settle_problem(container: Any, slug: str, since: float) -> str | None:
+    """Why a replacement is not healthy now, or None while it looks well.
+
+    It must run, must not have been restarted by Docker, must not report an
+    unhealthy Docker health check, and its log since ``since`` must show none
+    of the catalog's failing or account_disabled health signals (an idle one
+    is not a fault).
+    """
+    try:
+        container.reload()
+    except NotFound:
+        return "is gone"
+    except Exception:  # noqa: BLE001 - not readable now is looked at again
+        return None
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    state = attrs.get("State") if isinstance(attrs.get("State"), dict) else {}
+    status = getattr(container, "status", "") or str(state.get("Status") or "")
+    if status != "running":
+        why = state.get("Error") or (f"exit code {state['ExitCode']}" if isinstance(state.get("ExitCode"), int) else "")
+        return f"stopped ({why})" if why else f"is {status or 'not running'}"
+    if int(attrs.get("RestartCount") or 0) > 0:
+        return f"crashed and was restarted by Docker ({attrs['RestartCount']}x)"
+    health = state.get("Health") if isinstance(state.get("Health"), dict) else {}
+    if health.get("Status") == "unhealthy":
+        return "is reported unhealthy by its image's own health check"
+    signals = ((get_service(slug) or {}).get("docker") or {}).get("health_signals") if get_service else None
+    if not isinstance(signals, list) or not signals:
+        return None
+    try:
+        raw = container.logs(tail=_SETTLE_LOG_LINES, since=int(since))
+    except Exception:  # noqa: BLE001 - an unreadable log is no finding
+        return None
+    text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw or "")
+    for signal in signals:
+        if not isinstance(signal, dict) or str(signal.get("state") or "failing").lower() == "idle":
+            continue
+        if _signal_hit(text, signal):
+            means = " ".join(str(signal.get("means") or "").split())
+            return f"logged a known failure ({means})" if means else "logged a known failure"
+    return None
+
+
+def _settle(container: Any, slug: str, seconds: float, since: float, name: str) -> None:
+    """Watch a replacement for ``seconds``; raise ImageUpdateFailed as soon as it is not healthy."""
+    logger.info("Watching %s for %d s before the previous container is removed", name, int(seconds))
+    end = time.monotonic() + seconds
+    while True:
+        problem = _settle_problem(container, slug, since)
+        if problem:
+            logger.warning("%s failed its check after the update: it %s", name, problem)
+            raise ImageUpdateFailed(f"The new {name} {problem} within its {int(seconds)} s check, so it was undone.")
+        if time.monotonic() >= end:
+            return
+        time.sleep(_SETTLE_POLL_SECONDS)
+
+
+def _remove_old_image(client: Any, image_id: str) -> str | None:
+    """Delete the image a replaced container ran, never forced; None when it went, else why it stayed.
+
+    Docker refuses to delete an image any container still uses, so a shared
+    image stays. The shipped socket proxy refuses every image delete (owner
+    isolation cannot tell whose an image is), so there it stays on disk too.
+    """
+    try:
+        client.images.remove(image_id)
+    except ImageNotFound:
+        return None
+    except APIError as exc:
+        if proxy_refusal(exc) or getattr(exc, "status_code", None) == 403:
+            return "the Docker socket proxy does not let CashPilot delete images"
+        if getattr(exc, "status_code", None) == 409:
+            return "another container still uses it"
+        return " ".join(str(exc.explanation or exc).split())[:200]
+    except Exception as exc:  # noqa: BLE001 - a leftover image is reported, never fatal
+        return str(exc)[:200]
+    logger.info("Removed the replaced image %s", image_id[:19])
+    return None
+
+
+def _repo_digest(image: Any, ref: str) -> str:
+    """The registry digest (sha256:...) ``image`` was pulled as for the repository of ``ref``, or ""."""
+    attrs = image.attrs if isinstance(getattr(image, "attrs", None), dict) else {}
+    digests = [str(d) for d in attrs.get("RepoDigests") or [] if "@" in str(d)]
+    repo = ref.rsplit(":", 1)[0] if ref.rfind(":") > ref.rfind("/") else ref
+    for entry in digests:
+        if entry.split("@", 1)[0] in (repo, f"docker.io/{repo}", f"docker.io/library/{repo}") or entry.split("@", 1)[
+            0
+        ].endswith("/" + repo):
+            return entry.split("@", 1)[1]
+    return digests[0].split("@", 1)[1] if digests else ""
+
+
+def check_image(slug: str, timeout: float = 900) -> dict[str, Any]:
+    """Whether a newer build of the tag ``slug``'s copies run exists, pulling it to find out.
+
+    The socket proxy lets the worker pull and inspect images and nothing else,
+    so the check is a pull: Docker fetches the tag's manifest and only the
+    layers it does not have. Copies pinned to a digest or an image ID are not
+    checked (``floating`` False): a CashPilot release moves those.
+    """
+    try:
+        client = _get_client()
+    except RuntimeError as exc:
+        raise ContainerRuntimeError(str(exc), 503) from exc
+    found = service_instances(slug, client)
+    if not found:
+        raise ContainerNotFoundError(f"Container for {slug} not found")
+    refs = {str(((c.attrs or {}).get("Config") or {}).get("Image") or "") for c in found}
+    if len(refs) != 1:
+        return {"floating": False, "reason": "its copies run different images"}
+    ref = refs.pop()
+    if not floating_ref(ref):
+        return {"floating": False, "ref": ref}
+    logger.info("Checking %s for a newer build of %s", slug, ref)
+    try:
+        error = _pull_until(client, ref, time.monotonic() + timeout)
+    except PastDeadline:
+        error = f"the pull took longer than {int(timeout)} s"
+    if error is not None:
+        reason = " ".join(str(getattr(error, "explanation", None) or error).split())[:300]
+        raise ContainerRuntimeError(f"Could not check {ref}: {reason}", 502)
+    latest = client.images.get(ref)
+    copies = []
+    for c in found:
+        image_id = str((c.attrs or {}).get("Image") or "")
+        digest = ""
+        with contextlib.suppress(Exception):
+            digest = _repo_digest(client.images.get(image_id), ref)
+        copies.append(
+            {
+                "instance": _instance_of(c),
+                "container_id": c.id,
+                "status": getattr(c, "status", ""),
+                "image_id": image_id,
+                "digest": digest,
+            }
+        )
+    return {
+        "floating": True,
+        "ref": ref,
+        "latest": {"id": latest.id, "digest": _repo_digest(latest, ref)},
+        "containers": copies,
+    }
+
+
 def _deploy_failure(exc: BaseException, restored: str, slug: str = "") -> ContainerRuntimeError:
     """The error a failed create or start answers with, after the roll-back."""
+    if isinstance(exc, ImageUpdateFailed):
+        return ImageUpdateFailed(f"{exc} {restored}", exc.status_code)
     if isinstance(exc, ContainerRuntimeError):
         return ContainerRuntimeError(f"{exc} {restored}", exc.status_code)
     refusal = proxy_refusal(exc) if isinstance(exc, APIError) else None

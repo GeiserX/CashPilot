@@ -125,6 +125,21 @@
 </section>
 {% endif %}
 
+{% if user.r == 'owner' %}
+<!-- App image updates (app/image_updates.py, docs/image-updates.md). -->
+<section class="fleet-updates" id="fleet-updates" aria-labelledby="updates-title">
+  <div class="block-head">
+    <h2 class="block-title" id="updates-title">{{ t('fleet.updates.title') }}</h2>
+    <span class="block-meta">{{ t('fleet.updates.meta') }} <a href="https://geiserx.github.io/CashPilot/image-updates/">{{ t('fleet.updates.how') }}</a></span>
+  </div>
+  <div id="updates-offer" class="inline-note" hidden>
+    {{ t('fleet.updates.offer') }}
+    <button class="btn btn-primary btn-sm" data-updates-action="enable">{{ t('fleet.updates.offer_button') }}</button>
+  </div>
+  <div id="updates-body"><div class="loading-line"><div class="spinner"></div> {{ t('fleet.updates.loading') }}</div></div>
+</section>
+{% endif %}
+
 <details class="add-worker" id="add-worker">
   <summary>{{ t('fleet.add.title') }}</summary>
   <div class="add-worker-body">
@@ -1298,6 +1313,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
 })();
 </script>
 {% if user.r == 'owner' %}
+<script src="/static/js/image_updates.js?v={{ app_version() }}"></script>
 <script nonce="{{ csp_nonce(request) }}">
 (function() {
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));

@@ -879,6 +879,26 @@ CREATE TABLE IF NOT EXISTS device_identities (
 
 CREATE INDEX IF NOT EXISTS idx_device_identities_slug
     ON device_identities (slug, worker_id);
+
+-- What the automatic image updates did (app/image_updates.py): one row per
+-- update, rollback, failure, available build or skip, newest kept. Image ids
+-- decide (a rolled_back new_image is never tried again on that box); the
+-- registry digests are what the page shows.
+CREATE TABLE IF NOT EXISTS image_updates (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    worker_id   INTEGER NOT NULL,
+    slug        TEXT    NOT NULL,
+    result      TEXT    NOT NULL,
+    old_image   TEXT    NOT NULL DEFAULT '',
+    new_image   TEXT    NOT NULL DEFAULT '',
+    old_digest  TEXT    NOT NULL DEFAULT '',
+    new_digest  TEXT    NOT NULL DEFAULT '',
+    detail      TEXT    NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_image_updates_target
+    ON image_updates (worker_id, slug, new_image);
 """
 
 
@@ -1218,6 +1238,17 @@ async def init_db() -> None:
         created = sorted({row["name"] for row in await cursor.fetchall()} - tables_before - {"sqlite_sequence"})
         if created and tables_before:
             applied.append(("table " if len(created) == 1 else "tables ") + ", ".join(created) + " created")
+        if "image_updates" in created:
+            # The first start with image updates: a new install updates its
+            # earners by itself, an upgraded one is offered it and stays off
+            # until the owner says yes (app/image_updates.py).
+            from app import image_updates
+
+            await db.execute(
+                "INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)",
+                (image_updates.CONFIG_KEY, json.dumps(image_updates.default_settings(not tables_before))),
+            )
+            await db.commit()
         # Migrate workers table: add client_id (UNIQUE) and apps columns
         cursor = await db.execute("PRAGMA table_info(workers)")
         cols = {row["name"] for row in await cursor.fetchall()}
@@ -1954,6 +1985,63 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
             )
 
         return result
+    finally:
+        await db.close()
+
+
+# --- Image updates (app/image_updates.py) ---
+
+#: Rows kept in image_updates; older ones go on each write.
+IMAGE_UPDATE_ROWS = 1000
+
+
+async def record_image_update(
+    worker_id: int,
+    slug: str,
+    result: str,
+    *,
+    old_image: str = "",
+    new_image: str = "",
+    old_digest: str = "",
+    new_digest: str = "",
+    detail: str = "",
+) -> None:
+    db = await _get_db()
+    try:
+        await db.execute(
+            "INSERT INTO image_updates (worker_id, slug, result, old_image, new_image, old_digest, new_digest, detail)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (worker_id, slug, result, old_image, new_image, old_digest, new_digest, detail[:1000]),
+        )
+        await db.execute(
+            "DELETE FROM image_updates WHERE id <= (SELECT MAX(id) FROM image_updates) - ?", (IMAGE_UPDATE_ROWS,)
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def image_update_seen(worker_id: int, slug: str, new_image: str, results: tuple[str, ...]) -> bool:
+    """Whether a row with one of ``results`` already names ``new_image`` for this service on this box."""
+    marks = ", ".join("?" for _ in results)
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            f"SELECT 1 FROM image_updates WHERE worker_id = ? AND slug = ? AND new_image = ? AND result IN ({marks})"
+            " LIMIT 1",
+            (worker_id, slug, new_image, *results),
+        )
+        return await cursor.fetchone() is not None
+    finally:
+        await db.close()
+
+
+async def list_image_updates(limit: int = 200) -> list[dict[str, Any]]:
+    """The newest rows first."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM image_updates ORDER BY id DESC LIMIT ?", (limit,))
+        return [dict(row) for row in await cursor.fetchall()]
     finally:
         await db.close()
 

@@ -2583,6 +2583,9 @@ class TestLifespanScheduler:
                         # reminder once per stage. Hourly, and NOT spawned at
                         # startup, so there is no startup task to stub here.
                         "obligations",
+                        # App image updates: a tick that starts the daily run
+                        # at the owner's hour. NOT spawned at startup.
+                        "image_updates",
                     }
                     # Every job carries the hardening kwargs (audit fix).
                     for job in jobs.values():

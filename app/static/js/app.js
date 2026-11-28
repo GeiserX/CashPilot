@@ -6801,6 +6801,8 @@ const CP = (() => {
         const isDocker = a.kind === 'docker';
         // A running copy that carries almost no traffic: look at it, never a credential.
         const isStall = a.kind === 'stall';
+        // An app image update that was undone, failed or waits (app/image_updates.py): see the Fleet page.
+        const isImageUpdate = a.kind === 'image_update';
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -6812,7 +6814,9 @@ const CP = (() => {
         const isShape = category === 'shape';
         const isAuth = category === 'auth';
         const isExpiring = category === 'expiring';
-        const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
+        // A build waiting for the owner is news, not a fault.
+        const isWaiting = isImageUpdate && category === 'notice';
+        const icon = isPayout ? PAYOUT_ICON : isWaiting ? NOTICE_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
         const suffix = isPayout ? t('app.bell.s.payout')
           : isActivity ? (a.kind === 'activity_spike' ? t('app.bell.s.unusual_hour') : t('app.bell.s.network'))
           : isContainer ? t('app.bell.s.not_running')
@@ -6820,6 +6824,7 @@ const CP = (() => {
           : isProxied ? t('app.bell.s.proxied_down')
           : isDocker ? t('app.bell.s.docker')
           : isStall ? t('app.bell.s.stall')
+          : isImageUpdate ? t('app.bell.s.image_update')
           : isDisabled ? t('app.bell.s.disabled')
           : isMissing ? (a.everywhere === false ? t('app.bell.s.gone_from_box') : a.everywhere ? t('app.bell.s.runs_nowhere') : t('app.bell.s.missing'))
           : isQuiet ? t('app.bell.s.quiet')
@@ -6829,8 +6834,8 @@ const CP = (() => {
           : isTransient ? t('app.bell.s.transient')
           : isShape ? t('app.bell.s.shape')
           : '';
-        const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isStall && !isProxied && !isDocker;
+        const muted = isNotice || isTransient || isWaiting;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isStall && !isImageUpdate && !isProxied && !isDocker;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon${muted ? ' muted' : ''}">
@@ -6843,6 +6848,7 @@ const CP = (() => {
           </div>
           ${showFix ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}">${isAuth ? t('app.bell.fix_credential') : t('app.credh.update')}</button>` : ''}
           ${isDocker ? `<a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">${t('app.how_to_fix')}</a>` : ''}
+          ${isImageUpdate ? `<a class="btn btn-ghost btn-sm" href="/fleet#fleet-updates">${t('app.open')}</a>` : ''}
         </div>
       `;
       }).join('');
