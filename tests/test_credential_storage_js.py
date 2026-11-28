@@ -118,7 +118,7 @@ class TestTheEarnerCredentialsCard:
             ("file", "credentials go in a file"),
             ("env", "credentials go in the container settings"),
             ("unavailable", "this worker image cannot keep credentials in a file"),
-            (None, "this worker is too old to say"),
+            (None, "this worker is too old to report it"),
         ],
     )
     def test_each_mode_reads_as_words(self, mode, said):

@@ -341,7 +341,7 @@ class TestApply:
             res = owner.post("/api/import/apply", json={"files": M4B, "slugs": ["honeygain", "repocket"]})
         assert res.status_code == 500
         detail = res.json()["detail"]
-        assert "Already saved: honeygain." in detail and "Repocket" in detail
+        assert "1 service is already saved: honeygain." in detail and "Repocket" in detail
         assert "disk I/O" not in res.text  # the exception text never reaches the browser
         assert [d["slug"] for d in owner.get("/api/import/drafts").json()] == ["honeygain"]
 

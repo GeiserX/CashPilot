@@ -536,14 +536,24 @@ def format_message(text: str, params: dict[str, Any] | None = None, locale: str 
     return _render(parse(text), params or {}, locale, "", html)
 
 
+#: Locales that write a decimal comma (3,5): CLDR's decimal mark for each.
+DECIMAL_COMMA = frozenset({"es", "pt-BR", "fr", "de", "it", "nl", "pl", "ru", "uk", "tr", "id", "vi"})
+
+
+def decimal(value: float, digits: int = 1, locale: str | None = None) -> str:
+    """``value`` with ``digits`` decimals and the current locale's decimal mark, ungrouped."""
+    text = f"{value:.{digits}f}"
+    return text.replace(".", ",") if (locale or current()) in DECIMAL_COMMA else text
+
+
 def join_and(items: list[str] | tuple[str, ...]) -> str:
-    """``items`` joined with the current locale's "and": "a and b", "a and b and c"."""
+    """``items`` joined as the current locale writes a list: "a and b", "a, b and c"."""
     if not items:
         return ""
     text = str(items[0])
-    for item in items[1:]:
-        text = t("i18n.list_and", first=text, last=item)
-    return text
+    for item in items[1:-1]:
+        text = t("i18n.list_sep", first=text, next=item)
+    return t("i18n.list_and", first=text, last=items[-1]) if len(items) > 1 else text
 
 
 def t(key: str, /, **params: Any) -> str:

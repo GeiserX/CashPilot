@@ -1793,7 +1793,7 @@ class TestFourthReview:
 
         with patch.object(proxy_tunnel.os, "fsync", side_effect=lambda fd: fsync(fd, True)):
             answer = proxy_tunnel.start("honeygain", 3, _socks(), None)
-        assert answer["durable"] is False and re.search("was started, but .*Could not record", answer["warning"])
+        assert answer["durable"] is False and re.search("was started, but .*could not save to disk", answer["warning"])
         assert docker.named(NAME).status == "running"
         folders.clear()
         with patch.object(proxy_tunnel.os, "fsync", side_effect=lambda fd: fsync(fd, False)):

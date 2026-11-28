@@ -176,7 +176,11 @@ def _refuse_retargeted_secret(existing: dict[str, Any], out: dict[str, Any], kep
     what = join_and([_secret_label(f) for f in carried])
     if out["kind"] == "tailscale":
         raise ProxyInputError(t("err.proxies.login_server_changed_type_again", what=what))
-    raise ProxyInputError(t("err.proxies.host_changed_type_again", what=what))
+    # The checkboxes that drop a stored secret, by their own labels.
+    remove = join_and(
+        [t("fleet.proxy.clear_user") if f == "username" else t("fleet.proxy.clear_password") for f in carried]
+    )
+    raise ProxyInputError(t("err.proxies.host_changed_type_again", what=what, remove=remove, n=len(carried)))
 
 
 def public_view(proxy: dict[str, Any], copies: list[dict[str, Any]] | None = None) -> dict[str, Any]:

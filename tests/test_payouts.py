@@ -143,7 +143,7 @@ class TestCoinAmountsKeepEverySmallUnit:
 
     def test_a_dollar_projection_reads_as_before(self):
         out = payouts.project(10.0, HONEYGAIN, series(1.0, 2.0, 3.0, 4.0, 5.0))
-        assert out["summary"] == "About 10 day(s) to the 20 minimum, at 1.0000 a day."
+        assert out["summary"] == "About 10 days to the 20 minimum, at 1.0000 a day."
 
     def test_lifetime_keeps_every_satoshi(self):
         confirmed = [{"amount": 0.00012345, "confirmed": 1}]

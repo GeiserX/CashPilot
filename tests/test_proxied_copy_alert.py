@@ -201,6 +201,21 @@ class TestAStuckTunnelChangeSaysSo:
         assert "cashpilot-earnfm-p3, cashpilot-honeygain-p3" in message and "repocket" not in message
         assert "is gone" not in message
 
+    @pytest.mark.parametrize(
+        ("reason", "said"),
+        [
+            ("its probe timed out", "Reason: its probe timed out. The copies"),
+            ("its probe timed out.", "Reason: its probe timed out. The copies"),
+            ("", "Reason: the worker did not say why. The copies"),
+        ],
+    )
+    def test_the_reason_ends_with_one_full_stop_from_the_message(self, reason, said):
+        """The message puts the full stop after the reason, so a translation ends it in its own script."""
+        alerts = _Alerts([_copy("earnfm")])
+        _past_grace(alerts, [_worker([_stuck(_entry("earnfm"), reason=reason)])])
+        message = alerts.rows["cashpilot-tunnel-p3-next@1"]
+        assert said in message and ".." not in message
+
     def test_it_waits_out_the_grace_like_any_other(self):
         alerts = _Alerts([_copy("earnfm")])
         alerts.run([_worker([_stuck(_entry("earnfm"))])])

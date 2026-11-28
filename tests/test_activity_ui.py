@@ -494,7 +494,7 @@ class TestAlertRules:
 
         alerts = run_db(tmp_path, go)
         assert [a["kind"] for a in alerts] == ["activity_mail"]
-        assert "mail connections to 1 destination(s)" in alerts[0]["message"]
+        assert "mail connections to 1 destination on" in alerts[0]["message"]
 
     def test_no_alert_when_the_switch_went_off_before_the_write(self, tmp_path):
         """The heartbeat read the switch on; it was off by the time the window was written."""

@@ -34,7 +34,7 @@ from collections.abc import Collection, Mapping
 from datetime import date, timedelta
 from typing import Any
 
-from app.i18n import t
+from app.i18n import decimal, t
 
 # DEFAULT_IDLE_WATTS used to live here: 65.0, described as what a small
 # always-on server draws. It was never referenced by anything, and
@@ -168,7 +168,7 @@ def assess_machine(
                 t(
                     "machine_economics.earned_last_month_without_cashpilot",
                     name=name,
-                    gross=format(gross, ".2f"),
+                    gross=decimal(gross, 2),
                     missing=missing,
                 )
             ),
@@ -236,14 +236,14 @@ def _summary(
     # "none" picks the select branch without the heat clause.
     amounts = {
         "name": name,
-        "gross": format(gross, ".2f"),
-        "cost": format(cost, ".2f"),
-        "heat": format(credit, ".2f") if credit > 0 else "none",
+        "gross": decimal(gross, 2),
+        "cost": decimal(cost, 2),
+        "heat": decimal(credit, 2) if credit > 0 else "none",
     }
     if verdict == LOSING_MONEY:
         return t(
             "machine_economics.losing_money",
-            net=format(abs(net), ".2f"),
+            net=decimal(abs(net), 2),
             dedicated="yes" if dedicated else "no",
             **amounts,
         )
@@ -297,9 +297,9 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
         summary = t(
             "machine_economics.fleet_total",
             n=len(machines),
-            gross=format(gross, ".2f"),
-            cost=format(cost, ".2f"),
-            heat=format(credit, ".2f") if credit > 0 else "none",
+            gross=decimal(gross, 2),
+            cost=decimal(cost, 2),
+            heat=decimal(credit, 2) if credit > 0 else "none",
         )
     else:
         notes = []

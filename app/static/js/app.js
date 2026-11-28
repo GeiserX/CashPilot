@@ -1581,7 +1581,7 @@ const CP = (() => {
           : `
           <div class="empty-state">
             <div class="empty-state-title">${unreachable > 0 ? t('app.services.unreachable_n', { n: escapeHtml(String(unreachable)) }) : t('app.services.unreachable_all')}</div>
-            <div class="empty-state-text">${t('app.services.unreachable_text', { n: unreachable === 1 ? 1 : 2 })}</div>
+            <div class="empty-state-text">${unreachable > 0 ? t('app.services.unreachable_text', { n: unreachable }) : t('app.services.unreachable_text_all')}</div>
             <a href="/fleet" class="btn btn-ghost">${t('app.services.check_fleet')}</a>
           </div>`;
         return;
@@ -2013,7 +2013,7 @@ const CP = (() => {
     // contradiction.
     const known = svc.balance_known !== false && svc.balance != null;
     return {
-      level: 'fail', tag: t('app.attn.tag.account_disabled'), what: t('app.attn.disabled_by', { name: svc.name }),
+      level: 'fail', tag: t('app.attn.tag.account_disabled'), what: svc.name,
       why: known
         ? t('app.attn.disabled_why_balance', { name, amount: escapeHtml(formatCurrency(svc.balance, svc.currency || 'USD')) })
         : t('app.attn.disabled_why', { name }),
@@ -3320,7 +3320,7 @@ const CP = (() => {
     if (replaced.length) notes.push(t('app.vol.replaced', { volumes: replaced.join(', ') }));
     if (unverified.length) notes.push(t('app.vol.unverified', { volumes: unverified.join(', ') }));
     if (unread.length) notes.push(t('app.vol.unread', { volumes: unread.join(', ') }));
-    if (notes.length) toast(t('app.vol.done_but', { done, notes: notes.join(t('app.vol.and')) }), 'error');
+    if (notes.length) toast(t('app.vol.done_but', { done, notes: notes.reduce((first, next) => t('app.vol.next', { first, next })) }), 'error');
     else toast(done, 'success');
   }
 
@@ -4866,7 +4866,7 @@ const CP = (() => {
     el.innerHTML = onlyCopies
       ? `${t('app.rename.copies_note', { slug: escapeHtml(slug) })}
         <button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">${t('app.rename.rebuild_copies')}</button>`
-      : `${t('app.rename.shared_note', { n: lines.length + skipped.length + copyLines.length, slug: escapeHtml(slug) })}
+      : `${t('app.rename.shared_note', { n: lines.length + skipped.length, slug: escapeHtml(slug) })}
       ${lines.length || copyLines.length ? `<button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">${t('app.rename.give_own')}</button>` : ''}
       ${skipped.map((line, i) => `<br>${escapeHtml(line)}
         <button class="btn btn-secondary btn-sm" data-action="redeployWithValues" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(String(skippedIds[i]))}">${t('app.rename.redeploy_values')}</button>`).join('')}`;
