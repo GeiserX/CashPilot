@@ -1712,6 +1712,9 @@ class DeploySpec(BaseModel):
     # stay healthy this long before the previous container goes, or it is
     # undone (orchestrator.deploy_raw). 0 is a plain deploy.
     settle_seconds: int = Field(default=0, ge=0, le=600)
+    # With settle_seconds: the build the UI's check found. A tag that moved
+    # again since is refused, so the build undone and held is the one checked.
+    expect_image: str = Field(default="", pattern=r"^(sha256:[0-9a-f]{64})?$")
 
 
 class CheckedDeploySpec(DeploySpec):
@@ -2950,6 +2953,7 @@ async def _deploy_container(request: Request, slug: str, spec: CheckedDeploySpec
             wallet=wallet,
             settle_seconds=spec.settle_seconds,
             image_update=image_update,
+            expect_image=spec.expect_image if spec.settle_seconds else "",
         )
         await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}

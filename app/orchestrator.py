@@ -1298,6 +1298,7 @@ def deploy_raw(
     on_created: Callable[[str], None] | None = None,
     settle_seconds: float = 0,
     image_update: dict[str, Any] | None = None,
+    expect_image: str = "",
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -1348,6 +1349,10 @@ def deploy_raw(
     ImageUpdateFailed is raised. Once it passed, the image the previous
     container ran is deleted when nothing else uses it; ``image_update``, when
     given, is filled with the old and new image IDs and why an old one stayed.
+    ``expect_image`` is the build the UI's check found (an image ID): a tag
+    that moved again since then is refused, so the build that is watched and
+    held is the one the check named. With a check period, a copy that is not
+    running is refused too: the owner stopped it, and an update must not start it.
     """
     if deadline is None:
         deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
@@ -1417,7 +1422,8 @@ def deploy_raw(
     if pull_error is not None:
         logger.warning("Failed to pull image %s: %s (trying local)", image, pull_error)
     try:
-        image_config = client.images.get(image).attrs.get("Config") or {}
+        pulled_image = client.images.get(image)
+        image_config = pulled_image.attrs.get("Config") or {}
     except DockerException as exc:
         # No local copy after a failed pull, or a daemon that cannot describe
         # the image it just pulled: either way there is nothing to run, and
@@ -1425,6 +1431,10 @@ def deploy_raw(
         raise ContainerRuntimeError(
             f"{image} is not available on this worker: {pull_error or exc}. The running container was not touched."
         ) from None
+    if expect_image and getattr(pulled_image, "id", "") != expect_image:
+        raise ContainerRuntimeError(
+            f"The tag {image} moved to another build after the check. Nothing changed; the next check tries it.", 409
+        )
     entrypoint = _get_entrypoint(slug)
     _refuse_init_image(image, image_config, entrypoint, command)
     _refuse_past(deadline, image)
@@ -1440,6 +1450,11 @@ def deploy_raw(
     stopped_before = name in user_stopped()
     old = deploy_target(client, name)
     require_deploy_target(expected_container, old)
+    if settle_seconds > 0 and old is not None and getattr(old, "status", "") != "running":
+        # Checked under the route lock, which Stop takes too (stop_service).
+        raise ContainerRuntimeError(
+            f"{name} was stopped after the check, and an update would start it. Nothing changed.", 409
+        )
     try:
         if old is None:
             raise NotFound(name)
@@ -1983,6 +1998,14 @@ def _signal_hit(logs: str, signal: dict[str, Any]) -> bool:
         return False
 
 
+#: Seconds a check period runs on when Docker cannot describe the replacement at its end.
+_SETTLE_GRACE_SECONDS = 30.0
+
+
+class _SettleUnreadable(Exception):
+    """Docker did not describe the replacement on one look."""
+
+
 def _settle_problem(container: Any, slug: str, since: float) -> str | None:
     """Why a replacement is not healthy now, or None while it looks well.
 
@@ -1995,8 +2018,8 @@ def _settle_problem(container: Any, slug: str, since: float) -> str | None:
         container.reload()
     except NotFound:
         return "is gone"
-    except Exception:  # noqa: BLE001 - not readable now is looked at again
-        return None
+    except Exception as exc:  # noqa: BLE001 - not readable now is looked at again
+        raise _SettleUnreadable(str(exc)) from None
     attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
     state = attrs.get("State") if isinstance(attrs.get("State"), dict) else {}
     status = getattr(container, "status", "") or str(state.get("Status") or "")
@@ -2030,12 +2053,21 @@ def _settle(container: Any, slug: str, seconds: float, since: float, name: str) 
     logger.info("Watching %s for %d s before the previous container is removed", name, int(seconds))
     end = time.monotonic() + seconds
     while True:
-        problem = _settle_problem(container, slug, since)
+        try:
+            problem, seen = _settle_problem(container, slug, since), True
+        except _SettleUnreadable:
+            # Passing needs a look that worked: the last one must have read the container.
+            problem, seen = None, False
         if problem:
             logger.warning("%s failed its check after the update: it %s", name, problem)
             raise ImageUpdateFailed(f"The new {name} {problem} within its {int(seconds)} s check, so it was undone.")
-        if time.monotonic() >= end:
+        now = time.monotonic()
+        if now >= end and seen:
             return
+        if now >= end + _SETTLE_GRACE_SECONDS:
+            raise ImageUpdateFailed(
+                f"Docker did not describe the new {name} at the end of its {int(seconds)} s check, so it was undone."
+            )
         time.sleep(_SETTLE_POLL_SECONDS)
 
 
@@ -2543,7 +2575,10 @@ def stop_service(slug: str, instance: int = 1) -> None:
     # redeploy holds it while the old node sits renamed aside and the new one
     # starts, so a lookup made before would stop the old node, or one the
     # redeploy then removes, and leave the new node running.
-    with GATED_DEPLOY_LOCK if fence_gated(slug) else contextlib.nullcontext():
+    # Every Stop also waits for a deploy of the service that holds the route
+    # lock, so it cannot land inside an image update's check period, which
+    # would read the stop as a failure and start the old container again.
+    with route_gate.deploying(slug), GATED_DEPLOY_LOCK if fence_gated(slug) else contextlib.nullcontext():
         container = _find_container(slug, instance)
         if _gated_container(slug, container):
             # Recorded before the stop, under the guard's lock: a guard pass that

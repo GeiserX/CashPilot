@@ -17,9 +17,13 @@
   const BADGE = { updated: 'badge-running', rolled_back: 'badge-error', failed: 'badge-error', available: 'badge-available', skipped: 'badge-unknown' };
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let state = null;
-  // A choice not saved yet is not thrown away by the minute's refresh.
-  let dirty = false;
-  root.addEventListener('change', () => { dirty = true; });
+  // A choice not saved yet is never thrown away by a refresh: each change
+  // counts, a save records the count it sent, and the controls are drawn
+  // again only when every change is saved. Check now keeps them as well.
+  let edits = 0;
+  let savedEdits = 0;
+  const unsaved = () => edits !== savedEdits;
+  root.addEventListener('change', () => { edits += 1; });
 
   function options(value, inherit) {
     const choices = inherit ? [''].concat(MODES) : MODES;
@@ -115,8 +119,7 @@
   async function load() {
     try {
       state = await CP.api('/api/image-updates');
-      dirty = false;
-      render();
+      if (!unsaved()) render();
     } catch (err) {
       root.innerHTML = `<p class="muted">${esc(t('fleet.updates.load_failed', { error: err.message || '' }))}</p>`;
     }
@@ -138,8 +141,10 @@
       workers: pick('[data-updates-worker]'),
       services: pick('[data-updates-service]'),
     };
+    const sent = edits;
     try {
       await CP.api('/api/image-updates', { method: 'PUT', body });
+      savedEdits = sent;
       CP.toast(t('fleet.updates.saved'), 'success');
       await load();
     } catch (err) {
@@ -167,5 +172,5 @@
   });
 
   load();
-  setInterval(() => { if (!dirty) load(); }, 60000);
+  setInterval(() => { if (!unsaved()) load(); }, 60000);
 })();

@@ -17,8 +17,9 @@ CashPilot itself, see [Updating CashPilot](getting-started.md#updating-cashpilot
 | **Update automatically** | It checks each app and installs a new build. |
 
 You make one choice for the whole fleet, and you pick the hour of the daily
-check (04:00 by default, in the dashboard's time zone). Under **Choices per box
-and per app** you can give one box or one app its own choice:
+check. It is 04:00 by default, in your account's time zone, else in the
+dashboard's. Under **Choices per box and per app** you can give one box or one
+app its own choice:
 
 1. An app's own choice wins.
 2. Else the choice of its box wins.
@@ -37,6 +38,9 @@ to turn the updates on. CashPilot never turns them on for you.
 
 1. The worker pulls the tag that the app runs. If the registry has no new
    build, the pull changes nothing and the container is not touched.
+   CashPilot installs only the build that this check found. If the tag moves
+   again before the update starts, nothing changes, and the next check tries
+   the newer build.
 2. With a new build, CashPilot runs the same redeploy as the **Redeploy**
    button. The container gets the settings that it was deployed with. These
    are the variables, the volumes and the app's identity, the network and the
@@ -101,7 +105,8 @@ there (`docker image prune`) removes all of them.
 ## Turn the updates off
 
 - For the whole fleet: on the Fleet page, set **Every app on every box** to
-  **Off** and press **Save**.
+  **Off**. A box or an app with its own choice keeps it, so open **Choices per
+  box and per app** and set each of those to **Off** too. Then press **Save**.
 - For one box or one app: open **Choices per box and per app**, set that box
   or app to **Off** and press **Save**.
 

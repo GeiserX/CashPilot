@@ -4837,9 +4837,11 @@ async def _deploy(
     restore: dict[str, Any] | None = None,
     confirm_proxied: bool = False,
     settle_seconds: int = 0,
+    expect_image: str = "",
 ) -> dict[str, Any]:
     # ``settle_seconds``: an image update (app/image_updates.py); each copy must
     # stay healthy that long on its worker, or the worker undoes it.
+    # ``expect_image``: the build its check found, the only one it may install.
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
     # the deploy has run and persisted — a stricter type turns the successful
@@ -5217,6 +5219,8 @@ async def _deploy(
             # An image update (app/image_updates.py) asks each copy to pass a check period.
             if settle_seconds:
                 options["settle_seconds"] = settle_seconds
+                if expect_image:
+                    options["expect_image"] = expect_image
             # A service routed through a proxy on this worker leaves the route only with
             # the owner's password, and its routed copy goes first: both run the same
             # device. The worker refuses the direct deploy without that confirmation.
@@ -8291,6 +8295,7 @@ async def _proxy_worker_deploy(
     leave_route: bool = False,
     expected_container: str = "none",
     settle_seconds: int = 0,
+    expect_image: str = "",
 ) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
@@ -8304,6 +8309,8 @@ async def _proxy_worker_deploy(
         # An image update: the worker watches the new container this long
         # before it removes the old one, so the answer comes that much later.
         spec = {**spec, "settle_seconds": settle_seconds}
+        if expect_image:
+            spec["expect_image"] = expect_image
     if approve:
         # After the image is final: the approval covers the spec as sent.
         spec = await _approve_spec(worker_id, slug, spec)
@@ -13685,6 +13692,12 @@ async def api_worker_retire(request: Request, body: WorkerRetire) -> dict[str, s
 
 #: One run at a time: the daily one and an owner's "Check now" never overlap.
 _image_update_lock = asyncio.Lock()
+#: Held over each read and save of the settings, so a run's last_run stamp and
+#: an owner's save never overwrite each other. Never held during a check.
+_image_update_settings_lock = asyncio.Lock()
+#: Config key of the bell rows a later check answered: "<worker id>|<slug>" ->
+#: the row id. It keeps a cleared row out of the bell after a restart too.
+_IMAGE_UPDATE_CLEARED_KEY = "image_updates_cleared"
 #: The bell's entries, keyed "<worker id>|<slug>": a build that failed and was
 #: undone, a deploy that failed, or a new build waiting for the owner.
 _image_update_bell: dict[str, dict[str, Any]] = {}
@@ -13759,7 +13772,7 @@ async def _image_update_blocker(worker_id: int, slug: str, answer: dict[str, Any
     return ""
 
 
-async def _image_update_deploy(worker_id: int, slug: str, expected: dict[str, str]) -> dict[str, Any]:
+async def _image_update_deploy(worker_id: int, slug: str, expected: dict[str, str], new_image: str) -> dict[str, Any]:
     """The dashboard's own blank redeploy, with the check period, as the Redeploy button runs it."""
     body = DeployRequest(env={}, replace_existing=True, expected_containers=expected)
     custom = custom_services.is_custom_slug(slug)
@@ -13769,7 +13782,7 @@ async def _image_update_deploy(worker_id: int, slug: str, expected: dict[str, st
             raise image_updates.DeployRefused(f"{slug} is being deleted", rolled_back=False)
         _custom_deploying[slug] += 1
     try:
-        return await _deploy(slug, body, worker_id, settle_seconds=image_updates.SETTLE_SECONDS)
+        return await _deploy(slug, body, worker_id, settle_seconds=image_updates.SETTLE_SECONDS, expect_image=new_image)
     except HTTPException as exc:
         detail = exc.detail
         message = str(detail.get("message") or detail) if isinstance(detail, dict) else str(detail)
@@ -13809,20 +13822,29 @@ async def _refresh_image_update_bell(outcomes: dict[int, dict[str, str]] | None 
     global _collector_alerts, _image_update_bell_loaded
     try:
         rows = await database.list_image_updates(1000)
+        try:
+            cleared = json.loads(await database.get_config(_IMAGE_UPDATE_CLEARED_KEY) or "{}")
+        except ValueError:
+            cleared = {}
+        if not isinstance(cleared, dict):
+            cleared = {}
         names = {w["id"]: str(w.get("name") or w["id"]) for w in await database.list_workers()}
         custom_names = {row["slug"]: row["definition"].get("name") for row in await database.list_custom_services()}
         newest: dict[tuple[int, str], dict[str, Any]] = {}
         for row in rows:
             newest.setdefault((row["worker_id"], row["slug"]), row)
         bell: dict[str, dict[str, Any]] = {}
+        answered: dict[str, int] = {}
         for (wid, slug), row in newest.items():
-            outcome = (outcomes or {}).get(wid, {}).get(slug)
-            # A check that found the box up to date (or updated it) answers the older row.
-            if row["result"] == image_updates.UPDATED or outcome in ("current", "updated", "pinned", "off"):
-                continue
-            if wid not in names:
-                continue
             key = f"{wid}|{slug}"
+            outcome = (outcomes or {}).get(wid, {}).get(slug)
+            # A check that found the box up to date (or updated it) answers the older row,
+            # and it stays answered across a restart.
+            if outcome in ("current", "updated", "pinned", "off") or cleared.get(key) == row["id"]:
+                answered[key] = row["id"]
+                continue
+            if row["result"] == image_updates.UPDATED or wid not in names:
+                continue
             text = _image_update_alert_text(row, names[wid])
             name = custom_names.get(slug) or (catalog.get_service(slug) or {}).get("name") or slug
             entry = {"kind": "image_update", "platform": name, "error": text}
@@ -13834,6 +13856,8 @@ async def _refresh_image_update_bell(outcomes: dict[int, dict[str, str]] | None 
             ):
                 what = "update undone" if row["result"] == image_updates.ROLLED_BACK else "update failed"
                 _spawn(_push_alert("image_update", key, f"{name}: {what}", text, alert_id))
+        if answered != cleared:
+            await database.set_config(_IMAGE_UPDATE_CLEARED_KEY, json.dumps(answered, sort_keys=True))
         _image_update_bell.clear()
         _image_update_bell.update(bell)
         _image_update_bell_loaded = True
@@ -13848,14 +13872,16 @@ async def _run_image_updates(*, force: bool = False) -> dict[int, dict[str, str]
     if _image_update_lock.locked():
         return {}
     async with _image_update_lock:
-        settings = await _image_update_settings()
-        now = datetime.now()
-        if not force and not (image_updates.anything_on(settings) and image_updates.due(settings, now)):
-            return {}
-        # Check now does not count as the day's run: the run at the owner's hour still happens.
-        if not force:
-            settings["last_run"] = now.date().isoformat()
-            await _save_image_update_settings(settings)
+        # The owner's day and hour, as the docs say, not the server's.
+        now = (await _obligations_now()).replace(tzinfo=None)
+        async with _image_update_settings_lock:
+            settings = await _image_update_settings()
+            if not force and not (image_updates.anything_on(settings) and image_updates.due(settings, now)):
+                return {}
+            # Check now does not count as the day's run: the run at the owner's hour still happens.
+            if not force:
+                settings["last_run"] = now.date().isoformat()
+                await _save_image_update_settings(settings)
         targets = [
             (int(w["id"]), slugs)
             for w in await database.list_workers()
@@ -13936,16 +13962,17 @@ async def api_set_image_updates(
     body: ImageUpdateSettingsBody, _auth: dict[str, Any] = Depends(_require_owner)
 ) -> dict[str, Any]:
     """Save the fleet's choice, its hour and the per-box and per-service overrides. Owner only."""
-    current = await _image_update_settings()
     settings = {
         "mode": body.mode,
         "hour": body.hour,
         "workers": {k: v for k, v in body.workers.items() if v},
         "services": {k: v for k, v in body.services.items() if v},
     }
-    if "last_run" in current:
-        settings["last_run"] = current["last_run"]
-    await _save_image_update_settings(settings)
+    async with _image_update_settings_lock:
+        current = await _image_update_settings()
+        if "last_run" in current:
+            settings["last_run"] = current["last_run"]
+        await _save_image_update_settings(settings)
     return {"settings": image_updates.parse_settings(settings)}
 
 
