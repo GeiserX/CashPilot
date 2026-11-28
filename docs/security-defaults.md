@@ -36,7 +36,7 @@ You can change all of these. None of them require changing for a normal install.
 | `CASHPILOT_BIND_ADDR` | `127.0.0.1` | The dashboard can command a Docker-socket worker. Exposing it publicly exposes the host. Prefer a VPN or an authenticating reverse proxy. |
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | The worker API is equivalent to root on that machine. Never publish port 8081. |
 | `CASHPILOT_METRICS_ENABLED` | off | `/metrics` exposes balances and hostnames. If you enable it, set `CASHPILOT_METRICS_TOKEN` too. |
-| `CASHPILOT_PROXY_BIND_MOUNTS` | empty | Host folders the [Docker socket proxy](#docker-socket-proxy) lets containers bind, comma-separated. Each entry also counts as a `CASHPILOT_ALLOWED_VOLUME_ROOTS` entry and must pass the same checks (a service folder such as `/mnt/user/storj`, never a whole root). Any container the worker creates may then mount it. |
+| `CASHPILOT_PROXY_BIND_MOUNTS` | empty | Host paths the [Docker socket proxy](#docker-socket-proxy) lets containers bind, comma-separated. The worker binds only a path listed here exactly, never a folder under one, so list each path a service binds (for Storj, both `/mnt/user/storj/identity` and `/mnt/user/storj/data`, and not `/mnt/user/storj` beside them: two entries where one is inside the other bind neither). Each entry also counts as a `CASHPILOT_ALLOWED_VOLUME_ROOTS` entry and must pass the same checks (a service folder, never a whole root). Any container the worker creates may then mount it. |
 | `CASHPILOT_COMPOSE_DIR` | empty | Your compose folder, which the proxy then lets the in-app update bind. Opt-in: it also lets containers bind that folder, which weakens the proxy (see below). Unset, update with `docker compose pull && docker compose up -d`; the **Update** button tells you the line to add if you want it. |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | empty | Opts specific host paths past the volume block. Each entry is a deliberate widening; system paths are still refused. |
 | `CASHPILOT_ALLOW_EPHEMERAL_KEY` | off | Lets CashPilot start when the encryption key cannot be persisted. Every credential then dies on the next restart. |
@@ -275,17 +275,23 @@ What the worker itself enforces on top, for deploys sent through its API:
   in-app update needs that folder, and the update does not go through a
   deploy. The proxy still allows the folder, so this stops a deploy sent with
   a worker key, not a compromised worker.
-- It lets a deploy bind any path under a `CASHPILOT_PROXY_BIND_MOUNTS` folder,
-  with any image and command. So with that variable set, anyone holding a
-  worker key (the UI, or whoever reads the plain-HTTP traffic between the UI
-  and the worker) can take the symlink route above with two deploys, not
-  only a compromised worker. The blocked system folders (`/mnt`, `/home` and
-  the rest) do not apply inside a folder you listed.
+- It lets a deploy bind a path only when the path equals an entry of
+  `CASHPILOT_PROXY_BIND_MOUNTS` exactly (a trailing slash aside), never a
+  folder under one. A deploy that binds `<folder>/evil` is refused with the
+  exact line to add, so anyone holding a worker key (the UI, or whoever reads
+  the plain-HTTP traffic between the UI and the worker) cannot take the
+  symlink route above through a deploy. A path written with `//`, `.` or `..`
+  is refused too: the kernel resolves `link/..` through the link, so
+  `<folder>/link/..` is not `<folder>`. Two listed paths where one is inside
+  the other bind neither, since a container that binds the outer one could put
+  a link where the inner one is. A listed path may sit under a blocked
+  system folder (`/mnt`, `/home` and the rest), as long as it passes the
+  `CASHPILOT_ALLOWED_VOLUME_ROOTS` checks.
 
-It needs a change in sockguard (binds that are exact or symlink-free). Until
-then, an install that keeps both variables unset is the one where the proxy
-stands between the worker and root. That is the default: the in-app update is
-opt-in for this reason.
+CashPilot's own rule is exact since the release after 3.0.1. An install that
+keeps both variables unset is the one where the proxy stands between the
+worker and root. That is the default: the in-app update is opt-in for this
+reason.
 
 **What a compromised worker can still do** even once those are closed:
 

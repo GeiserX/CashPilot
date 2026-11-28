@@ -533,11 +533,100 @@ def test_proxied_a_bind_outside_the_allowed_folders_is_refused_before_anything_i
     monkeypatch.setenv("DOCKER_HOST", PROXY_SOCKET)
     monkeypatch.setenv("CASHPILOT_COMPOSE_DIR", "/srv/cashpilot")
     monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", "/storage/storj,/storage/data/")
-    ok, deploy = _worker_deploy({"image": "img", "volumes": {"/storage/data/node": {"bind": "/d", "mode": "rw"}}})
+    ok, deploy = _worker_deploy({"image": "img", "volumes": {"/storage/data": {"bind": "/d", "mode": "rw"}}})
     assert ok.status_code == 200, ok.text
     resp, deploy = _worker_deploy({"image": "img", "volumes": {"/storage/storjx": {"bind": "/d", "mode": "rw"}}})
     assert resp.status_code == 403
-    assert "CASHPILOT_PROXY_BIND_MOUNTS" in resp.json()["detail"]
+    assert "add /storage/storjx to CASHPILOT_PROXY_BIND_MOUNTS" in resp.json()["detail"]
+    deploy.assert_not_called()
+
+
+@pytest.mark.parametrize("source", ["/storage/data/node", "/storage/storj/a/b", "/storage/data/node/"])
+def test_proxied_a_folder_under_a_listed_one_is_refused_with_the_exact_path_to_add(monkeypatch, source):
+    """A listed folder opens itself, never what is under it. A deploy that could
+    bind <folder>/link after planting link -> / in <folder> would get the host's
+    root through the proxy, so only an exact entry is bindable."""
+    monkeypatch.setenv("DOCKER_HOST", PROXY_SOCKET)
+    monkeypatch.delenv("CASHPILOT_COMPOSE_DIR", raising=False)
+    monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", "/storage/storj,/storage/data/")
+    resp, deploy = _worker_deploy({"image": "img", "volumes": {source: {"bind": "/d", "mode": "rw"}}})
+    assert resp.status_code == 403, resp.text
+    detail = resp.json()["detail"]
+    assert f"add {source.rstrip('/')} to CASHPILOT_PROXY_BIND_MOUNTS" in detail
+    assert "not a folder under one" in detail
+    deploy.assert_not_called()
+
+
+@pytest.mark.parametrize("source", ["/storage/storj", "/storage/storj/", "/storage/data", "/storage/data/"])
+def test_proxied_a_listed_folder_binds_with_or_without_a_trailing_slash(monkeypatch, source):
+    monkeypatch.setenv("DOCKER_HOST", PROXY_SOCKET)
+    monkeypatch.delenv("CASHPILOT_COMPOSE_DIR", raising=False)
+    monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", "/storage/storj,/storage/data/")
+    resp, deploy = _worker_deploy({"image": "img", "volumes": {source: {"bind": "/d", "mode": "rw"}}})
+    assert resp.status_code == 200, resp.text
+    deploy.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "/storage/storj/link/..",
+        "/storage/storj/../storj",
+        "/storage/data/x/../../data",
+        "//storage/storj",
+        "/storage/./storj",
+        "/storage//storj",
+    ],
+)
+def test_proxied_an_untidy_spelling_of_a_listed_folder_is_refused(monkeypatch, source):
+    """The kernel resolves link/.. through the link, so /storage/storj/link/..
+    is wherever the link points, one level up, not /storage/storj. The proxy
+    compares the text as written, so it would refuse the other spellings after
+    the running container is gone."""
+    monkeypatch.setenv("DOCKER_HOST", PROXY_SOCKET)
+    monkeypatch.delenv("CASHPILOT_COMPOSE_DIR", raising=False)
+    monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", "/storage/storj,/storage/data/")
+    resp, deploy = _worker_deploy({"image": "img", "volumes": {source: {"bind": "/d", "mode": "rw"}}})
+    assert resp.status_code == 403, resp.text
+    assert "Write it as /storage/" in resp.json()["detail"]
+    deploy.assert_not_called()
+
+
+@pytest.mark.parametrize("source", ["/storage/storj", "/storage/storj/data"])
+def test_proxied_a_listed_path_with_another_listed_one_inside_it_is_refused(monkeypatch, source):
+    """With /storage/storj and /storage/storj/data both listed, a container that
+    binds the first could swap data for link -> / and a second deploy that
+    binds the other would follow it. Neither binds until one is taken out."""
+    monkeypatch.setenv("DOCKER_HOST", PROXY_SOCKET)
+    monkeypatch.delenv("CASHPILOT_COMPOSE_DIR", raising=False)
+    monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", "/storage/storj,/storage/storj/data,/storage/other")
+    resp, deploy = _worker_deploy({"image": "img", "volumes": {source: {"bind": "/d", "mode": "rw"}}})
+    assert resp.status_code == 403, resp.text
+    detail = resp.json()["detail"]
+    assert "/storage/storj and /storage/storj/data" in detail
+    deploy.assert_not_called()
+    ok, _ = _worker_deploy({"image": "img", "volumes": {"/storage/other": {"bind": "/d", "mode": "rw"}}})
+    assert ok.status_code == 200, ok.text
+
+
+def test_proxied_the_refusal_of_a_subfolder_says_to_take_out_the_folder_it_is_in(monkeypatch):
+    monkeypatch.setenv("DOCKER_HOST", PROXY_SOCKET)
+    monkeypatch.delenv("CASHPILOT_COMPOSE_DIR", raising=False)
+    monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", "/storage/storj")
+    resp, _ = _worker_deploy({"image": "img", "volumes": {"/storage/storj/data": {"bind": "/d", "mode": "rw"}}})
+    assert resp.status_code == 403, resp.text
+    assert "take /storage/storj out" in resp.json()["detail"]
+
+
+@pytest.mark.parametrize("entry", [" /storage/storj", "/storage/storj ", "storage/storj", "/storage/x/../storj"])
+def test_proxied_an_entry_that_is_not_absolute_and_canonical_opens_nothing(monkeypatch, entry):
+    """Taken as the proxy reads it: a padded, relative or untidy entry is not a
+    path the worker can match, so it allows no bind at all."""
+    monkeypatch.setenv("DOCKER_HOST", PROXY_SOCKET)
+    monkeypatch.delenv("CASHPILOT_COMPOSE_DIR", raising=False)
+    monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", entry)
+    resp, deploy = _worker_deploy({"image": "img", "volumes": {"/storage/storj": {"bind": "/d", "mode": "rw"}}})
+    assert resp.status_code == 403, resp.text
     deploy.assert_not_called()
 
 
@@ -774,8 +863,26 @@ def test_proxied_a_kept_host_folder_the_proxy_refuses_leaves_the_node_running(mo
     client.containers.run.assert_not_called()
 
 
-def test_proxied_a_kept_host_folder_inside_an_allowed_one_redeploys(monkeypatch):
+def test_proxied_a_kept_host_folder_under_a_listed_one_leaves_the_node_running(monkeypatch):
+    """The redeploy's kept mounts follow the same exact rule as the deploy."""
     _proxied_env(monkeypatch, bind_mounts="/srv/allowed")
+    kept = {"Type": "bind", "Source": "/srv/allowed/myst", "Destination": MYST_TARGET}
+    client, old, error = _redeploy(
+        monkeypatch,
+        [kept],
+        volumes={"mysterium-data": {"bind": MYST_TARGET, "mode": "rw"}},
+        keep_targets={MYST_TARGET},
+    )
+    assert error is not None
+    assert "add /srv/allowed/myst to CASHPILOT_PROXY_BIND_MOUNTS" in str(error)
+    assert "take /srv/allowed out" in str(error)
+    old.stop.assert_not_called()
+    old.remove.assert_not_called()
+    client.containers.run.assert_not_called()
+
+
+def test_proxied_a_kept_host_folder_listed_exactly_redeploys(monkeypatch):
+    _proxied_env(monkeypatch, bind_mounts="/srv/other,/srv/allowed/myst")
     kept = {"Type": "bind", "Source": "/srv/allowed/myst", "Destination": MYST_TARGET}
     client, old, error = _redeploy(
         monkeypatch,

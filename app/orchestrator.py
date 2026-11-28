@@ -1484,10 +1484,12 @@ def deploy_raw(
         if refused:
             raise ContainerRuntimeError(
                 t(
-                    "err.orchestrator.keeps_data_docker_socket_proxy",
+                    "err.orchestrator.keeps_data_worker_does_not_bind",
                     name=name,
-                    refused=", ".join(refused),
-                    bind_mounts_env=BIND_MOUNTS_ENV,
+                    refused=", ".join(src for src, _ in refused),
+                    reasons="; ".join(
+                        t("err.orchestrator.bind_refused_source_why", source=src, why=why) for src, why in refused
+                    ),
                 )
             )
         _ensure_volumes(client, volumes)
@@ -5088,13 +5090,78 @@ def _proxy_bind_roots() -> list[str]:
     the worker can refuse an update the proxy would refuse, with a sentence
     instead of a 403 halfway through.
     """
-    roots: list[str] = []
-    for raw in (os.getenv("CASHPILOT_COMPOSE_DIR", ""), *os.getenv("CASHPILOT_PROXY_BIND_MOUNTS", "").split(",")):
+    return _bind_entries(os.getenv("CASHPILOT_COMPOSE_DIR", ""), *os.getenv(BIND_MOUNTS_ENV, "").split(","))
+
+
+def _bind_entries(*raws: str) -> list[str]:
+    entries: list[str] = []
+    for raw in raws:
         # Taken exactly as the proxy reads them: an entry padded with spaces is
         # not a path to it, so it opens nothing here either.
         if raw.startswith("/") and raw == raw.strip():
-            roots.append(raw.rstrip("/") or "/")
-    return roots
+            entries.append(raw.rstrip("/") or "/")
+    return entries
+
+
+def proxy_bind_mounts() -> list[str]:
+    """The host paths CASHPILOT_PROXY_BIND_MOUNTS lists, each one bindable as itself only."""
+    return _bind_entries(*os.getenv(BIND_MOUNTS_ENV, "").split(","))
+
+
+def bind_source_plain(source: str) -> str:
+    """The one spelling of a bind source the worker matches against the list.
+
+    A trailing slash goes; nothing else is tidied. The kernel resolves
+    ``link/..`` through the link, so ``/listed/link/..`` is wherever the link
+    points, not ``/listed``, and the proxy compares the text as written, so it
+    refuses ``//listed`` or ``/./listed`` after the running container is gone.
+    """
+    return source.rstrip("/") or "/"
+
+
+def bind_source_untidy(source: str) -> bool:
+    """True when a bind source has ``.``, ``..`` or an empty part, so it is not plain."""
+    plain = bind_source_plain(source)
+    return any(part in ("", ".", "..") for part in plain.split("/")[1:]) and plain != "/"
+
+
+def _inside(path: str, folder: str) -> bool:
+    return path != folder and (folder == "/" or path.startswith(folder + "/"))
+
+
+def proxy_bind_refusal(source: str, entries: list[str]) -> str | None:
+    """Why a deploy may not bind this host path behind the proxy, or None when it may.
+
+    A bind source must be exactly one of the listed host paths, never a folder
+    under one: a container that can write into a listed folder could plant
+    ``link -> /`` there, and a second deploy binding ``<folder>/link`` would
+    get the host's root (docs/security-defaults.md). For the same reason a
+    listed path with another listed path inside it binds neither: the outer
+    one's container could swap the inner one for a link. The answer names the
+    exact line to change.
+    """
+    if bind_source_untidy(source):
+        plain = os.path.normpath("/" + source.lstrip("/"))
+        return t("err.orchestrator.bind_untidy_write_as", bind_mounts_env=BIND_MOUNTS_ENV, plain=plain)
+    path = bind_source_plain(source)
+    if path in entries:
+        nested = next((e for e in entries if _inside(e, path) or _inside(path, e)), None)
+        if nested is None:
+            return None
+        outer, inner = (path, nested) if _inside(nested, path) else (nested, path)
+        return t(
+            "err.orchestrator.bind_both_listed_keep_one", outer=outer, inner=inner, bind_mounts_env=BIND_MOUNTS_ENV
+        )
+    outer = [e for e in entries if _inside(path, e)]
+    if outer:
+        return t(
+            "err.orchestrator.bind_exact_paths_only_take_out",
+            bind_mounts_env=BIND_MOUNTS_ENV,
+            path=path,
+            outer=", ".join(outer),
+            n=len(outer),
+        )
+    return t("err.orchestrator.bind_exact_paths_only", bind_mounts_env=BIND_MOUNTS_ENV, path=path)
 
 
 def _within_proxy_roots(path: str, roots: list[str]) -> bool:
@@ -5102,13 +5169,18 @@ def _within_proxy_roots(path: str, roots: list[str]) -> bool:
     return any(root == "/" or path == root or path.startswith(root + "/") for root in roots)
 
 
-def _outside_proxy_roots(volumes: dict[str, Any] | list[str] | None) -> list[str]:
-    """Host folders in a deploy's mounts the socket proxy would refuse; [] when not proxied."""
+def _outside_proxy_roots(volumes: dict[str, Any] | list[str] | None) -> list[tuple[str, str]]:
+    """Host paths in a deploy's mounts a deploy may not bind, each with why; [] when not proxied.
+
+    Deploys bind only the exact paths in CASHPILOT_PROXY_BIND_MOUNTS, the same
+    rule worker_api applies, so a kept mount under a listed folder is refused too.
+    """
     if not proxied() or not volumes:
         return []
     sources = [str(v).split(":", 1)[0] for v in volumes] if isinstance(volumes, list) else list(volumes)
-    roots = _proxy_bind_roots()
-    return [src for src in sources if src.startswith("/") and not _within_proxy_roots(src, roots)]
+    entries = proxy_bind_mounts()
+    refused = [(src, proxy_bind_refusal(src, entries)) for src in sources if src.startswith("/")]
+    return [(src, why) for src, why in refused if why]
 
 
 def _compose_device_path(entry: Any) -> str:
