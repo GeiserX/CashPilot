@@ -144,7 +144,8 @@ _background_tasks: set[asyncio.Task] = set()
 
 def _spawn(coro) -> asyncio.Task:
     """Fire-and-forget a coroutine while keeping a reference and logging errors."""
-    task = asyncio.create_task(coro)
+    # Detached from the request's language: what the task writes is background text.
+    task = asyncio.create_task(coro, context=i18n.detached())
     _background_tasks.add(task)
 
     def _on_done(task: asyncio.Task) -> None:
@@ -603,6 +604,7 @@ def _docker_time(value: Any) -> datetime | None:
         return None
 
 
+@i18n.owner_text
 async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
     """Alert when a CashPilot-managed container has stayed exited past the grace period.
 
@@ -785,6 +787,7 @@ async def _balance_read_at(slug: str) -> datetime | None:
         return None
 
 
+@i18n.owner_text
 async def _account_disabled_check(statuses: list[dict[str, Any]]) -> None:
     """Raise one alert per service whose provider disabled the account; clear it when the account is back.
 
@@ -863,6 +866,7 @@ _deployment_first_missing: dict[tuple[str, Any], datetime] = {}
 _missing_bell: dict[str, dict[str, Any]] = {}
 
 
+@i18n.owner_text
 async def _missing_deployment_check(workers: list[dict[str, Any]] | None = None) -> None:
     """Alert when CashPilot records a deployment that no worker runs any more.
 
@@ -1009,6 +1013,7 @@ def _proxied_reportable(worker: dict[str, Any] | None) -> list[dict[str, Any]] |
     return [e for e in entries if isinstance(e, dict)]
 
 
+@i18n.owner_text
 async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> None:
     """Alert when a proxied copy or its tunnel that CashPilot expects is gone or down.
 
@@ -1251,6 +1256,7 @@ def _stall_text(name: str, box: str, stall: traffic_stall.Stall, hours: int) -> 
     )
 
 
+@i18n.owner_text
 async def _traffic_stall_check(workers: list[dict[str, Any]], statuses: list[dict[str, Any]]) -> None:
     """Alert when a running copy carries almost no traffic while the service's other copies are busy.
 
@@ -1335,6 +1341,7 @@ _docker_bell: dict[str, dict[str, str]] = {}
 DOCKER_LOST_DOC = "https://geiserx.github.io/CashPilot/faq/#worker-lost-docker"
 
 
+@i18n.owner_text
 async def _worker_docker_check(workers: list[dict[str, Any]] | None = None) -> None:
     """Alert when an online worker has not been able to reach Docker for CONTAINER_DOWN_GRACE.
 
@@ -1508,6 +1515,7 @@ async def _push_alert(kind: str, subject: str, title: str, message: str, alert_i
             )
 
 
+@i18n.owner_text
 async def _detect_payout(result: Any) -> dict[str, str] | None:
     """Notice a balance drop that looks like a cashout, and ask.
 
@@ -1667,10 +1675,7 @@ async def _offline_worker_alerts() -> list[dict[str, str]]:
                     # dedupe match on client_id, because two hosts can share a
                     # hostname and hostnames churn across recreates.
                     "client_id": w.get("client_id") or w["name"],
-                    "error": (
-                        f"Offline since {w['last_heartbeat']} UTC. Its containers keep running "
-                        "and earning, but CashPilot cannot see or manage them until it reconnects."
-                    ),
+                    "error": t("alert.worker.offline_since", since=w["last_heartbeat"]),
                 }
             )
     return entries
@@ -1706,6 +1711,7 @@ def _flatline_message(flat: dict[str, Any]) -> str:
 _FLATLINE_COOLDOWN_HOURS = 24 * 365 * 10
 
 
+@i18n.owner_text
 async def _flatline_check(
     collected: set[str] | None = None,
     deployments: list[dict[str, Any]] | None = None,
@@ -2021,6 +2027,7 @@ async def _device_still_deployed(slug: str, device_id: str) -> bool:
     return False
 
 
+@i18n.owner_text
 async def _retry_device_links() -> None:
     """Retry the registrations a provider asked to try again later, with backoff."""
     now = datetime.now(UTC)
@@ -2185,6 +2192,7 @@ def _collector_failed_title(platform: str, kind: str | None) -> str:
     return t("alert.title.collector", name=platform)
 
 
+@i18n.owner_text
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
     global _collector_alerts, _collected_ok_last_run, _collector_says_disabled, _collected_since_start
@@ -3119,6 +3127,7 @@ async def _auto_restart(
     logger.warning("Restarted %s %s on worker %s by itself: %s", slug, copy, wid, " ".join(means)[:300])
 
 
+@i18n.owner_text
 async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:
     """Record + push + bell an offline worker, keyed by client_id.
 
@@ -9430,6 +9439,7 @@ async def _restart_capped_copies(proxy_id: int, worker_id: int, slugs: set[str])
         _proxy_cap_starting.difference_update((proxy_id, worker_id, slug) for slug in slugs)
 
 
+@i18n.owner_text
 async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]]) -> None:
     pid = proxy["id"]
     unstopped = _proxy_cap_unstopped.setdefault(pid, {})
@@ -10127,6 +10137,7 @@ async def _evaluate_obligations() -> tuple[obligations.Evaluation, datetime]:
     return evaluation, now
 
 
+@i18n.owner_text
 async def _run_obligations() -> None:
     """Hourly: push each reminder that reached a new stage, once.
 
@@ -13349,6 +13360,7 @@ async def _fleet_exits() -> list[str] | None:
     return sorted(found)
 
 
+@i18n.owner_text
 async def _ingest_activity(worker_id: int, cid: str, name: str, payload: dict[str, Any]) -> None:
     """Store one Activity window and raise its alerts. Raises on a database failure."""
     if len(json.dumps(payload, separators=(",", ":"))) > activity_ui.MAX_PAYLOAD_BYTES:
@@ -13413,6 +13425,7 @@ async def _refresh_activity_bell() -> None:
     _collector_alerts = [a for a in _collector_alerts if not str(a.get("kind", "")).startswith("activity_")] + bell
 
 
+@i18n.owner_text
 async def _activity_spikes(workers: list[dict[str, Any]], now: float | None = None) -> None:
     """Bell-only alerts for an hour far above a container's usual one.
 
