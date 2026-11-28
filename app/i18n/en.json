@@ -1448,6 +1448,8 @@
   "err.orchestrator.worker_could_not_record_restore_2": "the worker could not record that the restore of {slug} finished, so it was not started",
   "err.orchestrator.worker_log_says_why": "The worker's log says why.",
   "err.orchestrator.would_run_under_runtime_docker": "{slug} would run under the {runtime} runtime, and the Docker socket proxy allows only {allowed_runtimes}. The running container was not touched. Pick one of those in CASHPILOT_CONTAINER_RUNTIME or its overrides, or deploy without a runtime.",
+  "err.proxies.copy_host_folder": "It keeps data in a folder on the host, which a copy would share.",
+  "err.proxies.copy_volume_taken": "The service already mounts a volume named {volume}, the name its copy would get, so the two would share it.",
   "err.proxies.deployment_has_no_copy_cannot": "its deployment has no {key}, so the copy cannot be given one of its own",
   "err.proxies.device_id_derived_copy_does": "the device id derived for the copy does not match the catalog's format for it",
   "err.proxies.device_id_not_format_copy": "its device id is not in a format a copy can derive its own from",

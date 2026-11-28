@@ -193,7 +193,9 @@ class FakeNetwork:
         self.name = name
         self.id = f"net{next(docker.ids):061x}"
         self.kw = kw
-        self.attrs = {"Name": name, "Labels": dict(kw.get("labels") or {})}
+        # Made now, as Docker stamps it: the sweep reads this age.
+        created = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        self.attrs = {"Name": name, "Labels": dict(kw.get("labels") or {}), "Created": created}
 
     def connect(self, container):
         if self.name not in self._d.networks.by_name:
@@ -6206,6 +6208,41 @@ class TestIsolatedTunnel:
         _heartbeat()
         assert docker.named("cashpilot-honeygain-p3").status != "running"
 
+    def test_a_start_of_one_copy_in_a_tripped_tunnel_holds_the_others(self, docker):
+        """The heartbeat has not read the trip yet; the owner starts one copy."""
+        _deploy("earnfm")
+        _deploy("honeygain")
+        _tripped(docker.named("cashpilot-tunnel-p3"))
+        proxy_tunnel.start("earnfm", 3, _socks(), None)
+        assert "cashpilot-honeygain-p3" in proxy_tunnel.held()
+        assert "cashpilot-earnfm-p3" not in proxy_tunnel.held()
+        assert docker.named("cashpilot-earnfm-p3").status == "running"
+        assert docker.named("cashpilot-honeygain-p3").status != "running"
+
+    def test_a_copy_replaced_since_the_beat_listed_it_is_not_held(self, docker):
+        """The beat read the trip; a deploy replaced the copy under its name before the beat took the lock."""
+        _deploy("earnfm")
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        listed = docker.named("cashpilot-earnfm-p3")
+        del docker.by_id[listed.id]
+        docker.create(name=listed.name, image="earnfm/earnfm:1", labels=dict(listed.labels))
+        _tripped(tunnel)
+        proxy_tunnel._hold_tripped(tunnel, listed, "3")
+        assert listed.name not in proxy_tunnel.held()
+
+    def test_a_start_whose_inner_never_gets_ready_stops_its_gate(self, docker):
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        proxy_tunnel.stop("bitping", 3)
+        with (
+            patch.object(docker, "ready", lambda c: c.name != OWN_TUNNEL),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.start("bitping", 3, _socks(), None)
+        assert tunnel.status == "exited"
+        assert _gate(docker, tunnel).status != "running"
+
     def test_a_tripped_inner_has_its_gate_stopped_too(self, docker):
         _deploy_isolated()
         tunnel = docker.named(OWN_TUNNEL)
@@ -6235,6 +6272,23 @@ class TestIsolatedTunnel:
         assert earner.status != "running" and earner.name in proxy_tunnel.held()
         assert staged.id not in docker.by_id
         assert docker.named(proxy_tunnel.gate_name("b" * 12)) is None, "no new gate was made for it"
+
+    def test_a_staged_isolated_tunnel_whose_gate_is_down_is_not_promoted(self, docker):
+        """A worker died mid-move; the staged inner still runs with its old /run/ready, but its gate is gone."""
+        _deploy_isolated()
+        current = docker.named(OWN_TUNNEL)
+        staged = docker.create(
+            name=OWN_TUNNEL + "-next",
+            image=IMAGE,
+            labels={**current.labels, proxy_tunnel.LABEL_GATE: "b" * 12},
+        )
+        staged.files = dict(current.files)
+        staged.status = "running"
+        moved = proxy_tunnel._clone_into(docker, docker.named("cashpilot-bitping-p3"), staged)
+        moved.status = "running"
+        assert proxy_tunnel._finish_staged(docker, staged, current, OWN_TUNNEL) is current
+        assert _member_ids(docker, current) == ["cashpilot-bitping-p3"]
+        assert staged.id not in docker.by_id
 
     def test_the_heartbeat_waits_for_no_gate(self, docker):
         """A down isolated tunnel is started in the background: its gate's readiness wait holds no beat."""
@@ -6300,3 +6354,17 @@ class TestIsolatedTunnel:
         with pytest.raises(proxy_tunnel.ProxyTunnelError, match="host devices"):
             proxy_tunnel._refuse_unmovable(earner, isolated=True)
         assert shared.status == "running" and own.status == "running"
+
+
+def test_a_routed_redeploy_takes_the_mounts_the_operator_moved_from_the_spec(docker):
+    """A path typed on this deploy is a move: the replacement must not keep the old mount (_keep_live_mounts)."""
+    spec = {
+        "image": "storj/storj:1",
+        "env": {"K": "storj"},
+        "volumes": {"/mnt/new/identity": {"bind": "/app/identity", "mode": "rw"}},
+        "moved_mounts": ["/app/identity"],
+    }
+    earner = proxies.routed_spec(spec)
+    assert earner["moved_mounts"] == ["/app/identity"]
+    proxy_tunnel.deploy("storj", 3, earner, _socks(), None)
+    assert orchestrator.deploy_raw.call_args.kwargs["moved_mounts"] == ["/app/identity"]

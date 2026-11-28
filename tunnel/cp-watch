@@ -42,16 +42,31 @@ BASE=
 if [ "$MODE" = firewall ]; then
     BASE=$(fw_sum) || trip "the tunnel's firewall could not be read"
 fi
+# The probe runs in the background, so a slow echo site never holds up the
+# firewall check; its answer is read on a later pass, and only this loop trips.
+PROBE=/run/cp-watch-probe
+EVERY=${CP_WATCH_PROBE_EVERY:-120}
+rm -f "$PROBE" "$PROBE.rc"
+probing=
 n=0
 while sleep 5; do
     if [ "$MODE" = firewall ]; then
         now=$(fw_sum) || trip "the tunnel's firewall could not be read"
         [ "$now" = "$BASE" ] || trip "the tunnel's firewall changed while it ran"
     fi
-    n=$((n + 1))
-    [ $((n % 120)) -eq 0 ] && [ -n "$OWN_IP" ] || continue
-    if out=$(cp-probe 2>/dev/null); then
-        ip=$(printf '%s' "$out" | sed -n 's/.*"ip":"\([^"]*\)".*/\1/p')
-        [ "$ip" = "$OWN_IP" ] && trip "a probe through the tunnel left from this box's own address ($ip)"
+    if [ -e "$PROBE.rc" ]; then
+        if [ "$(cat "$PROBE.rc")" = 0 ]; then
+            ip=$(sed -n 's/.*"ip":"\([^"]*\)".*/\1/p' "$PROBE")
+            [ "$ip" = "$OWN_IP" ] && trip "a probe through the tunnel left from this box's own address ($ip)"
+        fi
+        rm -f "$PROBE" "$PROBE.rc"
+        probing=
     fi
+    n=$((n + 1))
+    [ $((n % EVERY)) -eq 0 ] && [ -n "$OWN_IP" ] && [ -z "$probing" ] || continue
+    probing=1
+    (
+        cp-probe >"$PROBE" 2>/dev/null
+        echo $? >"$PROBE.tmp" && mv "$PROBE.tmp" "$PROBE.rc"
+    ) &
 done

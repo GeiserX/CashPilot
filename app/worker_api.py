@@ -2660,6 +2660,7 @@ async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec, dea
         "command": spec.earner.command,
         "labels": spec.earner.labels,
         "resources": spec.earner.resources,
+        "moved_mounts": spec.earner.moved_mounts if spec.routed else [],
     }
     if not spec.routed:
         try:

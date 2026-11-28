@@ -2652,3 +2652,11 @@ class TestWorkerChecksTheAcknowledgements:
         assert "never the direct service's" in self._check("bitping", shared).detail
         folder = self._spec("bitping", cap_add=["NET_RAW"], acknowledged=["net_raw"], volumes={"/mnt/x-p3": mount})
         assert "never a host folder" in self._check("bitping", folder).detail
+
+
+def test_a_copy_volume_name_the_original_already_mounts_is_refused():
+    """data -> data-p3 is a fresh volume, unless the service already mounts a data-p3 of its own."""
+    mount = {"bind": "/d", "mode": "rw"}
+    assert proxies.copy_volumes({"volumes": {"data": mount}}, 3) == {"data-p3": mount}
+    with pytest.raises(ValueError, match="data-p3"):
+        proxies.copy_volumes({"volumes": {"data": mount, "data-p3": {"bind": "/e", "mode": "rw"}}}, 3)

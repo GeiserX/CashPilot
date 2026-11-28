@@ -5209,6 +5209,7 @@ async def _deploy(
                     expected=expected,
                     request=request,
                     acknowledged=route_acks,
+                    moved_mounts=moved_mounts,
                 )
             # A service routed through a proxy on this worker leaves the route only with
             # the owner's password, and its routed copy goes first: both run the same
@@ -5704,6 +5705,7 @@ async def _deploy_routed(
     expected: dict[str, str] | None = None,
     request: Request | None = None,
     acknowledged: list[str] | None = None,
+    moved_mounts: list[str] | None = None,
 ) -> dict[str, Any]:
     """Deploy ``slug`` on a worker through one of the owner's proxies, never from the worker's own IP.
 
@@ -5717,7 +5719,7 @@ async def _deploy_routed(
     the deployment record (database._forget_deployment).
     """
     docker_conf = svc.get("docker") or {}
-    earner = proxies.routed_spec(spec)
+    earner = proxies.routed_spec({**spec, "moved_mounts": moved_mounts or []})
     if not spec.get("custom_image") and isinstance(docker_conf.get("image_by_arch"), dict):
         worker = await database.get_worker(worker_id) or {}
         arch_image = _image_for_arch(docker_conf, _safe_json(worker.get("system_info", "{}"), {}).get("arch"))
