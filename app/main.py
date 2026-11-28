@@ -149,8 +149,8 @@ def _spawn(coro) -> asyncio.Task:
 
     def _on_done(task: asyncio.Task) -> None:
         _background_tasks.discard(task)
-        if not t.cancelled():
-            exc = t.exception()
+        if not task.cancelled():
+            exc = task.exception()
             if exc is not None:
                 logger.error("Background task failed: %s", exc, exc_info=exc)
 
