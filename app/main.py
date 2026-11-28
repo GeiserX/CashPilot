@@ -5998,7 +5998,10 @@ async def _refuse_shared_device_ids(slug: str, svc: dict[str, Any], env: dict[st
             detail={
                 "error": "identity_in_use",
                 "message": t(
-                    "api.already_runs_two_boxes_one", label=label, name=svc.get("name") or slug, names=", ".join(names)
+                    "api.already_runs_two_boxes_one",
+                    label=label,
+                    name=svc.get("name") or slug,
+                    names=i18n.join_and(names),
                 ),
             },
         )
@@ -14373,7 +14376,7 @@ async def api_identity_change(request: Request, identity_id: int) -> dict[str, A
                     "api.already_runs_two_boxes_one_2",
                     label=label,
                     name=svc.get("name") or slug,
-                    value=", ".join(await _worker_names(others)),
+                    value=i18n.join_and(await _worker_names(others)),
                 ),
             },
         )
