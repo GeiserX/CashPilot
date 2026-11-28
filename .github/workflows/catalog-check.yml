@@ -45,8 +45,9 @@ jobs:
 
       - name: Install the minimum needed to read the catalog
         # httpx: the docs state how many collectors exist, and counting
-        # COLLECTOR_MAP imports the collector modules.
-        run: pip install pyyaml httpx
+        # COLLECTOR_MAP imports the collector modules. markupsafe: the catalog
+        # imports app.gpu, which words its refusals through app.i18n.
+        run: pip install pyyaml httpx markupsafe
 
       - name: Every service entry loads under the strict validator
         run: |
