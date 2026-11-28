@@ -60,6 +60,7 @@ NOT_METERED = "not_metered"
 # Heat sources a device's heat can replace, by the per-machine setting.
 HEAT_SOURCES = ("resistive", "heat_pump", "fuel")
 HEAT_COP_RANGE = (1.0, 10.0)
+# The English of t("machine_economics.heat_assumption"), kept for the code that tests for it.
 HEAT_ASSUMPTION = "Assumes all its heat replaces heating you would otherwise pay for during those months."
 
 
@@ -154,7 +155,8 @@ def assess_machine(
         return out
 
     if price_per_kwh is None or price_per_kwh <= 0 or watts is None or watts <= 0:
-        missing = "your electricity price" if not price_per_kwh else "this machine's power draw"
+        # A select, not a pasted phrase, so a language with cases can inflect it.
+        missing = "price" if not price_per_kwh else "power_draw"
         out: dict[str, Any] = {
             "machine": name,
             "verdict": UNKNOWN,
@@ -179,9 +181,7 @@ def assess_machine(
             out["break_even_price_per_kwh"] = round(break_even_price(gross, watts) or 0.0, 4)
             out["quality"] = "estimated"
             if gross <= 0:
-                out["summary"] = (
-                    f"{name} earned nothing measurable in the last 30 days, so it loses money at any electricity price."
-                )
+                out["summary"] = t("machine_economics.earned_nothing_measurable", name=name)
             if heat is not None:
                 out.update(_heat_break_even(gross, watts, heat))
         if heat is not None:
@@ -215,7 +215,7 @@ def assess_machine(
         result["heat_credit"] = round(credit, 4)
         if gross_measured:
             result.update(_heat_break_even(gross, watts, heat))
-        result["summary"] += " " + HEAT_ASSUMPTION
+        result["summary"] += " " + t("machine_economics.heat_assumption")
     return result
 
 
@@ -233,23 +233,23 @@ def _summary(
 ) -> str:
     # With a heat credit, gross minus cost is no longer the net, so the
     # sentence names the credit rather than leave its figures not adding up.
-    heat = f", its heat is worth about {credit:.2f}," if credit > 0 else ""
+    # "none" picks the select branch without the heat clause.
+    amounts = {
+        "name": name,
+        "gross": format(gross, ".2f"),
+        "cost": format(cost, ".2f"),
+        "heat": format(credit, ".2f") if credit > 0 else "none",
+    }
     if verdict == LOSING_MONEY:
-        base = (
-            f"{name} earns about {gross:.2f} a month{heat} and costs about {cost:.2f} in electricity, "
-            f"roughly {abs(net):.2f} a month out of pocket."
-        )
-        return base + (
-            " Since this machine runs only these services, turning it off would save that."
-            if dedicated
-            else " This machine would be on anyway, so treat the cost as the price of the box, not of the services."
+        return t(
+            "machine_economics.losing_money",
+            net=format(abs(net), ".2f"),
+            dedicated="yes" if dedicated else "no",
+            **amounts,
         )
     if verdict == MARGINAL:
-        return (
-            f"{name} earns about {gross:.2f} a month{heat} against roughly {cost:.2f} of electricity. "
-            "That is close enough to break-even that the estimate cannot really tell them apart."
-        )
-    return f"{name} earns about {gross:.2f} a month{heat} against roughly {cost:.2f} of electricity."
+        return t("machine_economics.marginal", **amounts)
+    return t("machine_economics.earns_against", **amounts)
 
 
 def per_service_is_meaningful(marginal_watts: float | None) -> bool:
@@ -294,17 +294,21 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
     credit = sum(float(m.get("heat_credit") or 0.0) for m in known)
 
     if not (unknown or gross_unknown or unmetered):
-        summary = f"Across {len(machines)} machine(s): about {gross:.2f} earned against {cost:.2f} of electricity."
-        if credit > 0:
-            summary = summary[:-1] + f", with {credit:.2f} of heat credited."
+        summary = t(
+            "machine_economics.fleet_total",
+            n=len(machines),
+            gross=format(gross, ".2f"),
+            cost=format(cost, ".2f"),
+            heat=format(credit, ".2f") if credit > 0 else "none",
+        )
     else:
         notes = []
         if known or unknown:
-            notes.append(f"Costs are known for {len(known)} of {len(known) + len(unknown)} machine(s).")
+            notes.append(t("machine_economics.fleet_costs_known", known=len(known), n=len(known) + len(unknown)))
         if unmetered:
-            notes.append(f"No per-kWh bill for {len(unmetered)} machine(s).")
+            notes.append(t("machine_economics.fleet_not_metered", n=len(unmetered)))
         if gross_unknown:
-            notes.append(f"{len(gross_unknown)} machine(s) are not reporting, so what they earn is not in this total.")
+            notes.append(t("machine_economics.fleet_not_reporting", n=len(gross_unknown)))
         summary = " ".join(notes)
 
     return {

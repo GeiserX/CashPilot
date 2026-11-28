@@ -30,10 +30,12 @@ A tag matches by language first, then region: ``es-MX`` gets ``es``,
 from __future__ import annotations
 
 import contextvars
+import functools
 import hashlib
 import json
 import math
 import re
+from collections.abc import Awaitable, Callable
 from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
@@ -238,6 +240,38 @@ def set_background(locale: str) -> bool:
     changed = chosen != _background
     _background = chosen
     return changed
+
+
+def detached() -> contextvars.Context:
+    """A copy of the current context with no request locale.
+
+    Work that a request starts but that outlives it (a collection, a push)
+    writes background text, so it must not keep the language of the request
+    that happened to start it.
+    """
+    ctx = contextvars.copy_context()
+    ctx.run(_current.set, None)
+    return ctx
+
+
+def owner_text[T](fn: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+    """Run an async function that writes alerts in the background language.
+
+    An alert is for the owner, whichever request raises it: a worker's
+    heartbeat, a deploy, a restore. The request keeps its own language for its
+    response, because API clients (the MCP server, Desktop's server join) send
+    no language and match on the English of an error.
+    """
+
+    @functools.wraps(fn)
+    async def run(*args: Any, **kwargs: Any) -> T:
+        token = _current.set(None)
+        try:
+            return await fn(*args, **kwargs)
+        finally:
+            _current.reset(token)
+
+    return run
 
 
 def use(locale: str) -> None:
