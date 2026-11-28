@@ -2326,10 +2326,10 @@ async def _run_collection() -> None:
                             # In memory only, never record_alert: the owner's
                             # bell is the one place the full ids are shown.
                             notice["devices"] = devices
-                            notice["device_steps"] = str(
-                                ((catalog.get_service(result.platform) or {}).get("device_link") or {}).get("steps")
-                                or ""
-                            ).strip()
+                            linked = catalog.localized_service(
+                                catalog.get_service(result.platform) or {}, i18n.current()
+                            )
+                            notice["device_steps"] = str((linked.get("device_link") or {}).get("steps") or "").strip()
                         alerts.append(notice)
                         # Push out-of-band with the same once-per-window dedupe
                         # errors get. A notice used to reach ONLY the bell,
@@ -3817,7 +3817,8 @@ async def api_mode(request: Request) -> dict[str, Any]:
 @app.get("/api/services")
 async def api_list_services(request: Request) -> list[dict[str, Any]]:
     _require_auth_api(request)
-    return catalog.get_services()
+    locale = i18n.current()
+    return [catalog.localized_service(svc, locale) for svc in catalog.get_services()]
 
 
 def _collector_needs_setup(slug: str, config: dict[str, str]) -> bool:
@@ -4326,10 +4327,13 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
             worker_node_counts[slug].add(node)
 
     recorded_routes = await _recorded_routes()
+    locale = i18n.current()
     available = []
     for svc in services:
         if svc.get("status") in _UNDEPLOYABLE_STATUSES:
             continue  # Known non-functional — hide completely
+        # The page's language, before the grade below copies the cons.
+        svc = catalog.localized_service(svc, locale)
         docker_conf = svc.get("docker", {})
         has_image = bool(docker_conf and docker_conf.get("image"))
         slug = svc.get("slug", "")
@@ -4359,6 +4363,7 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     if svc.get("custom") and not auth.require_role(user, "owner"):
         # Plain-text variables and the command are the owner's, as /api/config is.
         svc = custom_services.redacted(svc)
+    svc = catalog.localized_service(svc, i18n.current())
 
     # Enrich with deployment status (same logic as /api/services/available)
     deployments = await database.get_deployments()
@@ -10134,7 +10139,10 @@ async def _evaluate_obligations() -> tuple[obligations.Evaluation, datetime]:
     now = await _obligations_now()
     facts = await _obligation_facts(now)
     state = await database.get_obligation_state()
-    evaluation = obligations.evaluate(catalog.get_services(), facts, state, now.date())
+    # The panel reads it in the page's language, the hourly push in the owner's.
+    locale = i18n.current()
+    services = [catalog.localized_service(svc, locale) for svc in catalog.get_services()]
+    evaluation = obligations.evaluate(services, facts, state, now.date())
     if evaluation.anchors:
         await database.set_obligation_anchors(evaluation.anchors)
     return evaluation, now
