@@ -64,7 +64,7 @@ collector:
 
 payout:
   model: unknown
-  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+  notes: "Not yet determined: CashPilot has not checked yet where this service keeps your earnings."
 
 # Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
 # published at docs/ratings.md). The grade itself is computed, never written here.

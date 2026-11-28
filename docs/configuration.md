@@ -11,8 +11,9 @@ defensible on its own; together they are impossible to guess.
 !!! warning "The precedence is not uniform, and the differences are deliberate"
 
     - **Credential-encryption key**: the **file wins**. Switching keys would make
-      every stored credential unreadable, so an existing `/data/.fernet_key` beats
-      `CASHPILOT_ENCRYPTION_KEY`, and CashPilot logs loudly when they differ.
+      every stored credential unreadable, so `CASHPILOT_ENCRYPTION_KEY_FILE` beats `/data/.fernet_key`,
+      which beats `CASHPILOT_ENCRYPTION_KEY`, and CashPilot logs loudly when they
+      differ. A key that decrypts none of the stored credentials stops the start.
     - **Session-signing key**: the **environment wins**. Sessions are cheap to
       invalidate, so `CASHPILOT_SECRET_KEY` takes precedence and the file is only
       a fallback.
@@ -24,7 +25,9 @@ defensible on its own; together they are impossible to guess.
 | Variable | Default | What it does | Precedence |
 |---|---|---|---|
 | `CASHPILOT_SECRET_KEY` | generated | Signs session cookies. | **Env wins**, then `/data/.secret_key`, then a generated key that is persisted. A known-placeholder value is ignored. |
-| `CASHPILOT_ENCRYPTION_KEY` | generated | Fernet key for credentials at rest. | **File wins.** An existing `/data/.fernet_key` beats this; the env key is adopted only when no file exists. |
+| `CASHPILOT_ENCRYPTION_KEY_FILE` | unset | Path to a file that holds the Fernet key for credentials at rest, kept outside the data folder (a Docker secret or a file a secret manager writes). See [Encryption key outside the data folder](encryption-key.md). | **Wins over everything.** A missing or broken file stops the start; CashPilot never falls back. |
+| `CASHPILOT_ENCRYPTION_KEY` | generated | Fernet key for credentials at rest. | **File wins.** `CASHPILOT_ENCRYPTION_KEY_FILE`, then an existing `/data/.fernet_key`, beat this. The env key is used only when neither exists, and it is never written into `/data`. |
+| `CASHPILOT_ACCEPT_UNREADABLE_CREDENTIALS` | `false` | `true` lets the UI start on a key that decrypts none of the stored credentials, for when the old key is really lost. Enter the credentials again, then remove it. | - |
 | `CASHPILOT_ALLOW_EPHEMERAL_KEY` | `false` | Allow starting when the encryption key cannot be persisted. | - |
 | `CASHPILOT_API_KEY` | from `/fleet` | Shared **enrolment** key. Not an ongoing credential, and it reads nothing: every dashboard API route answers it with 403. Tiles, widgets and scripts use `CASHPILOT_READONLY_API_KEY`. See [Fleet](fleet.md). | Env, else `/fleet/.fleet_key`, else generated there. |
 | `CASHPILOT_ADMIN_API_KEY` | unset | Bearer token for API access without a session. Grants **owner**: it can deploy, stop and remove containers and read stored credentials. | - |
@@ -75,6 +78,9 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_ISOLATION` | `auto` | `auto`, `on` or `off`. With `auto`, a new install fences its earners off your LAN, the host, your tailnet and cloud metadata, and an upgraded install whose earners are on Docker's default bridge keeps them there until you turn isolation on from the Fleet page. `on` fences from the start; `off` keeps Docker's default bridge. See [LAN isolation by default](isolation.md#lan-isolation-by-default). | - |
 | `CASHPILOT_FENCE_EXITS` | unset | Public IPv4 addresses and host names (a dynamic DNS name) of your other internet lines, separated by commas. The fence drops the earners' traffic to each of them, as it drops this box's own public IP. The public IPs of your other CashPilot boxes are dropped with no setting. See [Your other internet lines](isolation.md#your-other-internet-lines). | - |
 | `CASHPILOT_PROXIED_ONLY` | `false` | `true` makes the worker refuse to start any earner outside one of its proxy tunnels: a deploy without a route, a redeploy of a direct service, an extra copy and Start or Restart of a direct service all fail, and a direct service already running is stopped at the worker's start and every 30 seconds after. The UI cannot change it. See [A worker that runs only routed services](proxies.md#a-worker-that-runs-only-routed-services). | - |
+| `CASHPILOT_SECURE_VM_OF` | - | Set by `cashpilot-vm` inside a Linux Secure VM only (`scripts/cashpilot-vm`): the name of the worker on the host that runs the VM. The worker then reports itself as that host's Secure VM, and `cashpilot-vm remove` can ask the UI to forget it. Do not set it on any other worker. | - |
+| `CASHPILOT_EARNER_SECRETS` | `env` | `file` creates each catalog earner without its secret values in Docker's container config: they reach it through a file the worker writes before the start. See [Earner credentials outside Docker](earner-secrets.md). | - |
+| `CASHPILOT_SHIM_BINARY` | `/usr/local/lib/cashpilot/cashpilot-env` | Where the worker finds the start program of `CASHPILOT_EARNER_SECRETS=file`. Set by the image; change it only for development. | - |
 | `CASHPILOT_MINERS` | empty | Comma-separated AxeOS and cgminer addresses on the worker's network. See [LAN miner readings](mining-devices.md). | - |
 | `CASHPILOT_FENCE_BACKEND` | `auto` | For testing only: `legacy` makes the fence use `iptables-legacy` on a host that has nf_tables, `nft` forces nf_tables. `auto` picks nf_tables when the kernel has it. | - |
 | `CASHPILOT_CONTAINER_NETWORK` | unset | A bridge network you created, which containers that would land on Docker's default bridge join instead, so your own host firewall rules can confine them. Setting it turns off CashPilot's own fence on that worker, including its drops of your public IPs. Host-networked services are unaffected. The worker never creates it; a deploy is refused while it is missing. See [Protecting your home network](home-network-security.md). | - |

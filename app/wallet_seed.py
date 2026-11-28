@@ -47,6 +47,8 @@ from urllib.parse import unquote_plus
 
 import yaml
 
+from app.i18n import t
+
 #: The heartbeat feature of a worker that keeps the seed in the file. The UI
 #: sends a seed-file service to no other worker for a new wallet.
 FEATURE = "wallet_seed_file"
@@ -150,7 +152,7 @@ def validate_spec(var: dict[str, Any], volume_targets: set[str]) -> list[str]:
 def _wordlist() -> dict[str, int]:
     words = _WORDLIST_FILE.read_text().split()
     if len(words) != 2048:
-        raise RuntimeError(f"{_WORDLIST_FILE.name} holds {len(words)} words, not the 2048 of BIP-39")
+        raise RuntimeError(t("err.wallet_seed.holds_words_not_2048_bip", name=_WORDLIST_FILE.name, n=len(words)))
     return {word: index for index, word in enumerate(words)}
 
 
@@ -192,7 +194,13 @@ def _legacy_sia_wordlist() -> dict[str, int]:
     words = [line for line in _LEGACY_SIA_WORDLIST_FILE.read_text().splitlines() if line and not line.startswith("#")]
     prefixes = {word[:3]: index for index, word in enumerate(words)}
     if len(words) != _LEGACY_SIA_BASE or len(prefixes) != _LEGACY_SIA_BASE:
-        raise RuntimeError(f"{_LEGACY_SIA_WORDLIST_FILE.name} must hold {_LEGACY_SIA_BASE} words with unique prefixes")
+        raise RuntimeError(
+            t(
+                "err.wallet_seed.must_hold_words_unique_prefixes",
+                name=_LEGACY_SIA_WORDLIST_FILE.name,
+                legacy_sia_base=_LEGACY_SIA_BASE,
+            )
+        )
     return prefixes
 
 
@@ -252,19 +260,13 @@ def phrase_problem(phrase: str, words: int = 12) -> str | None:
     """
     found = normalize(phrase).split()
     if len(found) != words:
-        return f"A seed phrase has {words} words; this one has {len(found)}."
+        return t("err.wallet_seed.phrase_word_count", words=words, n=len(found))
     wordlist = _wordlist()
     unknown = [n for n, word in enumerate(found, 1) if word not in wordlist]
     if unknown:
-        many = len(unknown) > 1
-        return (
-            ("Words " if many else "Word ")
-            + ", ".join(map(str, unknown))
-            + (" are not BIP-39 words." if many else " is not a BIP-39 word.")
-            + " Check the spelling."
-        )
+        return t("err.wallet_seed.not_bip39_words", n=len(unknown), list=", ".join(map(str, unknown)))
     if not _valid_checksum([wordlist[word] for word in found]):
-        return "The words are all valid, but the phrase does not check out. One of them is probably wrong."
+        return t("err.wallet_seed.phrase_checksum")
     return None
 
 
@@ -332,13 +334,12 @@ def _parse(raw: bytes | None, key: str) -> tuple[dict[str, Any], str]:
         data = yaml.safe_load(raw)
     except yaml.YAMLError:
         raise WalletSeedError(
-            "The node's config file is not valid YAML, so CashPilot did not change it. Fix or remove it, "
-            "then deploy again. Nothing was deployed.",
+            t("err.wallet_seed.node_s_config_file_not_2"),
             "wallet_file_invalid",
         ) from None
     if not isinstance(data, dict):
         raise WalletSeedError(
-            "The node's config file is not a YAML mapping, so CashPilot did not change it. Nothing was deployed.",
+            t("err.wallet_seed.node_s_config_file_not"),
             "wallet_file_invalid",
         )
     return data, normalize(data.get(key))
@@ -381,14 +382,12 @@ def _generate(client: Any, image: str, name: str, spec: dict[str, Any]) -> tuple
     finally:
         container.remove(force=True)
     if (result or {}).get("StatusCode") != 0:
-        raise WalletSeedError("The node's image could not create a wallet. Nothing was deployed.", "wallet_generate")
+        raise WalletSeedError(t("err.wallet_seed.node_s_image_could_not"), "wallet_generate")
     phrase_match = re.search(spec["phrase_pattern"], output)
     address_match = re.search(spec["address_pattern"], output)
     phrase = normalize(phrase_match.group(1)) if phrase_match else ""
     if not phrase or phrase_problem(phrase, int(spec.get("words") or 12)):
-        raise WalletSeedError(
-            "The node's image did not print a wallet CashPilot could read. Nothing was deployed.", "wallet_generate"
-        )
+        raise WalletSeedError(t("err.wallet_seed.node_s_image_did_not"), "wallet_generate")
     return phrase, address_match.group(1) if address_match else None
 
 
@@ -423,22 +422,20 @@ def prepare(
     wanted = wanted or {}
     mode = wanted.get("mode") or ("migrate" if legacy else "keep")
     if mode not in MODES:
-        raise WalletSeedError("Unknown wallet choice. Nothing was deployed.", "wallet_mode", 400)
+        raise WalletSeedError(t("err.wallet_seed.unknown_wallet_choice_nothing_deployed"), "wallet_mode", 400)
     phrase = normalize(wanted.get("phrase")) or legacy if mode in ("import", "migrate") else ""
     if mode in ("import", "migrate"):
         if not phrase:
-            raise WalletSeedError(
-                "Paste the seed phrase of the wallet to use. Nothing was deployed.", "wallet_phrase", 400
-            )
+            raise WalletSeedError(t("err.wallet_seed.paste_seed_phrase_wallet_use"), "wallet_phrase", 400)
         if problem := phrase_problem(phrase, words):
-            raise WalletSeedError(f"{problem} Nothing was deployed.", "wallet_phrase", 400)
+            raise WalletSeedError(t("err.wallet_seed.nothing_deployed", problem=problem), "wallet_phrase", 400)
 
     path = Path(spec["path"])
     folder = str(path.parent)
     source = _mount_source(volumes, folder)
     if source is None:
         raise WalletSeedError(
-            f"This deploy mounts nothing at {folder}, where the node keeps its wallet. Nothing was deployed.",
+            t("err.wallet_seed.deploy_mounts_nothing_where_node", folder=folder),
             "wallet_volume",
             400,
         )
@@ -449,9 +446,7 @@ def prepare(
         if current:
             if mode == "import" and phrase != current:
                 raise WalletSeedError(
-                    "This node already has another wallet, and CashPilot does not replace one. Reveal its seed "
-                    "phrase from the dashboard first; to change wallets, remove the service with its data. "
-                    "Nothing was deployed.",
+                    t("err.wallet_seed.node_already_has_another_wallet"),
                     "wallet_exists",
                 )
             # A migrated phrase that differs from the file's never ran: hostd
@@ -460,8 +455,7 @@ def prepare(
         address = None
         if mode == "keep":
             raise WalletSeedError(
-                "This node has no wallet file yet. Deploy it again and choose a new wallet, or paste the seed "
-                "phrase of the one you have. Nothing was deployed.",
+                t("err.wallet_seed.node_has_no_wallet_file_2"),
                 "wallet_missing",
             )
         if mode == "generate":
@@ -469,7 +463,7 @@ def prepare(
         data[str(spec["key"])] = phrase
         content = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=10**6).encode()
         if not helper.put_archive(WRITE_DIR, _tar(f"{MOUNT_NAME}/{path.name}", content)):
-            raise WalletSeedError("Docker did not write the wallet file. Nothing was deployed.", "wallet_write", 500)
+            raise WalletSeedError(t("err.wallet_seed.docker_did_not_write_wallet"), "wallet_write", 500)
         return {"created": True, "address": address, "phrase": phrase if mode == "generate" else None}
     finally:
         helper.remove(force=True)
@@ -479,9 +473,9 @@ def reveal(container: Any, svc: dict[str, Any] | None) -> str:
     """The phrase in the file of the deployed ``container`` (running or not)."""
     var = seed_var(svc)
     if var is None:
-        raise WalletSeedError("This service keeps no wallet seed.", "wallet_none", 404)
+        raise WalletSeedError(t("err.wallet_seed.service_keeps_no_wallet_seed"), "wallet_none", 404)
     spec = var["seed_file"]
     _data, phrase = _parse(_read_file(container, str(spec["path"])), str(spec["key"]))
     if not phrase:
-        raise WalletSeedError("This node has no wallet file.", "wallet_missing", 404)
+        raise WalletSeedError(t("err.wallet_seed.node_has_no_wallet_file"), "wallet_missing", 404)
     return phrase

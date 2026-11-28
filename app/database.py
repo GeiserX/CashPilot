@@ -38,6 +38,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from app import catalog, themes, usage, wallet_seed
 from app.exchange_rates import HISTORY_DAYS, UNPRICED_BY_DESIGN
+from app.i18n import t
 
 _logger = logging.getLogger(__name__)
 
@@ -97,26 +98,74 @@ _fernet_key_error: str | None = None
 _fernet_key_persist_error: str | None = None
 _fernet_key_is_ephemeral = False
 
+#: Where the key in use came from. ``file``: CASHPILOT_ENCRYPTION_KEY_FILE, a
+#: file outside the data folder. ``env``: CASHPILOT_ENCRYPTION_KEY. ``data``:
+#: ``<data>/.fernet_key``. ``generated``: minted by this process and written to
+#: ``<data>/.fernet_key``. Settings shows it (app/routers/encryption_key.py).
+KEY_SOURCE_FILE = "file"
+KEY_SOURCE_ENV = "env"
+KEY_SOURCE_DATA = "data"
+KEY_SOURCE_GENERATED = "generated"
+_fernet_key_source = KEY_SOURCE_DATA
+#: The key in use, for the owner's one-time reveal and the copy check. Never logged.
+_fernet_key_bytes = b""
+#: CASHPILOT_ENCRYPTION_KEY as read at start, when valid. Never logged.
+_env_key_bytes = b""
+
+#: Starts with a key that cannot read the credentials already stored, on purpose.
+ACCEPT_UNREADABLE_ENV = "CASHPILOT_ACCEPT_UNREADABLE_CREDENTIALS"
+
+
+def key_file_env() -> str:
+    """CASHPILOT_ENCRYPTION_KEY_FILE as set now, stripped; "" when unset."""
+    return os.getenv("CASHPILOT_ENCRYPTION_KEY_FILE", "").strip()
+
+
+def _read_external_key(path_text: str) -> tuple[bytes | None, str | None]:
+    """The key in CASHPILOT_ENCRYPTION_KEY_FILE, or the reason it cannot be used."""
+    path = Path(path_text)
+    try:
+        raw = path.read_text().strip()
+    except (OSError, UnicodeDecodeError) as exc:
+        return None, f"CASHPILOT_ENCRYPTION_KEY_FILE is {path}, but it could not be read ({exc})."
+    if not raw:
+        return None, f"CASHPILOT_ENCRYPTION_KEY_FILE is {path}, but the file is empty."
+    try:
+        Fernet(raw.encode())
+    except (ValueError, TypeError) as exc:
+        return None, (
+            f"CASHPILOT_ENCRYPTION_KEY_FILE is {path}, but it does not hold a valid Fernet key "
+            f"({exc or 'malformed'}). The file must hold only the key: 44 characters of urlsafe base64."
+        )
+    return raw.encode(), None
+
 
 def _load_or_create_fernet() -> Fernet:
     """Resolve the key used to encrypt stored credentials.
 
-    Precedence is deliberate, and file-first:
+    The first source that is set wins:
 
-      1. ``<data>/.fernet_key`` always wins when it exists.
-      2. Otherwise ``CASHPILOT_ENCRYPTION_KEY``, which is then persisted.
-      3. Otherwise a fresh key is generated and persisted.
+      1. ``CASHPILOT_ENCRYPTION_KEY_FILE``: a file outside the data folder (a
+         Docker secret, or a file a secret manager's agent writes). It must
+         hold a valid key: a missing or broken file stops the start, and
+         CashPilot never falls back to another source or mints a key.
+      2. ``<data>/.fernet_key``, when it exists.
+      3. ``CASHPILOT_ENCRYPTION_KEY``. It is read on every start and never
+         copied into the data folder, so the data folder alone cannot decrypt.
+      4. A fresh key, written to ``<data>/.fernet_key``.
 
-    Reading the file first is what makes the environment variable safe to
-    introduce. Env-first would mean anyone who sets it on a running instance
-    instantly loses every credential already encrypted under the file key. The
-    restore case is unaffected, because a wiped volume has no file for the
-    environment value to lose to.
+    The external file comes first because whoever sets it asked for the key to
+    live outside the data folder. The data folder's file comes before the
+    environment variable, as it always did: setting the variable on a running
+    install must not swap its key. Whichever key wins, startup then checks it
+    against the credentials already stored (verify_encryption_key_matches) and
+    refuses a key that reads none of them.
 
     Note this is NOT ``CASHPILOT_SECRET_KEY``, which signs sessions and lives at
     ``<data>/.secret_key``. They are separate keys with separate jobs.
     """
     global _fernet_key_error, _fernet_key_persist_error, _fernet_key_is_ephemeral
+    global _fernet_key_source, _fernet_key_bytes, _env_key_bytes
 
     env_raw = os.getenv("CASHPILOT_ENCRYPTION_KEY", "").strip()
     env_key: bytes | None = None
@@ -125,6 +174,7 @@ def _load_or_create_fernet() -> Fernet:
         try:
             Fernet(env_raw.encode())
             env_key = env_raw.encode()
+            _env_key_bytes = env_key
         except (ValueError, TypeError) as exc:
             # Do not quietly generate a replacement: that is the same silent
             # failure this function exists to remove. Record it and let startup
@@ -140,7 +190,25 @@ def _load_or_create_fernet() -> Fernet:
                 'print(Fernet.generate_key().decode())"`.'
             )
 
-    # 1. An existing key file always wins.
+    # 1. A key file outside the data folder, when one is named.
+    if external := key_file_env():
+        key, problem = _read_external_key(external)
+        if key is None:
+            # Never a fallback: a secret that did not mount must not start the
+            # app on the data folder's key or on a new one.
+            _fernet_key_error = f"{problem} Nothing was changed. Fix the file or unset the variable, then start again."
+            _logger.error("%s", _fernet_key_error)
+            return Fernet(Fernet.generate_key())
+        if env_key and env_key != key:
+            _logger.warning(
+                "CASHPILOT_ENCRYPTION_KEY differs from the key in CASHPILOT_ENCRYPTION_KEY_FILE. "
+                "The file wins; the variable is ignored."
+            )
+        _fernet_key_source = KEY_SOURCE_FILE
+        _fernet_key_bytes = key
+        return Fernet(key)
+
+    # 2. An existing key file in the data folder.
     unusable: str | None = None
     try:
         if _FERNET_KEY_FILE.is_file():
@@ -165,6 +233,8 @@ def _load_or_create_fernet() -> Fernet:
                             "key instead, remove the file and re-enter your credentials.",
                             _FERNET_KEY_FILE,
                         )
+                    _fernet_key_source = KEY_SOURCE_DATA
+                    _fernet_key_bytes = raw.encode()
                     return fernet
             # An empty file means no key was ever stored, so replacing it loses
             # nothing. Fall through and mint one.
@@ -195,8 +265,18 @@ def _load_or_create_fernet() -> Fernet:
         _logger.error("%s", _fernet_key_error)
         return Fernet(Fernet.generate_key())
 
-    # 2/3. Adopt the supplied key, or mint one.
-    key = env_key if env_key else Fernet.generate_key()
+    # 3. The environment variable: used as it is, never written to the data
+    # folder. Written there, a copy of the folder would decrypt every
+    # credential again, which is what setting it outside the folder avoids.
+    if env_key:
+        _fernet_key_source = KEY_SOURCE_ENV
+        _fernet_key_bytes = env_key
+        return Fernet(env_key)
+
+    # 4. Mint one.
+    key = Fernet.generate_key()
+    _fernet_key_source = KEY_SOURCE_GENERATED
+    _fernet_key_bytes = key
     try:
         DB_DIR.mkdir(parents=True, exist_ok=True)
         # Create with 0o600 up front rather than chmod-ing afterwards: writing
@@ -208,44 +288,16 @@ def _load_or_create_fernet() -> Fernet:
             os.close(fd)
         # An existing file keeps its old mode, so tighten it regardless.
         _FERNET_KEY_FILE.chmod(0o600)
-        _logger.info(
-            "%s credential-encryption key at %s",
-            "Adopted the supplied" if env_key else "Generated a new",
-            _FERNET_KEY_FILE,
-        )
+        _logger.info("Generated a new credential-encryption key at %s", _FERNET_KEY_FILE)
     except OSError as exc:
         _fernet_key_persist_error = str(exc)
-        # Ephemeral only when the key was MINTED here. A key supplied through
-        # CASHPILOT_ENCRYPTION_KEY is identical on every restart, so failing to
-        # cache it to disk loses nothing — the hazard this flag exists for
-        # (a fresh random key on next boot, silently orphaning every stored
-        # credential) cannot happen.
-        #
-        # Treating both cases the same made startup refuse to continue and told
-        # the user to "supply a key via CASHPILOT_ENCRYPTION_KEY" — which is
-        # exactly what they had already done.
-        _fernet_key_is_ephemeral = env_key is None
-        if env_key is None:
-            _logger.error(
-                "Could not persist the credential-encryption key to %s: %s. "
-                "Credentials encrypted now will be unreadable after a restart.",
-                _FERNET_KEY_FILE,
-                exc,
-            )
-        else:
-            # Same failure, different consequence. The key came from the
-            # environment, so the next boot gets the identical key and nothing
-            # is lost — as long as the variable stays set. Saying "unreadable
-            # after a restart" here would be simply untrue, and it is the sort
-            # of false alarm that teaches people to ignore the real one.
-            _logger.warning(
-                "Could not cache the credential-encryption key to %s: %s. "
-                "This is not data loss: the key came from CASHPILOT_ENCRYPTION_KEY and will be "
-                "read from there again on the next start. Keep that variable set — without the "
-                "cached file it is now the only copy.",
-                _FERNET_KEY_FILE,
-                exc,
-            )
+        _fernet_key_is_ephemeral = True
+        _logger.error(
+            "Could not persist the credential-encryption key to %s: %s. "
+            "Credentials encrypted now will be unreadable after a restart.",
+            _FERNET_KEY_FILE,
+            exc,
+        )
     return Fernet(key)
 
 
@@ -265,9 +317,7 @@ def verify_encryption_key_persisted() -> None:
     auth failure, which points nowhere near the real cause.
     """
     if _fernet_key_error:
-        raise RuntimeError(
-            f"{_fernet_key_error} Refusing to start rather than encrypting credentials under a throwaway key."
-        )
+        raise RuntimeError(t("err.database.refusing_start_rather_than_encrypting", fernet_key_error=_fernet_key_error))
 
     if not _fernet_key_is_ephemeral:
         return
@@ -281,14 +331,170 @@ def verify_encryption_key_persisted() -> None:
         return
 
     raise RuntimeError(
-        f"Cannot persist the credential-encryption key to {_FERNET_KEY_FILE}: "
-        f"{_fernet_key_persist_error}. Credentials encrypted now would be "
-        "permanently unreadable after a restart, so CashPilot is refusing to "
-        "start. Fix the permissions or the volume mount for the data directory "
-        "(CASHPILOT_DATA_DIR), supply a key via CASHPILOT_ENCRYPTION_KEY on a "
-        "writable volume, or set CASHPILOT_ALLOW_EPHEMERAL_KEY=true if you "
-        "genuinely want a throwaway instance."
+        t(
+            "err.database.cannot_persist_credential_encryption_key",
+            fernet_key_file=_FERNET_KEY_FILE,
+            fernet_key_persist_error=_fernet_key_persist_error,
+        )
     )
+
+
+def _stored_ciphertexts(path: Path) -> Iterator[str]:
+    """Encrypted values already in the database at ``path``, every one, lazily.
+
+    The columns are found by name (``*_enc``, ``*_encrypted``, and the config
+    table's values), so a column added later is checked with no change here.
+    Never a sample: a sample can show that the key reads a value, but not that
+    it reads none, and the one value it reads may be the last row.
+    """
+    conn = sqlite3.connect(path)
+    try:
+        tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+        for table in tables:
+            quoted = '"' + table.replace('"', '""') + '"'
+            for column in conn.execute(f"PRAGMA table_info({quoted})"):
+                name = str(column[1])
+                if not (name.endswith(("_enc", "_encrypted")) or (table == "config" and name == "value")):
+                    continue
+                col = '"' + name.replace('"', '""') + '"'
+                if table == "config":
+                    # Only secret keys are stored encrypted (set_config); another
+                    # setting may hold "enc:..." text as written.
+                    rows = conn.execute(f"SELECT key, {col} FROM {quoted} WHERE {col} LIKE 'enc:%'")
+                    values = (value for key, value in rows if _is_secret_key(str(key)))
+                else:
+                    values = (
+                        value for (value,) in conn.execute(f"SELECT {col} FROM {quoted} WHERE {col} LIKE 'enc:%'")
+                    )
+                for value in values:
+                    if isinstance(value, str):
+                        yield value
+    finally:
+        conn.close()
+
+
+def verify_encryption_key_matches() -> None:
+    """Raise unless the key in use decrypts the credentials already stored.
+
+    A restore that brought the database back without its key, a secret file
+    that holds another install's key, or a key file moved aside: each starts
+    on a key that reads nothing, and every provider login then fails with a
+    cause nowhere in sight. So startup refuses when the database holds
+    encrypted values and the key decrypts none of them. One that decrypts is
+    enough: values left from an older key after the owner re-entered some
+    credentials are a choice the owner made, not this mistake.
+
+    A key minted by this process is removed again before the refusal, so the
+    data folder is as it was and the next start does not pick the wrong key
+    up from it. ``CASHPILOT_ACCEPT_UNREADABLE_CREDENTIALS=true`` starts anyway,
+    for an owner who lost the key and will enter the credentials again.
+
+    Synchronous, before the database is opened for the app. Call it from
+    startup, after verify_encryption_key_persisted.
+    """
+    if not DB_PATH.is_file():
+        return
+    tried = 0
+    try:
+        for value in _stored_ciphertexts(DB_PATH):
+            tried += 1
+            try:
+                _fernet.decrypt(value[len(_ENC_PREFIX) :].encode())
+            except InvalidToken:
+                continue
+            return
+    except sqlite3.DatabaseError as exc:
+        # Not this check's to judge: init_db reports a broken database itself.
+        _logger.warning("Could not check the encryption key against the stored credentials: %s", exc)
+        return
+    if not tried:
+        return
+    source = {
+        KEY_SOURCE_FILE: f"the file named by CASHPILOT_ENCRYPTION_KEY_FILE ({key_file_env()})",
+        KEY_SOURCE_ENV: "CASHPILOT_ENCRYPTION_KEY",
+        KEY_SOURCE_DATA: str(_FERNET_KEY_FILE),
+        KEY_SOURCE_GENERATED: f"a new key, because no key was found ({_FERNET_KEY_FILE} is missing)",
+    }[_fernet_key_source]
+    if os.getenv("CASHPILOT_ACCEPT_UNREADABLE_CREDENTIALS", "").strip().lower() in _TRUTHY:
+        _logger.warning(
+            "The credential-encryption key in use (%s) decrypts none of the %d stored credentials checked. "
+            "Starting anyway because %s is set: enter those credentials again, then unset it.",
+            source,
+            tried,
+            ACCEPT_UNREADABLE_ENV,
+        )
+        return
+    removed = ""
+    if _fernet_key_source == KEY_SOURCE_GENERATED:
+        with contextlib.suppress(OSError):
+            _FERNET_KEY_FILE.unlink()
+            removed = f" The new key was not kept: {_FERNET_KEY_FILE} is as it was before this start."
+    raise RuntimeError(
+        f"The credential-encryption key in use comes from {source}, and it decrypts none of the "
+        f"{tried} stored credentials checked. This database was encrypted with another key. "
+        "Supply the original key (CASHPILOT_ENCRYPTION_KEY_FILE, CASHPILOT_ENCRYPTION_KEY or "
+        f"{_FERNET_KEY_FILE}) and start again.{removed} If that key is lost for good, set "
+        f"{ACCEPT_UNREADABLE_ENV}=true to start anyway, enter your credentials again, then unset it."
+    )
+
+
+def encryption_key_status() -> dict[str, Any]:
+    """Where the key comes from, and whether a copy still sits in the data folder. Never the key.
+
+    ``removable``: the data folder's file can go, because the same key also
+    comes from outside it (CASHPILOT_ENCRYPTION_KEY_FILE, or an equal
+    CASHPILOT_ENCRYPTION_KEY that takes over once the file is gone). The key
+    file is read again here, not trusted from startup: a secret unmounted
+    since then would leave the data folder's copy as the only one. A key file
+    inside the data folder is not outside it, and may be the copy itself.
+    """
+    copy = "none"
+    try:
+        if _FERNET_KEY_FILE.is_file():
+            stored = _FERNET_KEY_FILE.read_text().strip().encode()
+            copy = "same" if stored == _fernet_key_bytes else "different"
+    except (OSError, UnicodeDecodeError):
+        copy = "unreadable"
+    source = KEY_SOURCE_DATA if _fernet_key_source == KEY_SOURCE_GENERATED else _fernet_key_source
+    env_same = source == KEY_SOURCE_DATA and bool(_env_key_bytes) and _env_key_bytes == _fernet_key_bytes
+    file_outside = inside = False
+    if source == KEY_SOURCE_FILE:
+        path = Path(key_file_env())
+        try:
+            inside = path.resolve().is_relative_to(_FERNET_KEY_FILE.parent.resolve())
+        except OSError:
+            inside = True
+        file_outside = not inside and _read_external_key(str(path))[0] == _fernet_key_bytes
+    return {
+        "source": source,
+        "file": key_file_env() if source == KEY_SOURCE_FILE else None,
+        # The named key file sits in the data folder, so a copy of it holds the key.
+        "file_inside": inside,
+        "data_file": str(_FERNET_KEY_FILE),
+        "data_copy": copy,
+        "env_same": env_same,
+        "outside": (file_outside or source == KEY_SOURCE_ENV) and copy == "none",
+        "removable": copy == "same" and (file_outside or env_same),
+    }
+
+
+def encryption_key_value() -> str:
+    """The key in use, for the owner's reveal only. Callers audit first and never log it."""
+    return _fernet_key_bytes.decode()
+
+
+def remove_data_folder_key() -> None:
+    """Delete ``<data>/.fernet_key`` once the same key also comes from outside the data folder.
+
+    Refused unless encryption_key_status says ``removable``: a file holding
+    another key may be the only copy some stored values need, and with no
+    outside source the file is the only copy of the key in use.
+    """
+    if not encryption_key_status()["removable"]:
+        raise ValueError(
+            "The key file in the data folder is the only copy of a key CashPilot needs, so it was not deleted."
+        )
+    _FERNET_KEY_FILE.unlink()
 
 
 # Mirrors worker_api._AUTH_FAILURE_DISCARD_AFTER. Named rather than inlined so
@@ -2979,7 +3185,7 @@ async def save_import_draft(slug: str, source: str, env: dict[str, str]) -> None
     credential encrypted now would be unreadable after the next restart.
     """
     if _fernet_key_is_ephemeral:
-        raise EphemeralKeyError("the credential-encryption key is temporary")
+        raise EphemeralKeyError(t("err.database.credential_encryption_key_temporary"))
     blob = encrypt_value(json.dumps(env, sort_keys=True))
     db = await _get_db()
     try:
@@ -3463,6 +3669,17 @@ async def get_worker(worker_id: int) -> dict[str, Any] | None:
         cursor = await db.execute("SELECT * FROM workers WHERE id = ?", (worker_id,))
         row = await cursor.fetchone()
         return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def get_worker_id(client_id: str) -> int | None:
+    """The row id of the worker with this client id, or None."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT id FROM workers WHERE client_id = ?", (client_id,))
+        row = await cursor.fetchone()
+        return row["id"] if row else None
     finally:
         await db.close()
 
@@ -6156,9 +6373,9 @@ _MANUAL_LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}")
 def manual_identity_error(label: str, value: str) -> str | None:
     """Why ``label`` and ``value`` cannot be an id the owner types in, or None when they can."""
     if not _MANUAL_LABEL.fullmatch(label):
-        return "The field name must be 1 to 64 letters, digits, spaces or _ . : -"
+        return t("api.field_name_must_1_64")
     if len(value) > IDENTITY_VALUE_MAX or not _MANUAL_IDENTITY.fullmatch(value):
-        return f"The id must be one word of up to {IDENTITY_VALUE_MAX} letters, digits or _ . : @ + = / -"
+        return t("api.id_must_one_word_up", identity_value_max=IDENTITY_VALUE_MAX)
     return None
 
 
@@ -6370,7 +6587,7 @@ async def record_backup(
     """
     sha256 = str(sha256 or "").lower()
     if not _SHA256.fullmatch(sha256) or source not in ("export", "restore", "pending"):
-        raise ValueError("not a backup hash")
+        raise ValueError(t("err.database.not_backup_hash"))
     origin = origin or here or _backup_new_origin(worker_id)
     db = await _get_db()
     try:

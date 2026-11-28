@@ -21,6 +21,7 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 from docker.errors import APIError  # noqa: E402
 
 from app import catalog, drift, gpu, main, orchestrator, preflight, proxies, worker_api  # noqa: E402
+from app.i18n import t  # noqa: E402
 
 LINUX = {"system": "Linux", "release": "6.12.54-Unraid"}
 
@@ -532,7 +533,7 @@ def test_preflight_reads_the_workers_gpu_report(report, deployed, verdicts):
 def test_a_tracked_only_gpu_entry_keeps_the_old_message():
     tracked = {"slug": "salad", "requirements": {"gpu": True}, "docker": {"image": ""}}
     (finding,) = preflight._gpu_findings(tracked, _gpu_report(available=True, vendors={}), set())
-    assert finding == {"verdict": preflight.CHECK_YOURSELF, "message": preflight._GPU_CHECK_YOURSELF}
+    assert finding == {"verdict": preflight.CHECK_YOURSELF, "message": t(preflight._GPU_CHECK_YOURSELF)}
 
 
 @pytest.mark.parametrize(("nodes", "reason"), [([], "render node"), (["/dev/dri/renderD128"], "/dev/kfd")])

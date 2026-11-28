@@ -264,6 +264,15 @@ def check() -> int:
                     errors.append(f"{where}: {label} {item!r} of the English page is missing")
                 for item in sorted(t - e)[:5]:
                     errors.append(f"{where}: {label} {item!r} is not in the English page")
+            # A count typed as a bare number keeps the old value after the next
+            # catalog change; only a marker is refreshed from the English page.
+            e_n = sorted(c.group(2) for c in COUNT.finditer(src))
+            t_n = sorted(c.group(2) for c in COUNT.finditer(body))
+            if e_n != t_n:
+                errors.append(
+                    f"{where}: count markers differ from the English page: {e_n} vs {t_n}"
+                    " (copy each <!-- n:... --> marker from English)"
+                )
             e_ids, t_ids = heading_ids_md(split_front(src)[1]), heading_ids_md(body)
             if e_ids is None:
                 markdown_missing = True

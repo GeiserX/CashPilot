@@ -1,0 +1,2514 @@
+# Chinese (Simplified) translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/zh-Hans.yml --restamp '<key>'
+2miners-etc.description:
+  text: "跟踪 2Miners 为你的公开 ETC 收款地址保留的未付以太坊经典（Ethereum Classic）余额。请自行运行矿机程序并将其指向该矿池。CashPilot 会读取余额，并在余额下降时请你确认付款。\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "以太坊经典矿池，按你的收款地址跟踪"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC（可调整）"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "矿池每两小时检查一次你的付款门槛"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "达到你设定的门槛后，2Miners 会自动向你的地址付款。ETC 付款的最低门槛为 0.1 ETC。\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "未付余额在 2Miners 累积。钱包余额是从以太坊经典链上单独读取的。在 CashPilot 中确认付款之前，请先在钱包中核对实际到账金额。\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "输入你的矿机在 2Miners 上使用的公开以太坊经典收款地址，以 <b>0x</b> 开头。不要包含任何矿工名。\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "需要一台指向 2Miners 的 ETCHash 矿机"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "算力"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "否。你的矿机向矿池发送挖矿工作。"
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "矿池会使用你的收款地址、你选择的矿工名以及矿机的 IP 地址。"
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "任何人都可以按收款地址查看统计数据。修改门槛时，矿池会要求确认某个矿工的 IP。"
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "矿池收取 1% 的费用，并在达到你的门槛之前暂扣付款。"
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol（原名 ATOR）是一个去中心化的洋葱路由隐私网络。节点运营者运行中继节点，并按贡献的带宽赚取 ANYONE 代币。可以把它理解为“有激励的 Tor”。CashPilot 使用自有镜像运行它，该镜像由项目签名的 Debian 软件包构建，支持 amd64 和 arm64。配置通过挂载到容器中的 anonrc 文件完成（Nickname、ContactInfo、ORPort 等）。中继在为其锁定 100 ANYONE 至少 180 天之前没有任何收益，奖励需要在你的钱包中签名领取。中继还会把你的公网 IP 列入网络的中继目录，这可能损害住宅带宽类应用所看重的 IP 信誉。\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "去中心化洋葱路由 - 有激励的 Tor 中继节点"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "中继的 ed25519 身份密钥。销毁它会让中继的信誉作废，收益记录从零开始。"
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "只有在每个中继锁定 100 ANYONE 至少 180 天，并在钱包中签名领取奖励时才有收益。没有质押的中继没有任何收益。有质押时，收益取决于贡献的带宽和在线时间。"
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "按纪元（epoch）"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "在 anonrc 中设为 ContactInfo，前缀为 '@anon:0x...'。"
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "以逗号分隔的中继指纹。没有任何在线仪表板会显示它们。对于 CashPilot 运行的中继，请在运行它的主机上执行 <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b>。对于硬件中继，请在 <b>http://relayup.local</b> 打开它的 Relay Control Panel，并在 Home 页面查看 Fingerprint。\n"
+  source: "ffa5be0d4953"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "带宽，作为 Anyone 网络（Tor 的一个分支）中的中继。"
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "是。它会转发他人的流量。你的 IP 是否为最后一跳，取决于中继是否被配置为出口。"
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "中继的公开身份密钥、你的 IP 和端口以及在线时间统计，按设计全部发布到网络目录中。如果你在 anonrc 中设置了 ContactInfo，它也会发布在那里，并被永久公开索引。它通常是一个电子邮件地址，所以除非你希望公开，否则请留空。"
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "确实存在。中继流量会被归到你的网络连接上。尤其是出口中继，容易招来滥用投诉；许多家庭宽带运营商禁止运行出口中继。"
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "无需注册账户，因此也没有按账户的限制。要获得收益，你仍需要一个以太坊钱包，为每个中继锁定 100 ANYONE 至少 180 天，并且 CashPilot 需要中继指纹来读取奖励。该项目没有公布每个 IP 的中继数量上限，目录中也没有声明。"
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "除非为中继锁定 100 ANYONE 至少 180 天，否则中继没有任何收益，而且每次领取奖励都要在你的钱包中签名。"
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "它按设计转发他人的流量，不审核对方身份；出口中继容易招来滥用投诉。"
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "中继的身份、IP 和在线时间会发布到网络目录，你设置的任何 ContactInfo 都会永久公开。"
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "无需注册账户。中继只需要一个钱包，不做身份验证。"
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "中继软件是 Tor 的公开分支，采用 Tor 的许可证。"
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "CashPilot 使用 Anyone 公开的中继软件构建自有镜像，无需账户。"
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping 是一个去中心化网络监测平台，运行节点即可获得报酬。你的节点为 Bitping 的客户执行网站监测、延迟测试和网络质量检查。住宅网络和 VPS 均可使用。Docker 镜像在首次启动时使用 BITPING_EMAIL 和 BITPING_PASSWORD 环境变量登录（其日志中显示 \"Attempting login with environment variables\"），之后把会话保存在挂载的卷中，因此重启时无需重新认证。\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "带宽共享 - 去中心化网络监测，可在 VPS 上运行"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "电子邮件"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "密码"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "你的 Bitping 账户邮箱（与 <a href='https://app.bitping.com' target='_blank'>app.bitping.com</a> 的登录账号相同）"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "你的 Bitping 账户密码。仅用于创建一次节点会话，之后会话保存在数据卷中。"
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "收益取决于网络质量以及你所在地区的监测需求。接受 VPS 节点。"
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "节点收益在 nodes.bitping.com 上；app.bitping.com 是 API 客户的仪表板。提现仅支持 SOL：未付余额超过 $0.05 后，在申请中输入 Solana 地址，24 小时内处理。新的或空的 Solana 钱包需要先存入约 0.001 SOL，以满足网络的租金（rent）最低要求。"
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "现在仅支持 Solana，且地址在提现时输入，而不是预先保存。"
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "使用你的 Bitping 账户邮箱和密码（与 <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a> 相同）。"
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "提取你的 Bitping 余额"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "Bitping 可能会在提前 30 天发邮件通知后，没收超过 12 个月未领取的收益。"
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "在 nodes.bitping.com 上申请 SOL 提现，并在申请中输入你的 Solana 地址。"
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "提现以 Solana（SOL）支付，付到你每次申请时输入的地址。"
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "Bitping 的帮助文档说，提现到新的空 Solana 钱包可能会失败，直到你自己先往该钱包里存入少量 SOL。"
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "Bitping 的帮助文档说支持服务器和 Docker 容器。"
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "提现只需在申请中输入一个 Solana 地址。"
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit 是一个带宽共享服务，通过 PayPal 和 Stripe 付款。没有官方 Docker 镜像；客户端为 Windows 桌面应用和 Android 应用。服务位于 bytebenefit.io -- 旧域名 bytebenefit.com 已被弃用并停放在域名交易市场上，这也是它曾在这里被标记为已失效的原因。\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "带宽共享 - PayPal/Stripe 付款，桌面/Android 应用"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "没有可用的 Docker 镜像。仅有 Windows 桌面应用和 Android 应用。"
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "被推荐人流量收益的 20%"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "$1（10,000 Coins）欢迎奖励"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "该应用的 Google Play 页面说，你的流量用于为 Infatica 的客户处理网络情报请求，但没有说明这些客户是谁、如何审核。"
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "Android 应用在上架 17 个月后，于 2026 年 4 月从 Google Play 下架。"
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "CashPilot 不运行 ByteBenefit：你需要使用提供商自己的应用，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Bytelixir 让你通过共享闲置的网络带宽赚取被动收入。仅支持 Windows 和 Android — 官方常见问题说明没有计划推出 Linux 或 Docker 客户端，不支持 iOS，也不提供 macOS 版本。收益在很大程度上取决于所在地区。可在 dash.bytelixir.com 的网页仪表板上跟踪。没有可用的 Docker 镜像。\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "带宽共享 - 仅限 Windows + Android"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "会话 Cookie"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "Remember Web Cookie"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "XSRF 令牌"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "登录 <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a>，按 F12 → Application → 在左侧边栏展开 <b>Cookies</b> → 点击子项 <code>https://dash.bytelixir.com</code> → 在右侧的 Cookie 列表中找到 <code>bytelixir_session</code> → 复制它的 Value（一个以 eyJ 开头的长 JWT）"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "同一位置（Cookies → <code>https://dash.bytelixir.com</code>）→ 找到名为 <code>remember_web_...</code> 的 Cookie → 复制它的 Value（可选，可延长会话有效期）"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "同一位置 → 找到 <code>XSRF-TOKEN</code> → 复制它的 Value（可选）"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "收益因地区而异（$2-50/月）。没有 Docker 镜像。需要使用桌面应用或 Android 应用。"
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "仅支持加密货币。最低金额取决于币种：USDT $5、USDC $5、TON $8、LTC $10、ETH $40、BTC $250。每次申请时输入地址。申请在工作时间内处理，24 小时内完成。"
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "余额由 Bytelixir 保管；钱包地址在每次付款申请时输入，从不保存在容器中。"
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "<b>勾选 Remember Me</b> 登录 <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a>，按 F12 → Application → 在左侧边栏展开 <b>Cookies</b> → 点击 <code>https://dash.bytelixir.com</code>，然后复制三个值：<b>bytelixir_session</b>、<b>remember_web_…</b>（以该前缀开头的长 Cookie）和 <b>XSRF-TOKEN</b>。仅有会话 Cookie 的话，复制后约两小时就会过期，采集当天下午就会停止；remember_web Cookie 有效期为一年，正是它让采集持续工作。"
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "终身获得其利润的 50%"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "$1 欢迎奖励"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "仅支持加密货币，且最低金额取决于币种，从 USDT 的 $5 到比特币的 $250 不等。"
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "CashPilot 不运行 Bytelixir：你需要使用提供商自己的应用，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "Trustpilot 基于 283 条评价给出 4.6 分，大多数称赞加密货币付款；少数反映付款未到账。"
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "付款只需在申请中输入一个加密货币地址。"
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai 是一个点对点 GPU 交易市场。你上架一台装有 NVIDIA GPU 的 Linux 机器，自行设定现货（spot）和按需价格，租用者在上面运行他们自己的 Docker 容器。你只按机器被租用的分钟数获得报酬，以 CLORE、BTC、USDT 或 USDC 支付。托管需要一台运行 Ubuntu 22.04 或更新版本（或 HiveOS）的 x86_64 机器、可正常工作的 NVIDIA 驱动，以及至少 100 Mbps 的上行和下行带宽。不支持 AMD GPU。\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "GPU 交易市场 - 出租 NVIDIA GPU，以 CLORE、BTC 或美元稳定币付款"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "只按被租用的分钟数、以你设定的价格付款。区间上限 $490 是 Clore 自己给出的单张按分钟上架的 RTX 4090 的上限（'up to ~$490/month'）；较小的显卡收益更少，闲置的显卡没有收益。Clore 从每笔租金中抽取 5%（按需）或 1.25%（现货），租用者用 BTC、USDT 或 USDC 而非 CLORE 付款时，还要再加 15%。"
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "在 Account > Billing 中提现到你自己的钱包：CLORE（ERC-20，最低 200，手续费约 $0.50）、BTC（最低 0.0001，手续费 0.00005 BTC），或以太坊或 BNB Chain 上的 USDT/USDC（最低 $10，手续费 $1）。"
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "Clore 保管余额（CLORE、BTC，以及 USDT/USDC 共用的一个美元余额），直到你提现。每次提现时选择链：CLORE 用以太坊，BTC 用比特币，USDT/USDC 用以太坊或 BNB Chain。"
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "你推荐的托管方和租用者每笔租赁所付平台费的 15%（标准等级）；推荐码永不过期；以租赁所用币种支付（CLORE、BTC 或 USD）"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "上行和下行 100 Mbps"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "你机器上的 GPU 算力时间。"
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "是。租用者在你的机器上运行他们自己的 Docker 容器，其流量从你的网络连接发出；SSH 和应用端口会被转发到互联网。"
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "Clore 的隐私政策涵盖账户数据以及你的 IP 地址和大致位置；只有在 Clore 要求 KYC 时才涉及身份证件。"
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "入站端口必须能从互联网访问（默认 22、8080 和 3000-4000），陌生人的工作负载会在你的线路上运行。Clore 自己的网络指南说，一些网络运营商会封锁托管。"
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "须年满 18 岁，且不在受制裁国家。Clore 可自行决定暂停或关闭账户，违禁使用可能导致资金损失。"
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "条款和隐私政策都没有写明法律实体，条款还把适用的司法管辖区留待以后的版本确定。"
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Clore 可自行决定暂停或关闭账户，违禁使用可能导致资金被没收。"
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "付款仅限加密货币（CLORE、BTC、USDT 或 USDC），租用者用 BTC、USDT 或 USDC 支付的租金，Clore 还要额外抽取 15%，除非托管方锁定 CLORE 来降低这部分费用。"
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "托管方只按被租用的分钟数获得报酬，Clore 给出的 RTX 4090 数字是单张显卡的上限（\"up to ~$490/month\"）。"
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "基本使用无需 KYC，但对于大额提现或合规情况，Clore 可能会要求身份验证。"
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "租用者可以在你的机器上运行任何公开的 Docker 镜像。条款列出了禁止的用途（恶意软件、DDoS、CSAM 等），但我们没有找到关于如何审核租用者的说明。"
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "CashPilot 不运行 Clore.ai：你需要在自己的 GPU 机器（Ubuntu 22.04 或更新版本，或 HiveOS）上安装 Clore 的托管代理程序，因此 CashPilot 无法替你部署或更新它。"
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "租用者用 CLORE 支付时，Clore 从按需租赁中抽取 5%（现货为 1.25%），没有额外费用。"
+  source: "699adf0a2179"
+dawn.description:
+  text: "DAWN 运营着一个验证者网络，为通过 DAWN 协议融资的 AI 基础设施检查带宽和覆盖情况。DAWN Validator 浏览器扩展参与这些带宽证明和覆盖检查，并在运行期间赚取 DAWN 奖励。这些奖励目前还没有确定的现金价值。在扩展中创建账户，并在提示时输入推荐码 2QLQV97F。\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "DePIN 验证者 - 浏览器扩展赚取 DAWN 积分"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "在代币发行前赚取 Dawn Points。实际价值取决于未来的代币价格。硬件盒子比浏览器扩展收益更高。"
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "代币空投（待公布）"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "扩展能用，但还不成熟。已发布 Black Box 硬件。以后再查看。"
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "扩展赚取的是积分；截至 2026 年 10 月，尚未确认向节点运营者分发代币。"
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "在代币发行并公布兑换方式之前，积分没有确定的价值。"
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "CashPilot 不运行 Dawn：你需要使用提供商自己的浏览器扩展，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network 是一个去中心化 VPN 和 web3 基础设施项目。主要需要专有的 Deeper Connect 硬件设备。Moken 是与之相关的挖矿/质押平台。不能只靠软件运行。\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "去中心化 VPN - 需要专有硬件设备"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "需要 Deeper Connect 硬件（$200-500）。通过 Moken 平台进行挖矿/质押。不能只靠软件运行。"
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "持续"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "设备销售佣金"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "使用优惠码 SERGIO 购买 Deeper Connect 设备可享 5% 折扣"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "挖矿奖励以 DPR 发放，并取决于信用分，而信用分增长缓慢，或需要质押 DPR 来提升。"
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "CashPilot 不运行 Deeper Network：你需要使用提供商自己的路由器硬件，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "Bright Data 旗下的 EarnApp 让你出售闲置带宽来获得被动收入。Bright Data 是全球最大的代理网络，为财富 500 强企业的数据采集提供支持。CashPilot 使用自有镜像运行它：首次启动时从 Bright Data 的 CDN 下载固定版本的 EarnApp，校验其 sha256，然后以 lite 模式运行，只需一个 UUID。\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "带宽共享 - 由 Bright Data 支持"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "节点 UUID"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "你的 EarnApp 节点 ID：sdk-node- 后接 32 个小写十六进制字符，与 'earnapp showid' 输出的格式相同。部署后，请在登录 EarnApp 的状态下打开 https://earnapp.com/r/ 后接此 UUID 的地址进行一次绑定；未绑定的节点会产生收益，但不会计入你的余额"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "EarnApp 一直无法连接其服务器并反复重启，因此收益很少或没有。请重启这个副本；如果问题持续，请检查这台机器的网络连接。"
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "在登录 EarnApp 的状态下打开此链接，将节点添加到你的账户。在此之前，节点会产生收益，但不会计入你的余额。"
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "高度依赖所在地区。美国/欧盟 IP 收益最高。收益随消耗的带宽增加。"
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "按需申请（可自动兑换：PayPal 最低 $10，Wise 最低 $10，Amazon 最低 $50）"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "开启一次自动兑换后，只要余额达到所选方式的最低额，EarnApp 就会自动付款：PayPal $10、Wise $10、Amazon $50。PayPal 付款来自 Bright Data Ltd.。2026 年 10 月，一笔 PayPal 付款比兑换的余额少了约 2%。"
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "余额由 EarnApp 保管；兑换到 Amazon/Wise/PayPal。"
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "登录 <a href='https://earnapp.com' target='_blank'>earnapp.com</a>，按 F12 → Application → Cookies，复制 <b>oauth-refresh-token</b> 的值。"
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "终身获得其收益的 10%，在其收益之外额外支付"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "EarnApp 的帮助中心说，严禁将其安装在 Docker 容器、虚拟机、托管服务或家用服务器中，而 CashPilot 正是这样运行它的。"
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "同一篇帮助文章说，一旦发现账户以这种方式运行，会在不另行通知的情况下终止账户，并取消其待付款项。"
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "我们的 PayPal 付款于 2026 年 10 月到账，比兑换的余额少了约 2%。"
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "PayPal 和 Wise 最低 $10，且有自动兑换，会自动付款。"
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "EarnApp 隶属于 Bright Data，其 PayPal 付款来自 Bright Data Ltd.，一家有明确名称的公司。"
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Earn.fm 为你共享网络带宽支付报酬。收益采集器通过 Supabase 使用邮箱/密码认证。Docker 镜像轻量，部署简单（Docker 客户端使用单独的 UUID 令牌）。\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "带宽共享 - 邮箱/密码认证，轻量客户端"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "API 密钥"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "登录 <a href=\"https://app.earn.fm\">app.earn.fm</a> → 点击右上角的个人资料图标 → Account Settings → 复制 API Key（UUID 格式）"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "相对较新的平台。收益因地区和可用带宽而异。"
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "最低 $15。方式：BEP20 或 Polygon 上的 USDT（手续费 $1）或 TRC20（手续费 $3）、PayPal、$15 起的 Amazon 或 Starbucks 礼品卡，或 $1,000 起的银行电汇（扣除转账费用）。首次付款前需填写账单资料（法定姓名和地址），用于付款收据。"
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "余额由 Earn.fm 保管；按需提现。"
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "使用你的 Earn.fm 账户邮箱和密码（与登录 <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> 时相同）。"
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "终身获得其收益的 10%"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "$5 初始余额"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "最低 $15，USDT 手续费 $1 到 $3，银行电汇需 $1,000 起。"
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "首次付款前需填写包含法定姓名和地址的账单资料。"
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "2025 年的评价者反映，邮件和 Discord 客服无人回复；Trustpilot 注明 Earn.fm 没有回复差评。"
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Earn.fm 发布了自己的 Docker 镜像 earnfm/earnfm-client。"
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher 是一个流量交换平台，你通过自动冲浪栏（surfbar）访问网站来赚取积分。以浏览器扩展/插件形式运行。它不是传统的带宽共享服务 — 它通过自动浏览网站来产生流量。\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "流量交换冲浪栏 - 浏览器扩展"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "收益为 BTP 积分，可兑换成欧元。仅有浏览器扩展。"
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "通过 PayPal 或银行转账以欧元付款。"
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "CashPilot 不运行 eBesucher：它是浏览器扩展，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "2 欧元起即可通过 PayPal 或 SEPA 付款，至少每周一次，无手续费。"
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "eBesucher 自 2002 年起运营。"
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "网站版权信息（imprint）写明了运营方 TurboAd GmbH，注册于 Berlin-Charlottenburg（HRB 160730 B）。"
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux 是一个全球分布式的计算基础设施。节点运营者质押 FLUX 代币并提供服务器资源。分为三个等级：Cumulus（1,000 FLUX）、Nimbus（12,500 FLUX）、Stratus（40,000 FLUX）。提供官方 Docker 镜像。\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "去中心化算力 - 需要质押 FLUX 代币"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "需要质押 1,000+ FLUX（视价格约 $50-500）。更高等级需要更多抵押，但收益也更高。"
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "区块奖励"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "最低等级的节点需要锁定 1,000 FLUX 作为抵押。"
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "区块奖励每年减少 10%，一份 2026 年的指南认为小等级节点的奖励按美元计算偏低。"
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "CashPilot 不运行 Flux：你需要使用提供商自己的节点软件，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "Flux 守护进程以 MIT 许可证开源。"
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network 是一个去中心化算力市场，你共享 CPU 和 GPU 资源来换取 GLM 代币。提供者运行 Yagna 代理程序，在沙箱环境中管理工作负载的执行。它是最早的去中心化算力项目之一（成立于 2016 年）。支持 CPU 任务、GPU 渲染和通用计算。通过 Polygon L2 付款。\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "去中心化算力市场 - 通过 Yagna 代理赚取 GLM 代币"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "收益取决于硬件、定价和任务需求。仅有 CPU 的节点收益较低。GPU 节点收益更高，但需要 NVIDIA。运行 Yagna 提供者代理（不是 Docker 镜像）。在 Polygon 上以 GLM 代币付款。"
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "每完成一个任务"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "赚取 GLM 代币。在提供者设置中配置收款钱包。"
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "CashPilot 不运行 Golem：你需要自己安装提供者代理，因此 CashPilot 无法替你部署或更新它。Golem 的文档介绍了如何在其自有 Docker 镜像中运行提供者。"
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "提供者代理 yagna 以 GPL-3.0 许可证开源。"
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "无需账户：在提供者设置中设定收款钱包即可。"
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "该网络已运行约十年。"
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "Golem 的隐私政策写明了运营方：位于瑞士楚格（Zug）的 Golem Factory GmbH。"
+  source: "bae79b651923"
+grass.description:
+  text: "Grass 是一个去中心化网络，让你把闲置带宽出售用于 AI 训练数据。它以浏览器扩展和桌面应用的形式运行，通过你的网络连接转发网页抓取请求，以构建结构化数据集。拥有超过 850 万用户，是最大的 DePIN 带宽网络之一。在 Solana 区块链上赚取 GRASS 代币。\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "面向 AI 数据的 DePIN 带宽共享 - 赚取 GRASS 代币"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "访问令牌"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "登录 <a href=\"https://app.grass.io\">app.grass.io</a>，按 F12 → Application → Local Storage → 点击 <code>https://app.grass.io</code> → 复制 <code>token</code> 的值"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "赚取 Grass Points，可通过空投兑换为 GRASS 代币。实际美元价值取决于代币价格。需要浏览器扩展或桌面应用。"
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "按纪元（epoch）空投"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "奖励以定期分发的形式发放，在 Grass 仪表板上领取。Stage 2 的分发（2024 年 10 月至 2026 年 6 月的活动）以 USDC 支付：请最迟于 2027 年 1 月 22 日（含当日）到 app.grass.io/dashboard 领取；如果所有份额提前被领完，截止时间会更早。未领取的奖励归 Grass 所有。"
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "累积的是积分；GRASS 在定期空投期间从 Grass 仪表板领取。"
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "登录 <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>，按 F12 → Application → Local Storage，复制 <b>accessToken</b> 的值。"
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "直接推荐用户在线积分的 20%，第二级 10%，第三级 5%"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "领取你的 Grass Stage 2 USDC"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "截至 2027 年 1 月 22 日（含当日）仍未领取的 Stage 2 份额全部归 Grass 所有；一旦所有份额都被领完，领取窗口可能提前关闭。"
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "用你在 Stage 2 期间使用的账户登录 app.grass.io，激活 Grass Wallet，打开 Allocation 标签页并确认。只在 app.grass.io 上领取。没有 Stage 2 积分？请选择 不适用。"
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "奖励只通过空投赛季发放。长期运行的节点运营者反映，第二季的估算收益在几美元到二三十美元之间。"
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "截至 2027 年 1 月 22 日（含当日）仍未领取的第二季奖励将永久失效。"
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "第一次空投因每个积分对应的奖励太少而引发不满，奖励被两百多万用户稀释。"
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "CashPilot 不运行 Grass：你需要使用提供商自己的应用或扩展，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "第一次空投有近 150 万个地址领取。"
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium 是一个成熟的去中心化无线网络。最初是 LoRaWAN 热点，现已扩展到 5G。需要专用硬件（$500+）。赚取 HNT/MOBILE 代币。投资回报率已大幅下降 - 通常为 $4-8/月。\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "去中心化无线网络 - 需要硬件，HNT 代币"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "需要购买 $500+ 的硬件。投资回报率已大幅下降。新运营者需要经过审批流程。"
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "按纪元（epoch）"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "HIP 149 于 2026 年 7 月 6 日取消了 Proof-of-Coverage 奖励；IoT 热点现在只按实际传输的数据获得收益，其中超过 114,000 个热点没有传输任何数据。"
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "Helium 的奖励模式已通过投票多次更改，其 CEO 已卸任，HNT 下跌了约 96%。"
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "CashPilot 不运行 Helium：你需要使用提供商自己的热点硬件，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "热点网关软件以 Apache-2.0 许可证开源。"
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "跟踪 HeroMiners 为你的公开收款地址保留的未付 Kaspa 余额。请自行运行 Kaspa 矿机程序并将其指向该矿池。CashPilot 会读取矿池余额，并在余额下降时请你确认付款。\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "Kaspa 矿池，按你的收款地址跟踪"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS（可调整）"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "矿池每小时检查一次你的付款门槛"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "达到你设定的门槛后，HeroMiners 会自动向你的地址付款。最低门槛为 1 KAS。\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "余额在 HeroMiners 累积。在 CashPilot 中确认付款之前，请先在钱包中核对实际到账金额。\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "输入你的矿机在 HeroMiners 上使用的完整公开 Kaspa 收款地址。请包含 <b>kaspa:</b> 前缀，并去掉矿工名。\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "需要一台指向 HeroMiners 的 Kaspa 矿机"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "算力"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "否。你的矿机向矿池发送挖矿工作。"
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "矿池的公开统计会显示每个收款地址及其挖矿活动。"
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "矿池用你的收款地址代替账户。"
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "矿池收取 0.9% 的费用，并在达到你的门槛之前暂扣付款。"
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "共享你闲置的网络带宽，赚取被动收入。Honeygain 通过你的网络连接转发网络情报、内容分发和市场调研流量。它是最成熟的带宽共享平台之一，拥有超过 1200 万用户，已完成超过 100 万笔付款。\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "带宽共享 - 最成熟的平台"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "电子邮件"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "密码"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "设备名称"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "你的 Honeygain 账户邮箱"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "你的 Honeygain 账户密码"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "在你的 Honeygain 仪表板中显示的名称"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "因地区而异。美国/欧盟 IP 收益更高。每个账户最多 10 台设备。"
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "最低 $20（20,000 积分）。两种方式：通过 Tipalti 付到 PayPal，手续费约 15%；或无手续费的 JumpTask 积分，付到 JumpTask 钱包。每次申请都需要通过邮件发送的 6 位验证码。第一笔 PayPal 付款会一直处于 \"waiting for details\" 状态，直到你通过他们邮件发来的链接在 Tipalti 注册。该链接只能使用一次，所以请在能一次完成并且手机在身边时打开：设置密码后，Tipalti 会要求你通过短信验证手机号（验证码几分钟内过期），然后要求填写姓名、地址、国家和出生日期，以及你的 PayPal 地址。Tipalti 每笔付款收取 $2.02；请选择 USD，以避免 1.9-3% 的货币兑换费。付款会在 2 个工作日内到账。一旦申请，余额就会立即从账户中扣除，即使付款仍在等待 Tipalti 处理。此后每次登录 Tipalti 都会发送新的短信验证码，除非你勾选在 30 天内记住此设备的选项。2026 年 10 月，Tipalti 没有要求一位在西班牙的收款人填写税务表格。"
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "余额由 Honeygain 保管；按需提现。"
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "使用你的 Honeygain 账户邮箱和密码（与 <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a> 相同）。"
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "在 Honeygain 模式下，最多获得每位被推荐好友收益的 25%"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "通过此链接注册可获 $3 奖励"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "提取你的 Honeygain 余额"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "保持一台 Honeygain 设备在共享，或发起一次付款"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "收益在达到 $20 最低额后 24 个月内有效。此后 Honeygain 可能会注销未付出的部分。"
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "如果超过 6 个月没有使用该应用，Honeygain 会将未付余额视为过期，即使不足 $20。"
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "保持一台设备在共享，或申请付款。在 JumpTask 模式下余额不变是正常的，请选择 不适用。"
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "条款允许 Honeygain 注销已达到 $20 门槛但 24 个月内未付出的收益，并在六个月未使用后将收益视为过期。"
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "最低额为 $20，PayPal 付款通过 Tipalti 进行，每笔收取 $2.02。"
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "条款允许 Honeygain 暂停账户，并扣留或注销其认为以虚假理由累积的收益。"
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "第一笔 PayPal 付款前，Tipalti 会要求你通过短信验证手机号，并提供姓名、地址和出生日期。"
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "条款说企业客户使用这些流量收集公开的网络数据，但没有写明任何客户，你也无法知道是哪个客户在使用你的网络连接。"
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "Honeygain 在回复低收益评价时自己也说，收益取决于网络需求和所在地区；评价者反映要很长时间才能达到 $20 最低额。"
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Honeygain 发布了自己的 Docker 镜像 honeygain/honeygain。"
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "条款写明了运营方 Honeygain UAB，注册于立陶宛维尔纽斯。"
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "Honeygain 的新闻页面说它成立于 2019 年。"
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net 是一个面向 AI/ML 工作负载的去中心化 GPU 网络。它汇集来自个人用户和数据中心的闲置 GPU。要获得可观收益，需要 8GB+ 显存的 NVIDIA GPU。支持基于容器的部署。\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "面向 AI 的去中心化 GPU 网络 - 需要 NVIDIA GPU"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "需要 8GB+ 显存的 NVIDIA GPU。有说法称 RTX 4090 可达 $500-1000/月（实际可能更低）。"
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "按纪元（epoch）"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "供应方奖励来自代币增发，与是否有付费任务无关，GPU 所有者反映大部分时间处于闲置状态。"
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "奖励以 IO 代币发放，2026 年付款模式改为与美元挂钩的机制。"
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "2024 年 4 月，约 180 万个伪造 GPU 利用泄露的认证令牌试图接入网络，之后其 CEO 在代币发行前卸任。"
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "CashPilot 不运行 io.net：你需要使用提供商自己的工作程序，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "IPRoyal Pawns 让你通过共享闲置带宽赚钱。IPRoyal 是一家成熟的代理提供商，Pawns 是其住宅带宽共享业务。其 CLI Docker 镜像通过命令行参数接收凭据。通过推荐链接注册的新用户，前三笔付款每笔可获 $1，最多 $3。每笔付款必须在一个时间窗口内完成，窗口按地区设定为一到三周。窗口从注册时开始，并在每次付款后重新开始。如果某个窗口先结束，剩余的奖励就会失效。\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "带宽共享 - 前几笔付款最多可获 $3 奖励"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "电子邮件"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "密码"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "设备名称"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "设备 ID"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "你的 IPRoyal Pawns 账户邮箱（以 -email 参数传入）"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "你的 IPRoyal Pawns 账户密码（以 -password 参数传入）"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "在你的 Pawns 仪表板中显示的名称（以 -device-name 参数传入）"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "唯一的设备标识符（以 -device-id 参数传入）"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "IPRoyal Pawns 已停用此账户。"
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "Pawns 发现此 IP 地址上还有另一台在线设备，而每个 IP 只为一台设备付费，所以这个副本虽在运行，但不共享任何流量，也没有收益。请停止此 IP 上的其他任何 Pawns 应用，无论它在另一台机器、电脑还是手机上。如果没有其他应用，请等待 Pawns 移除旧设备，或请 Pawns 客服将其释放。"
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "收益取决于所在地区和带宽使用量。美国/欧盟的住宅 IP 收益更高。"
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "最低 $5。请先选择你的国家；可用方式取决于国家。在西班牙（2026 年 10 月）：PayPal 收取 4%，最低手续费 $0.25，通过 Tremendous 付款，它会发邮件给你一个链接，让你填写姓名和 PayPal 地址；USDT（BEP20、ERC20、TRC20）或 USDC（BEP20、ERC20），网络手续费 $1；比特币最低手续费 $2；礼品卡无手续费。第一次付款需要一次性短信验证你的手机号：点击 Withdraw 会打开验证，号码需带国家代码填写。之后每次付款都会要求输入发送到账户邮箱的验证码，并在发出前经过最长 72 小时的审核。"
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "余额由 IPRoyal Pawns 保管；按需提现。"
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "使用你的 IPRoyal Pawns 账户邮箱和密码（与 <a href='https://pawns.app' target='_blank'>pawns.app</a> 相同）。"
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "对方前三笔付款每笔 $1，最多 $3，前提是每笔都在其 1-3 周的窗口内完成"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "你的前三笔付款每笔 $1，最多 $3；错过一个 1-3 周的窗口，剩余奖励即失效"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "条款说，如果滥用提现条件或使用多个账户，账户可能在没有事先通知的情况下被封禁，其收益随后可能不予支付。"
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "条款说 Pawns 不允许使用任何服务器、VPN 或代理服务来共享流量，并且每个 IP 只允许一台设备。"
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "通过 Tremendous 付到 PayPal 收取 4%（最低 $0.25），且每笔付款都要经过最长 72 小时的审核。"
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "第一次付款需要短信验证你的手机号，每次付款都需要邮件验证码。"
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "隐私政策写明运营方为 Pawns.App Ltd（英格兰和威尔士公司编号 16043795），Companies House 显示其于 2024 年 10 月 28 日注册成立，成立不到三年。"
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "条款说 Pawns 及其企业客户会通过你的设备转发流量，而你无法知道是哪个客户在使用。"
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "最低 $5，礼品卡无手续费。"
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "用一张 NVIDIA GPU 通过 KRig 挖 Pearl。Kryptex 会把奖励换成比特币，并把余额保存在你的账户中，直到你申请提现。"
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "用 NVIDIA GPU 挖 Pearl，以比特币计入账户余额"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "Kryptex 账户邮箱"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "矿工名"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "你的 Kryptex 账户中已验证的邮箱。"
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "在你的 Kryptex 账户中为每台机器取一个不同的名称。"
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "通过 Lightning 为 0.00001 BTC（其他方式各不相同）"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kryptex 把 Pearl 奖励换成 BTC，并把余额保存在你的账户中。请在 Kryptex 上申请提现。每种方式都有各自的最低额和手续费。比特币 Lightning 的最低额为 0.00001 BTC。"
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "Kryptex 把换得的比特币保存在你的账户中，直到你提现。"
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "Kryptex 从被推荐用户获得的矿池收入的 20%"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64、Volta（sm_70）或更新架构的 NVIDIA GPU，以及 NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "这台机器报告的是机房网络连接。挖矿前请查看你的服务商条款。一些服务商（包括 Hetzner Cloud）禁止挖矿。在相信收益估算之前，请先核算你的实际电费。"
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "KRig 在 Kryptex Pool 上收取 0% 的挖矿软件费。Kryptex 另行列出 3% 的 Pearl PPS+ 矿池费。提现手续费因方式而异。"
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "算力"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "否。KRig 向 Kryptex Pool 提交挖矿工作。"
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Kryptex 能看到你的账户邮箱、矿工名、算力和 IP 地址。"
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "一些网络和 DNS 解析器会屏蔽与矿池的连接。"
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "向 Kryptex 账户挖矿之前，请先验证该账户的邮箱。"
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Kryptex 可以在账户闲置六个月时暂停该账户，在一年时删除该账户。"
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "提现最低额和手续费因方式而异。"
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "KRig 的许可证允许下载其发布版本，并通过挖矿软件运行。"
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "KRig 使用公开的 TLS 端点向 Kryptex Pool 提交 Pearl 份额。"
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes（Mysterium Network）是一个基于区块链技术的去中心化 VPN 和代理网络。你运行一个为用户提供 VPN、代理和数据抓取服务的节点，从而赚取 MYST 代币。需要 NET_ADMIN、SETUID 和 SETGID 能力（capabilities）以及一个 TUN 设备，它在隔离墙内的收益应用网桥上，于自己的网络命名空间中使用这些。内置用于管理节点的网页界面。住宅网络和 VPS 均可使用，但推荐奖励只发放给使用住宅 IP 的节点。\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "去中心化 VPN 节点 - 基于区块链，可在 VPS 上运行"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "WebUI 地址"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "UDP 端口范围"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "节点 WebUI（端口 4449）所发布到的主机地址。127.0.0.1 表示只能在本机访问。如需通过反向代理访问，请添加代理所连接的地址，用逗号分隔且不加空格：127.0.0.1,172.18.0.1。"
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "节点用于 VPN 会话的 UDP 端口，格式为 起始:结束。请在路由器上转发同样的范围。每个会话约占两个端口，所以默认的 30 个端口可同时承载约 15 个会话，比家用节点实际获得的还多。更大的范围解决不了任何问题，反而代价更高：每个发布的端口都会拖慢节点的启动和移除（300 个端口约需 12 s 启动），CashPilot 最多接受 300 个，而在 Docker 默认的 userland proxy 下，每个端口还会占用约 2.5 MB 内存。如果所有会话都失败，那是路由器的问题，而不是端口太少：请参阅 Mysterium 指南中的 \"Routers that rewrite UDP source ports\"。请保持在 32768 以下：32768-60999 是 Linux 的临时端口范围，主机上的任何程序都可能短暂占用其中某个端口，只要有一个端口被占用，节点就会启动失败。已有端口范围的节点会保留原范围。"
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "节点身份密钥库。销毁它会生成一个全新的身份：节点会失去信誉，以及旧身份下仍被暂扣的所有收益。"
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "节点无法在容器内运行 sudo，因此无法配置其 VPN 接口或防火墙，每个会话都在建立时失败：它看起来在线，却没有任何收益。该容器创建时没有 SETUID 和 SETGID 能力。请更新 CashPilot 和运行此节点的工作节点，然后在仪表板中重新部署 Mysterium；节点身份保存在其数据卷中，会被保留。"
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "过去 6 小时内没有任何 VPN 会话直接连到此节点。所有会话都退回到了打洞（hole punching）方式，而许多买家无法以这种方式连接，所以节点收益减少。它的 UDP 端口无法从互联网访问。请在路由器上将 UDP 端口范围 ${UDP_PORTS}（起始:结束，两侧使用相同范围）转发到 ${HOST_ADDRESS}。一旦有会话直接连接，此提示会自动消失。"
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "Mysterium 的监控将 ${WORKER_NAME} 上的节点标记为失败，因此它不会出现在大多数买家挑选节点所用的列表中，即使节点自身的检查显示所有端口都可访问。请先确认节点拥有 /dev/net/tun 和 SETUID/SETGID，缺少它们也会导致同样的失败：https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 这些都没问题时，一个常见原因是 ${WORKER_NAME} 前面的路由器：一旦有来自外部的数据包到达该端口，它就会改写节点应答的 UDP 源端口。请参阅指南中的测试方法：https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "${WORKER_NAME} 上节点最近的五个 VPN 会话，每个都在约一分钟后结束且没有传输任何数据，因此它看起来在线，却没有收益。可能的原因是 ${WORKER_NAME} 前面的路由器：一旦有来自外部的数据包到达某个端口，它就会改写节点之后从该端口发出的应答的源端口，而每个会话都以这样的数据包开始（节点自己的端口检查），所以买家会丢弃节点的应答。扩大端口范围没有帮助。请参阅指南中的测试和修复方法：https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports 一旦有会话传输了数据，此提示就会消失。"
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "收益为 MYST 代币。住宅 IP 收益明显更高。节点 WebUI 位于端口 4449，用于管理，默认只发布在其运行的机器上（127.0.0.1）；从另一台机器访问时，请先建立 SSH 隧道（ssh -L 14449:127.0.0.1:4449 后接节点所在机器的地址，然后浏览 http://127.0.0.1:14449；使用本地端口 14449 是为了不与你本机上的节点冲突），或在 UI_ADDRESS 中添加一个地址（参见 Mysterium 指南中的 WebUI address）。接受 VPS。强烈建议转发 UDP 23000-23029（UDP_PORTS 的默认值）-- 否则节点会处于 Strict NAT 状态，许多 VPN 会话会失败，收入会大幅减少。重要：首次运行后，请通过节点 WebUI 或 CLI 设置你的受益人（结算）钱包，使其与你的 mystnodes.com 账户一致 -- 这样才能把链上收益与你的云端仪表板关联起来。"
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "每当节点累积 5 MYST 未结算时，自动进行链上结算"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "无需点击任何按钮。每个节点在累积 5 MYST 未结算金额后会自行在 Polygon 上结算，约 21% 作为费用扣除（20% 的 Hermes 费用加少量交易费），因此每次结算约有 3.9 MYST 到达受益人钱包。每个节点的 TequilAPI 在 /transactor/settle/history 中列出其结算记录。MystNodes 上的 \"total earnings\" 数字只涵盖最近 30 天；它既不是余额，也不是累计总额。MystNodes 奖励计划的奖励 MYST 不会自动结算：根据 MystNodes 帮助中心的说明，需在分发后 30 天内到 Rewards 页面领取。"
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "受益人钱包在部署之后通过 TequilAPI 或节点 WebUI 设置 -- 不是通过环境变量设置，因此无法从容器配置中读取。"
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "使用你的 MystNodes 账户邮箱和密码（与 <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a> 相同）。"
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "好友的节点赚到 5 MYST 后，每位好友奖励 5 MYST（仅限住宅 IP）"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "你的节点赚到首个 5 MYST 后奖励 5 MYST（住宅 IP，且已在 mystnodes.com 上认领节点）"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "领取上个月的 MystNodes 奖励"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "月度分发后 30 天内未领取的奖励将被没收，并退回下个月的奖励池。"
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "打开 Rewards 页面，把你的积分兑换成 MYST。"
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "带宽。你的网络连接被用作 Mysterium 网络的出口节点，该网络出售 VPN、代理以及数据抓取服务。从住宅 IP 发出的抓取流量最容易招来投诉，而你无法选择节点承载这三者中的哪一种。"
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "是。陌生人通过你的 IP 地址转发他们的流量 — 这正是它的产品。"
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "节点身份（一个区块链地址）、你的 IP 以及大致位置（国家/城市/网络运营商），节点会把这些发布到网络上，以便买家选择。"
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "确实存在，值得了解清楚。他人的流量从你的网络连接发出并被归到你名下，因此他们做的任何事看起来都来自你的线路。许多家庭宽带合同禁止这样做。运行前请先查看你的合同。"
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "每个账户和每个 IP 的设备数量不限。"
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "每次结算约 21% 用于支付费用（20% 的 Hermes 费用加交易费），收益以 MYST 代币支付。"
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "你的节点是 Mysterium 的 VPN、代理和数据抓取客户的出口，你无法选择它承载哪一类。"
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "节点软件以 GPL-3.0 许可证开源。"
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Mysterium 发布了自己的 Docker 镜像 mysteriumnetwork/myst。"
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "结算会打到你自己拥有的钱包；不需要手机号或身份证件。"
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "该节点项目自 2017 年起运行。"
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "Mysterium 的网站说，该网络由瑞士楚格（Zug）的 Blockdev AG 开发。"
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay 是一个 DePIN 网络，奖励通过浏览器扩展共享带宽的用户。该平台受 Cloudflare 保护，这可能使自动化访问变得困难。用户只要保持扩展处于活动状态即可赚取 Nodepay Points。该网络专注于提供 AI 训练数据基础设施。\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "面向 AI 的 DePIN 带宽共享 - 浏览器扩展"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "赚取 Nodepay Points；通过 Nodepay 资格审核的用户，其积分会兑换为 NC 代币。Cloudflare 保护可能会阻止自动采集。需要浏览器扩展。"
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "NC 代币空投（时间未确认）"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "基于积分的系统。通过 Nodepay 资格审核的用户，其积分会兑换为 2025 年 1 月发行的 NC 代币。"
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "在第一季审查中，Nodepay 删除了 300,000 多个它认定为机器人的账户，并作废了 170 亿积分。"
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "奖励是兑换为 NC 代币的积分，因此其价值取决于该代币。"
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "CashPilot 不运行 Nodepay：你需要使用提供商自己的浏览器扩展，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes 是 Noderr Protocol 的免费入门层级，Noderr Protocol 是 Base L2 上的一个 DeFi 项目。micronode 是运行在闲置 Android 手机、Windows 电脑、Mac 或 Chromium 浏览器上的小型代理程序。在 Android 上，它共享手机的移动网络：其他 Noderr 流量通过手机的运营商 IP 发出，因此需要一张开通移动数据的 SIM 卡。在电脑或浏览器中，它利用闲置算力为协议执行自动化任务。按设计，奖励以 NODR 支付，并根据链上的在线时间和可靠性评分计算，但测试版期间网络运行在 Base Sepolia 测试网上：节点奖励没有资金来源，至今尚未支付任何奖励。\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "免费 micronode（Android 共享网络、Windows、Mac、浏览器）- 测试网，奖励至今无资金来源"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "测试网测试版：节点奖励没有资金来源，至今尚未支付任何奖励。网站上的 5-10% APY 是设计目标。等网络离开 Base Sepolia 后再评估。"
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "奖励累积在节点自己的钱包中，通过应用或 dApp 领取。测试版期间，它们是没有市场价值的 Base Sepolia 测试网代币。"
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "应用在首次启动时创建节点钱包，并向其免费铸造一个灵魂绑定（soulbound）的 Utility NFT。请在应用中备份钱包：丢失设备就会丢失节点身份。测试版期间奖励在 Base Sepolia（测试网）上。"
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Android 需要一张开通移动数据的 SIM 卡；桌面和浏览器客户端没有公布 IP 要求。"
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "取决于设备。Android 手机出售的是其移动网络：其他 Noderr 流量通过手机的运营商 IP 地址发出，并计入其流量套餐。Windows 电脑、Mac 或浏览器出售的是闲置算力，用于提供商所称的社交媒体和内容自动化任务。"
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "是。在 Android 上，其他 Noderr 流量通过你手机的移动 IP 地址发出；应用在开始前会征求一份有记录的同意，你也可以在同一界面停止共享。对于 Windows、Mac 和浏览器客户端，提供商描述的是自动化任务，没有说明这些任务是否承载他人的流量。"
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "节点的钱包地址及其在线时间和任务完成数据会作为信誉评分（TrustFingerprint）上链。提供商说任务经过匿名化、在沙箱中运行，并且钱包密钥从不离开设备。没有公布更具体的信息。"
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "在 Android 上，共享的连接是运营商的移动套餐：提供商自己的文档警告说，一些运营商的可接受使用政策可能不允许共享，而且共享流量会消耗套餐额度。对于桌面和浏览器客户端，提供商没有提及网络运营商条款。"
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "每台设备一个节点，每个节点有自己的灵魂绑定 Utility NFT；允许并鼓励运行多台设备。没有公布每个 IP 的上限。没有通常意义上的账户：身份是应用在首次启动时生成的一个钱包。"
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "节点奖励是没有资金来源、没有市场价值的测试网代币，且至今尚未支付；网站上的 5 到 10% APY 是设计目标。"
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "对于桌面和浏览器客户端，Noderr 描述的是自动化任务，没有说明它们是否承载他人的流量。"
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "提供商说任务经过匿名化并在沙箱中运行，但没有公布更具体的信息。"
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "仍是 Base Sepolia 上的测试网测试版。"
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "CashPilot 不运行 Noderr：你需要使用提供商自己的应用或扩展，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "无需账户：应用在首次启动时生成一个钱包。"
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Nodle 利用智能手机的蓝牙构建物联网基础设施。应用会被动检测并转发附近物联网设备的数据，赚取 NODL 代币。曾被 Forbes 报道，与 Vivendi 和 Hayden AI 有企业合作。仅限手机（iOS 和 Android）。\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "蓝牙物联网中继 - 手机应用，NODL 代币奖励"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "收益非常低。使用蓝牙的后台手机应用。钱包连接可能不稳定。"
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "持续"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "NODL 存放在应用自带的 ZKsync Era 钱包中；可在应用内或 ZKsync Era 区块浏览器上查看。Nodle 已离开其 Polkadot 平行链，Polkadot 到 ZKsync 的跨链桥已于 2025 年 12 月 31 日关闭，因此仍在 Polkadot 一侧的 NODL 已无法再转到 ZKsync。"
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "你的 NODL 存放在 Nodle 应用自己的钱包中，位于 ZKsync Era。CashPilot 无法看到该钱包的地址。"
+  source: "796d67192f5f"
+nodle.referral.bonus.referrer:
+  text: "每有一位通过邀请加入的新活跃用户，即可获得一笔 NODL 奖励（Nodle 未公布金额）"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "一位评价者反映三到四年共赚了约 $3；其他人反映每日收益大幅下降。"
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "CashPilot 不运行 Nodle：你需要使用提供商自己的手机应用，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana 是一个基于 Solana 的去中心化 GPU 算力市场。它把 GPU 所有者与 AI 工作负载需求连接起来，以 NOS 代币付款。一张 RTX 3060 大约可赚 $0.048/小时。该平台专注于 AI 推理工作负载，并使用 Solana 区块链进行任务调度和付款结算。节点通过 Nosana CLI 运行容器化工作负载。\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "Solana 上的 GPU 算力 - NOS 代币，RTX 3060 约 $0.048/小时"
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 约 $0.048/小时，高端 GPU 收益更高。收益取决于任务供给情况和 GPU 型号。需要 NVIDIA GPU、Linux、Docker 和 Nosana CLI。在 Solana 上以 NOS 代币付款。"
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "每完成一个任务"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "在 Solana 上赚取 NOS 代币。付款到已配置的钱包。"
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "Nosana 默认会创建一个 Solana 钱包，因此大多数用户从未见过它的地址。"
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "每个托管方都必须锁定一笔与其 GPU 每小时价格相应的 NOS 质押。"
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "托管方以 NOS 收款，因此按美元计算的收益会随代币价格以及对其显卡的需求而波动。"
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "CashPilot 不运行 Nosana：你需要使用提供商自己的托管软件，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN 是一个无需账户的比特币矿池：你的矿机以你的比特币地址作为用户名登录，矿池向该地址付款。CashPilot 在这里不运行矿机。它读取 OCEAN 为你的地址保留的未付余额，让你在其他收入旁边看到你的 ASIC 矿机（Bitaxe、Antminer）赚了多少。未付余额是已赚到但尚未收到的：一旦超过付款门槛，OCEAN 就会在链上支付。\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "比特币矿池，按你的收款地址跟踪"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "当某个区块使你的余额超过门槛时"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "未付余额达到门槛后，OCEAN 会在链上向你的地址付款。CashPilot 检测不到 Lightning 付款（需选择开启，BOLT12）。"
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "未付金额是已赚到但尚未收到的，直到 OCEAN 在链上付到此地址；如果你开启了 Lightning 付款则另当别论。"
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "你的 BTC 收款地址：即你的矿机在 OCEAN 上使用的用户名，去掉 <b>.workername</b> 部分。它是公开的，无法用来动用任何资金。"
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "需要一台指向 mine.ocean.xyz:3334 的比特币 ASIC 矿机（Bitaxe、Antminer）"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "算力"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "否。你的矿机向矿池发送哈希；没有人通过你的网络连接转发流量。"
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "你的比特币地址、你选择的矿工名、你的算力，以及矿池所见的矿机 IP 地址。"
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "矿机只与矿池保持一个连接，使用的带宽很少。需要关注的成本是电费，而不是网络运营商。"
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "没有账户。地址就是身份，任何人都可以在 ocean.xyz 上查看其统计数据。"
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "只以比特币支付，余额达到 0.01048576 BTC 之前不会进行任何链上付款。"
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "矿池费为 2%，如果你使用 DATUM 自行构建区块模板，则为 1%。"
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "CashPilot 不为 OCEAN 运行矿机：你需要把自己的硬件指向矿池，CashPilot 只读取余额。"
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "无需账户，也不做身份验证。OCEAN 只需要它付款的比特币地址。"
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream 是一个点对点带宽市场，你可以在这里出售闲置带宽。它支撑着一个住宅代理网络，用于市场调研、SEO 监测和广告验证。Docker 设置简单，只需一个 CID（Client ID）。请注意，受 CAPTCHA 保护的登录可能使自动采集收益变得困难。\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "带宽共享 - 基于 CID 的简单设置"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "Client ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "登录 <a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> → 点击侧边栏中的 Setup → 你的 CID 显示在 Docker 命令中"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "PacketStream 认为这个副本的 IP 地址不是住宅 IP 而拒绝了它，因此没有收益。请在使用家庭宽带的机器上运行它，或删除这个副本。"
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "PacketStream 在此 IP 地址上已有另一个客户端，而每个 IP 只为一个客户端付费。请删除这个副本，或删除与它共用 IP 的另一个。"
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "共享带宽按 $0.10/GB 付费。收益在很大程度上取决于你的 IP 所在地区的需求。"
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "仅支持 PayPal，最低 $5，确认前会显示 3% 的手续费。第一次提现会保存你的 PayPal 邮箱；之后更改需要邮件确认并等待 7 天，所以请在确认前核对地址。申请会在 7 天内审核并发出；等待期间可以取消，而只有在付款完成后才能发起新的申请。"
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "余额由 PacketStream 保管；按需提现。"
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "登录 <a href='https://packetstream.io' target='_blank'>packetstream.io</a>，按 F12 → Application → Cookies，复制 <b>auth</b> Cookie 的值（它是一个 JWT）。"
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "其带宽收益的 20%（限时 Packeter 奖励）"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "首次用银行卡或 PayPal 充值可获 10% 赠送额度（代理客户）"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "2025 年和 2026 年的 Trustpilot 评价者反映付款迟到或根本没有到账，一位老用户说付款先是变慢后来停止；也有 2026 年的评价者反映已收到付款。"
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "仅支持 PayPal，提现手续费 3%；PayPal 不提供服务的国家的用户没有其他方式。"
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "条款允许 PacketStream 扣留、撤销或作废其认为与欺诈、操纵或违禁活动有关的收益。"
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "条款说代理客户和 PacketStream 本身会通过你的网络连接转发流量；条款没有描述对普通买家的任何审核。"
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "Trustpilot 注明 PacketStream 没有回复差评；评价者反映邮件无人回复。"
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "PacketStream 发布了自己的 Docker 镜像 packetstream/psclient。"
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "条款只要求设备和网络连接归你所有或你有权使用。"
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "条款没有描述任何身份验证；付款只需要一个 PayPal 地址。"
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "条款写明 PacketStream Inc. 受加利福尼亚州法律管辖。"
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "PacketStream 自 2018 年起运营。"
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp 是一个 DePIN 平台，让你通过共享闲置带宽和计算资源赚取加密货币和 PayPal 奖励。实际上仅支持 Windows：开发商自己的下载页面至少从 2025 年 2 月起就一直把 Android、iOS 和 Linux 列为 \"coming soon\"，没有任何变化，而且不存在 macOS 版本 — 尽管同一网站上的宣传文案声称支持更多平台。没有 Docker 镜像。\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "DePIN 带宽/算力 - 仅限 Windows，加密货币和 PayPal 付款"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "仅有 Windows 桌面应用（v1.0.x）；Android/iOS/Linux 自 2025 年初起就被开发商宣布为 'coming soon'，但从未发布。没有官方 Docker 镜像。"
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "终身获得其收益的 10%"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "CashPilot 不运行 PassiveApp：你需要使用提供商自己的桌面应用，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "PassiveApp 的网站列出了 PayPal、加密货币和礼品卡，最低 $3。"
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase 是一个带宽共享平台，用加密货币向共享闲置网络连接的用户付款。你使用仪表板中的 Access Token 为对等（peer）客户端进行认证。住宅 IP 收益最高，但也支持数据中心 IP。提供官方多架构 Docker 镜像（amd64/arm64/armv7）。\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - 带宽共享，加密货币付款，Access Token 认证。不会生成钱包"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Access Token"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "设备名称"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "登录 <a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> → 复制你的 Access Token（显示在设置页面的 Docker 命令中）"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "任意名称（不含空格），用于在你的 ProxyBase 仪表板中识别此设备"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "ProxyBase 已至少半小时无法连接到其中继，因此没有收益。重启可以解决；如果重启后仍然如此，请检查这台机器能否访问互联网。"
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "加密货币付款。收益取决于所在地区和带宽使用量。"
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "网站列出的最低额为 $0.20，2026 年 10 月一笔不到 $1 的申请已成功处理。每次申请总是提取全部余额，以 Polygon 上的 USDC、POL 或 Litecoin 付到你输入的地址。网络手续费由 ProxyBase 承担。"
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "收益累积在 Access Token 所属的 ProxyBase 账户中，按需从仪表板提现。对等客户端不持有钱包，容器也不保存任何状态 -- docker.volumes 为空。不要与 proxybase-xyz（ProxyBase Markets，同一组织）混淆，后者确实会创建本地钱包，并将其声明为关键卷。"
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "ProxyBase 自己在 2025 年 8 月写道，它还很新，目前还不是追求收益最大化的地方。"
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "ProxyBase 在 2026 年更换了对等客户端并关闭了旧后端，因此使用旧镜像的容器虽然继续运行，却不再有收益。"
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "仅支持加密货币，即 Polygon 上的 USDC、POL 或 Litecoin，没有法币方式。最低额为 $0.20，网络手续费由 ProxyBase 承担。"
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "我们一笔不到 $1 的提现于 2026 年 10 月成功到账。"
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "提现只需在申请中输入一个地址。"
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "ProxyBase 发布了自己的对等客户端镜像，并支持数据中心 IP。"
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets 是一个为 AI 代理打造的 SOCKS5 代理市场。卖家运行一个轻量的 Rust CLI 守护进程，通过 WebSocket 连接，经由自己的网络连接转发买家流量，按每售出 1 GB 在 Tempo Chain 上赚取 USDC。支持直连（自有带宽）和上游（转售外部代理）两种模式，并能自动重连。买家按国家、网络运营商和带宽购买代理会话。付款通过 Tempo Chain 上的 Machine Payments Protocol（MPP）进行。推荐链接面向买家：通过它打开控制台的买家，首次充值可多得 10%。\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - 面向 AI 代理的 SOCKS5 市场，USDC 付款。会生成一个钱包，其卷中保存着密钥的唯一副本"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "后端 API URL"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "覆盖后端 API URL（默认为 https://api.proxybase.xyz）"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "容器在首次启动时自动完成初始化：生成一个 secp256k1 钱包（BIP-39），通过 ECDSA 挑战-响应进行认证，并以仅直连模式开始出售带宽。所有状态（钱包、会话令牌、卖家配置）都保存在 <code>proxybase-data</code> 卷中。首次运行时请查看容器日志以获取钱包地址。使用 <code>--upstream</code> 添加外部代理转售路径。\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "生成的钱包密钥文件。这个卷就是钱本身：服务器端没有副本，删除它就等于连同资金一起销毁。"
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "收益按以市场价格售出的 GB 数计算。VPS/数据中心 IP 的收益低于住宅 IP。多上游模式可以把你自己的带宽与外部代理结合起来。"
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "通过 <code>proxybase-cli seller payout create</code> 锁定收益，以 Tempo Chain 上的 USDC 到账（Tempo MPP）。可付到任何你持有密钥的 EVM 地址（Tempo 是 EVM 链），无需签名；在钱包中添加 Tempo 网络即可看到 USDC。如果钱包仍然没有显示，需要手动添加 Tempo USDC 代币：按 Proxybase 提供的合约地址导入，并在信任余额之前核对该地址。"
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "客户端在首次运行时会创建自己的钱包。"
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "被推荐买家每次充值的 15%，作为你自己代理会话的额度"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "买家首次充值额外 +10%"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "带宽，作为 SOCKS5 代理卖给 ProxyBase 市场上的买家。"
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "是。买家通过你的网络连接转发他们的流量 — 这正是所出售的东西。"
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "在你的机器上生成的钱包地址，以及你转发的流量大小。"
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "确实存在，而且直接适用于家庭网络。来自未知买家的代理流量以你的 IP 发出，因此滥用投诉会找上你。本目录中没有任何内容将该服务限制在数据中心地址，而住宅 IP 收益更高，所以这里的激励方向是错的：在家中运行之前，请先阅读你的网络运营商条款。"
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "未知 - 提供商没有公布每个账户或每个 IP 的设备上限，目录中也没有声明。"
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "付款为 Tempo Chain 上的 USDC，付到任何你持有密钥的 EVM 地址。"
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "你的网络连接被作为 SOCKS5 代理卖给市场买家；我们没有找到关于如何审核买家的说明。"
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "它自己的收益页面标题写着无需 KYC，$1 即可付款。"
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "ProxyBase 发布了自己的客户端镜像，并接受数据中心网络连接。"
+  source: "ae81d006093f"
+proxylite.description:
+  text: "ProxyLite 通过与经过验证的机构共享带宽，让你的网络流量变现。住宅网络和 VPS/数据中心网络均可使用。设置简单，只需仪表板中的用户 ID。提供丰厚的 15% 终身推荐佣金。\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "带宽共享 - 15% 终身推荐佣金，可在 VPS 上运行"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "用户 ID"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "登录 <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → 你的 User ID 显示在仪表板主页上你的邮箱旁边。还没有账户？请通过 <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a> 注册"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "住宅 IP 收益更高。接受 VPS/数据中心网络，但费率较低。"
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "终身获得其收益的 15%"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "该网站的所有者在域名注册记录中被隐藏，我们没有找到其背后有具体名称的公司。"
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "最低 $5，通过加密货币或 PayPal 付款。"
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "ProxyLite 发布了 Docker 镜像 proxylite/proxyservice，并以较低费率接受数据中心网络。"
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "ProxyRack 的 Peer 计划让你通过把带宽共享给其代理网络来赚钱。每台设备需要一个唯一的 64 位十六进制 UUID，并可选提供一个 API 密钥来自动注册设备。住宅网络和 VPS/数据中心网络均可使用。仪表板受 Cloudflare 保护，可能需要在浏览器中手动获取 API 密钥。\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "带宽共享 - 每台设备一个 UUID，可在 VPS 上运行"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "设备 UUID"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "API 密钥"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "设备名称"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "每台设备唯一的 64 位十六进制 ID。生成命令：cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "登录 <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → API Key 显示在仪表板主页上（如果提供，会自动注册设备）。还没有账户？请通过 <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a> 注册"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "设备在仪表板中显示的易记名称"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "ProxyRack 的客户端无法在这个副本上运行，所以它没有任何收益。常见原因是 ProxyRack 的更新服务器没有响应，而没有它客户端就无法启动。副本每 5 分钟重试一次，服务器一响应就会自行启动。你无需做任何修复。"
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "这个副本启动时没有下载到 ProxyRack 的客户端，因为无法连接 ProxyRack 的更新服务器，所以副本在运行，但没有任何收益。CashPilot 每 6 小时重启一次副本以便重试。请重新部署它，让它使用 CashPilot 自己的启动方式，这种方式会保留客户端，并每 5 分钟自行重试。"
+  source: "0a2ee4b478b2"
+proxyrack.device_link.steps:
+  text: "登录 ProxyRack，打开 Devices，选择 Add device 并粘贴此 UUID。设备加入你的账户之前，它不会为任何人产生收益。如果你填写了 API 密钥，容器会自行注册：请确认设备已出现在列表中。"
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "住宅 IP 收益高于数据中心 IP。仪表板受 Cloudflare 保护，可能使自动化访问变得困难。"
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "在仪表板上申请付款。ProxyRack 会在 72 小时内审核，然后 Tremendous 会发邮件给你一份奖励，可兑换为 PayPal、礼品卡或电汇。没有加密货币选项。"
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "余额由 ProxyRack 保管；按需提现。"
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "登录 <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>，按 F12 → Network，找到任意一个 API 请求并复制 <b>Api-Key</b> 请求头的值。还没有账户？请通过 <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a> 注册。"
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Proxyrack 的文档规定每个账户最多 500 台设备，没有每个 IP 的上限。接受数据中心 IP，但会被重新归类为较低的费率。"
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "ProxyRack 的帮助中心说，移除一台设备会把该设备的收益从你的账户中扣除，只有重新添加同一台设备，收益才会恢复。"
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "ProxyRack 发布了自己的 Docker 镜像 proxyrack/pop，并以较低费率接受数据中心 IP。"
+  source: "278541f81053"
+repocket.description:
+  text: "Repocket 让你通过共享闲置的网络带宽赚取被动收入。住宅 IP 收益最高；VPS/数据中心 IP 也可接受，但费率较低。每个账户最多 5 台设备和 5 个活动会话。Docker 容器使用你的账户邮箱和 Repocket 仪表板中的 API 密钥（不是你的密码）进行认证。\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "带宽共享 - 最多 5 台设备，API 密钥认证"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "电子邮件"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "API 密钥（UUIDv4，不是密码）"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "你的 Repocket 账户邮箱"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "你的 Repocket API 密钥 — 登录 <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a>，复制 bandwidth-earnings 页面上显示的 API 密钥（它不是你的账户密码）。还没有账户？请通过 <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a> 注册"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "住宅 IP 收益更高。接受 VPS/数据中心 IP，但费率较低。"
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4（首次付款后为 $2）"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Repocket 按账户设定最低额：2026 年 10 月时，首次付款前为 $4，之后为 $2，远低于其过去宣传的 $20。方式：Tremendous（发送到你的邮箱）或 Polygon 上的 USDT。每次申请都要在 2 小时内通过邮件中的链接确认，并且同一时间只能有一个待处理的申请。2026 年 10 月，Repocket 以 \"Please, message support\" 拒绝了一笔 Tremendous 申请，而 Polygon 上的 USDT 申请则成功了。"
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "余额由 Repocket 保管；按需提现。"
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "使用你的 Repocket 账户邮箱和密码（与 <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a> 相同）。还没有账户？请通过 <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a> 注册。"
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "被推荐人赚到 $7 后奖励 $2，之后终身获得其收益的 5%"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "注册即获 $2 钱包奖励"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Repocket 的文档规定每个账户最多五台设备，但没有公布每个 IP 的设备上限。评测网站上反复出现的“每个 IP 2 台设备”说法没有提供商来源，因此 CashPilot 不采用这一说法。"
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "保持一台 Repocket 设备在共享，或提取你的余额"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "如果 12 个月内没有登录、付款或共享带宽，Repocket 可能会没收未付余额。"
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "保持一台设备在共享、登录账户或提现。如果你不再使用 Repocket，请先提现。"
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "多位 Trustpilot 评价者反映付款被取消、余额被清零；一位说客服给出的理由是带宽收益异常。该页面给 Repocket 打了 2.7 分，并注明它没有回复差评。"
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "评价者反映提现被拒，需要反复催款。"
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "Repocket 的付款政策允许它在怀疑收益无效时随时撤销、取消或永久没收收益，并没收休眠账户的未付收益。"
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "同一政策允许 Repocket 随时在不通知的情况下增加、删除或更换付款方式；PayPal 已被移除。"
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "条款说 Repocket 可随时要求身份或账户验证，而能否收款取决于此。"
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "条款说 Repocket 及其合作伙伴会使用网络容量，但没有说明合作伙伴是谁、如何审核。"
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "Trustpilot 注明 Repocket 没有回复差评，评价者说消息被置之不理。"
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "现行条款写明了新加坡的 Repocket Pte. Ltd.；旧版条款没有写明任何公司。"
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Repocket 发布了自己的 Docker 镜像 repocket/repocket，其条款允许使用你自己拥有的容器。"
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "最低额很低：首次付款前 $4，之后 $2。"
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Salad.io 让你把 GPU 共享给分布式 AI 工作负载，赚取 Salad 余额，可兑换礼品卡、游戏或现金。仅支持 Windows，提供原生桌面应用。需要独立显卡（NVIDIA 或 AMD）。机器空闲时，平台会把 AI 推理、渲染和其他计算任务分配给它。它是较易上手的 GPU 共享平台之一。\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "面向 AI 的 GPU 共享 - 仅限 Windows，礼品卡或现金付款"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "收益取决于 GPU 型号和任务供给情况。RTX 3060 约 $1-3/天。仅限 Windows。原生应用，不支持 Docker。可兑换礼品卡、游戏或 PayPal。"
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "通过 Salad 商店兑换 PayPal 或礼品卡。"
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "仅限 PayPal 和礼品卡，从不支持加密货币。没有钱包地址，因此 CashPilot 没有可显示的链上余额。"
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "登录 <a href='https://app.salad.io' target='_blank'>app.salad.io</a>，按 F12 → Application → Cookies，复制 <b>auth</b> Cookie 的值。"
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "赚取一些 Salad Reward Points，或花掉你的余额"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "如果账户连续 12 个月没有赚到任何 Reward Points，其未兑换的余额可能会过期。"
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "运行 Salad 应用直到它产生收益，或在 Salad Storefront 中花掉全部余额。只花掉一部分不会重置这 12 个月。"
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "CashPilot 不运行 Salad：你需要使用提供商自己的桌面应用，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "2026 年 10 月和 11 月的多位 Trustpilot 评价者反映 PayPal 提现很快到账，有些人不止一次；同期也有一位评价者说多次尝试提现都失败了。"
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel 是一条用于去中心化 VPN 的 Cosmos Layer 1 区块链。节点运营者以灵活的定价（按 GB 或按小时）向 VPN 用户出售带宽。提供官方 Docker 部署指南。这是一个运行已久、社区活跃的项目。\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "Cosmos 上的去中心化 VPN - 节点运营者出售带宽"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "运营者自行设定按 GB 或按小时的价格。收益取决于你所在地区的 VPN 用户需求。"
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "按会话"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "付款以 P2P 代币支付，每笔带宽付款的 20% 归质押者，而不是节点托管方。"
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "该代币在 2021 年从 SENT 改名为 DVPN，2025 年又从 DVPN 改名为 P2P。"
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "CashPilot 不运行 Sentinel：你需要使用提供商自己的节点软件，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Sentinel 以其自有的开源许可证公开了节点源代码。"
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia 是一个去中心化存储市场，由 Sia Foundation（一家瑞士非营利组织）运营，自 2015 年起运行。运行该基金会官方的 hostd 节点，即可出租闲置磁盘空间，从存储和带宽合约中赚取 Siacoin。节点开始赚钱之前，你必须先购买一些 Siacoin：托管方要为每份合约锁定抵押金，并为每次存储证明支付费用。合约完成后抵押金会退回；如果节点离线或丢失数据，抵押金会被销毁，因此它需要一台始终在线的机器（Sia 要求至少 95% 的在线时间）。收益取决于租用者实际存储了多少数据；Sia 建议存储定价为每 TB 每月 $1，因此它适合有大容量闲置磁盘的机器，而不适合小规格 VPS。\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "Sia Foundation 存储节点 - 官方 Docker 镜像，赚取 Siacoin"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "钱包助记词"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "仪表板密码"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "存储目录"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "控制托管方 Siacoin 钱包的 BIP-39 助记词。用 `docker run --rm ghcr.io/siafoundation/hostd seed` 生成一个并做好备份 -- 这是取得收益的唯一途径"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "hostd 网页界面和本地 API 的密码（BasicAuth）。任意较长的口令均可"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "你最大磁盘上用于存储租用者数据的主机路径（例如 /srv/sia）。需要至少 256GB 可用空间"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "部署时，CashPilot 会在运行节点的机器上创建一个新钱包，并只显示一次助记词：请把它抄下来。如果要使用你已有的钱包，请改为粘贴其助记词。部署完成后，向节点钱包转入一些 Siacoin 用于抵押和手续费，然后在仪表板中添加存储文件夹（/storage）、设置价格并发布托管公告。\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "钱包助记词（hostd.yml）、钱包数据库、托管设置和合约状态。丢失它会失去节点的身份和合约收入记录；此时你抄下的助记词就是找回资金的唯一途径。"
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "已存储的租用者数据。丢失它会导致存储证明失败，并失去为这些合约锁定的抵押金。"
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "托管方自行定价。Sia 建议每 TB 存储每月 $1，每 TB 下载超过 $5，每笔合约付款的 3.9% 归 Siafund 持有者。收入随落到节点上的租用者数据量增加，数据量从零开始，并随在线时间和价格增长。抵押金（Sia 建议为存储价格的 2 倍）按合约锁定，合约成功完成后退回。\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "收益累积在托管方自己的 Siacoin 钱包中（由助记词控制）。在交易所将 SC 兑换后，从那里提现到银行/银行卡；提供商一方没有付款申请。\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "资金存放在节点内由助记词控制的 Sia 钱包中。助记词只保存在运行它的机器上 hostd 的数据卷中；CashPilot 从不存储它。创建钱包时你抄下的助记词是唯一的恢复途径。\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "需要一个稳定的公网地址，并转发端口 9981（TCP，共识）和 9984（TCP 和 UDP，租用合约）。在 Sia 上使用数据中心/VPS 托管很常见。节点开始接受合约之前，钱包中需要有 Siacoin。"
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "磁盘空间以及提供这些空间所需的带宽。"
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "否。租用者在你的磁盘上存储加密的文件片段并取回。其他人不会通过你的 IP 转发任意流量。"
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "你的 Sia 钱包地址、托管方公钥，以及节点为便于租用者访问而公布的公网 IP:端口。"
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "线路上会有持续的上传/下载流量，与运行任何存储服务器类似；不会有匿名的第三方网页流量被归到你名下。"
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "无需许可：无需注册，也没有账户。如果节点因离线或丢失数据而错过存储证明，抵押金会被销毁。"
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "收益是你自己钱包中的 Siacoin：不会付款到银行，需要你自己在交易所出售。"
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "抵押金按合约锁定，如果托管方因离线或丢失数据而错过存储证明，抵押金会被销毁。"
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "网络上提供的存储空间只有约 30% 被使用，因此新的托管方要争夺很少的需求。"
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "租用者存储的是加密的文件片段，也没有人通过你的 IP 转发流量，但我们没有找到 Sia 说明租用者是谁、如何审核的内容。"
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "hostd 自 2022 年起由 Sia Foundation 公开开发。"
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd 以 MIT 许可证开源。"
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "Sia Foundation 以容器镜像形式发布 hostd。"
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "无需许可：无需注册，也没有账户。"
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide 是一个带宽共享服务，让你把闲置的网络带宽变现。使用一个可选的机器 ID 来跟踪设备。可通过 income-generator 项目的社区 Docker 镜像获取。\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "带宽共享 - 基于机器 ID"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "机器 ID"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "已注册设备的机器 ID（留空则自动生成）"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "可用信息有限。收益取决于所在地区。"
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "其收益的 10%"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "$5 注册奖励"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "同一个公网 IP 上的流量会在共享该 IP 的设备之间分配，因此同一网络连接上的第二台设备不会带来额外收益。"
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "CashPilot 不运行 Spide：你需要使用提供商自己的应用，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "用一张 NVIDIA GPU 挖 Pearl、Zano 或 Ravencoin。CashPilot 在首次启动时下载官方的 SRBMiner-Multi 发布版本并校验其 SHA-256。你选择的矿池会向你的公开收款地址付款。SRBMiner-Multi 在 Pearl 上抽取 2% 的哈希时间，在另外两种币上抽取 0.85%。电费可能高于你挖到的币的价值。"
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "用 NVIDIA GPU 挖 Pearl 及其他 GPU 币"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "收款地址"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "矿工名"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "算法"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "矿池（主机:端口）"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "加密矿池连接（TLS）"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "你的公开 Pearl 地址（prl1...）。如挖 Zano 或 Ravencoin，请填写该币的地址和对应的矿池。"
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "Pearl 用 pearlhash，Zano 用 progpow_zano，Ravencoin 用 kawpow。"
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "未扣电费的毛收益估算。2026-11-25，hashrate.no 估计一张功耗约 142 W 的 RTX 4070 挖 Pearl 每天约 $2.45。我们没有实测。Pearl 是一种新币，其价格和难度变化很快。请核对你的 GPU 功耗和电价，看看是否划算。"
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL（HeroMiners）"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "达到矿池门槛时"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "余额达到你的门槛时，矿池会向你的地址付款。在付款之前，余额由矿池保管。"
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64、一张 NVIDIA GPU 以及 NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "这台机器报告的是机房网络连接。挖矿前请查看你的服务商条款。一些服务商（包括 Hetzner Cloud）禁止挖矿。在相信收益估算之前，请先核算你的实际电费。"
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "2% 的挖矿软件费适用于 pearlhash。SRBMiner-Multi 在 progpow_zano 和 kawpow 上抽取 0.85%。默认的 Pearl 矿池 HeroMiners 收取 1% 的矿池费。它每小时检查一次付款，1 PRL 起付。其他矿池自行设定费率和门槛。"
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "算力"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "否。矿机向你选择的矿池发送工作。"
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "你的收款地址、矿工名和 IP 地址会发送给矿池。首次启动时会从 GitHub 下载挖矿软件。"
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "一些网络和 DNS 解析器会屏蔽与矿池的连接。"
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "大多数矿池通过你的公开收款地址识别你。"
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "挖矿软件在 Pearl 上抽取 2% 的哈希时间，在 Zano 和 Ravencoin 上抽取 0.85%。"
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "一些托管服务商禁止加密货币挖矿。"
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "该挖矿软件是闭源的，因此除其开发者外，没有人能审计它运行的内容。"
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "GPU 的电费可能高于挖到的币的价值，而且 Pearl 的价格波动很快。"
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "挖矿软件向矿池发送工作，不转发任何他人的流量。"
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "你可以用一个公开地址在 HeroMiners 上挖 Pearl，无需账户。"
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj 是一个去中心化云存储网络，你通过出租闲置磁盘空间赚钱。通过 Docker 运行存储节点，每存储 1 TB 每月可获 $1.35，另加每 TB 出站流量（egress）$1（2026 年 9 月 1 日起的费率）。付款按月以 USDC（一种美元稳定币）在以太坊主网上支付到你自己控制的钱包，前提是余额超过基于手续费的最低额（2026 年 9 月那次付款之前为 STORJ 代币）。需要至少 550GB 可用磁盘空间和稳定的网络连接。无需账户或注册 -- 自 2025 年年中起节点无需许可。注意（2026 年 10 月）：Storj Labs 于 2026 年 7 月 26 日申请了 Chapter 11 破产保护（美国西弗吉尼亚州北区破产法院，案号 5:26-bk-00512），以重组历史债务。网络仍在运行，Storj 仍在向活跃节点付款，但申请之前的节点收益在法院作出裁决前被冻结。STORJ 代币较 2021 年高点下跌了约 98%。Binance 于 2026 年 9 月 3 日将其下架，Coinbase 于 2026 年 9 月 28 日暂停了它的交易。新节点在前九个月会暂扣部分收益，并且只会随着客户需求逐步填满，因此现在开始运行一个节点，意味着要把漫长的回本期押在一家正在重组、仍可能清算关闭的公司身上。\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "去中心化存储节点 - 每 TB 存储 $1.35 + 每 TB 出站流量 $1"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "钱包地址"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "电子邮件"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "外部地址"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "分配的存储空间"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "身份目录"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "存储目录"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "用于接收 USDC 付款的以太坊钱包地址（例如 0x1234...abcd）。必须是自托管钱包（MetaMask、Ledger 等）-- 切勿使用交易所地址"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "用于接收运营者通知的电子邮件地址"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "带端口的 DDNS 主机名（例如 mynode.ddns.net:28967）-- 强烈建议使用它而不是固定 IP，否则网络运营商哪天悄悄更换了你的 IP，节点就会失联。端口 28967 必须转发（TCP+UDP）"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "要分配的最大磁盘空间（例如 2TB）。请使用机械硬盘（HDD），不要用 SSD"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "存放身份文件的主机路径（必须包含 ca.cert、ca.key、identity.cert、identity.key）"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "机械硬盘（HDD）上用于 Storj 数据存储的主机路径。需要至少 550GB 可用空间"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "首次运行之前，请先初始化存储节点配置：docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "节点身份。其 ID 与工作量证明绑定，重新生成需要数小时，而且无法从任何其他内容的备份中重建。丢失它会失去被暂扣的付款余额。"
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "已存储的客户数据和节点的暂扣金额。丢失它会导致节点被取消资格，并失去暂扣的余额。"
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "Storj 网络无法通过你公布的 ADDRESS 回连你的节点，因此卫星节点将其视为离线：新数据不再进来，出站流量收入停滞，长时间离线会导致暂停。请检查 ADDRESS 是否与你当前的公网 IP 一致（使用 DDNS 主机名而不是固定 IP，这样网络运营商更换 IP 时节点不会失联），并确认端口 28967 TCP+UDP 已转发到这台机器。"
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "2026 年 9 月 1 日起：每 TB 存储 $1.35 + 每 TB 出站流量 $1 + 每 TB 审计/修复 $1。收益随存储的数据量和节点运行时长增加。前 9 个月依次暂扣 75%、50% 和 25% 的收益；暂扣金额的一半在第 16 个月退还，其余在正常退出（graceful exit）时退还。端口 28967 必须转发。"
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "以太坊交易手续费的 4 倍，更少的余额顺延"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "每月"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "当钱包余额至少为当前交易手续费的四倍时，按月在以太坊主网上以 USDC 支付；更少的余额顺延到下个月。2026 年 9 月那次付款之前为 STORJ 代币。仪表板位于端口 14002。"
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "余额超过基于手续费的最低额后，按月在以太坊主网上以 USDC 支付到 WALLET 中的地址。2026 年 9 月那次付款之前为 STORJ 代币；zkSync Era 付款已于 2026 年 9 月 1 日停止。"
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "节点仪表板在端口 14002 上的 URL，使用服务器的局域网 IP 而不是 localhost，例如 <b>http://192.168.1.10:14002</b>。有多个节点时，请用逗号分隔列出它们的 URL：CashPilot 会把它们加总。"
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "同一 /24 子网中的 Storj 节点共享数据分配，会降低每个节点的收益。"
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "上行 5 Mbps"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "磁盘空间以及提供这些空间所需的带宽。"
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "否。你存储的是经过加密和纠删码处理的客户数据片段。其他人不会通过你的 IP 转发他们自己的流量。"
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "节点身份、你的钱包地址、节点为发送运营者通知而要求的电子邮件地址，以及你的 IP 和端口（节点必须可被访问才能提供数据）。"
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "主要是流量上限的问题，而不是法律责任问题：节点会持续地提供和接收客户数据，这在你的线路上是真实而持续的流量。但与代理或中继不同，它不是以你为来源的匿名第三方流量，因此不会像那些服务一样招来滥用投诉。"
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "节点数量不限，但同一 /24 子网中的节点共享分配，因此同一网络连接上的多个节点各自收益更少。"
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "CoinDesk 于 2026 年 7 月 27 日报道，Storj Labs 已申请 Chapter 11 破产保护。"
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "申请之前应付给节点运营者的款项已进入破产债权申报程序。"
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "新节点在前九个月依次被暂扣 75%、50% 和 25% 的收益；一半在第 16 个月退还，其余只在正常退出（graceful exit）时退还。"
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "客户存储的是加密的文件片段，也没有人通过你的 IP 转发流量，但我们没有找到 Storj 说明客户是谁、如何审核的内容。"
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "存储节点软件以 AGPL-3.0 许可证开源。"
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Storj 发布了自己的 Docker 镜像 storjlabs/storagenode。"
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "无需账户：只需一个钱包地址和一个接收运营者通知的邮箱。"
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "申请破产后，活跃节点仍持续收到付款。"
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR 是一个无需账户的门罗币（Monero）矿池：你的矿机以你的门罗币地址作为用户名登录，矿池向该地址付款。CashPilot 在这里不运行矿机。它读取 SupportXMR 为你的地址保留的余额，让你在其他收入旁边看到你的 CPU 矿机赚了多少。该余额是已赚到但尚未收到的：一旦超过你的付款门槛，矿池就会支付。\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "门罗币矿池，按你的收款地址跟踪"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR（自动），按需申请为 0.01 XMR"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "余额超过你的门槛时，或按需申请"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "余额达到你的门槛（默认 0.1 XMR）后，SupportXMR 会向你的地址付款。你也可以在其网站上申请 0.01 XMR 起的即时付款，手续费 0.001 XMR。"
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "该余额是已赚到但尚未收到的，直到 SupportXMR 付到此地址。没有私有查看密钥（view key）就无法在链上读取门罗币余额，而 CashPilot 从不索要该密钥，因此每笔付款都需要你自己确认。"
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "你的门罗币收款地址：即你的矿机在 SupportXMR 上使用的用户名，去掉任何 <b>.workername</b> 或 <b>+difficulty</b> 部分。它是公开的，无法用来动用任何资金。"
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "需要一个指向 pool.supportxmr.com 的门罗币挖矿程序（XMRig）"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "算力"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "否。你的矿机向矿池发送哈希；没有人通过你的网络连接转发流量。"
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "你的门罗币地址、你选择的矿工名、你的算力，以及矿池所见的矿机 IP 地址。"
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "矿机只与矿池保持一个连接，使用的带宽很少。需要关注的成本是电费，而不是网络运营商。"
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "没有账户。地址就是身份，任何人都可以在 supportxmr.com 上查看其统计数据。"
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "只以门罗币支付，矿池费 0.6%，默认门槛为 0.1 XMR，达到后才自动付款。"
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "CashPilot 不为 SupportXMR 运行矿机：你需要把自己的挖矿程序指向矿池，CashPilot 只读取余额。"
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Teneo Protocol 通过一个由 Beacon 组成的网络，让 AI 代理能够访问实时网页。Teneo Beacon 是 Teneo 自己的应用，支持 Android、iOS、macOS、Windows 和 Linux，并有用于服务器和 Raspberry Pi 的命令行版本。在你接受其同意界面后，它会共享你闲置的带宽，并在在线期间赚取 Teneo Protocol Points 和 Fragments。Fragments 会计入以 USDC 支付的赛季抽奖（Beacon Drop）。Teneo 说 Beacon 赚取的积分是其旧版浏览器扩展的两倍。每个网络连接只有一个 Beacon 产生收益。同一网络连接上的其他设备处于待机状态。请使用推荐链接或推荐码 PSA3BHPJ 在 Expedition Hub 注册，然后登录 Beacon。\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "DePIN 带宽应用（Beacon）- Fragments 用于赛季 USDC 抽奖，通过推荐链接注册 +100 Fragments"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "赚取 Teneo Points 和 Fragments。Fragments 计入赛季 USDC 抽奖，所以每个赛季支付的是奖品，而不是固定费率。Teneo 说 Beacon 赚取的积分是浏览器扩展的两倍。每 8 小时领取一次加成，最多可得 3 倍 Fragments；错过一个时间窗口会降低倍数。"
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "赛季抽奖（Beacon Drop）"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "Beacon Drop 的奖品以 USDC 支付到你在 Expedition Hub 中绑定的钱包。Hub 会显示你还有多少天可以绑定；未及时绑定钱包的奖品将作废。"
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "请在赛季奖品发放之前在 Expedition Hub 中绑定钱包；未及时绑定钱包的奖品会被 Hub 作废。"
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "每位被推荐好友 Fragments 的 8%，以及其推荐用户 Fragments 的 2%，前提是好友在 7 天内注册并赚到 480 Fragments"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "注册时 +100 Fragments，达到 480 Fragments 后再 +150"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "每个网络连接只有一个 Beacon 产生收益。数据中心机器只在 Teneo 已启用的托管服务商上产生收益，Fragments 减半，且没有积分和推荐奖励。VPN 连接永远不会产生收益。"
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "Beacon 的 Fragments 只以赛季抽奖奖品的形式支付 USDC，因此运行它不会带来固定的收益。"
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Teneo 说积分将合并为不可转让的奖励代币 $AGENTIC，而不是 $TENEO 代币。"
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "此前定于 2026 年第二季度的目标已经过去，截至 2026 年 11 月，$TENEO 的发行日期、分配方式和领取流程均未确认。"
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "CashPilot 不运行 Teneo：你需要安装提供商自己的 Beacon 应用，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Teneo 说流量来自经过审核的企业客户，并会屏蔽私有地址和容易被滥用的端口，但没有说明如何审核这些客户。"
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network 是一个成熟的去中心化视频分发和 AI 算力网络（始于 2018 年）。用户运行 Edge Node，共享带宽、存储和计算能力。有重要的内容合作伙伴。赚取 TFUEL 代币。\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "去中心化 CDN + AI 算力 - TFUEL 奖励，成熟项目"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "仅有桌面应用。收益取决于资源和所在地区。有重要合作伙伴，在所有交易所上市。"
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "持续"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "CashPilot 不运行 Theta Edge：你需要使用提供商自己的桌面应用，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network 是一个 DePIN 平台，共享你的 IP 地址、存储和带宽，以换取 TNT 代币奖励。支持 Windows、Mac 和 Android。节点为去中心化 CDN 和存储层提供资源。典型收益为 $5-30/月，取决于共享的资源和地理位置。\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "共享 IP、存储和带宽的 DePIN - $5-30/月"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "共享 IP、存储和带宽。收益取决于提供的资源和所在地区。分配的存储越多，奖励越高。"
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "按纪元（epoch）"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "Titan 自己的帮助文档说，节点在运行并不保证有收益：没有分配任务时就没有收益，而且奖励以 TNT 代币发放。"
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "CashPilot 不运行 Titan：你需要使用提供商自己的应用或扩展，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Traffmonetizer 通过与经过验证的企业共享带宽，让你的网络流量变现。除住宅网络外，它也是少数能在 VPS 和数据中心 IP 上良好运行的带宽共享服务之一。使用简单的令牌认证，通过命令行参数传入。支持 Raspberry Pi 等设备的 ARM 架构。\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "带宽共享 - 可在 VPS 上运行，令牌认证"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "令牌"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "设备名称"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "登录 <a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a>，按 F12 → Application → Local Storage → 点击 <code>https://app.traffmonetizer.io</code> → 复制 <code>authToken</code> 的值（约 54 个字符：数字、一个 <code>|</code>，然后是字母和数字）"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "在仪表板中显示、用于管理设备的名称"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "VPS 和数据中心 IP 的收益低于住宅 IP。美国/欧盟地区收益更高。可通过 Docker 网络支持多个 IP。"
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "最低 $10。已不再提供 PayPal。请先在个人资料中保存一种付款方式：Solana 或 TON 上的 USDT（手续费最低）、Arbitrum（手续费低）或 Tron TRC20（网络手续费高），或 $1,000 起的银行转账。第一次保存的地址立即生效；之后更改需要邮件确认。首次提现前，仪表板可能会要求提供一个即时通讯联系方式（WhatsApp、Telegram 或 Skype）。每次申请只支付整数美元，零头留在余额中。"
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "以个人资料付款设置中保存的链（Solana、TON、Arbitrum 或 Tron）上的 USDT 支付，或银行转账。地址保存在 Traffmonetizer 的设置中，而不是容器中。"
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "登录 <a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a>，按 F12 → Application → Local Storage → <b>authToken</b> 的值（约 54 个字符：数字、一个 <code>|</code>，然后是字母和数字）。"
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "其每次申请付款金额的 10%"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "Traffmonetizer 的服务条款要求住宅 IP，但实际上接受 VPS 节点。"
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "Trustpilot 评分为 1.9；2023 年至 2026 年 11 月的评价者反映付款数周处于待处理状态，或被标记为已完成却没有对应的交易。"
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "同一批评价者反映在线聊天和邮件客服不回复，有时长达数周。"
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "仅支持加密货币或 $1,000 起的银行电汇；PayPal 已取消，每次申请只支付整数美元。"
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "Traffmonetizer 的条款要求住宅 IP，因此使用机房网络连接的服务器不符合条款。"
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "2023 年至 2025 年有四位 Trustpilot 评价者反映收益非常慢，例如四台设备每天一美分，或近两年才达到 $10。"
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "付款只需要一个经邮件确认并保存的加密货币地址；仪表板可能会要求提供即时通讯联系方式。"
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Traffmonetizer 发布了自己的 Docker 镜像 traffmonetizer/cli_v2。"
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "用你的 CPU 挖矿，并以你选择的币种收款，例如 SHIB、DOGE 或 XMR。CashPilot 运行 XMRig 连接 unMineable 的 RandomX 矿池，unMineable 会把你的 CPU 挖到的门罗币换成你选择的币。余额达到该币的付款门槛后，它会向你的公开地址付款。CashPilot 部署的每个矿工都带有 CashPilot 的 unMineable 推荐码，可将你的平台费从 1% 降至 0.75%。电费可能高于你的收益。"
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "用 CPU 挖矿，以你选择的币种收款"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "收款币种"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "收款地址"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "矿工名"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "最大 CPU 线程数（%）"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "RandomX 模式"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "unMineable 支付的某个币种的代码，例如 SHIB、DOGE 或 XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "你在该币种上的公开地址。不支持需要 memo 或 tag 的币种。"
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "未扣电费的毛收益估算，按 unMineable 的兑换率以你选择的币支付。2026-11-25，1 kH/s 的 RandomX 算力每月约值 $1。使用一半线程的台式机 CPU 可能多耗电 30 到 50 W。请核对你的实际用电量和电价，看看是否划算。"
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "由 unMineable 按币种设定（2026-11-26 为 0.03 XMR）"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "达到该币的付款门槛时"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "余额达到该币的付款门槛后，unMineable 会向你的地址付款。门槛因币种和网络而异；CashPilot 读取 unMineable 为你的地址报告的门槛。"
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "该余额是已赚到但尚未收到的，直到 unMineable 付到此地址。所用的链取决于你选择的币种。"
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "与你部署矿机时相同的收款地址和币种代码，例如 <b>XMR</b>。只填写地址本身，不要带币种、矿工名或推荐码。它是公开的，无法用来动用任何资金。"
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "每位被推荐矿工挖矿奖励的 0.25%"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "平台费从 1% 降至 0.75%"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "这台机器报告的是机房网络连接。挖矿前请查看你的服务商条款。一些服务商（包括 Hetzner Cloud）禁止挖矿。在相信收益估算之前，请先核算你的实际电费。"
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "unMineable 收取 1% 的平台费。CashPilot 会在每个矿工名后加上它的推荐码（#awk6-j1z0），将你的费用降至 0.75%。随后 unMineable 会把你挖矿奖励的 0.25% 付给 CashPilot 的维护者；你保留 99.25%。每种币都有各自的付款门槛，例如 0.03 XMR。"
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "算力"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "否。矿机向 unMineable 的矿池发送工作。"
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "你的收款地址、币种、矿工名、算力和 IP 地址会发送给 unMineable。"
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "一些网络和 DNS 解析器会屏蔽与矿池的连接。"
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "无需账户。地址和币种就是身份，任何人都可以在 unmineable.com 上查看其统计数据。"
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "使用推荐码时 unMineable 仍收取 0.75% 的平台费，并且只在达到各币种的门槛后付款。"
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "一些托管服务商禁止加密货币挖矿。"
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "额外的电费可能高于挖到的币的价值。"
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "地址的统计数据（包括余额）对任何知道该地址的人公开。"
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "矿机向矿池发送哈希，不转发任何他人的流量。"
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "你可以以所选币种向一个公开地址挖矿，无需创建账户。"
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock 是一个 DePIN（Decentralized Physical Infrastructure Network，去中心化物理基础设施网络）平台，让你通过共享网络连接赚取加密货币。它是更广泛的 Web3 生态的一部分。有社区 Docker 镜像，但没有官方镜像。浏览器扩展是主要的使用方式。\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "DePIN 网络共享 - 加密货币付款，以浏览器扩展为主"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "基于加密货币/代币的收益。没有官方 Docker 镜像 — 浏览器扩展是主要客户端。"
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "UPT 代币，250 UPT 起可提现到 Solana 钱包，需开启双重认证。提现需支付手续费。"
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "UpRock 的帮助中心说，提现以 UPT 代币打到 Solana 钱包，最低 250 UPT。"
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "奖励是 UPT 代币；评价者和一篇第三方评测都说其价值非常低。"
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "CashPilot 不运行 UpRock：你需要使用提供商自己的应用或扩展，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork 是一个去中心化 VPN 和带宽共享网络。你作为社区提供者提供带宽来赚钱。提供者程序用你的账户邮箱和密码自行认证（其 auth-provide 子命令），并把生成的会话 JWT 保存在数据卷中。由 BringYour, Inc. 提供官方 Docker 镜像。\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "去中心化 VPN/带宽 - 邮箱+密码认证，JWT 会话保存在卷中"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "电子邮件"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "密码"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "你的 URnetwork 账户邮箱（你在 <a href=\"https://ur.io\" target=\"_blank\">ur.io</a> 上使用的登录账号）。通过 Google/Apple 登录创建的账户需要先设置密码。还没有账户？请通过 <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a> 注册"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "你的 URnetwork 账户密码（不含空格）。由提供者程序的 auth-provide 登录使用；之后会话保存在数据卷中。"
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "可在 VPS 和住宅网络上运行。自 2026-10-06 起，每个每周纪元以 SN25α（Bittensor 子网 25）支付。支持代理模式，适用于多 IP 设置。"
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "按纪元（epoch）"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "在 ur.io/app/account/earnings 上设置一个 Bittensor coldkey（用 Talisman、TAO.com 或 WalletConnect 钱包签名），然后逐个领取已结束的纪元。每次领取都要从一个 EVM gas 密钥支付 TAO 作为 gas。未领取的纪元会过期；旧的 USDC 付款在 30 天内未绑定钱包时已被取消。"
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "每位好友每天 3 GiB 免费 UR 流量，最多 20 位好友（是流量，不是钱）"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "加入后 90 天内有 2 天通过应用使用至少 10 MiB，即可每天获得 3 GiB 免费 UR 流量；否则推荐关系终止"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "未领取的纪元会过期，对于 30 天内未绑定钱包的网络，旧的 USDC 付款已被取消。"
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "自 2026 年 10 月起，奖励以 Bittensor 子网代币 SN25α 支付，每次领取都要花费 TAO 作为 gas。"
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "URnetwork 原名 BringYour；其存档的白皮书仍使用旧名称。"
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "URnetwork 公开了其提供者客户端的源代码。"
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "URnetwork 发布了自己的 Docker 镜像 bringyour/community-provider，可在 VPS 和住宅网络上运行。"
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "领取只需一个由你自己控制的 Bittensor 钱包。"
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai 是一个 GPU 云市场，你可以把 NVIDIA GPU 出租给 AI/ML 研究人员和开发者。这是一个原生基于 Docker 的平台，你自行设定每小时价格。一张 RTX 3090 被租用时通常可赚 $0.20-0.40/小时。需要安装了较新驱动的 NVIDIA GPU 和稳定的网络连接。收入在很大程度上取决于 GPU 型号、定价策略和市场需求。\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "GPU 市场 - 自行定价，RTX 3090 约 $0.20-0.40/小时"
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "API 密钥"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "仪表板中的 Vast.ai 托管方 API 密钥"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "被租用时，RTX 3090 约 $0.20-0.40/小时，RTX 4090 约 $0.40-0.80/小时。利用率不固定。需要 NVIDIA GPU、Linux 主机、Docker 和 nvidia-container-toolkit。自行定价。"
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "每周（周五）"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "收益累积在 Vast.ai 余额中。通过 Wise、PayPal 或 Stripe 提现。"
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "被推荐租用者在其账户存续期间消费金额的 3%，以推荐额度形式发放；其中最多 75% 可从专用的推荐账户提现"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "托管方只在被租用时有收益，Vast 自己给出的消费级 GPU 数字取决于租赁类型和可靠性评分。"
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "CashPilot 不运行 Vast.ai：你需要在自己的 GPU 机器上安装 Vast 的托管软件，因此 CashPilot 无法替你部署或更新它。Vast 的托管基于 Linux 主机上的 Docker。"
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Vast 说托管方设定的价格就是其实际收到的价格，不扣任何费用。"
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "付款通过 Wise、PayPal 或 Stripe 进行，最低 $20，每周结算；更少的余额顺延到下一周。"
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter 是一个带宽共享平台，支持 Windows、Mac、Linux 和 Android。它声称每共享 1 GB 带宽最多支付 $1，最低付款门槛为 $20。该平台的运作方式与传统带宽共享应用类似，通过住宅网络转发合法流量。\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "带宽共享 - 声称最高 $1/GB，最低付款 $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "声称最高 $1/GB，但实际收益更低。最低付款额 $20。收益因地区和需求差异很大。"
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "按需申请"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "Wipter 没有网页仪表板。余额达到 $20 后，打开 Wipter 桌面或手机应用，登录并在其中申请付款。Wipter 只以 BNB Smart Chain（BEP20）上的 USDT 支付到你在应用 Payments 部分设置的钱包；没有 PayPal 选项。"
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "好友达到最低付款额后，获得其流量收益的 10%，推荐人数不限"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "$5 注册奖励"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "CashPilot 不运行 Wipter：你需要使用提供商自己的桌面或手机应用，因此 CashPilot 无法替你部署或更新它。尚未核查其条款是否允许在容器中运行。"
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "用你的 CPU 挖门罗币。CashPilot 运行 XMRig，你选择的矿池会以门罗币向你的公开收款地址付款。XMRig 会用 1% 的哈希时间支持其开发者。电费可能高于你挖到的 XMR 的价值。"
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "用你的 CPU 和自选矿池挖门罗币"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "门罗币地址"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "矿池"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "矿工名"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "最大 CPU 线程数（%）"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "RandomX 模式"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "未扣电费的毛收益估算。2026-11-25，按当时观察到的 XMR 价格和全网难度，1 kH/s 每月约值 $1。使用一半线程的台式机 CPU 可能多耗电 30 到 50 W。请核对你的实际用电量和电价，看看是否划算。"
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR（MoneroOcean，需你自行调低）"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "达到矿池门槛时"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "余额达到你的门槛时，矿池会向你的门罗币地址付款。在付款之前，余额由矿池保管。"
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "这台机器报告的是机房网络连接。挖矿前请查看你的服务商条款。一些服务商（包括 Hetzner Cloud）禁止挖矿。在相信收益估算之前，请先核算你的实际电费。"
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "默认矿池 MoneroOcean 收取 0% 的挖矿费。默认付款门槛为 0.3 XMR，你可以将其调低到 0.003 XMR。低于 4 XMR 的付款最多可能花费 0.0004 XMR。其他矿池自行设定费率和门槛。"
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "算力"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "否。矿机向矿池发送工作。"
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "你的门罗币地址、矿工名和 IP 地址会发送给矿池。"
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "一些网络和 DNS 解析器会屏蔽与矿池的连接。"
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "大多数门罗币矿池通过你的公开收款地址识别你。"
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "付款需要足够的 XMR 才能达到你的矿池门槛。"
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "一些托管服务商禁止加密货币挖矿。"
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "额外的电费可能高于挖到的 XMR 的价值。"
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "矿机向矿池发送哈希，不转发任何他人的流量。"
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "挖矿软件是开源的，镜像固定使用一个经过签名的上游发布版本。"
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "你可以使用公开的门罗币地址挖矿，无需透露姓名。"
+  source: "752cbb728aac"

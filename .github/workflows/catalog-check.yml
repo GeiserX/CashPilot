@@ -24,6 +24,10 @@ on:
       - "scripts/generate_ratings_page.py"
       - "docs/ratings.md"
       - "app/ratings.py"
+      # Which strings are translatable (I18N_FIELDS) and the translation checks.
+      - "app/catalog.py"
+      - "scripts/catalog_i18n.py"
+      - "scripts/i18n_check.py"
       - ".github/workflows/catalog-check.yml"
   push:
     branches: [main]
@@ -45,8 +49,9 @@ jobs:
 
       - name: Install the minimum needed to read the catalog
         # httpx: the docs state how many collectors exist, and counting
-        # COLLECTOR_MAP imports the collector modules.
-        run: pip install pyyaml httpx
+        # COLLECTOR_MAP imports the collector modules. markupsafe: the catalog
+        # imports app.gpu, which words its refusals through app.i18n.
+        run: pip install pyyaml httpx markupsafe
 
       - name: Every service entry loads under the strict validator
         run: |
@@ -58,12 +63,23 @@ jobs:
           # An invalid entry is dropped at load with only a log line, so count
           # against the files on disk: one bad entry must fail, not just all.
           files = [*pathlib.Path("services").rglob("*.yml"), *pathlib.Path("services").rglob("*.yaml")]
-          on_disk = {p.stem for p in files if not p.name.startswith("_")}
+          on_disk = {p.stem for p in files if catalog.is_service_file(p.resolve())}
           loaded = {s["slug"] for s in catalog.get_services()}
           if on_disk - loaded:
               sys.exit(f"Rejected by the catalog validator (see the warnings above): {sorted(on_disk - loaded)}")
           print(f"{len(loaded)} service(s) loaded and valid.")
           PY
+
+      # The translations of the catalog (services/_i18n/). en.yml must hold
+      # every English string the UI shows, so a new or changed service string
+      # fails here until en.yml is regenerated; then every locale file must
+      # translate every key, with the same placeholders, tags and links. A
+      # stale translation (its English changed since) only warns: the UI shows
+      # the English until a translator updates it.
+      - name: Catalog translations cover every English string
+        run: |
+          python scripts/catalog_i18n.py --check
+          python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/*.yml
 
       - name: README service lists and doc counts match the catalog
         run: python scripts/generate_readme_tables.py --check

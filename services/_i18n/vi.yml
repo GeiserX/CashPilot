@@ -1,0 +1,2514 @@
+# Vietnamese translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/vi.yml --restamp '<key>'
+2miners-etc.description:
+  text: "Theo dõi số dư Ethereum Classic chưa thanh toán mà 2Miners đang giữ cho địa chỉ nhận thanh toán ETC công khai của bạn. Hãy tự chạy máy đào và trỏ nó tới pool. CashPilot đọc số dư và yêu cầu bạn xác nhận khoản thanh toán khi số dư giảm.\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "Pool đào Ethereum Classic, theo dõi qua địa chỉ nhận thanh toán của bạn"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC (có thể điều chỉnh)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "Pool kiểm tra ngưỡng thanh toán của bạn mỗi hai giờ"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "2Miners tự động thanh toán vào địa chỉ của bạn khi bạn đạt ngưỡng đã chọn. Ngưỡng thấp nhất cho khoản thanh toán ETC là 0.1 ETC.\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "Số dư chưa thanh toán được tích lũy tại 2Miners. Số dư ví là một lần đọc riêng từ Ethereum Classic. Hãy kiểm tra số tiền đã nhận trong ví trước khi xác nhận khoản thanh toán trong CashPilot.\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "Nhập địa chỉ nhận thanh toán Ethereum Classic công khai mà máy đào của bạn dùng trên 2Miners, bắt đầu bằng <b>0x</b>. Không thêm tên worker.\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "Cần một máy đào ETCHash trỏ tới 2Miners"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "điện toán"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "Không. Máy đào của bạn gửi công việc đào tới pool."
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "Pool sử dụng địa chỉ nhận thanh toán, tên worker bạn chọn và địa chỉ IP của máy đào."
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "Bất kỳ ai cũng có thể xem thống kê theo địa chỉ nhận thanh toán. Để đổi ngưỡng, pool yêu cầu xác nhận IP của worker."
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "Pool thu phí 1% và giữ khoản thanh toán cho đến khi bạn đạt ngưỡng."
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol (trước đây là ATOR) là một mạng riêng tư định tuyến onion phi tập trung. Người vận hành nút chạy các nút relay và nhận token ANYONE cho băng thông đóng góp. Có thể hình dung là \"Tor có thưởng\". CashPilot chạy nó từ image riêng, được build từ gói Debian đã ký của dự án, cho amd64 và arm64. Cấu hình dựa trên tệp, qua tệp anonrc được gắn vào container (Nickname, ContactInfo, ORPort, v.v.). Một relay không kiếm được gì cho đến khi có 100 ANYONE được khóa cho nó trong ít nhất 180 ngày, và phần thưởng được nhận bằng cách ký trong ví của bạn. Relay cũng đưa IP công khai của bạn vào danh bạ relay của mạng, điều này có thể làm giảm uy tín IP mà các ứng dụng băng thông dân cư trả tiền cho.\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "Định tuyến onion phi tập trung - nút relay Tor có thưởng"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "Khóa danh tính ed25519 của relay. Xóa nó sẽ chấm dứt uy tín của relay và đưa lịch sử thu nhập về con số không."
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "Chỉ trả khi có 100 ANYONE được khóa cho mỗi relay trong ít nhất 180 ngày và một yêu cầu nhận thưởng được ký trong ví của bạn. Không có khoản stake này, relay không kiếm được gì. Khi có, thu nhập phụ thuộc vào băng thông đóng góp và thời gian hoạt động."
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "Theo epoch"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "Đặt làm ContactInfo trong anonrc, với tiền tố '@anon:0x...'."
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "Các fingerprint của relay, phân tách bằng dấu phẩy. Không bảng điều khiển trực tuyến nào hiển thị chúng. Với relay do CashPilot chạy, hãy chạy <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> trên máy chủ đang chạy nó. Với relay phần cứng, hãy mở Relay Control Panel của nó tại <b>http://relayup.local</b> và xem Fingerprint trên trang Home.\n"
+  source: "ffa5be0d4953"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "Băng thông, với vai trò relay trong mạng Anyone (một bản fork của Tor)."
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "Có. Nó chuyển tiếp lưu lượng của người khác. IP của bạn có phải là chặng cuối hay không tùy vào việc relay có được cấu hình làm nút thoát hay không."
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "Khóa danh tính công khai của relay, IP và cổng của bạn, cùng thống kê thời gian hoạt động, tất cả đều được công bố lên danh bạ của mạng theo thiết kế. Nếu bạn đặt ContactInfo trong anonrc, giá trị đó cũng được công bố ở đó và được lập chỉ mục công khai vĩnh viễn — thường đó là một địa chỉ email, nên hãy để trống trừ khi bạn muốn nó công khai."
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "Có thật. Lưu lượng relay được quy cho kết nối của bạn. Đặc biệt các relay thoát hay bị khiếu nại lạm dụng; nhiều ISP dân dụng cấm chúng."
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "Không có tài khoản nào để đăng ký, nên không có gì để giới hạn theo tài khoản. Để kiếm tiền, bạn vẫn cần một ví Ethereum có 100 ANYONE được khóa cho mỗi relay trong ít nhất 180 ngày, và CashPilot cần fingerprint của relay để đọc phần thưởng. Dự án không công bố giới hạn relay theo IP, và danh mục cũng không khai báo giới hạn nào."
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "Một relay không kiếm được gì trừ khi có 100 ANYONE được khóa cho nó trong ít nhất 180 ngày, và mỗi lần nhận thưởng đều phải ký trong ví của bạn."
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "Theo thiết kế, nó chuyển tiếp lưu lượng của người khác mà không kiểm tra họ là ai; các relay thoát hay bị khiếu nại lạm dụng."
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "Danh tính, IP và thời gian hoạt động của relay được công bố lên danh bạ của mạng, và mọi ContactInfo bạn đặt sẽ công khai vĩnh viễn."
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "Không có tài khoản nào để đăng ký. Một relay chỉ cần một ví, không cần xác minh danh tính."
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "Phần mềm relay là một bản fork công khai của Tor, theo giấy phép của Tor."
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "CashPilot tự build image từ phần mềm relay mà Anyone công bố, không cần tài khoản."
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping là một nền tảng giám sát mạng phi tập trung trả tiền cho bạn khi chạy một nút. Nút của bạn giám sát website, đo độ trễ và kiểm tra chất lượng mạng cho khách hàng của Bitping. Hoạt động trên cả kết nối dân cư lẫn VPS. Image Docker đăng nhập bằng các biến môi trường BITPING_EMAIL và BITPING_PASSWORD ở lần khởi động đầu tiên (\"Attempting login with environment variables\" trong nhật ký của chính nó), sau đó lưu phiên trong volume được gắn để các lần khởi động lại không phải xác thực lại.\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "Chia sẻ băng thông - giám sát mạng phi tập trung, chạy được trên VPS"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "Mật khẩu"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "Email tài khoản Bitping của bạn (cùng thông tin đăng nhập với <a href='https://app.bitping.com' target='_blank'>app.bitping.com</a>)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "Mật khẩu tài khoản Bitping của bạn. Chỉ dùng một lần để tạo phiên cho nút, sau đó phiên được lưu trong volume dữ liệu."
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "Thu nhập phụ thuộc vào chất lượng mạng và nhu cầu giám sát từ vị trí của bạn. Chấp nhận nút VPS."
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "Thu nhập của nút nằm trên nodes.bitping.com; app.bitping.com là bảng điều khiển cho khách hàng API. Chỉ rút được bằng SOL: khi số dư chưa thanh toán vượt $0.05, hãy nhập địa chỉ Solana vào yêu cầu, được xử lý trong vòng 24 giờ. Một ví Solana mới hoặc trống cần có sẵn khoảng 0.001 SOL trước, cho mức tiền thuê tối thiểu của mạng."
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "Hiện chỉ dùng Solana, và địa chỉ được nhập VÀO LÚC RÚT TIỀN thay vì được lưu sẵn."
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "Dùng email và mật khẩu tài khoản Bitping của bạn (giống với <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)."
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "Rút số dư Bitping của bạn"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "Bitping có thể tịch thu thu nhập không được nhận trong hơn 12 tháng, sau khi báo trước 30 ngày qua email."
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "Gửi yêu cầu rút SOL trên nodes.bitping.com và nhập địa chỉ Solana của bạn vào yêu cầu."
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "Tiền rút được trả bằng Solana (SOL), vào địa chỉ bạn nhập trong mỗi yêu cầu."
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "Trang trợ giúp của Bitping cho biết việc rút về một ví Solana mới, trống có thể thất bại cho đến khi bạn tự nạp một ít SOL vào ví đó."
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "Trang trợ giúp của Bitping cho biết máy chủ và container Docker đều được hỗ trợ."
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "Một lần rút chỉ cần một địa chỉ Solana nhập vào yêu cầu."
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit là dịch vụ chia sẻ băng thông trả tiền qua PayPal và Stripe. Không có image Docker chính thức; ứng dụng desktop Windows và ứng dụng Android là các client. Dịch vụ nằm tại bytebenefit.io -- tên miền cũ bytebenefit.com đã bị bỏ và đang được rao bán trên một chợ tên miền, đó là lý do nó từng bị đánh dấu là đã ngừng ở đây.\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "Chia sẻ băng thông - thanh toán qua PayPal/Stripe, ứng dụng desktop/Android"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "Không có image Docker. Chỉ có ứng dụng desktop Windows và Android."
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "20% thu nhập từ lưu lượng của người được giới thiệu"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "Thưởng chào mừng $1 (10.000 Coins)"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "Trang Google Play của ứng dụng cho biết lưu lượng của bạn phục vụ các yêu cầu thu thập dữ liệu web của khách hàng Infatica, mà không nói họ là ai hay được kiểm tra thế nào."
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "Ứng dụng Android đã rời Google Play vào tháng 4 năm 2026, sau 17 tháng."
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "CashPilot không chạy ByteBenefit: bạn dùng ứng dụng riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Bytelixir giúp bạn kiếm thu nhập thụ động bằng cách chia sẻ băng thông internet chưa dùng đến. Chỉ hỗ trợ Windows và Android — FAQ chính thức cho biết không có kế hoạch làm client Linux hay Docker, iOS không được hỗ trợ và macOS không được cung cấp. Thu nhập phụ thuộc nhiều vào vị trí. Bảng điều khiển web tại dash.bytelixir.com để theo dõi. Không có image Docker.\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "Chia sẻ băng thông - chỉ Windows + Android"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "Cookie phiên"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "Cookie Remember Web"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "Token XSRF"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "Đăng nhập tại <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a>, nhấn F12 → Application → mở rộng <b>Cookies</b> ở thanh bên trái → nhấp mục con <code>https://dash.bytelixir.com</code> → trong danh sách cookie bên phải, tìm <code>bytelixir_session</code> → sao chép Value của nó (một JWT dài bắt đầu bằng eyJ)"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "Cùng vị trí (Cookies → <code>https://dash.bytelixir.com</code>) → tìm cookie có tên <code>remember_web_...</code> → sao chép Value của nó (không bắt buộc, kéo dài thời gian phiên)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "Cùng vị trí → tìm <code>XSRF-TOKEN</code> → sao chép Value của nó (không bắt buộc)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "Thu nhập thay đổi theo vị trí ($2-50/tháng). Không có image Docker. Cần ứng dụng desktop hoặc ứng dụng Android."
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "Chỉ crypto. Mức tối thiểu tùy theo đồng coin: USDT $5, USDC $5, TON $8, LTC $10, ETH $40, BTC $250. Bạn nhập địa chỉ trong mỗi yêu cầu. Yêu cầu được xử lý trong giờ làm việc, trong vòng 24 giờ."
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "Số dư do Bytelixir giữ; địa chỉ ví được nhập vào mỗi yêu cầu thanh toán, không bao giờ được lưu trong container."
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "Đăng nhập tại <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> <b>và đánh dấu Remember Me</b>, nhấn F12 → Application → mở rộng <b>Cookies</b> ở thanh bên trái → nhấp <code>https://dash.bytelixir.com</code>, rồi sao chép ba giá trị: <b>bytelixir_session</b>, <b>remember_web_…</b> (cookie dài bắt đầu bằng tiền tố đó) và <b>XSRF-TOKEN</b>. Riêng cookie phiên sẽ hết hạn khoảng hai giờ sau khi bạn sao chép, nên việc thu thập dừng ngay trong buổi chiều đó; cookie remember_web có hiệu lực một năm và chính nó giữ cho việc thu thập hoạt động."
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "50% lợi nhuận của họ trọn đời"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "Thưởng chào mừng $1"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "Chỉ crypto, và mức tối thiểu tùy theo đồng coin, từ $5 cho USDT đến $250 cho Bitcoin."
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "CashPilot không chạy Bytelixir: bạn dùng ứng dụng riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "Trustpilot chấm 4.6 từ 283 đánh giá, phần lớn khen khoản thanh toán crypto; một số ít báo cáo không nhận được tiền."
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "Một khoản thanh toán chỉ cần một địa chỉ crypto nhập vào yêu cầu."
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai là một chợ GPU ngang hàng. Bạn đăng một máy Linux có GPU NVIDIA, tự đặt giá spot và giá theo yêu cầu, và người thuê chạy container Docker của họ trên đó. Bạn chỉ được trả tiền cho số phút máy được thuê, bằng CLORE, BTC, USDT hoặc USDC. Việc cho thuê cần một máy x86_64 chạy Ubuntu 22.04 trở lên (hoặc HiveOS), driver NVIDIA hoạt động tốt và tốc độ ít nhất 100 Mbps cả tải lên lẫn tải xuống. GPU AMD không được hỗ trợ.\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "Chợ GPU - cho thuê GPU NVIDIA, nhận CLORE, BTC hoặc stablecoin USD"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "Chỉ trả cho số phút được thuê, theo giá bạn đặt. Mức cao nhất của khoảng, $490, là mức trần do chính Clore đưa ra cho một RTX 4090 cho thuê theo phút ('up to ~$490/month'); card yếu hơn kiếm ít hơn và card nhàn rỗi không kiếm được gì. Clore giữ lại 5% (theo yêu cầu) hoặc 1.25% (spot) của mỗi lượt thuê, cộng thêm 15% khi người thuê trả bằng BTC, USDT hoặc USDC thay vì CLORE."
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "Rút từ Account > Billing về ví của chính bạn: CLORE (ERC-20, tối thiểu 200, phí khoảng $0.50), BTC (tối thiểu 0.0001, phí 0.00005 BTC) hoặc USDT/USDC trên Ethereum hay BNB Chain (tối thiểu $10, phí $1)."
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "Clore giữ số dư (CLORE, BTC và một số dư USD cho USDT/USDC) cho đến khi bạn rút. Chuỗi được chọn cho từng lần rút: Ethereum cho CLORE, Bitcoin cho BTC, Ethereum hoặc BNB Chain cho USDT/USDC."
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "15% (hạng tiêu chuẩn) phí nền tảng mà các chủ máy và người thuê do bạn giới thiệu trả, trên mọi lượt thuê; mã không bao giờ hết hạn; trả bằng loại tiền của lượt thuê (CLORE, BTC hoặc USD)"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "100 Mbps cả tải lên lẫn tải xuống"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "Thời gian điện toán GPU trên máy của bạn."
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "Có. Người thuê chạy container Docker của họ trên máy bạn, và lưu lượng của họ đi ra từ kết nối của bạn; các cổng SSH và cổng ứng dụng được chuyển tiếp ra internet."
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "Chính sách quyền riêng tư của Clore bao gồm dữ liệu tài khoản và địa chỉ IP của bạn cùng vị trí gần đúng; giấy tờ tùy thân chỉ khi Clore yêu cầu KYC."
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "Các cổng đến phải truy cập được từ internet (mặc định là 22, 8080 và 3000-4000) và công việc của người lạ chạy trên đường truyền của bạn. Chính hướng dẫn mạng của Clore cho biết một số ISP chặn việc cho thuê máy."
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "Từ 18 tuổi trở lên, không ở quốc gia bị trừng phạt. Clore có thể tạm ngưng hoặc đóng tài khoản theo toàn quyền quyết định của mình, và việc sử dụng bị cấm có thể khiến bạn mất tiền."
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "Cả điều khoản lẫn chính sách quyền riêng tư đều không nêu tên một pháp nhân, và điều khoản để luật áp dụng cho một phiên bản sau này."
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Clore có thể tạm ngưng hoặc đóng tài khoản theo toàn quyền quyết định của mình, và việc sử dụng bị cấm có thể dẫn đến tịch thu tiền."
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "Chỉ thanh toán bằng crypto (CLORE, BTC, USDT hoặc USDC), và Clore lấy thêm 15% của lượt thuê mà người thuê trả bằng BTC, USDT hoặc USDC, trừ khi chủ máy khóa CLORE để giảm khoản này."
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "Chủ máy chỉ được trả cho số phút được thuê, và con số Clore đưa ra cho một RTX 4090 là mức trần (\"up to ~$490/month\") cho một card."
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "Sử dụng cơ bản không cần KYC, nhưng Clore có thể yêu cầu xác minh danh tính cho các lần rút lớn hoặc trường hợp tuân thủ."
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "Người thuê chạy bất kỳ image Docker công khai nào trên máy của bạn. Điều khoản liệt kê các mục đích bị cấm (mã độc, DDoS, CSAM và nhiều thứ khác), nhưng chúng tôi không tìm thấy mô tả nào về cách người thuê được kiểm tra."
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "CashPilot không chạy Clore.ai: bạn cài agent cho thuê của Clore trên máy GPU của chính bạn (Ubuntu 22.04 trở lên, hoặc HiveOS), nên CashPilot không thể triển khai hay cập nhật nó cho bạn."
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "Clore giữ lại 5% của lượt thuê theo yêu cầu (1.25% với spot) khi người thuê trả bằng CLORE, không có phí thêm."
+  source: "699adf0a2179"
+dawn.description:
+  text: "DAWN vận hành một mạng validator kiểm tra băng thông và vùng phủ cho hạ tầng AI được tài trợ qua giao thức DAWN. Tiện ích trình duyệt DAWN Validator tham gia vào các lần kiểm tra bằng chứng băng thông và vùng phủ này, và kiếm phần thưởng DAWN khi đang chạy. Phần thưởng này chưa có giá trị tiền mặt xác định. Hãy tạo tài khoản trong tiện ích và nhập mã giới thiệu 2QLQV97F khi được hỏi.\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "Validator DePIN - tiện ích trình duyệt kiếm điểm DAWN"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "Kiếm Dawn Points trước khi ra mắt token. Giá trị thực phụ thuộc vào giá token trong tương lai. Thiết bị phần cứng kiếm nhiều hơn tiện ích trình duyệt."
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "Airdrop token (sẽ thông báo sau)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "Tiện ích chạy được nhưng còn dở dang. Phần cứng Black Box đã được công bố. Hãy kiểm tra lại sau."
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "Tiện ích kiếm điểm; tính đến tháng 10 năm 2026 chưa có xác nhận nào về việc phân phối token cho người vận hành nút."
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "Điểm chưa có giá trị xác định cho đến khi token ra mắt và tỷ lệ quy đổi được công bố."
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "CashPilot không chạy Dawn: bạn dùng tiện ích trình duyệt riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network là một dự án VPN phi tập trung và hạ tầng web3. Chủ yếu yêu cầu thiết bị phần cứng độc quyền Deeper Connect. Moken là một nền tảng đào/stake liên quan. Không chỉ là phần mềm.\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "VPN phi tập trung - cần thiết bị phần cứng độc quyền"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "Cần phần cứng Deeper Connect ($200-500). Nền tảng Moken để đào/stake. Không chỉ là phần mềm."
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "Liên tục"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "Hoa hồng trên mỗi thiết bị bán ra"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "Giảm 5% cho thiết bị Deeper Connect với mã giảm giá SERGIO"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "Phần thưởng đào là DPR và phụ thuộc vào điểm tín dụng tăng chậm hoặc tăng nhờ stake DPR."
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "CashPilot không chạy Deeper Network: bạn dùng phần cứng router riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "EarnApp của Bright Data cho phép bạn bán băng thông chưa dùng để có thu nhập thụ động. Bright Data là mạng proxy lớn nhất thế giới, phục vụ thu thập dữ liệu cho các công ty trong Fortune 500. CashPilot chạy nó từ image riêng, image này tải bản EarnApp đã ghim phiên bản từ CDN của Bright Data ở lần khởi động đầu, kiểm tra sha256 và chạy ở chế độ lite chỉ với một UUID.\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "Chia sẻ băng thông - được Bright Data hậu thuẫn"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "UUID của nút"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "ID nút EarnApp của bạn: sdk-node- theo sau là 32 ký tự hex viết thường, giống như 'earnapp showid' in ra. Sau khi triển khai, hãy liên kết nó một lần bằng cách mở https://earnapp.com/r/ theo sau là UUID này khi đang đăng nhập EarnApp; nút chưa liên kết vẫn kiếm tiền nhưng không có gì vào số dư của bạn"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "EarnApp liên tục không kết nối được tới máy chủ của nó và khởi động lại, nên kiếm được rất ít hoặc không kiếm được gì. Hãy khởi động lại bản sao này; nếu vẫn tiếp diễn, hãy kiểm tra kết nối internet của máy này."
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "Mở liên kết này khi đang đăng nhập EarnApp để thêm nút vào tài khoản của bạn. Cho đến khi bạn làm vậy, nút vẫn kiếm tiền nhưng không có gì vào số dư của bạn."
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "Phụ thuộc rất nhiều vào vị trí. IP ở Mỹ/EU kiếm nhiều nhất. Thu nhập tăng theo băng thông được sử dụng."
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "Theo yêu cầu (có tự động đổi thưởng: PayPal tối thiểu $10, Wise tối thiểu $10, Amazon tối thiểu $50)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "Bật tự động đổi thưởng một lần và EarnApp sẽ tự thanh toán mỗi khi số dư đạt mức tối thiểu của phương thức: PayPal $10, Wise $10, Amazon $50. Khoản thanh toán PayPal đến từ Bright Data Ltd. Vào tháng 10 năm 2026, một khoản thanh toán PayPal đến thấp hơn số dư đã đổi khoảng 2%."
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "Số dư do EarnApp giữ; đổi thưởng sang Amazon/Wise/PayPal."
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "Đăng nhập tại <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, nhấn F12 → Application → Cookies, sao chép giá trị <b>oauth-refresh-token</b>."
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "10% thu nhập của họ trọn đời, trả thêm ngoài phần của họ"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "Trung tâm trợ giúp của EarnApp cho biết việc cài nó trong container Docker, máy ảo, dịch vụ hosting hoặc máy chủ tại nhà bị nghiêm cấm, mà đó lại chính là cách CashPilot chạy nó."
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "Cũng bài trợ giúp đó cho biết tài khoản bị phát hiện chạy theo cách này sẽ bị chấm dứt mà không báo trước và các khoản thanh toán đang chờ sẽ bị hủy."
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "Khoản thanh toán PayPal của chúng tôi đã đến vào tháng 10 năm 2026, thấp hơn số dư đã đổi khoảng 2%."
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "Mức tối thiểu $10 cho PayPal và Wise, với tính năng tự động đổi thưởng tự thanh toán."
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "EarnApp thuộc Bright Data, và khoản thanh toán PayPal đến từ Bright Data Ltd., một công ty có tên rõ ràng."
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Earn.fm trả tiền cho bạn khi chia sẻ băng thông internet. Bộ thu thập thu nhập xác thực bằng email/mật khẩu qua Supabase. Image Docker nhẹ, triển khai đơn giản (client Docker dùng một token UUID riêng).\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "Chia sẻ băng thông - xác thực bằng email/mật khẩu, client nhẹ"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "Khóa API"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "Đăng nhập tại <a href=\"https://app.earn.fm\">app.earn.fm</a> → nhấp biểu tượng hồ sơ (góc trên bên phải) → Account Settings → sao chép API Key (định dạng UUID)"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "Nền tảng tương đối mới. Thu nhập thay đổi theo vị trí và lượng băng thông khả dụng."
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "Tối thiểu $15. Phương thức: USDT trên BEP20 hoặc Polygon (phí $1) hoặc TRC20 (phí $3), PayPal, thẻ quà tặng Amazon hoặc Starbucks từ $15, hoặc chuyển khoản ngân hàng từ $1.000 đã trừ phí chuyển. Trước lần thanh toán đầu tiên, bạn điền hồ sơ thanh toán (họ tên pháp lý và địa chỉ), dùng cho biên lai thanh toán."
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "Số dư do Earn.fm giữ; rút theo yêu cầu."
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "Dùng email và mật khẩu tài khoản Earn.fm của bạn (giống thông tin đăng nhập <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a>)."
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "10% thu nhập của họ trọn đời"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "Số dư khởi đầu $5"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "Mức tối thiểu $15, phí USDT từ $1 đến $3, và chuyển khoản ngân hàng chỉ từ $1.000."
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "Trước lần thanh toán đầu tiên, bạn phải điền hồ sơ thanh toán với họ tên pháp lý và địa chỉ."
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "Các đánh giá năm 2025 cho biết bộ phận hỗ trợ qua email và Discord không trả lời; Trustpilot ghi nhận Earn.fm chưa phản hồi các đánh giá tiêu cực."
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Earn.fm phát hành image Docker riêng, earnfm/earnfm-client."
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher là một nền tảng trao đổi lưu lượng, nơi bạn kiếm điểm bằng cách truy cập website qua một surfbar tự động. Chạy dưới dạng tiện ích/add-on trình duyệt. Đây không phải dịch vụ chia sẻ băng thông thông thường — nó tạo lưu lượng bằng cách tự động duyệt web.\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "Surfbar trao đổi lưu lượng - tiện ích trình duyệt"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "Thu nhập bằng điểm BTP quy đổi được sang EUR. Chỉ có tiện ích trình duyệt."
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "Thanh toán bằng euro qua PayPal hoặc chuyển khoản ngân hàng."
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "CashPilot không chạy eBesucher: đây là tiện ích trình duyệt, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "Thanh toán từ 2 euro qua PayPal hoặc SEPA, ít nhất mỗi tuần một lần, không mất phí."
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "eBesucher hoạt động từ năm 2002."
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "Trang thông tin pháp lý nêu tên đơn vị vận hành, TurboAd GmbH, đăng ký tại Berlin-Charlottenburg (HRB 160730 B)."
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux là một hạ tầng điện toán phân tán toàn cầu. Người vận hành nút stake token FLUX và cung cấp tài nguyên máy chủ. Ba hạng: Cumulus (1.000 FLUX), Nimbus (12.500 FLUX), Stratus (40.000 FLUX). Có image Docker chính thức.\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "Điện toán phi tập trung - cần stake token FLUX"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "Cần stake 1.000+ FLUX (~$50-500 tùy giá). Hạng cao hơn cần nhiều tài sản thế chấp hơn nhưng kiếm nhiều hơn."
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "Phần thưởng khối"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "Hạng nút nhỏ nhất cần khóa 1.000 FLUX làm tài sản thế chấp."
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "Phần thưởng khối giảm 10% mỗi năm, và một hướng dẫn năm 2026 nhận thấy phần thưởng của hạng nhỏ khá thấp nếu tính bằng đô la."
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "CashPilot không chạy Flux: bạn dùng phần mềm nút riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "Daemon Flux là mã nguồn mở theo giấy phép MIT."
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network là một chợ điện toán phi tập trung, nơi bạn chia sẻ tài nguyên CPU và GPU để đổi lấy token GLM. Nhà cung cấp chạy agent Yagna, agent này quản lý việc thực thi công việc trong môi trường sandbox. Một trong những dự án điện toán phi tập trung lâu đời nhất (thành lập năm 2016). Hỗ trợ tác vụ CPU, render bằng GPU và điện toán đa dụng. Thanh toán qua Polygon L2.\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "Chợ điện toán phi tập trung - token GLM qua agent Yagna"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "Thu nhập phụ thuộc vào phần cứng, giá đặt và nhu cầu tác vụ. Nút chỉ có CPU kiếm ít hơn. Nút GPU kiếm nhiều hơn nhưng cần NVIDIA. Chạy agent nhà cung cấp Yagna (không phải image Docker). Thanh toán trên Polygon bằng token GLM."
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "Mỗi khi hoàn thành tác vụ"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "Kiếm được token GLM. Cấu hình ví nhận thanh toán trong phần thiết lập nhà cung cấp."
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "CashPilot không chạy Golem: bạn tự cài agent nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Golem có tài liệu hướng dẫn chạy nhà cung cấp trong image Docker riêng của họ."
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "Agent nhà cung cấp, yagna, là mã nguồn mở theo GPL-3.0."
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "Không cần tài khoản: bạn đặt ví nhận thanh toán trong phần thiết lập nhà cung cấp."
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "Mạng đã hoạt động khoảng mười năm."
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "Chính sách quyền riêng tư của Golem nêu tên đơn vị vận hành, Golem Factory GmbH tại Zug, Thụy Sĩ."
+  source: "bae79b651923"
+grass.description:
+  text: "Grass là một mạng phi tập trung cho phép bạn bán băng thông chưa dùng để làm dữ liệu huấn luyện AI. Nó hoạt động dưới dạng tiện ích trình duyệt và ứng dụng desktop, định tuyến các yêu cầu thu thập dữ liệu web qua kết nối của bạn để xây dựng bộ dữ liệu có cấu trúc. Với hơn 8.5M người dùng, đây là một trong những mạng băng thông DePIN lớn nhất. Kiếm token GRASS trên blockchain Solana.\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "Chia sẻ băng thông DePIN cho dữ liệu AI - kiếm token GRASS"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "Token truy cập"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "Đăng nhập tại <a href=\"https://app.grass.io\">app.grass.io</a>, nhấn F12 → Application → Local Storage → nhấp <code>https://app.grass.io</code> → sao chép giá trị <code>token</code>"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "Kiếm Grass Points quy đổi được sang token GRASS qua các đợt airdrop. Giá trị USD thực tế phụ thuộc vào giá token. Cần tiện ích trình duyệt hoặc ứng dụng desktop."
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "Airdrop theo epoch"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "Phần thưởng đến dưới dạng các đợt phân phối định kỳ, nhận trên bảng điều khiển Grass. Đợt phân phối Stage 2 (hoạt động từ tháng 10 năm 2024 đến tháng 6 năm 2026) được trả bằng USDC: hãy nhận trên app.grass.io/dashboard chậm nhất vào ngày 22 tháng 1 năm 2027, hoặc sớm hơn nếu toàn bộ phần phân bổ đã được nhận hết trước đó. Grass giữ lại các phần thưởng không được nhận."
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "Tích lũy ĐIỂM; GRASS được nhận từ bảng điều khiển Grass trong các đợt airdrop định kỳ."
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "Đăng nhập tại <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, nhấn F12 → Application → Local Storage, sao chép giá trị <b>accessToken</b>."
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "20% điểm thời gian hoạt động của người được giới thiệu trực tiếp, 10% ở cấp thứ hai, 5% ở cấp thứ ba"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "Nhận USDC Stage 2 của Grass"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "Grass giữ lại mọi phần phân bổ Stage 2 chưa được nhận khi hết ngày 22/01/2027, và thời hạn có thể kết thúc sớm hơn khi toàn bộ phần phân bổ đã được nhận."
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "Đăng nhập app.grass.io bằng tài khoản bạn đã dùng trong Stage 2, kích hoạt Grass Wallet, mở tab Allocation và xác nhận. Chỉ nhận trên app.grass.io. Không có điểm Stage 2? Chọn Không dành cho tôi."
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "Phần thưởng chỉ đến qua các mùa airdrop. Những người vận hành nút lâu năm cho biết ước tính mùa 2 chỉ ở mức vài đô la đến vài chục đô la."
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "Phần thưởng mùa 2 chưa được nhận khi hết ngày 22 tháng 1 năm 2027 sẽ mất vĩnh viễn."
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "Đợt airdrop đầu tiên vấp phải phản ứng gay gắt vì phần thưởng trên mỗi điểm quá ít, bị chia nhỏ cho hơn hai triệu người dùng."
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "CashPilot không chạy Grass: bạn dùng ứng dụng hoặc tiện ích riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "Đợt airdrop đầu tiên có gần 1.5 triệu địa chỉ nhận thưởng."
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium là một mạng không dây phi tập trung đã có tên tuổi. Ban đầu là các hotspot LoRaWAN, nay mở rộng sang 5G. Cần phần cứng chuyên dụng ($500+). Kiếm token HNT/MOBILE. Tỷ suất hoàn vốn đã giảm mạnh - thường $4-8/tháng.\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "Mạng không dây phi tập trung - cần phần cứng, token HNT"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "Cần mua phần cứng $500+. Tỷ suất hoàn vốn đã giảm mạnh. Có quy trình phê duyệt cho người vận hành mới."
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "Theo epoch"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "HIP 149 đã bỏ phần thưởng Proof-of-Coverage vào ngày 6 tháng 7 năm 2026; hotspot IoT giờ chỉ kiếm tiền từ dữ liệu chúng truyền, và hơn 114.000 hotspot không truyền chút dữ liệu nào."
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "Mô hình phần thưởng của Helium đã thay đổi qua bỏ phiếu nhiều lần, CEO đã từ chức, và HNT giảm khoảng 96%."
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "CashPilot không chạy Helium: bạn dùng phần cứng hotspot riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "Phần mềm gateway của hotspot là mã nguồn mở theo giấy phép Apache-2.0."
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "Theo dõi số dư Kaspa chưa thanh toán mà HeroMiners đang giữ cho địa chỉ nhận thanh toán công khai của bạn. Hãy tự chạy máy đào Kaspa và trỏ nó tới pool. CashPilot đọc số dư của pool và yêu cầu bạn xác nhận khoản thanh toán khi số dư giảm.\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "Pool đào Kaspa, theo dõi qua địa chỉ nhận thanh toán của bạn"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS (có thể điều chỉnh)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "Pool kiểm tra ngưỡng thanh toán của bạn mỗi giờ"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "HeroMiners tự động thanh toán vào địa chỉ của bạn khi bạn đạt ngưỡng đã chọn. Ngưỡng thấp nhất là 1 KAS.\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "Số dư được tích lũy tại HeroMiners. Hãy kiểm tra số tiền đã nhận trong ví trước khi xác nhận khoản thanh toán trong CashPilot.\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "Nhập đầy đủ địa chỉ nhận thanh toán Kaspa công khai mà máy đào của bạn dùng trên HeroMiners. Bao gồm tiền tố <b>kaspa:</b> và bỏ tên worker.\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "Cần một máy đào Kaspa trỏ tới HeroMiners"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "điện toán"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "Không. Máy đào của bạn gửi công việc đào tới pool."
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "Thống kê công khai của pool hiển thị từng địa chỉ nhận thanh toán và hoạt động đào của nó."
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "Pool dùng địa chỉ nhận thanh toán của bạn thay cho tài khoản."
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "Pool thu phí 0.9% và giữ khoản thanh toán cho đến khi bạn đạt ngưỡng."
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "Chia sẻ băng thông internet chưa dùng và kiếm thu nhập thụ động. Honeygain định tuyến lưu lượng thu thập dữ liệu web, phân phối nội dung và nghiên cứu thị trường qua kết nối của bạn. Một trong những nền tảng chia sẻ băng thông lâu đời nhất với hơn 12M người dùng và hơn 1M khoản thanh toán đã hoàn tất.\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "Chia sẻ băng thông - nền tảng lâu đời nhất"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "Mật khẩu"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "Tên thiết bị"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "Email tài khoản Honeygain của bạn"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "Mật khẩu tài khoản Honeygain của bạn"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "Tên hiển thị trên bảng điều khiển Honeygain của bạn"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "Thay đổi theo vị trí. IP ở Mỹ/EU kiếm nhiều hơn. Tối đa 10 thiết bị mỗi tài khoản."
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "Tối thiểu $20 (20.000 credit). Hai lựa chọn: PayPal qua Tipalti, phí khoảng 15%, hoặc credit JumpTask không mất phí, trả vào ví JumpTask. Mỗi yêu cầu cần một mã 6 chữ số gửi qua email. Khoản thanh toán PayPal đầu tiên ở trạng thái \"waiting for details\" cho đến khi bạn đăng ký trên Tipalti qua liên kết họ gửi email. Liên kết đó chỉ dùng được một lần, nên hãy mở khi bạn có thể làm xong trong một lượt và có điện thoại bên cạnh: sau khi đặt mật khẩu, Tipalti yêu cầu bạn xác nhận số di động qua SMS (mã hết hạn trong vài phút), rồi hỏi họ tên, địa chỉ, quốc gia và ngày sinh, cùng địa chỉ PayPal của bạn. Tipalti thu $2.02 mỗi khoản thanh toán; hãy chọn USD để tránh phí quy đổi tiền tệ 1.9-3% của họ. Tiền đến trong vòng 2 ngày làm việc. Số dư rời khỏi tài khoản ngay khi bạn gửi yêu cầu, kể cả khi khoản thanh toán còn đang chờ Tipalti. Mỗi lần đăng nhập Tipalti sau đó đều gửi mã SMS mới, trừ khi bạn đánh dấu tùy chọn ghi nhớ thiết bị trong 30 ngày. Vào tháng 10 năm 2026, Tipalti không yêu cầu biểu mẫu thuế với một người nhận ở Tây Ban Nha."
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "Số dư do Honeygain giữ; rút theo yêu cầu."
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "Dùng email và mật khẩu tài khoản Honeygain của bạn (giống với <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>)."
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "Tối đa 25% thu nhập của mỗi người bạn được giới thiệu ở chế độ Honeygain"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "Thưởng đăng ký $3 với liên kết này"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "Rút số dư Honeygain của bạn"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "Giữ một thiết bị Honeygain đang chia sẻ, hoặc rút tiền"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "Thu nhập còn hiệu lực trong 24 tháng sau khi đạt mức tối thiểu $20. Sau đó Honeygain có thể xóa phần chưa được thanh toán."
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "Nếu ứng dụng không được dùng trong hơn 6 tháng, Honeygain coi số dư chưa thanh toán là đã hết hạn, kể cả khi dưới $20."
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "Giữ một thiết bị đang chia sẻ, hoặc gửi yêu cầu rút tiền. Ở chế độ JumpTask, số dư không đổi là bình thường, nên hãy chọn Không dành cho tôi."
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "Điều khoản cho phép Honeygain xóa thu nhập đã đạt ngưỡng $20 mà không được thanh toán trong vòng 24 tháng, và coi thu nhập là hết hạn sau sáu tháng không sử dụng."
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "Mức tối thiểu là $20, và khoản thanh toán PayPal đi qua Tipalti, nơi thu $2.02 mỗi khoản."
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "Điều khoản cho phép Honeygain tạm ngưng tài khoản và giữ lại hoặc xóa thu nhập mà họ cho là tích lũy bằng cách gian dối."
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "Trước khoản thanh toán PayPal đầu tiên, Tipalti yêu cầu bạn xác nhận số di động qua SMS và cung cấp họ tên, địa chỉ và ngày sinh."
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "Điều khoản cho biết khách hàng doanh nghiệp dùng lưu lượng để thu thập dữ liệu web công khai, nhưng không nêu tên khách hàng nào, và bạn không thể biết khách hàng nào đang dùng kết nối của mình."
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "Chính các phản hồi của Honeygain với đánh giá về thu nhập thấp nói rằng thu nhập phụ thuộc vào nhu cầu của mạng và vị trí; người đánh giá cho biết mất rất lâu mới đạt mức tối thiểu $20."
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Honeygain phát hành image Docker riêng, honeygain/honeygain."
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "Điều khoản nêu tên đơn vị vận hành, Honeygain UAB, đăng ký tại Vilnius, Litva."
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "Trang báo chí của Honeygain cho biết công ty được thành lập năm 2019."
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net là một mạng GPU phi tập trung cho các tác vụ AI/ML. Tập hợp GPU nhàn rỗi từ người dùng cá nhân và trung tâm dữ liệu. Cần GPU NVIDIA có 8GB+ VRAM để có thu nhập đáng kể. Hỗ trợ triển khai dựa trên container.\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "Mạng GPU phi tập trung cho AI - cần GPU NVIDIA"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "Cần GPU NVIDIA có 8GB+ VRAM. Có quảng cáo $500-1000/tháng cho RTX 4090 (thực tế có lẽ thấp hơn)."
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "Theo epoch"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "Phần thưởng cho nhà cung cấp được trả từ lượng token phát hành bất kể có công việc trả phí hay không, và chủ GPU cho biết máy nhàn rỗi phần lớn thời gian."
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "Phần thưởng là token IO và mô hình thanh toán đã chuyển sang cơ chế neo theo đô la vào năm 2026."
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "Vào tháng 4 năm 2024, khoảng 1.8 triệu GPU giả đã cố gia nhập qua một token xác thực bị rò rỉ, và sau đó CEO từ chức trước khi ra mắt token."
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "CashPilot không chạy io.net: bạn dùng phần mềm worker riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "IPRoyal Pawns giúp bạn kiếm tiền bằng cách chia sẻ băng thông chưa dùng. IPRoyal là một nhà cung cấp proxy lâu năm, và Pawns là nhánh chia sẻ băng thông dân cư của họ. Image Docker CLI nhận thông tin đăng nhập qua các cờ dòng lệnh. Người dùng mới đăng ký qua liên kết giới thiệu được nhận $1 cho mỗi khoản trong ba khoản thanh toán đầu tiên, tối đa $3. Mỗi khoản thanh toán phải diễn ra trong một khoảng thời gian từ một đến ba tuần, tùy theo vị trí. Khoảng thời gian bắt đầu từ lúc đăng ký và bắt đầu lại sau mỗi khoản thanh toán. Nếu khoảng thời gian kết thúc trước, các khoản thưởng còn lại sẽ mất.\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "Chia sẻ băng thông - thưởng tới $3 cho các khoản thanh toán đầu tiên"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "Mật khẩu"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "Tên thiết bị"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "ID thiết bị"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "Email tài khoản IPRoyal Pawns của bạn (truyền qua cờ -email)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "Mật khẩu tài khoản IPRoyal Pawns của bạn (truyền qua cờ -password)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "Tên hiển thị trên bảng điều khiển Pawns của bạn (truyền qua cờ -device-name)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "Mã định danh thiết bị duy nhất (truyền qua cờ -device-id)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "IPRoyal Pawns đã vô hiệu hóa tài khoản này."
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "Pawns thấy một thiết bị khác đang hoạt động trên địa chỉ IP này và chỉ trả cho một thiết bị mỗi IP, nên bản sao này vẫn chạy nhưng không chia sẻ gì và không kiếm được gì. Hãy dừng mọi ứng dụng Pawns khác trên IP này, dù ở máy khác, PC hay điện thoại. Nếu không có cái nào, hãy chờ Pawns gỡ thiết bị cũ, hoặc nhờ bộ phận hỗ trợ của Pawns giải phóng nó."
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "Thu nhập phụ thuộc vào vị trí và mức sử dụng băng thông. IP dân cư ở Mỹ/EU kiếm nhiều hơn."
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "Tối thiểu $5. Hãy chọn quốc gia trước; phương thức thanh toán phụ thuộc vào đó. Từ Tây Ban Nha (tháng 10 năm 2026): PayPal 4% với phí tối thiểu $0.25, trả qua Tremendous, nơi gửi email một liên kết để bạn nhập họ tên và địa chỉ PayPal; USDT (BEP20, ERC20, TRC20) hoặc USDC (BEP20, ERC20) với phí mạng $1; Bitcoin với phí tối thiểu $2; thẻ quà tặng không mất phí. Lần thanh toán đầu tiên cần xác minh số điện thoại một lần qua SMS: nút Withdraw sẽ mở bước này, và số điện thoại được nhập kèm mã quốc gia. Sau đó mỗi lần thanh toán đều yêu cầu một mã gửi tới email tài khoản và được xem xét tối đa 72 giờ trước khi gửi."
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "Số dư do IPRoyal Pawns giữ; rút theo yêu cầu."
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "Dùng email và mật khẩu tài khoản IPRoyal Pawns của bạn (giống với <a href='https://pawns.app' target='_blank'>pawns.app</a>)."
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "$1 cho mỗi khoản trong ba khoản thanh toán đầu tiên của họ, tối đa $3, nếu mỗi khoản diễn ra trong khoảng 1-3 tuần của nó"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "$1 cho mỗi khoản trong ba khoản thanh toán đầu tiên của bạn, tối đa $3; lỡ một khoảng 1-3 tuần thì phần còn lại hết hạn"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "Điều khoản cho biết tài khoản có thể bị khóa mà không báo trước nếu lạm dụng điều kiện rút tiền hoặc dùng nhiều tài khoản, và khi đó thu nhập có thể không được thanh toán."
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "Điều khoản cho biết Pawns không cho phép bất kỳ máy chủ, VPN hay dịch vụ proxy nào để chia sẻ lưu lượng, và chỉ một thiết bị mỗi IP."
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "PayPal tốn 4% (ít nhất $0.25) qua Tremendous, và mỗi khoản thanh toán được xem xét tối đa 72 giờ."
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "Lần thanh toán đầu tiên cần xác minh số điện thoại qua SMS, và mỗi lần thanh toán cần một mã gửi qua email."
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "Chính sách quyền riêng tư nêu tên đơn vị vận hành, Pawns.App Ltd (công ty số 16043795 tại Anh và xứ Wales), mà Companies House cho thấy được thành lập ngày 28 tháng 10 năm 2024, chưa đầy ba năm trước."
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "Điều khoản cho biết Pawns và khách hàng doanh nghiệp của họ định tuyến lưu lượng qua thiết bị của bạn, và bạn không thể xác định khách hàng nào đang dùng nó."
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "Mức tối thiểu $5, với thẻ quà tặng không mất phí."
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "Đào Pearl bằng KRig trên một GPU NVIDIA. Kryptex quy đổi phần thưởng sang Bitcoin và giữ số dư trong tài khoản của bạn cho đến khi bạn yêu cầu rút."
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "Đào Pearl trên GPU NVIDIA và nhận số dư tài khoản bằng Bitcoin"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "Email tài khoản Kryptex"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "Tên worker"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "Email đã xác minh trên tài khoản Kryptex của bạn."
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "Đặt cho mỗi máy một tên riêng trong tài khoản Kryptex của bạn."
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "0.00001 BTC qua Lightning (các phương thức khác thay đổi)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kryptex quy đổi phần thưởng Pearl sang BTC và giữ số dư trong tài khoản của bạn. Hãy gửi yêu cầu rút trên Kryptex. Mỗi phương thức có mức tối thiểu và phí riêng. Mức tối thiểu cho Bitcoin Lightning là 0.00001 BTC."
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "Kryptex giữ số Bitcoin đã quy đổi trong tài khoản của bạn cho đến khi bạn rút."
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "20% thu nhập pool của Kryptex từ người dùng được giới thiệu"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64, một GPU NVIDIA từ Volta (sm_70) trở lên, và NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "Máy này báo cáo là kết nối máy chủ thuê. Hãy kiểm tra điều khoản của nhà cung cấp trước khi đào. Một số nhà cung cấp, bao gồm Hetzner Cloud, cấm việc này. Hãy kiểm tra chi phí điện thực tế trước khi dựa vào ước tính lợi nhuận."
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "KRig thu phí thợ đào 0% trên Kryptex Pool. Kryptex liệt kê riêng phí pool Pearl PPS+ là 3%. Phí rút tiền thay đổi theo phương thức."
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "điện toán"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "Không. KRig gửi công việc đào tới Kryptex Pool."
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Kryptex thấy email tài khoản, tên worker, hashrate và địa chỉ IP của bạn."
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "Một số mạng và trình phân giải DNS chặn kết nối tới pool đào."
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "Hãy xác minh email tài khoản Kryptex trước khi đào vào tài khoản đó."
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Kryptex có thể tạm ngưng tài khoản không hoạt động sau sáu tháng và xóa chúng sau một năm."
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "Mức rút tối thiểu và phí thay đổi theo phương thức."
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "Giấy phép của KRig cho phép tải bản phát hành và chạy nó từ phần mềm đào."
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "KRig dùng một endpoint TLS công khai để gửi share Pearl tới Kryptex Pool."
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes (Mysterium Network) là một mạng VPN và proxy phi tập trung xây dựng trên công nghệ blockchain. Bạn kiếm token MYST bằng cách chạy một nút cung cấp dịch vụ VPN, proxy và thu thập dữ liệu cho người dùng. Cần các quyền NET_ADMIN, SETUID và SETGID cùng một thiết bị TUN, mà nó dùng bên trong network namespace riêng trên bridge có hàng rào dành cho ứng dụng kiếm tiền. Có sẵn giao diện web để quản lý nút. Chạy được trên cả kết nối dân cư lẫn VPS, nhưng thưởng giới thiệu chỉ được trả cho nút dùng IP dân cư.\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "Nút VPN phi tập trung - dựa trên blockchain, chạy được trên VPS"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "Địa chỉ WebUI"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "Dải cổng UDP"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "Các địa chỉ trên máy chủ mà WebUI của nút (cổng 4449) được công bố. 127.0.0.1 giữ nó chỉ trên máy này. Để truy cập qua reverse proxy, hãy thêm địa chỉ mà proxy kết nối tới, phân tách bằng dấu phẩy và không có khoảng trắng: 127.0.0.1,172.18.0.1."
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "Các cổng UDP mà nút dùng cho phiên VPN, theo dạng bắt_đầu:kết_thúc. Hãy chuyển tiếp đúng dải này trên router. Mỗi phiên dùng khoảng hai cổng, nên 30 cổng mặc định phục vụ được khoảng 15 phiên cùng lúc, nhiều hơn số phiên một nút tại nhà nhận được. Dải rộng hơn không sửa được gì mà còn tốn hơn: mỗi cổng được công bố làm chậm việc khởi động và gỡ bỏ nút (300 cổng mất khoảng 12 s để khởi động), CashPilot chấp nhận tối đa 300, và với userland proxy mặc định của Docker, mỗi cổng còn tốn khoảng 2.5 MB bộ nhớ. Nếu mọi phiên đều thất bại thì đó là vấn đề của router, không phải do thiếu cổng: xem \"Routers that rewrite UDP source ports\" trong hướng dẫn Mysterium. Hãy giữ dưới 32768: các cổng 32768-60999 là dải cổng tạm của Linux, nơi bất kỳ chương trình nào trên máy chủ cũng có thể chiếm một cổng trong giây lát, và chỉ một cổng bị chiếm là nút không khởi động được. Nút đã có dải cổng sẽ giữ nguyên dải đó."
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "Kho khóa danh tính của nút. Xóa nó sẽ tạo một danh tính hoàn toàn mới: nút mất uy tín và mọi thu nhập còn đang được giữ theo danh tính cũ."
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "Nút không chạy được sudo bên trong container, nên không thể cấu hình giao diện VPN hay tường lửa và mọi phiên đều thất bại ngay khi thiết lập: nó trông như đang trực tuyến nhưng không kiếm được gì. Container đã được tạo mà không có quyền SETUID và SETGID. Hãy cập nhật CashPilot và worker đang chạy nút này, rồi triển khai lại Mysterium từ bảng điều khiển; danh tính của nút nằm trong volume dữ liệu và được giữ nguyên."
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "Trong 6 giờ qua không có phiên VPN nào kết nối trực tiếp tới nút này. Tất cả đều phải dùng hole punching, và nhiều người mua không kết nối được theo cách đó, nên nút kiếm được ít hơn. Các cổng UDP của nút không truy cập được từ internet. Trên router, hãy chuyển tiếp dải cổng UDP ${UDP_PORTS} (bắt_đầu:kết_thúc, cùng một dải ở cả hai phía) tới ${HOST_ADDRESS}. Cảnh báo này tự biến mất khi có một phiên kết nối trực tiếp."
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "Hệ thống giám sát của Mysterium đánh dấu nút trên ${WORKER_NAME} là thất bại, nên nút bị loại khỏi danh sách nút mà hầu hết người mua chọn, kể cả khi lần kiểm tra của chính nút cho biết mọi cổng đều truy cập được. Trước tiên hãy đảm bảo nút có /dev/net/tun và SETUID/SETGID, vì thiếu chúng cũng gây lỗi y như vậy: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 Khi đã có những thứ đó, nguyên nhân thường gặp là router phía trước ${WORKER_NAME} ghi đè cổng nguồn UDP trong các phản hồi của nút sau khi một gói tin từ bên ngoài đã tới cổng đó. Xem bài kiểm tra trong hướng dẫn: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "Năm phiên VPN gần nhất của nút trên ${WORKER_NAME} đều kết thúc sau khoảng một phút mà không truyền dữ liệu nào, nên nút không kiếm được gì dù trông như đang trực tuyến. Nguyên nhân có thể là router phía trước ${WORKER_NAME}: khi một gói tin từ bên ngoài tới một cổng, nó ghi đè cổng nguồn trong các phản hồi sau đó của nút từ cổng này, và mọi phiên đều bắt đầu bằng một gói tin như vậy (lần kiểm tra cổng của chính nút), nên người mua bỏ qua các phản hồi của nút. Dải cổng rộng hơn không giúp được gì. Xem bài kiểm tra và cách khắc phục trong hướng dẫn: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports Cảnh báo này biến mất khi có một phiên truyền dữ liệu."
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "Thu nhập bằng token MYST. IP dân cư kiếm nhiều hơn đáng kể. WebUI của nút ở cổng 4449 để quản lý, mặc định chỉ được công bố trên chính máy chạy nó (127.0.0.1); từ máy khác, hãy mở đường hầm SSH trước (ssh -L 14449:127.0.0.1:4449 theo sau là địa chỉ máy chạy nút, rồi truy cập http://127.0.0.1:14449; cổng cục bộ 14449 để không xung đột với một nút trên máy của chính bạn), hoặc thêm một địa chỉ vào UI_ADDRESS (xem WebUI address trong hướng dẫn Mysterium). Chấp nhận VPS. Rất nên chuyển tiếp cổng UDP 23000-23029 (giá trị mặc định của UDP_PORTS) -- nếu không, nút bị gán trạng thái Strict NAT và nhiều phiên VPN thất bại, làm thu nhập giảm mạnh. Quan trọng: sau lần chạy đầu tiên, hãy đặt ví thụ hưởng (ví quyết toán) qua WebUI hoặc CLI của nút cho khớp với tài khoản mystnodes.com của bạn -- việc này liên kết thu nhập on-chain với bảng điều khiển đám mây của bạn."
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "Tự động quyết toán on-chain mỗi khi một nút giữ 5 MYST chưa quyết toán"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "Không có nút nào để bấm. Mỗi nút tự quyết toán trên Polygon khi giữ 5 MYST chưa quyết toán, và khoảng 21% bị trừ phí (20% phí Hermes cộng một khoản phí giao dịch nhỏ), nên mỗi lần quyết toán khoảng 3.9 MYST về tới ví thụ hưởng. TequilAPI của mỗi nút liệt kê các lần quyết toán tại /transactor/settle/history. Con số \"total earnings\" trên MystNodes chỉ tính 30 ngày gần nhất; nó không phải số dư cũng không phải tổng từ trước đến nay. MYST thưởng từ chương trình phần thưởng MystNodes không tự quyết toán: hãy nhận nó trên trang Rewards, trong vòng 30 ngày kể từ khi phân phối theo trung tâm trợ giúp MystNodes."
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "Ví thụ hưởng được đặt SAU khi triển khai, qua TequilAPI hoặc WebUI của nút -- không phải qua biến môi trường, nên không thể đọc nó từ cấu hình container."
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "Dùng email và mật khẩu tài khoản MystNodes của bạn (giống với <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>)."
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "5 MYST cho mỗi người bạn có nút kiếm được 5 MYST (chỉ IP dân cư)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "5 MYST khi nút của bạn kiếm được 5 MYST đầu tiên (IP dân cư, nút đã được nhận trên mystnodes.com)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "Nhận phần thưởng MystNodes của tháng trước"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "Phần thưởng không được nhận trong vòng 30 ngày kể từ đợt phân phối hằng tháng sẽ bị tịch thu và quay về quỹ thưởng của tháng sau."
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "Mở trang Rewards và đổi điểm của bạn lấy MYST."
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "Băng thông. Kết nối của bạn được dùng làm nút thoát cho mạng Mysterium, mạng này bán dịch vụ VPN, proxy VÀ thu thập dữ liệu. Lưu lượng thu thập dữ liệu đi ra từ IP dân cư là loại dễ bị khiếu nại nhất, và bạn không thể chọn nút của mình chuyển loại nào trong ba loại đó."
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "Có. Người lạ định tuyến lưu lượng của họ qua địa chỉ IP của bạn — đó chính là sản phẩm."
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "Danh tính nút (một địa chỉ blockchain), IP của bạn và vị trí tương đối (quốc gia/thành phố/ISP), được nút công bố lên mạng để người mua có thể chọn."
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "Có thật và đáng tìm hiểu kỹ. Lưu lượng của người khác đi ra từ kết nối của bạn và được quy cho bạn, nên mọi việc họ làm đều trông như xuất phát từ đường truyền của bạn. Nhiều hợp đồng ISP dân dụng cấm việc này. Hãy kiểm tra hợp đồng của bạn trước khi chạy."
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "Không giới hạn số thiết bị theo tài khoản và theo IP."
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "Khoảng 21% của mỗi lần quyết toán bị trừ phí, gồm 20% phí Hermes cộng phí giao dịch, và thu nhập được trả bằng token MYST."
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "Nút của bạn là điểm thoát cho khách hàng VPN, proxy và thu thập dữ liệu của Mysterium, và bạn không thể chọn nó chuyển lưu lượng của ai."
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "Phần mềm nút là mã nguồn mở theo GPL-3.0."
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Mysterium phát hành image Docker riêng, mysteriumnetwork/myst."
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "Tiền quyết toán về ví do bạn sở hữu; không cần số điện thoại hay giấy tờ tùy thân."
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "Dự án nút đã hoạt động từ năm 2017."
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "Website của Mysterium cho biết mạng được phát triển bởi Blockdev AG, Zug, Thụy Sĩ."
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay là một mạng DePIN thưởng cho người dùng chia sẻ băng thông qua tiện ích trình duyệt. Nền tảng được bảo vệ bởi Cloudflare, điều này có thể gây khó cho việc truy cập tự động. Người dùng kiếm Nodepay Points bằng cách giữ tiện ích hoạt động. Mạng tập trung vào cung cấp hạ tầng dữ liệu huấn luyện AI.\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "Chia sẻ băng thông DePIN cho AI - tiện ích trình duyệt"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "Kiếm Nodepay Points; điểm của người dùng vượt qua kiểm tra điều kiện của Nodepay được quy đổi sang token NC. Bảo vệ Cloudflare có thể chặn việc thu thập tự động. Cần tiện ích trình duyệt."
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "Airdrop token NC (chưa xác nhận thời gian)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "Hệ thống dựa trên điểm. Điểm của người dùng vượt qua kiểm tra điều kiện của Nodepay được quy đổi sang token NC, ra mắt vào tháng 1 năm 2025."
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "Trong đợt rà soát mùa đầu tiên, Nodepay đã xóa hơn 300.000 tài khoản mà họ cho là bot và hủy 17 tỷ điểm."
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "Phần thưởng là điểm quy đổi sang token NC, nên giá trị của chúng phụ thuộc vào token."
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "CashPilot không chạy Nodepay: bạn dùng tiện ích trình duyệt riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes là hạng miễn phí đầu vào của Noderr Protocol, một dự án DeFi trên Base L2. Một micronode là một agent nhỏ chạy trên điện thoại Android không dùng đến, PC Windows, Mac hoặc trình duyệt Chromium. Trên Android, nó chia sẻ kết nối di động của điện thoại: lưu lượng Noderr khác đi ra qua IP nhà mạng của điện thoại, nên cần SIM có dữ liệu di động. Trên PC hoặc trong trình duyệt, nó chạy các tác vụ tự động hóa cho giao thức bằng sức mạnh tính toán còn dư. Phần thưởng được thiết kế để trả bằng NODR, điều chỉnh theo điểm thời gian hoạt động và độ tin cậy on-chain, nhưng mạng đang ở testnet Base Sepolia trong giai đoạn beta: phần thưởng cho nút chưa được cấp vốn và chưa có khoản nào được trả.\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "Micronode miễn phí (chia sẻ kết nối Android, Windows, Mac, trình duyệt) - testnet, phần thưởng hiện chưa được cấp vốn"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "Beta trên testnet: phần thưởng cho nút chưa được cấp vốn và chưa có khoản nào được trả. Mức APY 5-10% trên website là mục tiêu thiết kế. Hãy xem lại khi mạng rời Base Sepolia."
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "Phần thưởng tích lũy vào ví riêng của nút và được nhận từ ứng dụng hoặc dApp. Trong giai đoạn beta, đó là token testnet Base Sepolia không có giá trị thị trường."
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "Ứng dụng tạo ví của nút ở lần khởi chạy đầu tiên và mint miễn phí một Utility NFT soulbound vào ví đó. Hãy sao lưu ví từ ứng dụng: mất thiết bị là mất danh tính của nút. Phần thưởng ở trên Base Sepolia (testnet) trong giai đoạn beta."
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Android cần SIM có dữ liệu di động; client desktop và trình duyệt không công bố yêu cầu nào về IP."
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "Tùy thiết bị. Điện thoại Android bán kết nối di động của nó: lưu lượng Noderr khác đi ra qua địa chỉ IP nhà mạng của điện thoại và bị trừ vào gói dữ liệu. PC Windows, Mac hoặc trình duyệt bán sức mạnh tính toán còn dư cho thứ mà nhà cung cấp gọi là tác vụ tự động hóa mạng xã hội và nội dung."
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "Có. Trên Android, lưu lượng Noderr khác đi ra qua địa chỉ IP di động của điện thoại; ứng dụng yêu cầu bạn đồng ý (có ghi lại) trước khi bắt đầu và bạn có thể dừng chia sẻ ngay trên màn hình đó. Với client Windows, Mac và trình duyệt, nhà cung cấp mô tả các tác vụ tự động hóa và không nói chúng có chuyển lưu lượng cho người khác hay không."
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "Địa chỉ ví của nút cùng số liệu thời gian hoạt động và tác vụ đã hoàn thành được ghi on-chain dưới dạng điểm uy tín (TrustFingerprint). Nhà cung cấp nói các tác vụ được ẩn danh, chạy trong sandbox và khóa ví không bao giờ rời khỏi thiết bị. Không có thông tin cụ thể hơn được công bố."
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "Trên Android, kết nối được chia sẻ là gói di động của nhà mạng: chính tài liệu của nhà cung cấp cảnh báo việc chia sẻ có thể không được phép theo chính sách sử dụng của một số nhà mạng, và lưu lượng chia sẻ dùng vào dung lượng của gói. Với client desktop và trình duyệt, nhà cung cấp không nói gì về điều khoản của ISP."
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "Mỗi thiết bị một nút, mỗi nút có Utility NFT soulbound riêng; chạy nhiều thiết bị được cho phép và khuyến khích. Không có giới hạn theo IP nào được công bố. Không có tài khoản theo nghĩa thông thường: danh tính là một ví do ứng dụng tạo ở lần khởi chạy đầu tiên."
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "Phần thưởng cho nút là token testnet chưa được cấp vốn, không có giá trị thị trường, và chưa có khoản nào được trả; mức APY 5 đến 10% trên website là mục tiêu thiết kế."
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "Với client desktop và trình duyệt, Noderr mô tả các tác vụ tự động hóa và không nói chúng có chuyển lưu lượng của người khác hay không."
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "Nhà cung cấp nói các tác vụ được ẩn danh và chạy trong sandbox nhưng không công bố gì cụ thể hơn."
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "Vẫn là bản beta trên testnet Base Sepolia."
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "CashPilot không chạy Noderr: bạn dùng ứng dụng hoặc tiện ích riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "Không cần tài khoản: ứng dụng tạo một ví ở lần khởi chạy đầu tiên."
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Nodle dùng Bluetooth của điện thoại thông minh để tạo hạ tầng IoT. Ứng dụng âm thầm phát hiện và chuyển tiếp dữ liệu từ các thiết bị IoT gần đó, kiếm token NODL. Từng xuất hiện trên Forbes, có quan hệ đối tác doanh nghiệp với Vivendi và Hayden AI. Chỉ trên di động (iOS và Android).\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "Chuyển tiếp IoT qua Bluetooth - ứng dụng di động, thưởng token NODL"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "Thu nhập rất thấp. Ứng dụng điện thoại chạy nền dùng Bluetooth. Kết nối ví có thể không ổn định."
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "Liên tục"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "NODL nằm trong ví riêng của ứng dụng trên ZKsync Era; hãy kiểm tra trong ứng dụng hoặc trên một block explorer của ZKsync Era. Nodle đã rời parachain Polkadot, và cầu nối Polkadot sang ZKsync đã đóng vào ngày 31 tháng 12 năm 2025, nên NODL còn ở phía Polkadot không thể chuyển sang ZKsync nữa."
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "NODL của bạn nằm trong ví riêng của ứng dụng Nodle trên ZKsync Era. CashPilot không thể xem địa chỉ của ví đó."
+  source: "796d67192f5f"
+nodle.referral.bonus.referrer:
+  text: "Một phần thưởng NODL cho mỗi người dùng mới hoạt động tham gia qua lời mời (Nodle không công bố số tiền)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "Một người đánh giá cho biết kiếm được khoảng $3 trong ba đến bốn năm; những người khác cho biết thu nhập hằng ngày giảm mạnh."
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "CashPilot không chạy Nodle: bạn dùng ứng dụng điện thoại riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana là một chợ điện toán GPU phi tập trung xây dựng trên Solana. Nó kết nối chủ GPU với nhu cầu tác vụ AI, trả bằng token NOS. Một RTX 3060 kiếm khoảng $0.048/giờ. Nền tảng tập trung vào tác vụ suy luận AI và dùng blockchain Solana để lên lịch công việc và quyết toán thanh toán. Các nút chạy tác vụ dạng container qua Nosana CLI.\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "Điện toán GPU trên Solana - token NOS, RTX 3060 ~$0.048/giờ"
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 ~$0.048/giờ, GPU cao cấp hơn kiếm nhiều hơn. Thu nhập phụ thuộc vào lượng công việc có sẵn và mẫu GPU. Cần GPU NVIDIA, Linux, Docker và Nosana CLI. Thanh toán bằng token NOS trên Solana."
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "Mỗi khi hoàn thành công việc"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "Kiếm token NOS trên Solana. Thanh toán về ví đã cấu hình."
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "Theo mặc định, Nosana tạo một ví Solana, nên hầu hết người dùng chưa bao giờ thấy địa chỉ của ví."
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "Mỗi chủ máy phải khóa một khoản stake NOS tương ứng với giá theo giờ của GPU."
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "Chủ máy được trả bằng NOS, nên thu nhập tính bằng đô la biến động theo token và theo nhu cầu với card của họ."
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "CashPilot không chạy Nosana: bạn dùng phần mềm chủ máy riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN là một pool đào Bitcoin không cần tài khoản: máy đào của bạn đăng nhập bằng địa chỉ Bitcoin làm tên người dùng, và pool trả tiền vào địa chỉ đó. CashPilot không chạy máy đào ở đây. Nó đọc số dư chưa thanh toán mà OCEAN đang giữ cho địa chỉ của bạn, để bạn thấy ASIC của mình (Bitaxe, Antminer) đã kiếm được bao nhiêu bên cạnh các nguồn thu nhập khác. Số dư chưa thanh toán là đã kiếm được nhưng chưa nhận: OCEAN trả nó on-chain khi vượt ngưỡng thanh toán.\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "Pool đào Bitcoin, theo dõi qua địa chỉ nhận thanh toán của bạn"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "Khi một khối đưa số dư của bạn vượt ngưỡng"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "OCEAN trả on-chain vào địa chỉ của bạn khi số dư chưa thanh toán đạt ngưỡng. Thanh toán qua Lightning (tùy chọn bật, BOLT12) không được CashPilot phát hiện."
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "Số chưa thanh toán là đã kiếm được nhưng chưa nhận cho đến khi OCEAN trả on-chain vào địa chỉ này, trừ khi bạn đã bật thanh toán qua Lightning."
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "Địa chỉ nhận thanh toán BTC của bạn: tên người dùng mà máy đào dùng trên OCEAN, không có phần <b>.workername</b>. Địa chỉ này công khai và không mở khóa được tiền."
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "Cần một máy đào ASIC Bitcoin (Bitaxe, Antminer) trỏ tới mine.ocean.xyz:3334"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "điện toán"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "Không. Máy đào của bạn gửi hash tới pool; không ai định tuyến lưu lượng qua kết nối của bạn."
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "Địa chỉ Bitcoin của bạn, tên worker bạn chọn, hashrate và địa chỉ IP của máy đào theo những gì pool thấy."
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "Máy đào giữ một kết nối mở tới pool và dùng rất ít băng thông. Chi phí cần để ý là tiền điện, không phải ISP."
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "Không có tài khoản. Địa chỉ chính là danh tính, và bất kỳ ai cũng có thể xem thống kê của nó trên ocean.xyz."
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "Chỉ trả bằng Bitcoin, và không có gì được trả on-chain cho đến khi số dư đạt 0.01048576 BTC."
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "Phí pool 2%, hoặc 1% khi bạn tự tạo block template bằng DATUM."
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "CashPilot không chạy máy đào cho OCEAN: bạn tự trỏ phần cứng của mình tới pool, và CashPilot chỉ đọc số dư."
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "Không cần tài khoản và không xác minh danh tính. OCEAN chỉ yêu cầu địa chỉ Bitcoin mà nó trả tiền vào."
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream là một chợ băng thông ngang hàng, nơi bạn có thể bán băng thông chưa dùng. Nó vận hành một mạng proxy dân cư dùng cho nghiên cứu thị trường, theo dõi SEO và xác minh quảng cáo. Cài đặt Docker đơn giản, chỉ cần một CID (Client ID). Lưu ý rằng trang đăng nhập có CAPTCHA có thể gây khó cho việc tự động thu thập thu nhập.\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "Chia sẻ băng thông - cài đặt đơn giản dựa trên CID"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "Client ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "Đăng nhập tại <a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> → nhấp Setup ở thanh bên → CID của bạn hiển thị trong lệnh Docker"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "PacketStream từ chối địa chỉ IP của bản sao này vì không phải IP dân cư, nên nó không kiếm được gì. Hãy chạy nó trên một máy có kết nối internet là đường truyền gia đình, hoặc gỡ bản sao này."
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "PacketStream đã có một client khác trên địa chỉ IP này, và chỉ trả cho một client mỗi IP. Hãy gỡ bản sao này, hoặc bản còn lại đang dùng chung IP."
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "Trả $0.10/GB băng thông chia sẻ. Thu nhập phụ thuộc nhiều vào nhu cầu đối với vị trí IP của bạn."
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "Chỉ PayPal, tối thiểu $5, phí 3% hiển thị trước khi bạn xác nhận. Lần rút đầu tiên lưu email PayPal của bạn; đổi email sau này cần xác nhận qua email và chờ 7 ngày, nên hãy kiểm tra địa chỉ trước khi xác nhận. Yêu cầu được xem xét và gửi trong vòng 7 ngày; bạn có thể hủy một yêu cầu khi nó đang chờ, và chỉ có thể tạo yêu cầu mới khi yêu cầu trước đã được trả."
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "Số dư do PacketStream giữ; rút theo yêu cầu."
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "Đăng nhập tại <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, nhấn F12 → Application → Cookies, sao chép giá trị cookie <b>auth</b> (đó là một JWT)."
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "20% thu nhập băng thông của họ (thưởng Packeter có thời hạn)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "Tín dụng thưởng 10% cho lần nạp tiền đầu tiên bằng thẻ hoặc PayPal (khách hàng proxy)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "Người đánh giá trên Trustpilot năm 2025 và 2026 cho biết tiền về chậm hoặc không về, và một người dùng lâu năm nói thanh toán chậm dần rồi dừng hẳn; những người khác năm 2026 cho biết đã được trả."
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "Chỉ PayPal, với phí rút 3%; người dùng ở quốc gia PayPal không phục vụ không có phương thức nào khác."
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "Điều khoản cho phép PacketStream giữ lại, đảo ngược hoặc vô hiệu hóa thu nhập mà họ cho là liên quan đến gian lận, thao túng hoặc hoạt động bị cấm."
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "Điều khoản cho biết khách hàng proxy và chính PacketStream định tuyến lưu lượng qua kết nối của bạn; không mô tả việc kiểm tra người mua thông thường."
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "Trustpilot ghi nhận PacketStream chưa phản hồi các đánh giá tiêu cực; người đánh giá cho biết email không được trả lời."
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "PacketStream phát hành image Docker riêng, packetstream/psclient."
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "Điều khoản chỉ yêu cầu thiết bị và kết nối mà bạn sở hữu hoặc được phép dùng."
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "Điều khoản không mô tả việc xác minh danh tính nào; một khoản thanh toán cần địa chỉ PayPal."
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "Điều khoản nêu tên PacketStream Inc., theo luật California."
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "PacketStream hoạt động từ năm 2018."
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp là một nền tảng DePIN cho phép bạn kiếm phần thưởng crypto và PayPal bằng cách chia sẻ băng thông và tài nguyên tính toán chưa dùng. Thực tế chỉ có trên Windows: trang tải xuống của chính nhà phát hành ghi Android, iOS và Linux là \"coming soon\" không đổi từ ít nhất tháng 2 năm 2025, và không có phiên bản macOS — dù nội dung quảng cáo trên cùng website nói hỗ trợ rộng hơn. Không có image Docker.\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "Băng thông/điện toán DePIN - chỉ Windows, thanh toán crypto và PayPal"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "Chỉ có ứng dụng desktop Windows (v1.0.x); Android/iOS/Linux được nhà phát hành thông báo 'coming soon' từ đầu năm 2025 và chưa bao giờ ra mắt. Không có image Docker chính thức."
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "10% thu nhập của họ trọn đời"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "CashPilot không chạy PassiveApp: bạn dùng ứng dụng desktop riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "Website của PassiveApp liệt kê PayPal, crypto và thẻ quà tặng từ mức tối thiểu $3."
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase là một nền tảng chia sẻ băng thông trả tiền cho người dùng bằng tiền mã hóa khi họ chia sẻ kết nối internet chưa dùng. Bạn xác thực client peer bằng một Access Token từ bảng điều khiển. IP dân cư kiếm nhiều nhất, nhưng IP trung tâm dữ liệu cũng được hỗ trợ. Image Docker chính thức đa kiến trúc (amd64/arm64/armv7).\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - chia sẻ băng thông, thanh toán crypto, xác thực bằng Access Token. Không tạo ví"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Access Token"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "Tên thiết bị"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "Đăng nhập tại <a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> → sao chép Access Token của bạn (hiển thị trong lệnh Docker ở trang thiết lập)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "Một tên bất kỳ (không có khoảng trắng) để nhận diện thiết bị này trên bảng điều khiển ProxyBase"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "ProxyBase không kết nối được tới relay của nó trong ít nhất nửa giờ, nên không kiếm được gì. Khởi động lại sẽ khắc phục; nếu vẫn còn sau khi khởi động lại, hãy kiểm tra xem máy này có truy cập được internet không."
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "Thanh toán bằng crypto. Thu nhập phụ thuộc vào vị trí và mức sử dụng băng thông."
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "Website ghi mức tối thiểu $0.20, và một yêu cầu dưới $1 đã thành công vào tháng 10 năm 2026. Mỗi yêu cầu luôn rút toàn bộ số dư, dưới dạng USDC trên Polygon, POL hoặc Litecoin, vào địa chỉ bạn nhập. ProxyBase chịu phí mạng."
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "Thu nhập tích lũy vào TÀI KHOẢN ProxyBase mà Access Token thuộc về, và được rút từ bảng điều khiển theo yêu cầu. Client peer không giữ ví nào và container không lưu trạng thái -- docker.volumes để trống. Đừng nhầm với proxybase-xyz (ProxyBase Markets, cùng tổ chức), dịch vụ đó thực sự tạo một ví cục bộ và khai báo nó là volume quan trọng."
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "Chính ProxyBase đã viết vào tháng 8 năm 2025 rằng họ còn mới và chưa phải nơi để tối đa hóa thu nhập."
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "ProxyBase đã đổi client peer vào năm 2026 và tắt backend cũ, nên các container dùng image cũ vẫn chạy nhưng không còn kiếm được tiền."
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "Chỉ crypto, dưới dạng USDC trên Polygon, POL hoặc Litecoin, không có phương thức tiền pháp định. Mức tối thiểu là $0.20 và ProxyBase trả phí mạng."
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "Lần rút dưới $1 của chúng tôi đã thành công vào tháng 10 năm 2026."
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "Một lần rút chỉ cần một địa chỉ nhập vào yêu cầu."
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "ProxyBase phát hành image client peer riêng và hỗ trợ IP trung tâm dữ liệu."
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets là một chợ proxy SOCKS5 dành cho AI agent. Người bán chạy một daemon CLI nhẹ viết bằng Rust, kết nối qua WebSocket để chuyển tiếp lưu lượng của người mua qua kết nối internet của họ, kiếm USDC trên Tempo Chain theo mỗi GB bán được. Hỗ trợ cả chế độ trực tiếp (băng thông của chính bạn) và upstream (bán lại proxy bên ngoài) với tự động kết nối lại. Người mua mua phiên proxy theo quốc gia, ISP và băng thông. Thanh toán đi qua Machine Payments Protocol (MPP) trên Tempo Chain. Liên kết giới thiệu dành cho người mua: người mua mở console qua liên kết này được thêm 10% cho lần nạp đầu tiên.\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - chợ SOCKS5 cho AI agent, thanh toán USDC. Tạo một ví mà volume của nó giữ bản sao duy nhất của khóa"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "URL API backend"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "Ghi đè URL API backend (mặc định là https://api.proxybase.xyz)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "Container tự khởi tạo ở lần khởi động đầu tiên: tạo một ví secp256k1 (BIP-39), xác thực bằng cơ chế challenge-response ECDSA, và bắt đầu bán băng thông ở chế độ chỉ trực tiếp. Toàn bộ trạng thái (ví, token phiên, cấu hình người bán) được lưu trong volume <code>proxybase-data</code>. Hãy xem nhật ký container ở lần chạy đầu để biết địa chỉ ví. Dùng <code>--upstream</code> để thêm đường bán lại proxy bên ngoài.\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "Tệp khóa của ví được tạo. Volume này CHÍNH LÀ tiền: không có bản sao nào phía máy chủ, nên xóa nó là mất luôn số tiền."
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "Thu nhập dựa trên số GB bán được theo giá thị trường. IP VPS/trung tâm dữ liệu kiếm ít hơn IP dân cư. Chế độ nhiều upstream có thể kết hợp băng thông của bạn với proxy bên ngoài."
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "Chốt thu nhập bằng <code>proxybase-cli seller payout create</code>, nhận dưới dạng USDC trên Tempo Chain (Tempo MPP). Trả vào bất kỳ địa chỉ EVM nào mà bạn giữ khóa (Tempo là một chuỗi EVM), không cần ký gì; hãy thêm mạng Tempo vào ví để thấy USDC. Nếu ví vẫn không hiển thị, cần thêm thủ công token USDC của Tempo: nhập nó bằng địa chỉ hợp đồng mà Proxybase cung cấp, và kiểm tra địa chỉ đó trước khi tin vào số dư."
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "Client tự tạo ví ở lần chạy đầu tiên."
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "15% mỗi lần nạp của người mua được giới thiệu, dưới dạng tín dụng cho phiên proxy của chính bạn"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "+10% cho lần nạp đầu tiên của người mua"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "Băng thông, dưới dạng proxy SOCKS5 bán cho người mua trên chợ ProxyBase."
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "Có. Người mua định tuyến lưu lượng của họ qua kết nối của bạn — đó chính là thứ được bán."
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "Một địa chỉ ví được tạo trên máy của bạn, cùng lượng lưu lượng bạn chuyển tiếp."
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "Có thật, và áp dụng trực tiếp cho kết nối gia đình. Lưu lượng proxy từ người mua không rõ danh tính đi ra dưới IP của bạn, nên khiếu nại lạm dụng sẽ tìm đến bạn. Danh mục này không giới hạn dịch vụ ở địa chỉ trung tâm dữ liệu, và IP dân cư kiếm nhiều hơn, nên động lực ở đây lại đi sai hướng: hãy đọc điều khoản của ISP trước khi chạy tại nhà."
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "không rõ - nhà cung cấp không công bố giới hạn thiết bị theo tài khoản hay theo IP, và danh mục cũng không khai báo giới hạn nào."
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "Thanh toán là USDC trên Tempo Chain, vào bất kỳ địa chỉ EVM nào mà bạn giữ khóa."
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "Kết nối của bạn được bán dưới dạng proxy SOCKS5 cho người mua trên chợ; chúng tôi không tìm thấy mô tả nào về cách người mua được kiểm tra."
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "Tiêu đề trang kiếm tiền của họ ghi rằng không cần KYC, với khoản thanh toán $1."
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "ProxyBase phát hành image client riêng và chấp nhận kết nối trung tâm dữ liệu."
+  source: "ae81d006093f"
+proxylite.description:
+  text: "ProxyLite kiếm tiền từ lưu lượng internet của bạn bằng cách chia sẻ băng thông với các tổ chức đã được xác minh. Chạy được trên cả kết nối dân cư lẫn VPS/trung tâm dữ liệu. Cài đặt đơn giản, chỉ cần một user ID từ bảng điều khiển. Có hoa hồng giới thiệu hào phóng 15% trọn đời.\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "Chia sẻ băng thông - giới thiệu 15% trọn đời, chạy được trên VPS"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "User ID"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "Đăng nhập tại <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → User ID của bạn hiển thị trên trang chính của bảng điều khiển, cạnh email. Cần tài khoản? Đăng ký tại <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a>"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "IP dân cư kiếm nhiều hơn. Kết nối VPS/trung tâm dữ liệu được chấp nhận với mức trả thấp hơn."
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "15% thu nhập của họ trọn đời"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "Chủ sở hữu website được ẩn trong thông tin tên miền, và chúng tôi không tìm thấy công ty có tên nào đứng sau."
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "Mức tối thiểu $5, qua crypto hoặc PayPal."
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "ProxyLite phát hành một image Docker, proxylite/proxyservice, và chấp nhận kết nối trung tâm dữ liệu với mức trả thấp hơn."
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "Chương trình Peer của ProxyRack giúp bạn kiếm tiền bằng cách chia sẻ băng thông như một phần của mạng proxy của họ. Mỗi thiết bị cần một UUID hex 64 ký tự duy nhất và có thể kèm một khóa API để tự động đăng ký thiết bị. Chạy được trên cả kết nối dân cư lẫn VPS/trung tâm dữ liệu. Bảng điều khiển nằm sau Cloudflare, nên có thể phải lấy khóa API thủ công qua trình duyệt.\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "Chia sẻ băng thông - mỗi thiết bị một UUID, chạy được trên VPS"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "UUID thiết bị"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "Khóa API"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "Tên thiết bị"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "ID hex 64 ký tự duy nhất cho mỗi thiết bị. Tạo bằng: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "Đăng nhập tại <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → API Key hiển thị trên trang chính của bảng điều khiển (tự động đăng ký thiết bị nếu được cung cấp). Cần tài khoản? Đăng ký tại <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "Tên dễ nhận biết cho thiết bị trên bảng điều khiển"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "Client của ProxyRack không thể chạy trên bản sao này, nên bản sao không kiếm được gì. Nguyên nhân thường gặp là máy chủ cập nhật của ProxyRack không phản hồi, và client không thể khởi động nếu thiếu nó. Bản sao thử lại mỗi 5 phút và tự khởi động ngay khi máy chủ phản hồi. Bạn không cần sửa gì cả."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "Client của ProxyRack không được tải về khi bản sao này khởi động, vì không kết nối được với máy chủ cập nhật của ProxyRack, nên bản sao vẫn chạy nhưng không kiếm được gì. CashPilot khởi động lại nó mỗi 6 giờ để thử lại. Hãy triển khai lại nó để nó có cách khởi động riêng của CashPilot, cách này giữ lại client và tự thử lại mỗi 5 phút."
+  source: "0a2ee4b478b2"
+proxyrack.device_link.steps:
+  text: "Đăng nhập ProxyRack, mở Devices, chọn Add device và dán UUID này. Cho đến khi thiết bị có trong tài khoản của bạn, nó không kiếm tiền cho ai cả. Nếu bạn đã nhập khóa API, container sẽ tự đăng ký: hãy kiểm tra thiết bị có trong danh sách ở đó."
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "IP dân cư kiếm nhiều hơn IP trung tâm dữ liệu. Bảng điều khiển sau Cloudflare có thể gây khó cho việc truy cập tự động."
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "Gửi yêu cầu thanh toán trên bảng điều khiển. ProxyRack xem xét trong vòng 72 giờ, sau đó Tremendous gửi email cho bạn một phần thưởng để đổi thành PayPal, thẻ quà tặng hoặc chuyển khoản ngân hàng. Không có lựa chọn crypto."
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "Số dư do ProxyRack giữ; rút theo yêu cầu."
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "Đăng nhập tại <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, nhấn F12 → Network, tìm một yêu cầu API bất kỳ và sao chép giá trị header <b>Api-Key</b>. Cần tài khoản? Đăng ký tại <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>."
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Proxyrack ghi nhận giới hạn 500 thiết bị mỗi TÀI KHOẢN và không giới hạn theo IP. IP trung tâm dữ liệu được chấp nhận nhưng bị xếp lại vào mức trả thấp hơn."
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "Trung tâm trợ giúp của ProxyRack cho biết việc gỡ một thiết bị sẽ lấy đi thu nhập của thiết bị đó khỏi tài khoản, và chỉ có lại nếu thêm lại đúng thiết bị đó."
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "ProxyRack phát hành image Docker riêng, proxyrack/pop, và chấp nhận IP trung tâm dữ liệu với mức trả thấp hơn."
+  source: "278541f81053"
+repocket.description:
+  text: "Repocket giúp bạn kiếm thu nhập thụ động bằng cách chia sẻ băng thông internet chưa dùng. IP dân cư kiếm nhiều nhất; IP VPS/trung tâm dữ liệu được chấp nhận với mức trả thấp hơn. Tối đa 5 thiết bị và 5 phiên hoạt động mỗi tài khoản. Container Docker xác thực bằng email tài khoản và một khóa API từ bảng điều khiển Repocket (không phải mật khẩu).\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "Chia sẻ băng thông - tối đa 5 thiết bị, xác thực bằng khóa API"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "Khóa API (UUIDv4, không phải mật khẩu)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "Email tài khoản Repocket của bạn"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "Khóa API Repocket của bạn — đăng nhập tại <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> và sao chép khóa API hiển thị trên trang bandwidth-earnings (đây KHÔNG phải mật khẩu tài khoản). Cần tài khoản? Đăng ký tại <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a>"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "IP dân cư kiếm nhiều hơn. IP VPS/trung tâm dữ liệu được chấp nhận nhưng với mức trả thấp hơn."
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4 ($2 sau lần thanh toán đầu tiên)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Repocket đặt mức tối thiểu theo từng tài khoản: $4 trước lần thanh toán đầu tiên và $2 sau đó vào tháng 10 năm 2026, thấp hơn nhiều so với mức $20 từng quảng cáo. Phương thức: Tremendous (gửi tới email) hoặc USDT trên Polygon. Mỗi yêu cầu được xác nhận qua liên kết gửi email trong vòng 2 giờ, và mỗi lúc chỉ có một yêu cầu đang chờ. Vào tháng 10 năm 2026, Repocket từ chối một yêu cầu Tremendous với thông báo \"Please, message support\", trong khi USDT trên Polygon thì thành công."
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "Số dư do Repocket giữ; rút theo yêu cầu."
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "Dùng email và mật khẩu tài khoản Repocket của bạn (giống với <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>). Cần tài khoản? Đăng ký tại <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a>."
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "$2 khi người được giới thiệu kiếm được $7, sau đó 5% thu nhập của họ trọn đời"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "Thưởng $2 vào ví khi đăng ký"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Repocket ghi nhận giới hạn năm thiết bị mỗi TÀI KHOẢN nhưng không công bố giới hạn thiết bị theo IP. Con số '2 thiết bị mỗi IP' được nhắc lại trên các trang đánh giá không có nguồn từ nhà cung cấp, nên CashPilot không khẳng định điều đó."
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "Giữ một thiết bị Repocket đang chia sẻ, hoặc rút số dư"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "Sau 12 tháng không đăng nhập, không rút tiền và không chia sẻ băng thông, Repocket có thể tịch thu số dư chưa thanh toán."
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "Giữ một thiết bị đang chia sẻ, đăng nhập, hoặc rút tiền. Nếu bạn ngừng dùng Repocket, hãy rút tiền trước."
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "Nhiều người đánh giá trên Trustpilot cho biết khoản thanh toán bị hủy và số dư bị đặt về 0; một người nói bộ phận hỗ trợ viện lý do thu nhập băng thông bất thường. Trang này chấm Repocket 2.7 và ghi nhận họ chưa phản hồi các đánh giá tiêu cực."
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "Người đánh giá cho biết yêu cầu rút tiền bị từ chối và phải đòi mãi mới được trả."
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "Chính sách thanh toán của Repocket cho phép họ đảo ngược, hủy hoặc tịch thu vĩnh viễn thu nhập bất cứ khi nào họ nghi ngờ thu nhập không hợp lệ, và tịch thu thu nhập chưa thanh toán của tài khoản không hoạt động."
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "Cũng chính sách đó cho phép Repocket thêm, bỏ hoặc thay phương thức thanh toán bất cứ lúc nào mà không báo trước; PayPal đã bị bỏ."
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "Điều khoản cho biết Repocket có thể yêu cầu xác minh danh tính hoặc tài khoản bất cứ lúc nào, và quyền nhận thanh toán phụ thuộc vào việc đó."
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "Điều khoản cho biết Repocket và các đối tác sử dụng dung lượng mạng, nhưng không nói đối tác là ai hay được kiểm tra thế nào."
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "Trustpilot ghi nhận Repocket chưa phản hồi các đánh giá tiêu cực, và người đánh giá nói tin nhắn bị phớt lờ."
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "Điều khoản hiện tại nêu tên Repocket Pte. Ltd. tại Singapore; điều khoản cũ không nêu tên công ty nào."
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Repocket phát hành image Docker riêng, repocket/repocket, và điều khoản cho phép container do bạn sở hữu."
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "Mức tối thiểu thấp: $4 trước lần thanh toán đầu tiên và $2 sau đó."
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Salad.io cho phép bạn chia sẻ GPU cho các tác vụ AI phân tán và kiếm số dư Salad có thể đổi lấy thẻ quà tặng, game hoặc tiền mặt. Chỉ trên Windows với ứng dụng desktop gốc. Cần GPU rời (NVIDIA hoặc AMD). Nền tảng chuyển các tác vụ suy luận AI, render và tính toán khác tới máy của bạn khi máy nhàn rỗi. Một trong những nền tảng chia sẻ GPU dễ dùng hơn cả.\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "Chia sẻ GPU cho AI - chỉ Windows, thanh toán bằng thẻ quà tặng hoặc tiền mặt"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "Thu nhập phụ thuộc vào mẫu GPU và lượng công việc có sẵn. RTX 3060 ~$1-3/ngày. Chỉ Windows. Ứng dụng gốc, không hỗ trợ Docker. Đổi được lấy thẻ quà tặng, game hoặc PayPal."
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "PayPal hoặc thẻ quà tặng qua cửa hàng Salad."
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "Chỉ PayPal và thẻ quà tặng, không bao giờ có crypto. Không có địa chỉ ví nào, nên CashPilot không có số dư on-chain để hiển thị."
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "Đăng nhập tại <a href='https://app.salad.io' target='_blank'>app.salad.io</a>, nhấn F12 → Application → Cookies, sao chép giá trị cookie <b>auth</b>."
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "Kiếm một ít Salad Reward Points, hoặc tiêu số dư của bạn"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "Nếu một tài khoản không kiếm được Reward Points nào trong 12 tháng liên tiếp, số dư chưa đổi của nó có thể hết hạn."
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "Chạy ứng dụng Salad cho đến khi nó kiếm được điểm, hoặc tiêu toàn bộ số dư trong Salad Storefront. Chỉ tiêu một phần không đặt lại mốc 12 tháng."
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "CashPilot không chạy Salad: bạn dùng ứng dụng desktop riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "Nhiều người đánh giá trên Trustpilot vào tháng 10 và tháng 11 năm 2026 cho biết rút tiền qua PayPal về nhanh, một số người rút hơn một lần; một người đánh giá trong cùng thời gian nói các lần thử rút tiền liên tục thất bại."
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel là một blockchain Layer 1 trên Cosmos dành cho VPN phi tập trung. Người vận hành nút bán băng thông cho người dùng VPN với giá linh hoạt (theo GB hoặc theo giờ). Có hướng dẫn triển khai Docker chính thức. Dự án lâu năm với cộng đồng năng động.\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "VPN phi tập trung trên Cosmos - người vận hành nút bán băng thông"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "Người vận hành tự đặt giá theo GB hoặc theo giờ. Thu nhập phụ thuộc vào nhu cầu của người dùng VPN trong khu vực của bạn."
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "Theo phiên"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "Thanh toán bằng token P2P, và 20% mỗi khoản thanh toán băng thông được chuyển cho người stake thay vì chủ nút."
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "Token đã được đổi tên từ SENT sang DVPN vào năm 2021 và từ DVPN sang P2P vào năm 2025."
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "CashPilot không chạy Sentinel: bạn dùng phần mềm nút riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Sentinel công bố mã nguồn nút theo giấy phép mã nguồn mở riêng của họ."
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia là một chợ lưu trữ phi tập trung do Sia Foundation (một tổ chức phi lợi nhuận tại Thụy Sĩ) vận hành từ năm 2015. Hãy chạy nút hostd chính thức của Foundation để cho thuê dung lượng đĩa còn trống và kiếm Siacoin từ các hợp đồng lưu trữ và băng thông. Bạn phải mua một ít Siacoin trước khi nút có thể kiếm tiền: chủ máy khóa tài sản thế chấp cho mỗi hợp đồng và trả phí cho mỗi bằng chứng lưu trữ. Tài sản thế chấp được hoàn lại khi hợp đồng hoàn tất và bị đốt nếu nút ngoại tuyến hoặc mất dữ liệu, nên cần một máy luôn bật (Sia nói ít nhất 95% thời gian hoạt động). Thu nhập phụ thuộc vào lượng dữ liệu người thuê thực sự lưu; Sia khuyên đặt giá lưu trữ $1 mỗi TB mỗi tháng, nên phù hợp với máy có ổ đĩa trống lớn hơn là các gói VPS nhỏ.\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "Nút lưu trữ của Sia Foundation - image Docker chính thức, kiếm Siacoin"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "Cụm từ khôi phục ví"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "Mật khẩu bảng điều khiển"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "Thư mục lưu trữ"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "Cụm từ khôi phục BIP-39 kiểm soát ví Siacoin của chủ máy. Tạo một cụm bằng `docker run --rm ghcr.io/siafoundation/hostd seed` và sao lưu nó -- đó là cách DUY NHẤT để lấy được thu nhập"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "Mật khẩu cho giao diện web và API cục bộ của hostd (BasicAuth). Một cụm mật khẩu dài bất kỳ"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "Đường dẫn trên máy chủ, trên ổ đĩa lớn nhất của bạn, nơi lưu dữ liệu của người thuê (ví dụ /srv/sia). Cần trống ít nhất 256GB"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "Khi triển khai, CashPilot tạo một ví mới trên máy chạy nút và hiển thị cụm từ khôi phục của nó một lần: hãy ghi lại. Để dùng ví bạn đã có, hãy dán cụm từ khôi phục của ví đó vào. Sau khi triển khai, gửi một ít Siacoin vào ví của nút cho tài sản thế chấp và phí, rồi thêm thư mục lưu trữ (/storage), đặt giá và công bố chủ máy trên bảng điều khiển.\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "Cụm từ khôi phục ví (hostd.yml), cơ sở dữ liệu ví, cài đặt chủ máy và trạng thái hợp đồng. Mất nó là mất danh tính của nút và việc theo dõi doanh thu hợp đồng; khi đó cụm từ khôi phục bạn đã ghi lại là cách duy nhất để lấy lại tiền."
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "Dữ liệu đã lưu của người thuê. Mất nó sẽ làm thất bại các bằng chứng lưu trữ và mất tài sản thế chấp đã khóa cho các hợp đồng đó."
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "Chủ máy tự đặt giá. Sia khuyên $1 mỗi TB lưu trữ mỗi tháng và trên $5 mỗi TB tải xuống, và 3.9% mỗi khoản thanh toán hợp đồng được chuyển cho người nắm giữ Siafund. Thu nhập tăng theo lượng dữ liệu người thuê đặt trên nút, bắt đầu từ con số không và tăng dần theo thời gian hoạt động và giá. Tài sản thế chấp (Sia gợi ý gấp 2 lần giá lưu trữ) được khóa theo từng hợp đồng và hoàn lại khi hợp đồng hoàn tất thành công.\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "Thu nhập tích lũy trong ví Siacoin riêng của chủ máy (được kiểm soát bằng cụm từ khôi phục). Hãy đổi SC trên sàn giao dịch và rút về ngân hàng/thẻ từ đó; không có yêu cầu thanh toán phía nhà cung cấp.\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "Tiền nằm trong ví Sia được kiểm soát bằng cụm từ khôi phục, bên trong nút. Cụm từ khôi phục chỉ nằm trong volume dữ liệu của hostd trên máy chạy nó; CashPilot không bao giờ lưu nó. Cụm từ bạn ghi lại khi tạo ví là cách khôi phục duy nhất.\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "Một địa chỉ công khai ổn định với các cổng 9981 (TCP, đồng thuận) và 9984 (TCP và UDP, hợp đồng người thuê) được chuyển tiếp. Thuê máy chủ ở trung tâm dữ liệu/VPS là phổ biến trên Sia. Ví cần có Siacoin trước khi nút nhận được hợp đồng."
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "Dung lượng đĩa và băng thông để phục vụ nó."
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "Không. Người thuê lưu các mảnh tệp đã mã hóa trên đĩa của bạn và tải chúng về lại. Người khác không định tuyến lưu lượng tùy ý qua IP của bạn."
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "Địa chỉ ví Sia của bạn, khóa công khai của chủ máy và IP:cổng công khai mà nút công bố để người thuê kết nối tới."
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "Lưu lượng tải lên/tải xuống liên tục trên đường truyền, giống như chạy bất kỳ máy chủ lưu trữ nào; không có lưu lượng web ẩn danh nào của bên thứ ba bị quy cho bạn."
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "Không cần cấp phép: không đăng ký, không tài khoản. Tài sản thế chấp bị đốt nếu nút bỏ lỡ bằng chứng lưu trữ, do ngoại tuyến hoặc mất dữ liệu."
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "Thu nhập là Siacoin trong ví của chính bạn: không có thanh toán về ngân hàng, nên bạn phải tự bán trên sàn giao dịch."
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "Tài sản thế chấp được khóa theo từng hợp đồng và bị đốt nếu chủ máy bỏ lỡ bằng chứng lưu trữ do ngoại tuyến hoặc mất dữ liệu."
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "Chỉ khoảng 30% dung lượng lưu trữ được cung cấp trên mạng đang được dùng, nên chủ máy mới phải cạnh tranh trong khi nhu cầu thấp."
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "Người thuê lưu các mảnh tệp đã mã hóa và không ai định tuyến lưu lượng qua IP của bạn, nhưng chúng tôi không tìm thấy nơi Sia nói người thuê là ai hay được kiểm tra thế nào."
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "hostd được Sia Foundation phát triển công khai từ năm 2022."
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd là mã nguồn mở theo giấy phép MIT."
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "Sia Foundation phát hành hostd dưới dạng image container."
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "Không cần cấp phép: không đăng ký, không tài khoản."
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide là dịch vụ chia sẻ băng thông giúp bạn kiếm tiền từ băng thông internet chưa dùng. Dùng một machine ID tùy chọn để theo dõi thiết bị. Có sẵn qua các image Docker cộng đồng từ dự án income-generator.\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "Chia sẻ băng thông - dựa trên machine ID"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "Machine ID"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "Machine ID của thiết bị đã đăng ký từ trước (tự tạo nếu để trống)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "Có ít thông tin. Thu nhập phụ thuộc vào vị trí."
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "10% thu nhập của họ"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "Thưởng đăng ký $5"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "Lưu lượng qua một IP công khai được chia cho các thiết bị dùng chung IP đó, nên thiết bị thứ hai trên cùng kết nối không thêm được gì."
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "CashPilot không chạy Spide: bạn dùng ứng dụng riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "Đào Pearl, Zano hoặc Ravencoin bằng một GPU NVIDIA. CashPilot tải bản phát hành chính thức của SRBMiner-Multi ở lần khởi động đầu tiên và kiểm tra SHA-256. Pool bạn chọn trả tiền vào địa chỉ nhận thanh toán công khai của bạn. SRBMiner-Multi giữ 2% thời gian băm trên Pearl và 0.85% trên hai đồng còn lại. Tiền điện có thể cao hơn số coin bạn kiếm được."
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "Đào Pearl và các coin GPU khác trên GPU NVIDIA"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "Địa chỉ nhận thanh toán"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "Tên worker"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "Thuật toán"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "Pool (host:cổng)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "Mã hóa kết nối tới pool (TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "Địa chỉ Pearl công khai của bạn (prl1...). Với Zano hoặc Ravencoin, hãy nhập địa chỉ của đồng đó và một pool cho nó."
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "pearlhash cho Pearl, progpow_zano cho Zano, kawpow cho Ravencoin."
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "Ước tính gộp trước tiền điện. Ngày 2026-11-25, hashrate.no ước tính khoảng $2.45 mỗi ngày trên Pearl cho một RTX 4070 tiêu thụ khoảng 142 W. Chúng tôi chưa đo con số này. Pearl là đồng coin mới, giá và độ khó thay đổi nhanh. Hãy kiểm tra công suất GPU và giá điện của bạn để xem có lãi không."
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL (HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "Khi đạt ngưỡng của pool"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "Pool trả tiền vào địa chỉ của bạn khi số dư đạt ngưỡng của bạn. Pool giữ số dư cho đến khi trả cho bạn."
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64, một GPU NVIDIA và NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "Máy này báo cáo là kết nối máy chủ thuê. Hãy kiểm tra điều khoản của nhà cung cấp trước khi đào. Một số nhà cung cấp, bao gồm Hetzner Cloud, cấm việc này. Hãy kiểm tra chi phí điện thực tế trước khi dựa vào ước tính lợi nhuận."
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "Phí thợ đào 2% áp dụng cho pearlhash. SRBMiner-Multi giữ 0.85% trên progpow_zano và kawpow. HeroMiners, pool Pearl mặc định, thu phí pool 1%. Pool kiểm tra thanh toán mỗi giờ và trả từ 1 PRL. Các pool khác tự đặt mức phí và ngưỡng."
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "điện toán"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "Không. Máy đào gửi công việc tới pool bạn chọn."
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "Địa chỉ nhận thanh toán, tên worker và địa chỉ IP của bạn được gửi tới pool. Lần khởi động đầu tiên tải máy đào từ GitHub."
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "Một số mạng và trình phân giải DNS chặn kết nối tới pool đào."
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "Hầu hết các pool nhận diện bạn qua địa chỉ nhận thanh toán công khai."
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "Máy đào giữ 2% thời gian băm trên Pearl và 0.85% trên Zano và Ravencoin."
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "Một số nhà cung cấp máy chủ cấm đào tiền mã hóa."
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "Máy đào là mã nguồn đóng, nên không ai ngoài nhà phát triển có thể kiểm tra nó chạy gì."
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "Tiền điện của GPU có thể cao hơn số coin kiếm được, và giá Pearl biến động nhanh."
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "Máy đào gửi công việc tới pool và không chuyển tiếp lưu lượng của ai khác."
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "Bạn có thể đào Pearl trên HeroMiners với một địa chỉ công khai và không cần tài khoản."
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj là một mạng lưu trữ đám mây phi tập trung, nơi bạn kiếm tiền bằng cách cho thuê dung lượng đĩa chưa dùng. Chạy nút lưu trữ qua Docker và nhận $1.35/TB lưu trữ mỗi tháng cộng $1/TB lưu lượng ra (mức giá từ ngày 1 tháng 9 năm 2026). Thanh toán hằng tháng bằng USDC, một stablecoin đô la Mỹ, trên Ethereum mainnet vào ví do bạn kiểm soát, khi số dư vượt mức tối thiểu dựa trên phí (token STORJ cho đến kỳ thanh toán tháng 9 năm 2026). Cần ít nhất 550GB dung lượng đĩa trống và kết nối internet ổn định. Không cần tài khoản hay đăng ký -- các nút không cần cấp phép từ giữa năm 2025. LƯU Ý (tháng 10 năm 2026): Storj Labs đã nộp đơn theo Chapter 11 vào ngày 26 tháng 7 năm 2026 (US Bankruptcy Court, Northern District of West Virginia, vụ 5:26-bk-00512) để tái cơ cấu khoản nợ cũ. Mạng vẫn chạy và Storj vẫn trả tiền cho các nút đang hoạt động, nhưng thu nhập của nút từ trước ngày nộp đơn bị đóng băng cho đến khi tòa án ra phán quyết. Token STORJ đã giảm khoảng 98% so với đỉnh năm 2021. Binance đã hủy niêm yết nó vào ngày 3 tháng 9 năm 2026, và Coinbase tạm ngưng giao dịch nó vào ngày 28 tháng 9 năm 2026. Một nút mới giữ lại một phần thu nhập trong chín tháng đầu và chỉ được lấp đầy theo nhu cầu của khách hàng, nên khởi chạy một nút lúc này nghĩa là gắn một thời gian hoàn vốn dài với một công ty đang tái cơ cấu và vẫn có thể giải thể.\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "Nút lưu trữ phi tập trung - $1.35/TB lưu trữ + $1/TB lưu lượng ra"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "Địa chỉ ví"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "Địa chỉ bên ngoài"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "Dung lượng cấp phát"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "Thư mục danh tính"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "Thư mục lưu trữ"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "Địa chỉ ví Ethereum để nhận thanh toán USDC (ví dụ 0x1234...abcd). Phải là ví tự lưu ký (MetaMask, Ledger, v.v.) -- không bao giờ dùng địa chỉ sàn giao dịch"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "Địa chỉ email để nhận thông báo dành cho người vận hành"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "Tên máy DDNS kèm cổng (ví dụ mynode.ddns.net:28967) -- rất nên dùng thay cho IP cố định, vì IP cố định sẽ khiến nút mất kết nối vào ngày ISP âm thầm cấp lại IP. Cổng 28967 phải được chuyển tiếp (TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "Dung lượng đĩa tối đa cấp phát (ví dụ 2TB). Dùng ổ cứng cơ (HDD), không dùng SSD"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "Đường dẫn trên máy chủ nơi lưu các tệp danh tính (phải chứa ca.cert, ca.key, identity.cert, identity.key)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "Đường dẫn trên máy chủ, trên ổ cứng cơ (HDD), để lưu dữ liệu Storj. Cần trống ít nhất 550GB"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "Trước lần chạy đầu tiên, hãy khởi tạo cấu hình nút lưu trữ: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "Danh tính của nút. ID của nó gắn với proof-of-work và mất hàng giờ để tạo lại, và không thể tạo lại từ bản sao lưu của bất kỳ thứ gì khác. Mất nó là mất số dư thanh toán đang bị giữ."
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "Dữ liệu khách hàng đã lưu và khoản tiền bị giữ của nút. Mất nó khiến nút bị loại và mất số dư đang bị giữ."
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "Mạng Storj không kết nối ngược lại được tới nút của bạn tại ADDRESS đã công bố, nên các satellite coi nó là ngoại tuyến: dữ liệu mới ngừng đến, thu nhập từ lưu lượng ra đứng yên, và ngoại tuyến kéo dài sẽ dẫn đến bị tạm ngưng. Hãy kiểm tra ADDRESS khớp với IP công khai HIỆN TẠI của bạn (dùng tên máy DDNS, không dùng IP cố định, để việc ISP cấp lại IP không làm nút mất kết nối) và cổng 28967 TCP+UDP được chuyển tiếp tới máy này."
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "$1.35/TB lưu trữ + $1/TB lưu lượng ra + $1/TB kiểm tra/sửa chữa từ ngày 1 tháng 9 năm 2026. Thu nhập tăng theo dữ liệu lưu trữ và tuổi của nút. Trong 9 tháng đầu, 75%, rồi 50%, rồi 25% thu nhập bị giữ lại; một nửa khoản bị giữ được trả lại vào tháng thứ 16 và phần còn lại khi rời mạng đúng quy trình. Cổng 28967 phải được chuyển tiếp."
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "Gấp 4 lần phí giao dịch Ethereum, số dư nhỏ hơn được chuyển sang kỳ sau"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "Hằng tháng"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "Trả hằng tháng bằng USDC trên Ethereum mainnet khi số dư ví đạt ít nhất bốn lần phí giao dịch hiện tại; số dư nhỏ hơn được chuyển sang tháng sau. Token STORJ cho đến kỳ thanh toán tháng 9 năm 2026. Bảng điều khiển ở cổng 14002."
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "Trả hằng tháng bằng USDC trên Ethereum mainnet vào địa chỉ trong WALLET khi số dư vượt mức tối thiểu dựa trên phí. Token STORJ cho đến kỳ thanh toán tháng 9 năm 2026; thanh toán qua zkSync Era đã kết thúc ngày 1 tháng 9 năm 2026."
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "URL bảng điều khiển của nút ở cổng 14002, dùng IP LAN của máy chủ thay vì localhost, ví dụ <b>http://192.168.1.10:14002</b>. Với nhiều nút, hãy liệt kê URL của chúng, phân tách bằng dấu phẩy: CashPilot sẽ cộng chúng lại."
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "Các nút Storj cùng một subnet /24 chia sẻ lượng dữ liệu được phân bổ, làm giảm thu nhập của mỗi nút."
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "5 Mbps tải lên"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "Dung lượng đĩa và băng thông để phục vụ nó."
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "Không. Bạn lưu các mảnh dữ liệu khách hàng đã được mã hóa và mã hóa xóa (erasure coding). Người khác không định tuyến lưu lượng riêng của họ qua IP của bạn."
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "Danh tính nút, địa chỉ ví của bạn, địa chỉ email mà nút yêu cầu để gửi thông báo cho người vận hành, cùng IP và cổng của bạn, vốn phải truy cập được để nút phục vụ dữ liệu."
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "Chủ yếu là vấn đề giới hạn dữ liệu hơn là trách nhiệm pháp lý: một nút liên tục gửi và nhận dữ liệu khách hàng, đó là lưu lượng thật và liên tục trên đường truyền của bạn. Tuy nhiên, khác với proxy hay relay, đây không phải lưu lượng ẩn danh của bên thứ ba bị quy cho bạn là nguồn gốc, nên nó không bị khiếu nại lạm dụng như các loại đó."
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "Không giới hạn số nút, nhưng các nút cùng subnet /24 chia sẻ phần phân bổ, nên nhiều nút trên một kết nối sẽ kiếm ít hơn mỗi nút."
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "CoinDesk đưa tin ngày 27 tháng 7 năm 2026 rằng Storj Labs đã nộp đơn xin bảo hộ phá sản theo Chapter 11."
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "Các khoản thanh toán cho người vận hành nút từ trước ngày nộp đơn đã đi vào quy trình yêu cầu bồi hoàn phá sản."
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "Một nút mới bị giữ 75%, rồi 50%, rồi 25% thu nhập trong chín tháng đầu; một nửa được trả lại vào tháng thứ 16 và phần còn lại chỉ khi rời mạng đúng quy trình."
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "Khách hàng lưu các mảnh tệp đã mã hóa và không ai định tuyến lưu lượng qua IP của bạn, nhưng chúng tôi không tìm thấy nơi Storj nói khách hàng là ai hay được kiểm tra thế nào."
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "Phần mềm nút lưu trữ là mã nguồn mở theo AGPL-3.0."
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Storj phát hành image Docker riêng, storjlabs/storagenode."
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "Không cần tài khoản: một địa chỉ ví và một email để nhận thông báo cho người vận hành."
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "Các nút đang hoạt động vẫn tiếp tục được trả tiền sau khi nộp đơn."
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR là một pool đào Monero không cần tài khoản: máy đào của bạn đăng nhập bằng địa chỉ Monero làm tên người dùng, và pool trả tiền vào địa chỉ đó. CashPilot không chạy máy đào ở đây. Nó đọc số dư mà SupportXMR đang giữ cho địa chỉ của bạn, để bạn thấy máy đào CPU của mình đã kiếm được bao nhiêu bên cạnh các nguồn thu nhập khác. Số dư là đã kiếm được nhưng chưa nhận: pool trả nó khi vượt ngưỡng thanh toán của bạn.\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "Pool đào Monero, theo dõi qua địa chỉ nhận thanh toán của bạn"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR (tự động), 0.01 XMR theo yêu cầu"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "Khi số dư vượt ngưỡng của bạn, hoặc theo yêu cầu"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "SupportXMR trả tiền vào địa chỉ của bạn khi số dư đạt ngưỡng (mặc định 0.1 XMR). Trên website, bạn cũng có thể yêu cầu thanh toán ngay từ 0.01 XMR, với phí 0.001 XMR."
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "Số dư là đã kiếm được nhưng chưa nhận cho đến khi SupportXMR trả vào địa chỉ này. Không thể đọc số dư Monero on-chain nếu không có private view key, thứ mà CashPilot không bao giờ hỏi, nên bạn tự xác nhận từng khoản thanh toán."
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "Địa chỉ nhận thanh toán Monero của bạn: tên người dùng mà máy đào dùng trên SupportXMR, không có phần <b>.workername</b> hay <b>+difficulty</b>. Địa chỉ này công khai và không mở khóa được tiền."
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "Cần một máy đào Monero (XMRig) trỏ tới pool.supportxmr.com"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "điện toán"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "Không. Máy đào của bạn gửi hash tới pool; không ai định tuyến lưu lượng qua kết nối của bạn."
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "Địa chỉ Monero của bạn, tên worker bạn chọn, hashrate và địa chỉ IP của máy đào theo những gì pool thấy."
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "Máy đào giữ một kết nối mở tới pool và dùng rất ít băng thông. Chi phí cần để ý là tiền điện, không phải ISP."
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "Không có tài khoản. Địa chỉ chính là danh tính, và bất kỳ ai cũng có thể xem thống kê của nó trên supportxmr.com."
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "Chỉ trả bằng Monero, với phí pool 0.6% và ngưỡng mặc định 0.1 XMR trước khi thanh toán tự động."
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "CashPilot không chạy máy đào cho SupportXMR: bạn tự trỏ máy đào của mình tới pool, và CashPilot chỉ đọc số dư."
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Teneo Protocol cho phép AI agent truy cập web theo thời gian thực qua một mạng lưới Beacon. Teneo Beacon là ứng dụng riêng của Teneo cho Android, iOS, macOS, Windows và Linux, có bản dòng lệnh cho máy chủ và Raspberry Pi. Nó chia sẻ băng thông chưa dùng của bạn sau khi bạn chấp nhận màn hình đồng ý, và kiếm Teneo Protocol Points cùng Fragments khi đang trực tuyến. Fragments được tính vào các đợt rút thăm theo mùa trả bằng USDC (Beacon Drop). Teneo cho biết Beacon kiếm gấp đôi điểm so với tiện ích trình duyệt cũ. Mỗi kết nối internet chỉ một Beacon kiếm tiền. Các thiết bị khác trên cùng kết nối ở chế độ chờ. Hãy đăng ký trong Expedition Hub bằng liên kết giới thiệu hoặc mã PSA3BHPJ, rồi đăng nhập vào Beacon.\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "Ứng dụng băng thông DePIN (Beacon) - Fragments cho các đợt rút thăm USDC theo mùa, +100 Fragments với liên kết giới thiệu"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "Kiếm Teneo Points và Fragments. Fragments được tính vào các đợt rút thăm USDC theo mùa, nên mỗi mùa trả giải thưởng, không phải theo mức giá cố định. Teneo cho biết Beacon kiếm gấp đôi điểm so với tiện ích trình duyệt. Nhận boost mỗi 8 giờ để có tới 3x Fragments; bỏ lỡ một lượt sẽ giảm hệ số nhân."
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "Rút thăm theo mùa (Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "Giải thưởng Beacon Drop được trả bằng USDC vào ví bạn liên kết trong Expedition Hub. Hub hiển thị số ngày bạn còn để liên kết ví; giải thưởng không có ví được liên kết kịp thời sẽ bị mất."
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "Hãy liên kết ví trong Expedition Hub trước khi giải thưởng của mùa được trả; Hub hủy giải thưởng nếu ví không được liên kết kịp thời."
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "8% Fragments của mỗi người bạn được giới thiệu và 2% Fragments của những người họ giới thiệu, khi người bạn đăng ký trong vòng 7 ngày và kiếm được 480 Fragments"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "+100 Fragments khi đăng ký, và thêm +150 khi bạn đạt 480 Fragments"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "Mỗi kết nối internet chỉ một Beacon kiếm tiền. Máy ở trung tâm dữ liệu chỉ kiếm được trên các nhà cung cấp máy chủ mà Teneo đã cho phép, với một nửa Fragments và không có điểm hay thưởng giới thiệu. Kết nối VPN không bao giờ kiếm được."
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "Fragments của Beacon chỉ trả USDC dưới dạng giải thưởng trong các đợt rút thăm theo mùa, nên chạy nó không mang lại một khoản cố định."
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Teneo cho biết điểm sẽ được gộp vào $AGENTIC, một token thưởng không chuyển nhượng được, chứ không phải token $TENEO."
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "Tính đến tháng 11 năm 2026, chưa có ngày ra mắt, phân bổ hay quy trình nhận $TENEO nào được xác nhận, sau khi mục tiêu trước đó là quý 2 năm 2026 đã trôi qua."
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "CashPilot không chạy Teneo: bạn cài ứng dụng Beacon riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Teneo cho biết lưu lượng đến từ khách hàng doanh nghiệp đã được thẩm định và chặn các địa chỉ riêng cùng các cổng dễ bị lạm dụng, nhưng không nói họ thẩm định các khách hàng đó thế nào."
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network là một mạng phân phối video và điện toán AI phi tập trung đã có tên tuổi (từ năm 2018). Người dùng chạy Edge Node chia sẻ băng thông, lưu trữ và sức mạnh tính toán. Có các quan hệ đối tác nội dung lớn. Kiếm token TFUEL.\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "CDN phi tập trung + điện toán AI - thưởng TFUEL, dự án lâu năm"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "Chỉ có ứng dụng desktop. Thu nhập phụ thuộc vào tài nguyên và vị trí. Có đối tác lớn, được niêm yết trên mọi sàn giao dịch."
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "Liên tục"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "CashPilot không chạy Theta Edge: bạn dùng ứng dụng desktop riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network là một nền tảng DePIN chia sẻ địa chỉ IP, dung lượng lưu trữ và băng thông của bạn để đổi lấy phần thưởng token TNT. Có trên Windows, Mac và Android. Các nút đóng góp cho một CDN và lớp lưu trữ phi tập trung. Thu nhập thông thường từ $5-30/tháng tùy tài nguyên chia sẻ và vị trí địa lý.\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "DePIN chia sẻ IP, lưu trữ, băng thông - $5-30/tháng"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "Chia sẻ IP, lưu trữ và băng thông. Thu nhập phụ thuộc vào tài nguyên đóng góp và khu vực. Cấp phát nhiều dung lượng lưu trữ hơn sẽ được thưởng nhiều hơn."
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "Theo epoch"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "Chính trang trợ giúp của Titan nói một nút đang chạy không đảm bảo có thu nhập: không được giao tác vụ thì không kiếm được gì, và phần thưởng là token TNT."
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "CashPilot không chạy Titan: bạn dùng ứng dụng hoặc tiện ích riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Traffmonetizer giúp bạn kiếm tiền từ lưu lượng internet bằng cách chia sẻ băng thông với các doanh nghiệp đã được xác minh. Một trong số ít dịch vụ chia sẻ băng thông chạy tốt trên IP VPS và trung tâm dữ liệu ngoài kết nối dân cư. Dùng xác thực đơn giản bằng token truyền qua tham số dòng lệnh. Hỗ trợ kiến trúc ARM cho Raspberry Pi và các thiết bị tương tự.\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "Chia sẻ băng thông - chạy được trên VPS, xác thực bằng token"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "Token"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "Tên thiết bị"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "Đăng nhập tại <a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a>, nhấn F12 → Application → Local Storage → nhấp <code>https://app.traffmonetizer.io</code> → sao chép giá trị <code>authToken</code> (khoảng 54 ký tự: chữ số, một dấu <code>|</code>, rồi chữ cái và chữ số)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "Tên hiển thị trên bảng điều khiển để quản lý thiết bị"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "IP VPS và trung tâm dữ liệu kiếm ít hơn IP dân cư. Vị trí ở Mỹ/EU kiếm nhiều hơn. Hỗ trợ nhiều IP qua mạng Docker."
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "Tối thiểu $10. Không còn PayPal. Trước tiên hãy lưu một phương thức thanh toán trong hồ sơ: USDT trên Solana hoặc TON (phí thấp nhất), Arbitrum (phí thấp) hoặc Tron TRC20 (phí mạng cao), hoặc chuyển khoản ngân hàng từ $1.000. Địa chỉ đầu tiên bạn lưu có hiệu lực ngay; đổi địa chỉ sau này cần xác nhận qua email. Bảng điều khiển có thể yêu cầu một liên hệ nhắn tin (WhatsApp, Telegram hoặc Skype) trước lần rút đầu tiên. Mỗi yêu cầu chỉ trả số đô la chẵn và phần xu còn lại trong số dư."
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "USDT trên chuỗi đã lưu trong cài đặt thanh toán của hồ sơ (Solana, TON, Arbitrum hoặc Tron), hoặc chuyển khoản ngân hàng. Địa chỉ nằm trong cài đặt của Traffmonetizer, không nằm trong container."
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "Đăng nhập tại <a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a>, nhấn F12 → Application → Local Storage → giá trị <b>authToken</b> (khoảng 54 ký tự: chữ số, một dấu <code>|</code>, rồi chữ cái và chữ số)."
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "10% mỗi khoản thanh toán họ yêu cầu"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "Điều khoản dịch vụ của Traffmonetizer yêu cầu IP dân cư, nhưng thực tế các nút VPS vẫn được chấp nhận."
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "Trustpilot chấm 1.9; người đánh giá từ 2023 đến tháng 11 năm 2026 cho biết khoản thanh toán chờ hàng tuần, hoặc được đánh dấu hoàn tất mà không có giao dịch tương ứng."
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "Cũng những người đánh giá đó cho biết live chat và hỗ trợ qua email không trả lời, có khi hàng tuần."
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "Chỉ crypto hoặc chuyển khoản ngân hàng từ $1.000; PayPal không còn, và mỗi yêu cầu chỉ trả số đô la chẵn."
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "Điều khoản của Traffmonetizer yêu cầu IP dân cư, nên máy chủ trên kết nối máy chủ thuê nằm ngoài phạm vi điều khoản."
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "Bốn người đánh giá trên Trustpilot từ 2023 đến 2025 cho biết thu nhập rất chậm, chẳng hạn một xu mỗi ngày trên bốn thiết bị, hoặc gần hai năm mới đạt $10."
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "Một khoản thanh toán chỉ cần một địa chỉ crypto đã lưu và được xác nhận qua email; bảng điều khiển có thể yêu cầu một liên hệ nhắn tin."
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Traffmonetizer phát hành image Docker riêng, traffmonetizer/cli_v2."
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "Đào bằng CPU và nhận thanh toán bằng đồng coin bạn chọn, như SHIB, DOGE hoặc XMR. CashPilot chạy XMRig trên pool RandomX của unMineable, và unMineable quy đổi số Monero mà CPU của bạn đào được sang đồng coin của bạn. Nó trả tiền vào địa chỉ công khai của bạn khi số dư đạt ngưỡng thanh toán của đồng coin. Mỗi worker mà CashPilot triển khai đều mang mã giới thiệu unMineable của CashPilot, giúp giảm phí nền tảng của bạn từ 1% xuống 0.75%. Tiền điện có thể cao hơn số bạn kiếm được."
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "Đào bằng CPU và nhận thanh toán bằng đồng coin bạn chọn"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "Coin nhận thanh toán"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "Địa chỉ nhận thanh toán"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "Tên worker"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "Số luồng CPU tối đa (%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "Chế độ RandomX"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "Mã của một đồng coin mà unMineable trả, như SHIB, DOGE hoặc XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "Địa chỉ công khai của bạn cho đồng coin đó. Không hỗ trợ các đồng coin cần memo hoặc tag."
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "Ước tính gộp trước tiền điện, trả bằng đồng coin của bạn theo tỷ giá quy đổi của unMineable. Ngày 2026-11-25, 1 kH/s RandomX trị giá khoảng $1 mỗi tháng. Một CPU máy bàn chạy một nửa số luồng có thể tiêu thụ thêm 30 đến 50 W. Hãy kiểm tra mức tiêu thụ thực tế và giá điện để xem có lãi không."
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "unMineable đặt theo từng đồng coin (0.03 XMR vào ngày 2026-11-26)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "Khi đạt ngưỡng thanh toán của đồng coin"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "unMineable trả tiền vào địa chỉ của bạn khi số dư đạt ngưỡng thanh toán của đồng coin. Ngưỡng khác nhau theo đồng coin và mạng; CashPilot đọc ngưỡng mà unMineable báo cho địa chỉ của bạn."
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "Số dư là đã kiếm được nhưng chưa nhận cho đến khi unMineable trả vào địa chỉ này. Chuỗi phụ thuộc vào đồng coin bạn chọn."
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "Cùng địa chỉ nhận thanh toán và mã coin mà bạn đã dùng khi triển khai máy đào, ví dụ <b>XMR</b>. Chỉ nhập địa chỉ, không kèm coin, tên worker hay mã giới thiệu. Địa chỉ này công khai và không mở khóa được tiền."
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "0.25% phần thưởng đào của mỗi thợ đào được giới thiệu"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "Phí nền tảng giảm từ 1% xuống 0.75%"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "Máy này báo cáo là kết nối máy chủ thuê. Hãy kiểm tra điều khoản của nhà cung cấp trước khi đào. Một số nhà cung cấp, bao gồm Hetzner Cloud, cấm việc này. Hãy kiểm tra chi phí điện thực tế trước khi dựa vào ước tính lợi nhuận."
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "unMineable thu phí nền tảng 1%. CashPilot thêm mã giới thiệu của mình (#awk6-j1z0) sau mỗi tên worker, giúp giảm phí của bạn xuống 0.75%. Sau đó unMineable trả cho người duy trì CashPilot 0.25% phần thưởng đào của bạn; bạn giữ 99.25%. Mỗi đồng coin có ngưỡng thanh toán riêng, ví dụ 0.03 XMR."
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "điện toán"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "Không. Máy đào gửi công việc tới pool của unMineable."
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "Địa chỉ nhận thanh toán, coin, tên worker, hashrate và địa chỉ IP của bạn được gửi tới unMineable."
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "Một số mạng và trình phân giải DNS chặn kết nối tới pool đào."
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "Không cần tài khoản. Địa chỉ và coin chính là danh tính, và bất kỳ ai cũng có thể xem thống kê của chúng trên unmineable.com."
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "unMineable giữ phí nền tảng 0.75% khi có mã giới thiệu và chỉ trả từ ngưỡng của mỗi đồng coin."
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "Một số nhà cung cấp máy chủ cấm đào tiền mã hóa."
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "Tiền điện tăng thêm có thể cao hơn số coin kiếm được."
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "Thống kê của địa chỉ, kể cả số dư, công khai với bất kỳ ai biết địa chỉ đó."
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "Máy đào gửi hash tới pool và không chuyển tiếp lưu lượng của ai khác."
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "Bạn có thể đào vào một địa chỉ công khai bằng đồng coin bạn chọn mà không cần tạo tài khoản."
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock là một nền tảng DePIN (Mạng Hạ tầng Vật lý Phi tập trung) cho phép bạn kiếm tiền mã hóa bằng cách chia sẻ kết nối internet. Là một phần của hệ sinh thái Web3 rộng lớn hơn. Có image Docker cộng đồng nhưng không có image chính thức. Tiện ích trình duyệt là giao diện chính.\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "Chia sẻ internet DePIN - thanh toán crypto, chủ yếu qua tiện ích trình duyệt"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "Thu nhập dựa trên crypto/token. Không có image Docker chính thức — tiện ích trình duyệt là client chính."
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "Token UPT, rút về ví Solana từ 250 UPT, với xác thực hai yếu tố được bật. Có áp dụng phí rút."
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "Trung tâm trợ giúp của UpRock cho biết tiền rút là token UPT về ví Solana, với mức tối thiểu 250 UPT."
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "Phần thưởng là token UPT; người đánh giá và một bài đánh giá độc lập nói giá trị của chúng rất thấp."
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "CashPilot không chạy UpRock: bạn dùng ứng dụng hoặc tiện ích riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork là một mạng VPN và chia sẻ băng thông phi tập trung. Bạn kiếm tiền bằng cách cung cấp băng thông với tư cách nhà cung cấp cộng đồng. Tệp thực thi của nhà cung cấp tự xác thực bằng email và mật khẩu tài khoản của bạn (lệnh con auth-provide) và lưu JWT phiên nhận được vào volume dữ liệu. Image Docker chính thức từ BringYour, Inc.\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "VPN/băng thông phi tập trung - xác thực email+mật khẩu, phiên JWT trong volume"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "Mật khẩu"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "Email tài khoản URnetwork của bạn (thông tin đăng nhập bạn dùng tại <a href=\"https://ur.io\" target=\"_blank\">ur.io</a>). Tài khoản tạo bằng đăng nhập Google/Apple cần đặt mật khẩu trước. Cần tài khoản? Đăng ký tại <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a>"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "Mật khẩu tài khoản URnetwork của bạn (không có khoảng trắng). Được dùng cho bước đăng nhập auth-provide của nhà cung cấp; sau đó phiên được lưu trong volume dữ liệu."
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "Chạy được trên VPS và kết nối dân cư. Trả bằng SN25α (Bittensor subnet 25) theo mỗi epoch hằng tuần từ ngày 2026-10-06. Hỗ trợ chế độ proxy cho thiết lập nhiều IP."
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "Theo epoch"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "Đặt một coldkey Bittensor trên ur.io/app/account/earnings (ký bằng Talisman, TAO.com hoặc một ví WalletConnect), rồi nhận thưởng cho từng epoch đã chốt. Mỗi lần nhận thưởng trả gas bằng TAO từ một khóa gas EVM. CÁC EPOCH KHÔNG ĐƯỢC NHẬN SẼ HẾT HẠN, và các khoản thanh toán USDC cũ đã bị hủy khi không có ví nào được liên kết trong vòng 30 ngày."
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "3 GiB dữ liệu UR miễn phí mỗi ngày cho mỗi người bạn, tối đa 20 người (là dữ liệu, không phải tiền)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "3 GiB dữ liệu UR miễn phí mỗi ngày khi bạn dùng ít nhất 10 MiB qua ứng dụng trong 2 ngày trong vòng 90 ngày kể từ khi tham gia; nếu không, việc giới thiệu sẽ kết thúc"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "Các epoch không được nhận sẽ hết hạn, và các khoản thanh toán USDC cũ đã bị hủy với những mạng không liên kết ví trong vòng 30 ngày."
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "Từ tháng 10 năm 2026, phần thưởng được trả bằng SN25α, một token subnet của Bittensor, và mỗi lần nhận thưởng tốn gas bằng TAO."
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "URnetwork trước đây là BringYour; whitepaper đã lưu trữ của họ vẫn mang tên cũ."
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "URnetwork công bố mã nguồn client nhà cung cấp của họ."
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "URnetwork phát hành image Docker riêng, bringyour/community-provider, và chạy được trên kết nối VPS lẫn dân cư."
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "Nhận thưởng chỉ cần một ví Bittensor do bạn kiểm soát."
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai là một chợ cloud GPU, nơi bạn cho các nhà nghiên cứu và nhà phát triển AI/ML thuê GPU NVIDIA của mình. Nền tảng gốc Docker, nơi bạn tự đặt giá theo giờ. Một RTX 3090 thường kiếm $0.20-0.40/giờ khi được thuê. Cần GPU NVIDIA với driver mới và kết nối internet ổn định. Doanh thu phụ thuộc nhiều vào mẫu GPU, chiến lược giá và nhu cầu thị trường.\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "Chợ GPU - tự đặt giá, RTX 3090 ~$0.20-0.40/giờ"
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "Khóa API"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "Khóa API chủ máy Vast.ai lấy từ bảng điều khiển"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "RTX 3090 ~$0.20-0.40/giờ, RTX 4090 ~$0.40-0.80/giờ khi được thuê. Mức sử dụng thay đổi. Cần GPU NVIDIA, máy chủ Linux, Docker và nvidia-container-toolkit. Tự đặt giá."
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "Hằng tuần (thứ Sáu)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "Thu nhập tích lũy trong số dư Vast.ai. Rút qua Wise, PayPal hoặc Stripe."
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "3% số tiền người thuê được giới thiệu chi tiêu, trong suốt thời gian tồn tại tài khoản của họ, dưới dạng tín dụng giới thiệu; tối đa 75% có thể rút ra từ một tài khoản giới thiệu riêng"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "Chủ máy chỉ kiếm tiền khi được thuê, và số liệu của chính Vast cho GPU phổ thông phụ thuộc vào loại thuê và điểm độ tin cậy."
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "CashPilot không chạy Vast.ai: bạn cài phần mềm chủ máy của Vast trên máy GPU của chính bạn, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Vast xây dựng việc cho thuê dựa trên Docker trên máy chủ Linux."
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Vast cho biết mức giá chủ máy đặt chính là mức họ nhận được, không bị trừ phí."
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "Thanh toán qua Wise, PayPal hoặc Stripe từ mức tối thiểu $20, lập hóa đơn hằng tuần; số dư nhỏ hơn được chuyển sang tuần sau."
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter là một nền tảng chia sẻ băng thông có trên Windows, Mac, Linux và Android. Họ tuyên bố trả tới $1/GB băng thông chia sẻ với ngưỡng thanh toán tối thiểu $20. Nền tảng hoạt động tương tự các ứng dụng chia sẻ băng thông truyền thống, định tuyến lưu lượng hợp pháp qua các kết nối dân cư.\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "Chia sẻ băng thông - tuyên bố tới $1/GB, thanh toán tối thiểu $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "Tuyên bố tới $1/GB nhưng thu nhập thực tế thấp hơn. Thanh toán tối thiểu $20. Thu nhập thay đổi nhiều theo vị trí và nhu cầu."
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "Theo yêu cầu"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "Wipter không có bảng điều khiển web. Hãy mở ứng dụng Wipter trên máy tính hoặc điện thoại, đăng nhập, và gửi yêu cầu thanh toán ở đó khi số dư đạt $20. Wipter chỉ trả bằng USDT trên BNB Smart Chain (BEP20), vào ví bạn đặt trong mục Payments của ứng dụng; không có lựa chọn PayPal."
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "10% thu nhập lưu lượng của họ khi họ đạt mức thanh toán tối thiểu, áp dụng cho mọi người bạn bạn giới thiệu"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "Thưởng đăng ký $5"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "CashPilot không chạy Wipter: bạn dùng ứng dụng máy tính hoặc điện thoại riêng của nhà cung cấp, nên CashPilot không thể triển khai hay cập nhật nó cho bạn. Điều khoản của nó chưa được kiểm tra đối với container."
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "Đào Monero bằng CPU. CashPilot chạy XMRig, và pool bạn chọn trả Monero vào địa chỉ nhận thanh toán công khai của bạn. XMRig dùng 1% thời gian băm để ủng hộ các nhà phát triển. Tiền điện có thể cao hơn số XMR bạn kiếm được."
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "Đào Monero bằng CPU với pool bạn chọn"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "Địa chỉ Monero"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "Pool"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "Tên worker"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "Số luồng CPU tối đa (%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "Chế độ RandomX"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "Ước tính gộp trước tiền điện. Ngày 2026-11-25, 1 kH/s trị giá khoảng $1 mỗi tháng theo giá XMR và độ khó mạng quan sát được. Một CPU máy bàn chạy một nửa số luồng có thể tiêu thụ thêm 30 đến 50 W. Hãy kiểm tra mức tiêu thụ thực tế và giá điện để xem có lãi không."
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR (MoneroOcean, sau khi bạn hạ ngưỡng)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "Khi đạt ngưỡng của pool"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "Pool trả tiền vào địa chỉ Monero của bạn khi số dư đạt ngưỡng của bạn. Pool giữ số dư cho đến khi trả cho bạn."
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "Máy này báo cáo là kết nối máy chủ thuê. Hãy kiểm tra điều khoản của nhà cung cấp trước khi đào. Một số nhà cung cấp, bao gồm Hetzner Cloud, cấm việc này. Hãy kiểm tra chi phí điện thực tế trước khi dựa vào ước tính lợi nhuận."
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "MoneroOcean, pool mặc định, thu phí đào 0%. Ngưỡng thanh toán mặc định là 0.3 XMR, và bạn có thể hạ xuống 0.003 XMR. Các khoản thanh toán dưới 4 XMR có thể tốn tới 0.0004 XMR. Các pool khác tự đặt mức phí và ngưỡng."
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "điện toán"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "Không. Máy đào gửi công việc tới các pool đào."
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "Địa chỉ Monero, tên worker và địa chỉ IP của bạn được gửi tới pool."
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "Một số mạng và trình phân giải DNS chặn kết nối tới pool đào."
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "Hầu hết các pool Monero nhận diện bạn qua địa chỉ nhận thanh toán công khai."
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "Một khoản thanh toán cần đủ XMR để đạt ngưỡng của pool."
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "Một số nhà cung cấp máy chủ cấm đào tiền mã hóa."
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "Tiền điện tăng thêm có thể cao hơn số XMR kiếm được."
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "Máy đào gửi hash tới các pool và không chuyển tiếp lưu lượng của ai khác."
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "Máy đào là mã nguồn mở và image ghim một bản phát hành upstream đã ký."
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "Bạn có thể đào bằng một địa chỉ Monero công khai mà không cần xưng danh tính."
+  source: "752cbb728aac"

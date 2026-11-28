@@ -1,0 +1,2514 @@
+# Arabic translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/ar.yml --restamp '<key>'
+2miners-etc.description:
+  text: "تتبّع رصيد Ethereum Classic غير المدفوع الذي يحتفظ به 2Miners لعنوان الدفع العام الخاص بك بعملة ETC. شغّل برنامج التعدين الخاص بك ووجّهه إلى المجمّع. يقرأ CashPilot الرصيد ويطلب منك تأكيد الدفعات عندما ينخفض الرصيد.\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "مجمّع تعدين Ethereum Classic، يُتتبَّع عبر عنوان الدفع الخاص بك"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC (قابل للتعديل)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "يتحقق المجمّع من حدّ الدفع الخاص بك كل ساعتين"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "يدفع 2Miners إلى عنوانك تلقائيًا بمجرد وصولك إلى الحد الذي اخترته. أدنى حد لدفعات ETC هو 0.1 ETC.\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "يتراكم الرصيد غير المدفوع لدى 2Miners. أما رصيد المحفظة فهو قراءة منفصلة من شبكة Ethereum Classic. تحقّق من المبلغ الذي وصل إلى محفظتك قبل تأكيد أي دفعة في CashPilot.\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "أدخل عنوان الدفع العام لـ Ethereum Classic الذي يستخدمه برنامج التعدين على 2Miners، ويبدأ بـ <b>0x</b>. لا تضف أي اسم للعامل.\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "يحتاج إلى برنامج تعدين ETCHash موجَّه إلى 2Miners"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "الحوسبة"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "لا. يرسل برنامج التعدين أعمال التعدين إلى المجمّع."
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "يستخدم المجمّع عنوان الدفع الخاص بك وأسماء العمّال التي تختارها وعنوان IP لجهاز التعدين."
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "يمكن لأي شخص عرض الإحصاءات من خلال عنوان الدفع. يطلب المجمّع تأكيد عنوان IP للعامل لتغيير حدّ الدفع."
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "يفرض المجمّع رسومًا بنسبة 1% ويحتجز الدفعات حتى تصل إلى الحد الذي اخترته."
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol (المعروف سابقًا باسم ATOR) شبكة خصوصية لامركزية تعتمد التوجيه البصلي (onion routing). يشغّل مشغّلو العقد عقد ترحيل ويكسبون رموز ANYONE مقابل عرض النطاق الذي يقدّمونه. يمكن وصفه بأنه «Tor مع حوافز». يشغّله CashPilot من صورة حاوية خاصة به، مبنية من حزمة Debian الموقّعة للمشروع، لمعماريتي amd64 وarm64. يتم الإعداد عبر ملف anonrc يُربط داخل الحاوية (Nickname وContactInfo وORPort وغيرها). لا تكسب عقدة الترحيل شيئًا حتى يُقفَل لها 100 ANYONE لمدة 180 يومًا على الأقل، وتتم المطالبة بالمكافآت بالتوقيع في محفظتك. كما تُدرج عقدة الترحيل عنوان IP العام الخاص بك في دليل عقد الترحيل في الشبكة، ما قد يضرّ بسمعة عنوان IP التي تدفع مقابلها تطبيقات عرض النطاق المنزلية.\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "توجيه بصلي لامركزي - عقد ترحيل Tor مع حوافز"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "مفتاح هوية ed25519 لعقدة الترحيل. حذفه يُنهي سمعة عقدة الترحيل ويُعيد سجل أرباحها إلى الصفر."
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "لا يدفع إلا إذا أُقفل 100 ANYONE لكل عقدة ترحيل لمدة 180 يومًا على الأقل ووُقّعت مطالبة بالمكافأة في محفظتك. من دون هذا الرهن لا تكسب عقدة الترحيل شيئًا. ومعه تعتمد الأرباح على عرض النطاق المقدَّم ومدة التشغيل."
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "حسب الحقبة (epoch)"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "يُضبط في ContactInfo داخل anonrc، مسبوقًا بـ '@anon:0x...'."
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "بصمات عقد الترحيل مفصولة بفواصل. لا تعرضها أي لوحة تحكم على الإنترنت. لعقدة الترحيل التي يشغّلها CashPilot، شغّل <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> على الجهاز المضيف الذي يشغّلها. أما عقدة الترحيل المادية، فافتح لوحة Relay Control Panel الخاصة بها على <b>http://relayup.local</b> واقرأ Fingerprint في صفحة Home.\n"
+  source: "ffa5be0d4953"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "عرض النطاق، بصفته عقدة ترحيل في شبكة Anyone (نسخة متفرعة من Tor)."
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "نعم. تنقل حركة مرور أشخاص آخرين. ويعتمد كون عنوان IP الخاص بك هو المحطة الأخيرة على ما إذا كانت عقدة الترحيل مُعدّة كعقدة خروج."
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "مفتاح الهوية العام لعقدة الترحيل وعنوان IP والمنفذ الخاصّان بك وإحصاءات مدة التشغيل، وكلها تُنشر في دليل الشبكة عن قصد. إذا ضبطت ContactInfo في ملف anonrc فإنه يُنشر هناك أيضًا ويُفهرس علنًا وبشكل دائم — وغالبًا ما يكون عنوان بريد إلكتروني، لذا اتركه فارغًا إلا إذا أردته علنيًا."
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "حقيقي. تُنسب حركة مرور الترحيل إلى اتصالك. وتجذب عقد الخروج تحديدًا شكاوى إساءة الاستخدام؛ ويحظرها كثير من مزوّدي الإنترنت المنزلي."
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "لا يوجد حساب للتسجيل فيه، لذا لا يوجد ما يُقيَّد لكل حساب. ومع ذلك تحتاج لكي تكسب إلى محفظة Ethereum فيها 100 ANYONE مقفلة لكل عقدة ترحيل لمدة 180 يومًا على الأقل، ويحتاج CashPilot إلى بصمات عقد الترحيل لقراءة المكافآت. لا ينشر المشروع حدًا لعدد عقد الترحيل لكل عنوان IP، ولا يعلن الكتالوج عن حد."
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "لا تكسب عقدة الترحيل شيئًا ما لم يُقفَل لها 100 ANYONE لمدة 180 يومًا على الأقل، وتُوقَّع كل مطالبة بالمكافأة في محفظتك."
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "تنقل حركة مرور أشخاص آخرين بحكم تصميمها، دون أي تحقق من هويتهم؛ وتجذب عقد الخروج شكاوى إساءة الاستخدام."
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "تُنشر هوية عقدة الترحيل وعنوان IP ومدة التشغيل في دليل الشبكة، وأي ContactInfo تضبطه يصبح علنيًا إلى الأبد."
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "لا يوجد حساب للتسجيل فيه. تحتاج عقدة الترحيل إلى محفظة فقط، دون أي تحقق من الهوية."
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "برنامج الترحيل نسخة متفرعة منشورة من Tor، بموجب ترخيص Tor."
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "يبني CashPilot صورة الحاوية الخاصة به من برنامج الترحيل الذي نشره Anyone، ولا يحتاج إلى حساب."
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping منصة لامركزية لمراقبة الشبكات تدفع لك مقابل تشغيل عقدة. تجري عقدتك مراقبة المواقع واختبارات زمن الاستجابة وفحوصات جودة الشبكة لصالح عملاء Bitping. تعمل على الاتصالات المنزلية واتصالات VPS على حد سواء. تسجّل صورة حاوية Docker الدخول باستخدام متغيري البيئة BITPING_EMAIL وBITPING_PASSWORD عند أول تشغيل (\"Attempting login with environment variables\" في سجلها)، ثم تحفظ الجلسة في وحدة التخزين المربوطة حتى لا تعيد عمليات إعادة التشغيل المصادقة.\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "مشاركة عرض النطاق - مراقبة شبكات لامركزية، تعمل على VPS"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "البريد الإلكتروني"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "كلمة المرور"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "البريد الإلكتروني لحسابك في Bitping (نفس بيانات الدخول إلى <a href='https://app.bitping.com' target='_blank'>app.bitping.com</a>)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "كلمة مرور حسابك في Bitping. تُستخدم مرة واحدة لإنشاء جلسة العقدة، التي تُحفظ بعد ذلك في وحدة تخزين البيانات."
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "تعتمد الأرباح على جودة الشبكة والطلب على المراقبة من موقعك. تُقبل عقد VPS."
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "أرباح العقد موجودة على nodes.bitping.com؛ أما app.bitping.com فهي لوحة تحكم عملاء API. السحب بعملة SOL فقط: عندما يتجاوز الرصيد غير المدفوع $0.05، اكتب عنوان Solana في الطلب، ويُعالج خلال 24 ساعة. تحتاج محفظة Solana الجديدة أو الفارغة إلى نحو 0.001 SOL فيها أولًا، لتغطية الحد الأدنى للإيجار في الشبكة."
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "بعملة Solana فقط حاليًا، ويُكتب العنوان وقت السحب بدلًا من حفظه."
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "استخدم البريد الإلكتروني وكلمة المرور لحسابك في Bitping (نفس بيانات <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)."
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "اسحب رصيدك في Bitping"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "قد يصادر Bitping الأرباح التي تبقى دون مطالبة لأكثر من 12 شهرًا، بعد إشعار بالبريد الإلكتروني قبل 30 يومًا."
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "اطلب سحبًا بعملة SOL على nodes.bitping.com واكتب عنوان Solana الخاص بك في الطلب."
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "تُدفع عمليات السحب بعملة Solana (SOL)، إلى عنوان تكتبه في كل طلب."
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "تذكر صفحة المساعدة في Bitping أن السحب إلى محفظة Solana جديدة وفارغة قد يفشل حتى تموّل تلك المحفظة بقليل من SOL بنفسك."
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "تذكر صفحة المساعدة في Bitping أن الخوادم وحاويات Docker مدعومة."
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "لا يحتاج السحب إلا إلى عنوان Solana يُكتب في الطلب."
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit خدمة لمشاركة عرض النطاق تدفع عبر PayPal وStripe. لا توجد صورة حاوية Docker رسمية؛ تطبيق سطح المكتب لنظام Windows وتطبيق Android هما العميلان. الخدمة موجودة على bytebenefit.io -- فقد تُرك النطاق القديم bytebenefit.com وهو معروض الآن في سوق للنطاقات، ولهذا السبب وُسمت الخدمة هنا ذات مرة بأنها متوقفة.\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "مشاركة عرض النطاق - دفعات عبر PayPal/Stripe، تطبيق سطح مكتب/Android"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "لا توجد صورة حاوية Docker. تطبيقات سطح المكتب لنظام Windows وAndroid فقط."
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "20% من أرباح حركة مرور الإحالات"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "مكافأة ترحيب بقيمة $1 (10,000 Coins)"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "تذكر صفحة التطبيق على Google Play أن حركة مرورك تخدم طلبات استخبارات الويب لعملاء Infatica، دون أن توضح من هم أو كيف يُتحقق منهم."
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "غادر تطبيق Android متجر Google Play في أبريل 2026 بعد 17 شهرًا."
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "لا يشغّل CashPilot خدمة ByteBenefit: أنت تستخدم تطبيق المزوّد نفسه، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "يتيح لك Bytelixir كسب دخل سلبي بمشاركة عرض النطاق غير المستخدم في اتصالك بالإنترنت. يدعم Windows وAndroid فقط — تنص الأسئلة الشائعة الرسمية على أنه لا توجد خطة لعميل Linux أو Docker، وأن iOS غير مدعوم، وأن macOS غير متاح. تعتمد الأرباح كثيرًا على الموقع. توجد لوحة تحكم على الويب في dash.bytelixir.com للمتابعة. لا توجد صورة حاوية Docker.\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "مشاركة عرض النطاق - Windows وAndroid فقط"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "ملف تعريف الجلسة"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "ملف تعريف Remember Web"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "رمز XSRF"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "سجّل الدخول في <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a>، واضغط F12 ← Application ← وسّع <b>Cookies</b> في الشريط الجانبي الأيسر ← انقر العنصر الفرعي <code>https://dash.bytelixir.com</code> ← في قائمة ملفات تعريف الارتباط على اليمين، ابحث عن <code>bytelixir_session</code> ← انسخ قيمته Value (رمز JWT طويل يبدأ بـ eyJ)"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "في المكان نفسه (Cookies ← <code>https://dash.bytelixir.com</code>) ← ابحث عن ملف تعريف الارتباط المسمى <code>remember_web_...</code> ← انسخ قيمته Value (اختياري، يطيل عمر الجلسة)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "في المكان نفسه ← ابحث عن <code>XSRF-TOKEN</code> ← انسخ قيمته Value (اختياري)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "تختلف الأرباح حسب الموقع ($2-50 شهريًا). لا توجد صورة حاوية Docker. يلزم تطبيق سطح المكتب أو تطبيق Android."
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "بالعملات المشفرة فقط. يعتمد الحد الأدنى على العملة: USDT $5، وUSDC $5، وTON $8، وLTC $10، وETH $40، وBTC $250. تكتب العنوان في كل طلب. تُعالج الطلبات في ساعات العمل، خلال 24 ساعة."
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "يحتفظ Bytelixir بالرصيد؛ ويُكتب عنوان المحفظة في كل طلب دفع، ولا يُحفظ أبدًا في الحاوية."
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "سجّل الدخول في <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> <b>مع تحديد Remember Me</b>، واضغط F12 ← Application ← وسّع <b>Cookies</b> في الشريط الجانبي الأيسر ← انقر <code>https://dash.bytelixir.com</code>، ثم انسخ ثلاث قيم: <b>bytelixir_session</b> و<b>remember_web_…</b> (الطويل الذي يبدأ بهذه البادئة) و<b>XSRF-TOKEN</b>. تنتهي صلاحية ملف تعريف الجلسة وحده بعد نحو ساعتين من نسخه، فيتوقف الجمع بعد ظهر اليوم نفسه؛ أما ملف remember_web فيدوم سنة، وهو ما يُبقي الجمع يعمل."
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "50% من أرباحهم مدى الحياة"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "مكافأة ترحيب بقيمة $1"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "بالعملات المشفرة فقط، والحد الأدنى يعتمد على العملة، من $5 لـ USDT إلى $250 لـ Bitcoin."
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "لا يشغّل CashPilot خدمة Bytelixir: أنت تستخدم تطبيق المزوّد نفسه، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "يقيّمه Trustpilot بـ 4.6 من 283 مراجعة، يمتدح معظمها الدفعات بالعملات المشفرة؛ ويشير القليل منها إلى دفعات لم تصل."
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "لا تحتاج الدفعة إلا إلى عنوان عملة مشفرة يُكتب في الطلب."
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai سوق لوحدات GPU من نظير إلى نظير. تعرض جهاز Linux مزوّدًا بوحدات NVIDIA GPU، وتحدد أسعارك الفورية وأسعار الطلب بنفسك، ويشغّل المستأجرون حاويات Docker الخاصة بهم عليه. لا يُدفع لك إلا عن الدقائق التي يكون فيها مؤجَّرًا، بعملات CLORE أو BTC أو USDT أو USDC. تتطلب الاستضافة جهاز x86_64 يعمل بنظام Ubuntu 22.04 أو أحدث (أو HiveOS)، وتعريف NVIDIA يعمل، وسرعة 100 Mbps على الأقل في الرفع والتنزيل. وحدات AMD GPU غير مدعومة.\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "سوق GPU - أجِّر وحدات NVIDIA GPU، والدفع بـ CLORE أو BTC أو عملات مستقرة بالدولار"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "لا يُدفع إلا عن الدقائق المؤجَّرة، بالسعر الذي تحدده. الحد الأعلى للنطاق، $490، هو السقف الذي تذكره Clore نفسها لبطاقة RTX 4090 واحدة معروضة بالدقيقة ('up to ~$490/month')؛ البطاقات الأصغر تكسب أقل، والبطاقة الخاملة لا تكسب شيئًا. تحتفظ Clore بنسبة 5% (عند الطلب) أو 1.25% (فوري) من كل تأجير، بالإضافة إلى 15% عندما يدفع المستأجر بـ BTC أو USDT أو USDC بدلًا من CLORE."
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "اسحب من Account > Billing إلى محفظتك الخاصة: CLORE (ERC-20، الحد الأدنى 200، الرسوم نحو $0.50)، أو BTC (الحد الأدنى 0.0001، الرسوم 0.00005 BTC)، أو USDT/USDC على Ethereum أو BNB Chain (الحد الأدنى $10، الرسوم $1)."
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "تحتفظ Clore بالرصيد (CLORE وBTC ورصيد واحد بالدولار لـ USDT/USDC) حتى تسحبه. تُختار السلسلة لكل عملية سحب: Ethereum لـ CLORE، وBitcoin لـ BTC، وEthereum أو BNB Chain لـ USDT/USDC."
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "15% (المستوى القياسي) من رسوم المنصة التي يدفعها المضيفون والمستأجرون الذين تحيلهم، على كل تأجير؛ الرمز لا تنتهي صلاحيته أبدًا؛ يُدفع بعملة التأجير (CLORE أو BTC أو USD)"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "100 Mbps رفعًا وتنزيلًا"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "وقت حوسبة GPU على جهازك."
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "نعم. يشغّل المستأجرون حاويات Docker الخاصة بهم على جهازك، وتخرج حركة مرورهم من اتصالك؛ وتُعاد توجيه منافذ SSH والتطبيقات إلى الإنترنت."
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "تغطي سياسة الخصوصية لدى Clore بيانات الحساب وعنوان IP الخاص بك مع موقع تقريبي؛ ووثائق الهوية فقط إذا طلبت Clore التحقق من الهوية (KYC)."
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "يجب أن تكون المنافذ الواردة قابلة للوصول من الإنترنت (22 و8080 و3000-4000 افتراضيًا)، وتعمل أحمال عمل الغرباء على خطك. ويذكر دليل الشبكة الخاص بـ Clore نفسها أن بعض مزوّدي الإنترنت يحظرون الاستضافة."
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "سن 18 عامًا أو أكثر، وألا تكون في دولة خاضعة للعقوبات. قد تعلّق Clore أي حساب أو تغلقه وفق تقديرها المطلق، وقد يكلّفك الاستخدام المحظور أموالك."
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "لا تذكر الشروط ولا سياسة الخصوصية اسم أي كيان قانوني، وتترك الشروط تحديد الولاية القضائية الحاكمة لنسخة لاحقة."
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "قد تعلّق Clore أي حساب أو تغلقه وفق تقديرها المطلق، وقد يؤدي الاستخدام المحظور إلى مصادرة الأموال."
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "الدفعات بالعملات المشفرة فقط (CLORE أو BTC أو USDT أو USDC)، وتأخذ Clore نسبة إضافية قدرها 15% من التأجير الذي يدفعه المستأجر بـ BTC أو USDT أو USDC، ما لم يُقفل المضيف CLORE لخفضها."
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "لا يُدفع للمضيف إلا عن الدقائق المؤجَّرة، والرقم الذي تذكره Clore لبطاقة RTX 4090 هو سقف (\"up to ~$490/month\") لبطاقة واحدة."
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "لا يحتاج الاستخدام الأساسي إلى KYC، لكن قد تطلب Clore التحقق من الهوية لعمليات السحب الكبيرة أو في حالات الامتثال."
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "يشغّل المستأجرون أي صورة حاوية Docker عامة على جهازك. تسرد الشروط الاستخدامات المحظورة (البرمجيات الخبيثة وهجمات DDoS ومواد الاعتداء الجنسي على الأطفال وغيرها)، لكننا لم نجد أي وصف لكيفية التحقق من المستأجرين."
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "لا يشغّل CashPilot خدمة Clore.ai: أنت تثبّت برنامج الاستضافة الخاص بـ Clore على جهاز GPU الخاص بك (Ubuntu 22.04 أو أحدث، أو HiveOS)، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك."
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "تحتفظ Clore بنسبة 5% من التأجير عند الطلب (1.25% في الفوري) عندما يدفع المستأجر بـ CLORE، دون رسوم إضافية."
+  source: "699adf0a2179"
+dawn.description:
+  text: "تشغّل DAWN شبكة مدقِّقين تتحقق من عرض النطاق والتغطية للبنية التحتية للذكاء الاصطناعي الممولة عبر بروتوكول DAWN. تشارك إضافة المتصفح DAWN Validator في عمليات التحقق هذه من عرض النطاق والتغطية، وتكسب مكافآت DAWN أثناء تشغيلها. لا قيمة نقدية مستقرة لهذه المكافآت بعد. أنشئ الحساب في الإضافة وأدخل رمز الإحالة 2QLQV97F عندما يُطلب منك.\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "مدقِّق DePIN - إضافة متصفح تكسب نقاط DAWN"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "تكسب نقاط Dawn Points قبل إطلاق الرمز. القيمة الفعلية تعتمد على سعر الرمز مستقبلًا. الجهاز المادي يكسب أكثر من إضافة المتصفح."
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "توزيع رموز مجاني (airdrop) (يُعلن لاحقًا)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "الإضافة تعمل لكنها غير مكتملة. أُعلن عن جهاز Black Box. تحقّق لاحقًا."
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "تكسب الإضافة نقاطًا؛ ولم يُؤكَّد أي توزيع للرموز على مشغّلي العقد حتى أكتوبر 2026."
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "لا قيمة مستقرة للنقاط حتى يُطلق رمز ويُعلن عن طريقة تحويلها."
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "لا يشغّل CashPilot خدمة Dawn: أنت تستخدم إضافة المتصفح الخاصة بالمزوّد، لذا لا يستطيع CashPilot نشرها أو تحديثها نيابة عنك. لم تُراجَع شروطها بشأن الحاويات."
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network مشروع VPN لامركزي وبنية تحتية للويب 3. يتطلب أساسًا أجهزة Deeper Connect الخاصة بالشركة. وMoken منصة تعدين/تخزين رهني (staking) مرتبطة به. ليس برنامجًا فقط.\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "VPN لامركزي - يتطلب جهازًا خاصًا بالشركة"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "يتطلب جهاز Deeper Connect ($200-500). منصة Moken للتعدين/الرهن (staking). ليس برنامجًا فقط."
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "مستمر"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "عمولة على بيع الجهاز"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "خصم 5% على جهاز Deeper Connect باستخدام القسيمة SERGIO"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "مكافآت التعدين بعملة DPR وتعتمد على درجة ائتمان تنمو ببطء أو برهن DPR."
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "لا يشغّل CashPilot خدمة Deeper Network: أنت تستخدم جهاز الموجّه الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "يتيح لك EarnApp من Bright Data بيع عرض النطاق غير المستخدم مقابل دخل سلبي. Bright Data أكبر شبكة بروكسي في العالم، وتشغّل جمع البيانات لشركات Fortune 500. يشغّله CashPilot من صورة حاوية خاصة به، تنزّل إصدار EarnApp المثبَّت من شبكة CDN التابعة لـ Bright Data عند أول تشغيل، وتتحقق من sha256 الخاص به، وتشغّله في الوضع الخفيف (lite) بمعرّف UUID فقط.\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "مشاركة عرض النطاق - مدعوم من Bright Data"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "معرّف UUID للعقدة"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "معرّف عقدة EarnApp الخاصة بك: sdk-node- متبوعًا بـ 32 حرفًا ست عشريًا صغيرًا، كما يطبعه الأمر 'earnapp showid'. بعد النشر، اربطه مرة واحدة بفتح https://earnapp.com/r/ متبوعًا بهذا UUID وأنت مسجّل الدخول في EarnApp؛ العقدة غير المربوطة تكسب، لكن لا يصل شيء إلى رصيدك"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "يفشل EarnApp مرارًا في الوصول إلى خوادمه ويعيد التشغيل، لذا يكسب القليل أو لا شيء. أعد تشغيل هذه النسخة؛ وإذا استمر ذلك، فتحقق من اتصال الإنترنت في هذا الجهاز."
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "افتح هذا الرابط وأنت مسجّل الدخول في EarnApp لإضافة العقدة إلى حسابك. وإلى أن تفعل ذلك، تكسب العقدة لكن لا يصل شيء إلى رصيدك."
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "يعتمد كثيرًا على الموقع. عناوين IP في الولايات المتحدة وأوروبا تكسب أكثر. تزداد الأرباح مع زيادة عرض النطاق المستهلك."
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "عند الطلب (الاسترداد التلقائي متاح: PayPal بحد أدنى $10، وWise بحد أدنى $10، وAmazon بحد أدنى $50)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "فعّل الاسترداد التلقائي مرة واحدة، وسيدفع EarnApp من تلقاء نفسه كلما بلغ الرصيد الحد الأدنى لطريقة الدفع: PayPal $10، وWise $10، وAmazon $50. تصل دفعات PayPal من Bright Data Ltd. في أكتوبر 2026 وصلت دفعة PayPal أقل بنحو 2% من الرصيد المسترد."
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "يحتفظ EarnApp بالرصيد؛ ويُسترد عبر Amazon/Wise/PayPal."
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "سجّل الدخول في <a href='https://earnapp.com' target='_blank'>earnapp.com</a>، واضغط F12 ← Application ← Cookies، وانسخ قيمة <b>oauth-refresh-token</b>."
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "10% من أرباحهم مدى الحياة، تُدفع إضافةً إلى أرباحهم"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "يذكر مركز المساعدة في EarnApp أن تثبيته في حاويات Docker أو الأجهزة الافتراضية أو خدمات الاستضافة أو الخوادم المنزلية محظور تمامًا، وهذه هي الطريقة التي يشغّله بها CashPilot."
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "ويذكر مقال المساعدة نفسه أن الحساب الذي يُكتشف أنه يعمل بهذه الطريقة يُنهى دون إشعار وتُلغى دفعاته المعلّقة."
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "وصلت دفعتنا عبر PayPal في أكتوبر 2026، أقل بنحو 2% من الرصيد المسترد."
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "حد أدنى قدره $10 لـ PayPal وWise، مع استرداد تلقائي يدفع من تلقاء نفسه."
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "ينتمي EarnApp إلى Bright Data، وتصل دفعاته عبر PayPal من Bright Data Ltd.، وهي شركة معروفة بالاسم."
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "يدفع لك Earn.fm مقابل مشاركة عرض النطاق في اتصالك بالإنترنت. يستخدم مُجمِّع الأرباح المصادقة بالبريد الإلكتروني وكلمة المرور عبر Supabase. صورة حاوية Docker خفيفة ونشر مباشر (يستخدم عميل Docker رمز UUID منفصلًا).\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "مشاركة عرض النطاق - مصادقة بالبريد الإلكتروني/كلمة المرور، عميل خفيف"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "مفتاح API"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "سجّل الدخول في <a href=\"https://app.earn.fm\">app.earn.fm</a> ← انقر أيقونة ملفك الشخصي (أعلى اليمين) ← Account Settings ← انسخ API Key (بتنسيق UUID)"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "منصة جديدة نسبيًا. تختلف الأرباح حسب الموقع وتوفر عرض النطاق."
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "الحد الأدنى $15. الطرق: USDT على BEP20 أو Polygon (رسوم $1) أو TRC20 (رسوم $3)، أو PayPal، أو بطاقات هدايا Amazon أو Starbucks بدءًا من $15، أو حوالة مصرفية بدءًا من $1,000 مع خصم رسوم التحويل. قبل الدفعة الأولى تملأ ملف الفوترة (الاسم القانوني والعنوان)، الذي يُستخدم لإيصالات الدفع."
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "يحتفظ Earn.fm بالرصيد؛ ويُسحب عند الطلب."
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "استخدم البريد الإلكتروني وكلمة المرور لحسابك في Earn.fm (نفس بيانات الدخول إلى <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a>)."
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "10% من أرباحهم مدى الحياة"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "رصيد ابتدائي بقيمة $5"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "حد أدنى قدره $15، ورسوم من $1 إلى $3 على USDT، والحوالة المصرفية متاحة فقط بدءًا من $1,000."
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "قبل الدفعة الأولى تملأ ملف الفوترة باسمك القانوني وعنوانك."
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "يذكر مراجعون في 2025 أن الدعم عبر البريد الإلكتروني وDiscord لا يرد؛ ويشير Trustpilot إلى أن Earn.fm لم ترد على المراجعات السلبية."
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "تنشر Earn.fm صورة حاوية Docker خاصة بها، earnfm/earnfm-client."
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher منصة لتبادل الزيارات تكسب فيها أرصدة بزيارة المواقع عبر شريط تصفح آلي (surfbar). تعمل كإضافة متصفح. ليست خدمة تقليدية لمشاركة عرض النطاق — فهي تولّد الزيارات بتصفح المواقع تلقائيًا.\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "شريط تصفح لتبادل الزيارات - إضافة متصفح"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "الأرباح بنقاط BTP قابلة للتحويل إلى EUR. إضافة متصفح فقط."
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "الدفع باليورو عبر PayPal أو تحويل مصرفي."
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "لا يشغّل CashPilot خدمة eBesucher: إنها إضافة متصفح، لذا لا يستطيع CashPilot نشرها أو تحديثها نيابة عنك. لم تُراجَع شروطها بشأن الحاويات."
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "دفعات بدءًا من 2 يورو عبر PayPal أو SEPA، أسبوعيًا على الأقل، دون رسوم."
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "تعمل eBesucher منذ عام 2002."
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "تذكر بيانات الناشر (imprint) اسم المشغّل، TurboAd GmbH، المسجّلة في Berlin-Charlottenburg (HRB 160730 B)."
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux بنية تحتية للحوسبة موزعة عالميًا. يرهن مشغّلو العقد رموز FLUX ويقدّمون موارد الخوادم. ثلاثة مستويات: Cumulus (1,000 FLUX)، وNimbus (12,500 FLUX)، وStratus (40,000 FLUX). تتوفر صور حاويات Docker رسمية.\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "حوسبة لامركزية - تتطلب رهن رموز FLUX"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "يتطلب رهن 1,000 FLUX أو أكثر (نحو $50-500 حسب السعر). المستويات الأعلى تحتاج إلى ضمان أكبر لكنها تكسب أكثر."
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "مكافآت الكتل"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "يحتاج أصغر مستوى للعقد إلى 1,000 FLUX مقفلة كضمان."
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "تنخفض مكافأة الكتلة بنسبة 10% كل عام، ووجد دليل صادر في 2026 أن مكافآت المستوى الصغير ضعيفة بالدولار."
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "لا يشغّل CashPilot خدمة Flux: أنت تستخدم برنامج العقدة الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "برنامج Flux الخفي (daemon) مفتوح المصدر بموجب ترخيص MIT."
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network سوق حوسبة لامركزي تشارك فيه موارد CPU وGPU مقابل رموز GLM. يشغّل المزوّدون برنامج Yagna الذي يدير تنفيذ أحمال العمل في بيئات معزولة. من أقدم مشاريع الحوسبة اللامركزية (تأسس عام 2016). يدعم مهام CPU وعرض الرسوميات بـ GPU والحوسبة العامة. الدفعات عبر Polygon L2.\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "سوق حوسبة لامركزي - رموز GLM عبر برنامج Yagna"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "تعتمد الأرباح على العتاد والتسعير والطلب على المهام. العقد التي تعتمد على CPU فقط تكسب أقل. عقد GPU تكسب أكثر لكنها تتطلب NVIDIA. شغّل برنامج المزوّد Yagna (وليس صورة حاوية Docker). الدفعات على Polygon برموز GLM."
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "عند إكمال كل مهمة"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "تُكسب رموز GLM. اضبط محفظة الدفع في إعداد المزوّد."
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "لا يشغّل CashPilot خدمة Golem: أنت تثبّت برنامج المزوّد بنفسك، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. يوثّق Golem تشغيل المزوّد في صورة حاوية Docker خاصة به."
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "برنامج المزوّد، yagna، مفتوح المصدر بموجب ترخيص GPL-3.0."
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "لا حساب: تضبط محفظة الدفع في إعداد المزوّد."
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "تعمل الشبكة منذ نحو عشر سنوات."
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "تذكر سياسة الخصوصية في Golem اسم المشغّل، Golem Factory GmbH في Zug، سويسرا."
+  source: "bae79b651923"
+grass.description:
+  text: "Grass شبكة لامركزية تتيح لك بيع عرض النطاق غير المستخدم لبيانات تدريب الذكاء الاصطناعي. تعمل كإضافة متصفح وتطبيق سطح مكتب، وتوجّه طلبات جمع بيانات الويب عبر اتصالك لبناء مجموعات بيانات منظمة. بأكثر من 8.5M مستخدم، تُعد من أكبر شبكات DePIN لعرض النطاق. تكسب رموز GRASS على سلسلة Solana.\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "مشاركة عرض النطاق ضمن DePIN لبيانات الذكاء الاصطناعي - تكسب رموز GRASS"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "رمز الوصول"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "سجّل الدخول في <a href=\"https://app.grass.io\">app.grass.io</a>، واضغط F12 ← Application ← Local Storage ← انقر <code>https://app.grass.io</code> ← انسخ قيمة <code>token</code>"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "تكسب نقاط Grass Points القابلة للتحويل إلى رموز GRASS عبر التوزيعات المجانية (airdrops). القيمة الفعلية بالدولار تعتمد على سعر الرمز. يلزم إضافة المتصفح أو تطبيق سطح المكتب."
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "توزيع مجاني (airdrop) حسب الحقبة"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "تأتي المكافآت كتوزيعات دورية يُطالب بها في لوحة تحكم Grass. يُدفع توزيع Stage 2 (النشاط من أكتوبر 2024 إلى يونيو 2026) بعملة USDC: طالب به على app.grass.io/dashboard في موعد أقصاه 22 يناير 2027، أو قبل ذلك إذا طولب بكل الحصص أولًا. تحتفظ Grass بالمكافآت التي لم يُطالب بها."
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "تتراكم نقاط (POINTS)؛ ويُطالب بـ GRASS من لوحة تحكم Grass خلال التوزيعات المجانية الدورية."
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "سجّل الدخول في <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>، واضغط F12 ← Application ← Local Storage، وانسخ قيمة <b>accessToken</b>."
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "20% من نقاط مدة التشغيل للإحالات المباشرة، و10% في المستوى الثاني، و5% في المستوى الثالث"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "طالب بـ USDC الخاصة بك من Grass Stage 2"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "تحتفظ Grass بكل حصة من Stage 2 لم يُطالب بها في موعد أقصاه 22 يناير 2027، وقد تُغلق النافذة قبل ذلك بمجرد المطالبة بكل الحصص."
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "سجّل الدخول في app.grass.io بالحساب الذي استخدمته في Stage 2، وفعّل Grass Wallet، وافتح علامة التبويب Allocation وأكّد. طالب فقط على app.grass.io. ليس لديك نقاط من Stage 2؟ اختر «لا يعنيني»."
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "لا تأتي المكافآت إلا عبر مواسم التوزيع المجاني. أفاد مشغّلو عقد قدامى بأن تقديرات الموسم 2 تراوحت بين بضعة دولارات وعشرات قليلة من الدولارات."
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "مكافآت الموسم 2 التي لا يُطالب بها في موعد أقصاه 22 يناير 2027 تضيع نهائيًا."
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "أثار التوزيع المجاني الأول موجة انتقادات بسبب صغر المكافآت لكل نقطة، إذ توزعت على أكثر من مليوني مستخدم."
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "لا يشغّل CashPilot خدمة Grass: أنت تستخدم تطبيق المزوّد أو إضافته، لذا لا يستطيع CashPilot نشرها أو تحديثها نيابة عنك. لم تُراجَع شروطها بشأن الحاويات."
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "وصل التوزيع المجاني الأول إلى ما يقرب من 1.5 مليون عنوان طالب بحصته."
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium شبكة لاسلكية لامركزية راسخة. بدأت بنقاط اتصال LoRaWAN، وتوسعت الآن إلى 5G. تتطلب عتادًا مخصصًا ($500+). تكسب رموز HNT/MOBILE. انخفض العائد على الاستثمار كثيرًا - عادةً $4-8 شهريًا.\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "شبكة لاسلكية لامركزية - تتطلب عتادًا، رموز HNT"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "تتطلب شراء عتاد بقيمة $500+. انخفض العائد على الاستثمار كثيرًا. توجد عملية موافقة للمشغّلين الجدد."
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "حسب الحقبة (epoch)"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "ألغى HIP 149 مكافآت Proof-of-Coverage في 6 يوليو 2026؛ ولا تكسب نقاط اتصال IoT الآن إلا مقابل البيانات التي تنقلها، وأكثر من 114,000 منها لم تنقل أي بيانات."
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "تغيّر نموذج المكافآت في Helium بالتصويت عدة مرات، وتنحّى رئيسها التنفيذي، وانخفض HNT بنحو 96%."
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "لا يشغّل CashPilot خدمة Helium: أنت تستخدم عتاد نقطة الاتصال الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "برنامج بوابة نقطة الاتصال مفتوح المصدر بموجب ترخيص Apache-2.0."
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "تتبّع رصيد Kaspa غير المدفوع الذي يحتفظ به HeroMiners لعنوان الدفع العام الخاص بك. شغّل برنامج تعدين Kaspa الخاص بك ووجّهه إلى المجمّع. يقرأ CashPilot رصيد المجمّع ويطلب منك تأكيد الدفعات عندما ينخفض الرصيد.\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "مجمّع تعدين Kaspa، يُتتبَّع عبر عنوان الدفع الخاص بك"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS (قابل للتعديل)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "يتحقق المجمّع من حدّ الدفع الخاص بك كل ساعة"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "يدفع HeroMiners إلى عنوانك تلقائيًا بمجرد وصولك إلى الحد الذي اخترته. أدنى حد هو 1 KAS.\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "يتراكم الرصيد لدى HeroMiners. تحقّق من المبلغ الذي وصل إلى محفظتك قبل تأكيد أي دفعة في CashPilot.\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "أدخل عنوان الدفع العام الكامل لـ Kaspa الذي يستخدمه برنامج التعدين على HeroMiners. ضمّن البادئة <b>kaspa:</b> ولا تضف اسم العامل.\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "يحتاج إلى برنامج تعدين Kaspa موجَّه إلى HeroMiners"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "الحوسبة"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "لا. يرسل برنامج التعدين أعمال التعدين إلى المجمّع."
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "تعرض الإحصاءات العامة للمجمّع كل عنوان دفع ونشاط التعدين الخاص به."
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "يستخدم المجمّع عنوان الدفع الخاص بك بدلًا من الحساب."
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "يفرض المجمّع رسومًا بنسبة 0.9% ويحتجز الدفعات حتى تصل إلى الحد الذي اخترته."
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "شارك عرض النطاق غير المستخدم في اتصالك بالإنترنت واكسب دخلًا سلبيًا. يوجّه Honeygain حركة مرور استخبارات الويب وتوصيل المحتوى وأبحاث السوق عبر اتصالك. من أكثر منصات مشاركة عرض النطاق رسوخًا، بأكثر من 12M مستخدم وأكثر من مليون دفعة مكتملة.\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "مشاركة عرض النطاق - المنصة الأكثر رسوخًا"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "البريد الإلكتروني"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "كلمة المرور"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "اسم الجهاز"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "البريد الإلكتروني لحسابك في Honeygain"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "كلمة مرور حسابك في Honeygain"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "الاسم المعروض في لوحة تحكم Honeygain"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "تختلف حسب الموقع. عناوين IP في الولايات المتحدة وأوروبا تكسب أكثر. الحد الأقصى 10 أجهزة لكل حساب."
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "الحد الأدنى $20 (20,000 رصيد). خياران: PayPal عبر Tipalti، برسوم نحو 15%، أو أرصدة JumpTask دون رسوم، تُدفع إلى محفظة JumpTask. يحتاج الطلب إلى رمز من 6 أرقام يُرسل بالبريد الإلكتروني. تبقى أول دفعة عبر PayPal في حالة \"waiting for details\" حتى تسجّل في Tipalti من الرابط الذي يرسلونه بالبريد الإلكتروني. لا يعمل هذا الرابط إلا مرة واحدة، لذا افتحه عندما تستطيع الإنهاء في جلسة واحدة وهاتفك في متناول يدك: بعد تعيين كلمة مرور، يطلب منك Tipalti تأكيد رقم هاتف محمول عبر SMS (تنتهي صلاحية الرموز خلال دقائق)، ثم يطلب اسمك وعنوانك وبلدك وتاريخ ميلادك وعنوان PayPal الخاص بك. يفرض Tipalti رسومًا قدرها $2.02 على كل دفعة؛ اختر USD لتجنّب رسوم تحويل العملة البالغة 1.9-3%. تصل الدفعة خلال يومي عمل. يُخصم الرصيد من حسابك فور طلبك، حتى وإن كانت الدفعة تنتظر Tipalti. يرسل كل تسجيل دخول لاحق إلى Tipalti رمز SMS جديدًا ما لم تحدد خيار تذكّر الجهاز لمدة 30 يومًا. في أكتوبر 2026 لم يطلب Tipalti نموذجًا ضريبيًا من مستفيد في إسبانيا."
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "يحتفظ Honeygain بالرصيد؛ ويُسحب عند الطلب."
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "استخدم البريد الإلكتروني وكلمة المرور لحسابك في Honeygain (نفس بيانات <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>)."
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "حتى 25% من أرباح كل صديق محال في وضع Honeygain"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "مكافأة تسجيل بقيمة $3 مع هذا الرابط"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "اسحب رصيدك في Honeygain"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "أبقِ جهازًا يشارك في Honeygain، أو اطلب دفعة"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "تبقى الأرباح صالحة لمدة 24 شهرًا بعد بلوغها الحد الأدنى البالغ $20. وبعد ذلك قد يشطب Honeygain ما لم يُدفع."
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "إذا لم يُستخدم التطبيق لأكثر من 6 أشهر، يعدّ Honeygain الرصيد غير المدفوع منتهي الصلاحية، حتى لو كان أقل من $20."
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "أبقِ جهازًا يشارك، أو اطلب دفعة. في وضع JumpTask يكون ثبات الرصيد أمرًا طبيعيًا، لذا اختر «لا يعنيني»."
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "تسمح الشروط لـ Honeygain بشطب الأرباح التي بلغت حد $20 ولم تُدفع خلال 24 شهرًا، وبعدّ الأرباح منتهية الصلاحية بعد ستة أشهر دون استخدام."
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "الحد الأدنى $20، وتمر دفعات PayPal عبر Tipalti، الذي يفرض $2.02 على كل دفعة."
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "تسمح الشروط لـ Honeygain بتعليق الحساب وحجب الأرباح أو شطبها إذا رأى أنها تراكمت بذرائع كاذبة."
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "قبل أول دفعة عبر PayPal، يطلب منك Tipalti تأكيد رقم هاتف محمول عبر SMS وتقديم اسمك وعنوانك وتاريخ ميلادك."
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "تذكر الشروط أن العملاء من الشركات يستخدمون حركة المرور لجمع بيانات الويب المتاحة للعموم، لكنها لا تسمّي أي عميل، ولا يمكنك معرفة أي عميل يستخدم اتصالك."
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "تقول ردود Honeygain نفسها على المراجعات التي تشكو من ضعف الأرباح إن الأرباح تعتمد على الطلب على الشبكة والموقع؛ ويذكر المراجعون أنهم احتاجوا وقتًا طويلًا جدًا للوصول إلى الحد الأدنى البالغ $20."
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "تنشر Honeygain صورة حاوية Docker خاصة بها، honeygain/honeygain."
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "تذكر الشروط اسم المشغّل، Honeygain UAB، المسجّلة في Vilnius، ليتوانيا."
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "تذكر صفحة الصحافة في Honeygain أنها تأسست عام 2019."
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net شبكة GPU لامركزية لأحمال عمل الذكاء الاصطناعي/تعلّم الآلة. تجمع وحدات GPU الخاملة من المستهلكين ومراكز البيانات. تتطلب NVIDIA GPU بذاكرة VRAM لا تقل عن 8GB لتحقيق أرباح مجدية. عمليات النشر القائمة على الحاويات مدعومة.\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "شبكة GPU لامركزية للذكاء الاصطناعي - تتطلب NVIDIA GPU"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "تتطلب NVIDIA GPU بذاكرة VRAM لا تقل عن 8GB. تُذكر لبطاقة RTX 4090 أرباح بقيمة $500-1000 شهريًا (وهي على الأرجح أقل في الواقع)."
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "حسب الحقبة (epoch)"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "كانت مكافآت المورّدين تُدفع من إصدار الرموز بغض النظر عن المهام المدفوعة، ويذكر مالكو وحدات GPU أنها تبقى خاملة معظم الوقت."
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "المكافآت برمز IO، وتغيّر نموذج الدفع في 2026 إلى محرك مربوط بالدولار."
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "في أبريل 2024 حاولت نحو 1.8 مليون وحدة GPU مزيفة الانضمام عبر رمز مصادقة مسرَّب، ثم تنحّى الرئيس التنفيذي لاحقًا قبل إطلاق الرمز."
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "لا يشغّل CashPilot خدمة io.net: أنت تستخدم برنامج العامل الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "يتيح لك IPRoyal Pawns الكسب بمشاركة عرض النطاق غير المستخدم. IPRoyal مزوّد بروكسي راسخ، وPawns هو ذراعه لمشاركة عرض النطاق المنزلي. تقبل صورة حاوية Docker الخاصة بسطر الأوامر بيانات الاعتماد عبر خيارات سطر الأوامر. يحصل المستخدم الجديد الذي يسجّل عبر رابط إحالة على $1 في كل دفعة من دفعاته الثلاث الأولى، بحد أقصى $3. يجب أن تتم كل دفعة ضمن نافذة زمنية من أسبوع إلى ثلاثة أسابيع، تُحدَّد حسب الموقع. تبدأ النافذة عند التسجيل وتبدأ من جديد بعد كل دفعة. إذا أُغلقت النافذة أولًا، تضيع المكافآت المتبقية.\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "مشاركة عرض النطاق - مكافأة حتى $3 على دفعاتك الأولى"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "البريد الإلكتروني"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "كلمة المرور"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "اسم الجهاز"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "معرّف الجهاز"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "البريد الإلكتروني لحسابك في IPRoyal Pawns (يُمرَّر عبر الخيار -email)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "كلمة مرور حسابك في IPRoyal Pawns (تُمرَّر عبر الخيار -password)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "الاسم المعروض في لوحة تحكم Pawns (يُمرَّر عبر الخيار -device-name)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "معرّف فريد للجهاز (يُمرَّر عبر الخيار -device-id)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "عطّل IPRoyal Pawns هذا الحساب."
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "يرى Pawns جهازًا آخر نشطًا على عنوان IP هذا، ولا يدفع إلا لجهاز واحد لكل عنوان IP، لذا تعمل هذه النسخة لكنها لا تشارك شيئًا ولا تكسب شيئًا. أوقف أي تطبيق Pawns آخر على عنوان IP هذا، سواء على جهاز آخر أو حاسوب أو هاتف. وإن لم يوجد أي تطبيق آخر، فانتظر حتى يُسقط Pawns الجهاز القديم، أو اطلب من دعم Pawns تحريره."
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "تعتمد الأرباح على الموقع واستخدام عرض النطاق. عناوين IP المنزلية في الولايات المتحدة وأوروبا تكسب أكثر."
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "الحد الأدنى $5. اختر بلدك أولًا؛ فطرق الدفع تعتمد عليه. من إسبانيا (أكتوبر 2026): PayPal بنسبة 4% وحد أدنى للرسوم قدره $0.25، ويُدفع عبر Tremendous، التي ترسل رابطًا بالبريد الإلكتروني تُدخل فيه اسمك وعنوان PayPal؛ وUSDT (BEP20 وERC20 وTRC20) أو USDC (BEP20 وERC20) برسوم شبكة قدرها $1؛ وBitcoin بحد أدنى للرسوم قدره $2؛ وبطاقات الهدايا دون رسوم. تحتاج الدفعة الأولى إلى تحقق لمرة واحدة من رقم هاتفك عبر SMS: يفتحه زر Withdraw، ويُدخل الرقم مع رمز البلد. بعد ذلك تطلب كل دفعة رمزًا يُرسل إلى البريد الإلكتروني لحسابك، وتُراجَع لمدة تصل إلى 72 ساعة قبل إرسالها."
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "يحتفظ IPRoyal Pawns بالرصيد؛ ويُسحب عند الطلب."
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "استخدم البريد الإلكتروني وكلمة المرور لحسابك في IPRoyal Pawns (نفس بيانات <a href='https://pawns.app' target='_blank'>pawns.app</a>)."
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "$1 في كل دفعة من دفعاتهم الثلاث الأولى، بحد أقصى $3، إذا تمت كل منها ضمن نافذتها البالغة 1-3 أسابيع"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "$1 في كل دفعة من دفعاتك الثلاث الأولى، بحد أقصى $3؛ وإذا فاتتك نافذة 1-3 أسابيع تنتهي صلاحية البقية"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "تذكر الشروط أن الحساب قد يُحظر دون إشعار مسبق بسبب إساءة استخدام شروط السحب أو تعدد الحسابات، وقد لا تُدفع أرباحه حينئذ."
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "تذكر الشروط أن Pawns لا يسمح بأي خوادم أو شبكات VPN أو خدمات بروكسي لمشاركة حركة المرور، ولا يسمح إلا بجهاز واحد لكل عنوان IP."
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "يكلّف PayPal نسبة 4% (لا تقل عن $0.25) عبر Tremendous، وتُراجَع كل دفعة لمدة تصل إلى 72 ساعة."
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "تحتاج الدفعة الأولى إلى تحقق من رقم هاتفك عبر SMS، وتحتاج كل دفعة إلى رمز يُرسل بالبريد الإلكتروني."
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "تذكر سياسة الخصوصية اسم المشغّل، Pawns.App Ltd (الشركة رقم 16043795 في إنجلترا وويلز)، التي يُظهر سجل Companies House أنها تأسست في 28 أكتوبر 2024، أي قبل أقل من ثلاث سنوات."
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "تذكر الشروط أن Pawns وعملاءها من الشركات يوجّهون حركة المرور عبر جهازك، وأنك لا تستطيع معرفة أي عميل يستخدمه."
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "حد أدنى قدره $5، مع بطاقات هدايا دون رسوم."
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "عدّن Pearl باستخدام KRig على NVIDIA GPU واحدة. تحوّل Kryptex المكافآت إلى Bitcoin وتحتفظ بالرصيد في حسابك حتى تطلب السحب."
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "عدّن Pearl على NVIDIA GPU واحصل على رصيد في حسابك بعملة Bitcoin"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "البريد الإلكتروني لحساب Kryptex"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "اسم العامل"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "البريد الإلكتروني الموثَّق في حسابك على Kryptex."
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "امنح كل جهاز اسمًا مميزًا في حسابك على Kryptex."
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "0.00001 BTC عبر Lightning (تختلف الطرق الأخرى)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "تحوّل Kryptex مكافآت Pearl إلى BTC وتحتفظ بالرصيد في حسابك. اطلب السحب على Kryptex. لكل طريقة حدها الأدنى ورسومها. الحد الأدنى لـ Bitcoin Lightning هو 0.00001 BTC."
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "تحتفظ Kryptex بعملة Bitcoin المحوَّلة في حسابك حتى تسحبها."
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "20% من دخل مجمّع Kryptex من المستخدمين المحالين"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64، وNVIDIA GPU من جيل Volta (sm_70) أو أحدث، وNVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "يُبلغ هذا الجهاز عن اتصال استضافة. راجع شروط مزوّد الاستضافة قبل التعدين. بعض المزوّدين، ومنهم Hetzner Cloud، يحظرونه. تحقّق من تكاليف الكهرباء الفعلية قبل الاعتماد على أي تقدير للربح."
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "يفرض KRig رسوم تعدين بنسبة 0% على Kryptex Pool. وتذكر Kryptex رسوم مجمّع منفصلة بنسبة 3% لـ Pearl PPS+. تختلف رسوم السحب حسب الطريقة."
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "الحوسبة"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "لا. يرسل KRig أعمال التعدين إلى Kryptex Pool."
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "ترى Kryptex البريد الإلكتروني لحسابك واسم العامل ومعدل التجزئة (hashrate) وعنوان IP."
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "بعض الشبكات وخوادم DNS تحظر الاتصالات بمجمّعات التعدين."
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "وثّق البريد الإلكتروني لحسابك على Kryptex قبل التعدين إليه."
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "يمكن لـ Kryptex تعليق الحسابات غير النشطة بعد ستة أشهر وحذفها بعد سنة."
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "تختلف الحدود الدنيا للسحب ورسومه حسب الطريقة."
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "يسمح ترخيص KRig بتنزيل الإصدار وتشغيله من برامج التعدين."
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "يستخدم KRig نقطة اتصال TLS منشورة لإرسال حصص Pearl إلى Kryptex Pool."
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes (Mysterium Network) شبكة VPN وبروكسي لامركزية مبنية على تقنية البلوك تشين. تكسب رموز MYST بتشغيل عقدة تقدّم خدمات VPN والبروكسي وجمع البيانات للمستخدمين. تتطلب صلاحيات NET_ADMIN وSETUID وSETGID وجهاز TUN، تستخدمه داخل نطاق الشبكة الخاص بها على جسر تطبيقات الربح المحمي بالحاجز. تتضمن واجهة ويب مدمجة لإدارة العقدة. تعمل على الاتصالات المنزلية واتصالات VPS على حد سواء، لكن مكافأة الإحالة لا تُدفع إلا للعقد التي تعمل على عنوان IP منزلي.\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "عقدة VPN لامركزية - قائمة على البلوك تشين، تعمل على VPS"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "عنوان واجهة الويب"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "نطاق منافذ UDP"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "عناوين الجهاز المضيف التي تُنشر عليها واجهة الويب للعقدة (المنفذ 4449). يُبقيها 127.0.0.1 على هذا الجهاز. للوصول إليها عبر بروكسي عكسي، أضف العنوان الذي يتصل منه البروكسي، مفصولًا بفاصلة دون مسافات: 127.0.0.1,172.18.0.1."
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "منافذ UDP التي تستخدمها العقدة لجلسات VPN، بالصيغة start:end. أعد توجيه النطاق نفسه على جهاز التوجيه (الراوتر). تأخذ كل جلسة نحو منفذين، لذا تحمل المنافذ الثلاثون الافتراضية نحو 15 جلسة في وقت واحد، وهذا أكثر مما تحصل عليه عقدة منزلية. النطاق الأوسع لا يصلح شيئًا ويكلّف أكثر: كل منفذ منشور يبطئ بدء تشغيل العقدة وإزالتها (300 منفذ تستغرق نحو 12 s للبدء)، ولا يقبل CashPilot أكثر من 300، ومع بروكسي userland الافتراضي في Docker يأخذ كل منفذ أيضًا نحو 2.5 MB من الذاكرة. الجلسات التي تفشل كلها مشكلة في جهاز التوجيه، وليست بسبب قلة المنافذ: راجع \"Routers that rewrite UDP source ports\" في دليل Mysterium. أبقِه أقل من 32768: فالمنافذ 32768-60999 هي النطاق المؤقت في Linux، حيث يمكن لأي برنامج على الجهاز المضيف أن يحجز أحدها لحظة، ومنفذ واحد محجوز يُفشل بدء تشغيل العقدة. العقدة التي لديها نطاق بالفعل تحتفظ به."
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "مخزن مفاتيح هوية العقدة. حذفه يُنشئ هوية جديدة تمامًا: تفقد العقدة سمعتها وأي أرباح لا تزال محتجزة على الهوية القديمة."
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "لا تستطيع العقدة تشغيل sudo داخل حاويتها، لذا لا تستطيع إعداد واجهة VPN أو جدار الحماية، وتفشل كل جلسة عند الإعداد: تبدو متصلة ولا تكسب شيئًا. أُنشئت الحاوية دون صلاحيتي SETUID وSETGID. حدّث CashPilot والعامل الذي يشغّل هذه العقدة، ثم أعد نشر Mysterium من لوحة التحكم؛ تبقى هوية العقدة في وحدة تخزين البيانات الخاصة بها ولا تضيع."
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "لم تصل أي جلسة VPN في آخر 6 ساعات إلى هذه العقدة مباشرة. لجأت كلها إلى تقنية ثقب NAT (hole punching)، ويفشل كثير من المشترين في الاتصال بهذه الطريقة، لذا تكسب العقدة أقل. منافذ UDP الخاصة بها غير قابلة للوصول من الإنترنت. على جهاز التوجيه، أعد توجيه نطاق منافذ UDP ${UDP_PORTS} (start:end، النطاق نفسه على الجانبين) إلى ${HOST_ADDRESS}. يزول هذا التنبيه من تلقاء نفسه بمجرد اتصال جلسة مباشرة."
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "تضع مراقبة Mysterium علامة فشل على العقدة الموجودة على ${WORKER_NAME}، لذا تُستبعد من قائمة العقد التي يختار منها معظم المشترين، حتى عندما يقول فحصها الذاتي إن كل المنافذ قابلة للوصول. تأكد أولًا من أن لدى العقدة /dev/net/tun وSETUID/SETGID، فغيابها يُفشلها بالطريقة نفسها: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 وإذا كانت متوفرة، فالسبب الشائع هو أن جهاز التوجيه أمام ${WORKER_NAME} يعيد كتابة منفذ المصدر UDP لردود العقدة بمجرد أن تصل حزمة من الخارج إلى ذلك المنفذ. راجع الاختبار في الدليل: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "انتهت كل جلسة من آخر خمس جلسات VPN للعقدة الموجودة على ${WORKER_NAME} بعد نحو دقيقة دون نقل أي بيانات، لذا لا تكسب شيئًا وهي تبدو متصلة. السبب المرجح هو جهاز التوجيه أمام ${WORKER_NAME}: بمجرد أن تصل حزمة من الخارج إلى منفذ ما، يعيد كتابة منفذ المصدر لردود العقدة اللاحقة من ذلك المنفذ، وكل جلسة تبدأ بحزمة كهذه (فحص المنفذ الذي تجريه العقدة نفسها)، فيُسقط المشترون ردود العقدة. النطاق الأوسع للمنافذ لا يساعد. راجع الاختبار والحلول في الدليل: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports يزول هذا التنبيه بمجرد أن تنقل جلسة بيانات."
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "الأرباح برموز MYST. عناوين IP المنزلية تكسب أكثر بكثير. واجهة الويب للعقدة على المنفذ 4449 للإدارة، وهي منشورة افتراضيًا على الجهاز الذي تعمل عليه فقط (127.0.0.1)؛ ومن جهاز آخر افتح نفق SSH أولًا (ssh -L 14449:127.0.0.1:4449 متبوعًا بعنوان جهاز العقدة، ثم تصفّح http://127.0.0.1:14449؛ المنفذ المحلي 14449 حتى لا يتعارض مع عقدة على جهازك أنت)، أو أضف عنوانًا إلى UI_ADDRESS (راجع WebUI address في دليل Mysterium). تُقبل VPS. يُنصح بشدة بإعادة توجيه منافذ UDP 23000-23029 (القيمة الافتراضية لـ UDP_PORTS) -- فبدونها تحصل العقد على حالة Strict NAT وتفشل كثير من جلسات VPN، ما يقلل الدخل كثيرًا. مهم: بعد أول تشغيل، اضبط محفظة المستفيد (التسوية) عبر واجهة الويب للعقدة أو سطر الأوامر لتطابق حسابك على mystnodes.com -- فهذا يربط الأرباح على السلسلة بلوحة التحكم السحابية."
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "تسوية تلقائية على السلسلة في كل مرة تحمل فيها العقدة 5 MYST غير مسوّاة"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "لا يوجد زر للضغط عليه. تُجري كل عقدة التسوية على Polygon من تلقاء نفسها بمجرد أن تحمل 5 MYST غير مسوّاة، ويذهب نحو 21% رسومًا (رسوم Hermes البالغة 20% إضافة إلى رسوم معاملة صغيرة)، لذا يصل نحو 3.9 MYST إلى محفظة المستفيد في كل تسوية. يسرد TequilAPI لكل عقدة تسوياتها على /transactor/settle/history. رقم \"total earnings\" على MystNodes يغطي آخر 30 يومًا فقط؛ فهو ليس رصيدًا ولا إجماليًا مدى الحياة. لا تُسوّى مكافآت MYST الإضافية من برنامج مكافآت MystNodes من تلقاء نفسها: طالب بها في صفحة Rewards، خلال 30 يومًا من التوزيع وفقًا لمركز مساعدة MystNodes."
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "تُضبط محفظة المستفيد بعد النشر، عبر TequilAPI أو واجهة الويب للعقدة -- وليس بمتغير بيئة، لذا لا يمكن قراءتها من مواصفات الحاوية."
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "استخدم البريد الإلكتروني وكلمة المرور لحسابك في MystNodes (نفس بيانات <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>)."
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "5 MYST عن كل صديق تكسب عقدته 5 MYST (عناوين IP المنزلية فقط)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "5 MYST بمجرد أن تكسب عقدتك أول 5 MYST (عنوان IP منزلي، وعقدة مُطالَب بها على mystnodes.com)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "طالب بمكافآت MystNodes للشهر الماضي"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "المكافآت التي لا يُطالب بها خلال 30 يومًا من التوزيع الشهري تُصادَر وتعود إلى مجمّع مكافآت الشهر التالي."
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "افتح صفحة Rewards واستبدل نقاطك بـ MYST."
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "عرض النطاق. يُستخدم اتصالك كعقدة خروج لشبكة Mysterium، التي تبيع خدمات VPN والبروكسي وجمع البيانات أيضًا. حركة مرور جمع البيانات الخارجة من عنوان IP منزلي هي الاستخدام الأكثر ترجيحًا لجلب الشكاوى، ولا يمكنك اختيار أي من الثلاثة تحمله عقدتك."
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "نعم. يوجّه غرباء حركة مرورهم عبر عنوان IP الخاص بك — وهذا هو المنتج نفسه."
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "هوية العقدة (عنوان على البلوك تشين)، وعنوان IP الخاص بك، وموقع تقريبي (البلد/المدينة/مزوّد الإنترنت)، تنشرها العقدة في الشبكة حتى يتمكن المشترون من اختيارها."
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "حقيقي ويستحق الفهم. تخرج حركة مرور أشخاص آخرين من اتصالك منسوبةً إليك، لذا يبدو أن أي شيء يفعلونه صادر من خطك. تحظر كثير من عقود مزوّدي الإنترنت المنزلي ذلك. راجع عقدك قبل تشغيلها."
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "عدد غير محدود من الأجهزة لكل حساب ولكل عنوان IP."
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "يذهب نحو 21% من كل تسوية رسومًا، رسوم Hermes البالغة 20% إضافة إلى رسوم معاملة، وتُدفع الأرباح برمز MYST."
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "عقدتك نقطة خروج لعملاء Mysterium في خدمات VPN والبروكسي وجمع البيانات، ولا يمكنك اختيار من منهم تحمل حركة مروره."
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "برنامج العقدة مفتوح المصدر بموجب ترخيص GPL-3.0."
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "تنشر Mysterium صورة حاوية Docker خاصة بها، mysteriumnetwork/myst."
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "تذهب التسوية إلى محفظة تملكها؛ ولا حاجة إلى رقم هاتف أو وثيقة هوية."
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "يعمل مشروع العقدة منذ عام 2017."
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "يذكر موقع Mysterium أن الشبكة تطوّرها Blockdev AG، في Zug، سويسرا."
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay شبكة DePIN تكافئ المستخدمين على مشاركة عرض النطاق عبر إضافة متصفح. المنصة محمية بـ Cloudflare، ما قد يعقّد الوصول الآلي. يكسب المستخدمون نقاط Nodepay Points بإبقاء الإضافة نشطة. تركّز الشبكة على توفير بنية تحتية لبيانات تدريب الذكاء الاصطناعي.\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "مشاركة عرض النطاق ضمن DePIN للذكاء الاصطناعي - إضافة متصفح"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "تكسب نقاط Nodepay Points؛ وتتحول نقاط المستخدمين الذين يجتازون فحوصات الأهلية لدى Nodepay إلى رمز NC. قد تحظر حماية Cloudflare الجمع الآلي. يلزم وجود إضافة المتصفح."
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "توزيع مجاني (airdrop) لرمز NC (التوقيت غير مؤكد)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "نظام قائم على النقاط. تتحول نقاط المستخدمين الذين يجتازون فحوصات الأهلية لدى Nodepay إلى رمز NC، الذي أُطلق في يناير 2025."
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "في مراجعة الموسم الأول أزالت Nodepay أكثر من 300,000 حساب رأت أنها روبوتات وألغت 17 مليار نقطة."
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "المكافآت نقاط تتحول إلى رمز NC، لذا تعتمد قيمتها على الرمز."
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "لا يشغّل CashPilot خدمة Nodepay: أنت تستخدم إضافة المتصفح الخاصة بالمزوّد، لذا لا يستطيع CashPilot نشرها أو تحديثها نيابة عنك. لم تُراجَع شروطها بشأن الحاويات."
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes هو المستوى المجاني للدخول إلى Noderr Protocol، وهو مشروع تمويل لامركزي (DeFi) على Base L2. العقدة الصغيرة (micronode) برنامج صغير يعمل على هاتف Android احتياطي أو حاسوب Windows أو Mac أو متصفح Chromium. على Android يشارك اتصال الهاتف المحمول: تخرج حركة مرور Noderr الأخرى عبر عنوان IP لمشغّل شبكة الهاتف، لذا يحتاج إلى شريحة SIM فيها بيانات جوّال. على الحاسوب أو في المتصفح ينفّذ مهام أتمتة للبروتوكول باستخدام قدرة الحوسبة الفائضة. صُمّمت المكافآت لتُدفع بعملة NODR، بحسب درجة مدة تشغيل وموثوقية مسجّلة على السلسلة، لكن الشبكة تعمل على شبكة الاختبار Base Sepolia خلال المرحلة التجريبية: مكافآت العقد غير ممولة ولم يُدفع منها شيء بعد.\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "عقدة صغيرة مجانية (مشاركة اتصال Android، وWindows، وMac، والمتصفح) - شبكة اختبار، المكافآت غير ممولة حتى الآن"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "مرحلة تجريبية على شبكة اختبار: مكافآت العقد غير ممولة ولم يُدفع منها شيء بعد. عائد APY البالغ 5-10% على الموقع هدف تصميمي. أعد النظر عندما تغادر الشبكة Base Sepolia."
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "تتراكم المكافآت في محفظة العقدة نفسها ويُطالب بها من التطبيق أو من التطبيق اللامركزي (dApp). خلال المرحلة التجريبية هي رموز شبكة اختبار Base Sepolia بلا قيمة سوقية."
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "ينشئ التطبيق محفظة العقدة عند أول تشغيل ويسكّ لها رمز Utility NFT مجانيًا غير قابل للنقل (soulbound). احتفظ بنسخة احتياطية من المحفظة من التطبيق: فقدان الجهاز يعني فقدان هوية العقدة. المكافآت على Base Sepolia (شبكة اختبار) خلال المرحلة التجريبية."
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "يحتاج Android إلى شريحة SIM فيها بيانات جوّال؛ ولا تنشر عملاء سطح المكتب والمتصفح أي متطلبات لعنوان IP."
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "يعتمد على الجهاز. يبيع هاتف Android اتصاله المحمول: تخرج حركة مرور Noderr الأخرى عبر عنوان IP لمشغّل شبكة الهاتف وتُحتسب من باقة البيانات. ويبيع حاسوب Windows أو Mac أو المتصفح قدرة الحوسبة الفائضة لما يسميه المزوّد مهام أتمتة وسائل التواصل الاجتماعي والمحتوى."
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "نعم. على Android تخرج حركة مرور Noderr الأخرى عبر عنوان IP المحمول لهاتفك؛ ويطلب التطبيق موافقة مسجّلة قبل البدء، ويمكنك إيقاف المشاركة من الشاشة نفسها. أما لعملاء Windows وMac والمتصفح فيصف المزوّد مهام أتمتة ولا يذكر ما إذا كانت تحمل حركة مرور لأشخاص آخرين."
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "يُسجَّل عنوان محفظة العقدة وأرقام مدة تشغيلها وإنجازها للمهام على السلسلة كدرجة سمعة (TrustFingerprint). يقول المزوّد إن المهام مجهولة الهوية، وتعمل في بيئة معزولة (sandbox)، وإن مفاتيح المحفظة لا تغادر الجهاز أبدًا. لم يُنشر شيء أكثر تحديدًا."
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "على Android يكون الاتصال المشترك باقة جوّال من مشغّل الشبكة: تحذّر وثائق المزوّد نفسه من أن المشاركة قد لا تكون مسموحة وفق سياسات الاستخدام المقبول لدى بعض المشغّلين، وتستهلك حركة المرور المشتركة من رصيد الباقة. أما لعملاء سطح المكتب والمتصفح فلا يذكر المزوّد شيئًا عن شروط مزوّدي الإنترنت."
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "عقدة واحدة لكل جهاز، لكل منها رمز Utility NFT خاص بها غير قابل للنقل؛ تشغيل عدة أجهزة مسموح ومشجَّع. لا يوجد حد منشور لكل عنوان IP. لا يوجد حساب بالمعنى المعتاد: الهوية محفظة ينشئها التطبيق عند أول تشغيل."
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "مكافآت العقد رموز شبكة اختبار غير ممولة بلا قيمة سوقية، ولم يُدفع منها شيء؛ وعائد APY البالغ 5 إلى 10% على موقعها هدف تصميمي."
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "لعملاء سطح المكتب والمتصفح تصف Noderr مهام أتمتة ولا تذكر ما إذا كانت تحمل حركة مرور أشخاص آخرين."
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "يقول المزوّد إن المهام مجهولة الهوية وتعمل في بيئة معزولة لكنه لا ينشر شيئًا أكثر تحديدًا."
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "لا تزال مرحلة تجريبية على شبكة اختبار Base Sepolia."
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "لا يشغّل CashPilot خدمة Noderr: أنت تستخدم تطبيق المزوّد أو إضافته، لذا لا يستطيع CashPilot نشرها أو تحديثها نيابة عنك. لم تُراجَع شروطها بشأن الحاويات."
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "لا حساب: ينشئ التطبيق محفظة عند أول تشغيل."
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "يستخدم Nodle تقنية Bluetooth في الهواتف الذكية لإنشاء بنية تحتية لإنترنت الأشياء (IoT). يكتشف التطبيق في الخلفية البيانات من أجهزة IoT القريبة وينقلها، ويكسب رموز NODL. ظهر في Forbes، وله شراكات مؤسسية مع Vivendi وHayden AI. للهواتف المحمولة فقط (iOS وAndroid).\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "ترحيل IoT عبر Bluetooth - تطبيق جوّال، مكافآت برمز NODL"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "أرباح منخفضة جدًا. تطبيق هاتف يعمل في الخلفية باستخدام Bluetooth. قد يكون ربط المحفظة غير مستقر."
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "مستمر"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "توجد NODL في محفظة التطبيق نفسه على ZKsync Era؛ تحقّق منها في التطبيق أو في مستكشف كتل ZKsync Era. غادرت Nodle سلسلة parachain الخاصة بها على Polkadot، وأُغلق الجسر من Polkadot إلى ZKsync في 31 ديسمبر 2025، لذا لم يعد بالإمكان نقل NODL الباقية على جانب Polkadot إلى ZKsync."
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "توجد عملات NODL في المحفظة الخاصة بتطبيق Nodle على ZKsync Era. لا يستطيع CashPilot رؤية عنوان تلك المحفظة."
+  source: "796d67192f5f"
+nodle.referral.bonus.referrer:
+  text: "مكافأة NODL عن كل مستخدم نشط جديد ينضم عبر الدعوة (لا تنشر Nodle المبلغ)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "يذكر أحد المراجعين أنه كسب نحو $3 خلال ثلاث إلى أربع سنوات؛ ويذكر آخرون أن الأرباح اليومية انخفضت بشدة."
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "لا يشغّل CashPilot خدمة Nodle: أنت تستخدم تطبيق الهاتف الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana سوق حوسبة GPU لامركزي مبني على Solana. يربط مالكي وحدات GPU بالطلب على أحمال عمل الذكاء الاصطناعي، ويدفع برموز NOS. تكسب بطاقة RTX 3060 نحو $0.048/hr. تركّز المنصة على أحمال عمل الاستدلال بالذكاء الاصطناعي، وتستخدم سلسلة Solana لجدولة المهام وتسوية الدفعات. تشغّل العقد أحمال عمل في حاويات عبر Nosana CLI.\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "حوسبة GPU على Solana - رموز NOS، بطاقة RTX 3060 نحو $0.048/hr"
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "بطاقة RTX 3060 نحو $0.048/hr، والبطاقات الأعلى تكسب أكثر. تعتمد الأرباح على توفر المهام وطراز GPU. يتطلب NVIDIA GPU وLinux وDocker وNosana CLI. الدفعات برمز NOS على Solana."
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "عند إكمال كل مهمة"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "تُكسب رموز NOS على Solana. الدفع إلى المحفظة المُعدّة."
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "يُنشئ Nosana محفظة Solana افتراضيًا، لذا لم يرَ معظم المستخدمين عنوانها قط."
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "يجب على كل مضيف أن يُقفل رهنًا من NOS يتناسب مع السعر بالساعة لوحدة GPU لديه."
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "يُدفع للمضيفين بـ NOS، لذا تتغير أرباحهم بالدولار مع الرمز ومع الطلب على بطاقتهم."
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "لا يشغّل CashPilot خدمة Nosana: أنت تستخدم برنامج المضيف الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN مجمّع تعدين Bitcoin بلا حساب: يسجّل برنامج التعدين الدخول باستخدام عنوان Bitcoin الخاص بك كاسم مستخدم، ويدفع المجمّع إلى ذلك العنوان. لا يشغّل CashPilot أي برنامج تعدين هنا. بل يقرأ الرصيد غير المدفوع الذي يحتفظ به OCEAN لعنوانك، فترى ما كسبه جهاز ASIC الخاص بك (Bitaxe أو Antminer) بجانب دخلك الآخر. الرصيد غير المدفوع مكتسب لكنه لم يصل بعد: يدفعه OCEAN على السلسلة بمجرد تجاوزه حد الدفع.\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "مجمّع تعدين Bitcoin، يُتتبَّع عبر عنوان الدفع الخاص بك"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "عندما تدفع كتلةٌ رصيدَك إلى ما بعد الحد"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "يدفع OCEAN على السلسلة إلى عنوانك بمجرد أن يبلغ رصيدك غير المدفوع الحد. لا يكتشف CashPilot دفعات Lightning (اختيارية، BOLT12)."
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "غير المدفوع مكتسب لكنه لا يصل حتى يدفعه OCEAN على السلسلة إلى هذا العنوان، ما لم تكن قد فعّلت دفعات Lightning."
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "عنوان الدفع بعملة BTC: اسم المستخدم الذي يستخدمه برنامج التعدين على OCEAN، دون الجزء <b>.workername</b>. وهو عام ولا يتيح الوصول إلى أي أموال."
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "يحتاج إلى جهاز تعدين Bitcoin من نوع ASIC (Bitaxe أو Antminer) موجَّه إلى mine.ocean.xyz:3334"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "الحوسبة"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "لا. يرسل برنامج التعدين قيم التجزئة إلى المجمّع؛ ولا أحد يوجّه حركة مرور عبر اتصالك."
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "عنوان Bitcoin الخاص بك، وأسماء العمّال التي تختارها، ومعدل التجزئة، وعنوان IP لجهاز التعدين كما يراه المجمّع."
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "يُبقي جهاز التعدين اتصالًا واحدًا مفتوحًا مع المجمّع ويستخدم القليل من عرض النطاق. التكلفة التي يجب مراقبتها هي الكهرباء، وليس مزوّد الإنترنت."
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "لا يوجد حساب. العنوان هو الهوية، ويمكن لأي شخص قراءة إحصاءاته على ocean.xyz."
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "يُدفع بعملة Bitcoin فقط، ولا يُدفع شيء على السلسلة حتى يبلغ رصيدك 0.01048576 BTC."
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "رسوم مجمّع بنسبة 2%، أو 1% عندما تبني قوالب الكتل الخاصة بك باستخدام DATUM."
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "لا يشغّل CashPilot برنامج تعدين لـ OCEAN: أنت توجّه عتادك الخاص إلى المجمّع، ويكتفي CashPilot بقراءة الرصيد."
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "لا حساب ولا تحقق من الهوية. لا يطلب OCEAN إلا عنوان Bitcoin الذي يدفع إليه."
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream سوق لعرض النطاق من نظير إلى نظير يمكنك فيه بيع عرض النطاق غير المستخدم. يشغّل شبكة بروكسي منزلية تُستخدم لأبحاث السوق ومراقبة SEO والتحقق من الإعلانات. إعداد Docker بسيط لا يتطلب سوى CID (معرّف العميل). لاحظ أن تسجيل الدخول المحمي بـ CAPTCHA قد يجعل الجمع الآلي للأرباح صعبًا.\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "مشاركة عرض النطاق - إعداد بسيط قائم على CID"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "معرّف العميل"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "سجّل الدخول في <a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> ← انقر Setup في الشريط الجانبي ← يظهر CID الخاص بك في أمر Docker"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "يرفض PacketStream عنوان IP لهذه النسخة لأنه ليس منزليًا، لذا لا تكسب شيئًا. شغّلها على جهاز اتصاله بالإنترنت خط منزلي، أو أزل هذه النسخة."
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "لدى PacketStream بالفعل عميل آخر على عنوان IP هذا، ولا يدفع إلا لعميل واحد لكل عنوان IP. أزل هذه النسخة، أو النسخة الأخرى التي تشاركها عنوان IP."
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "يدفع $0.10/GB مقابل عرض النطاق المشترك. تعتمد الأرباح كثيرًا على الطلب في موقع عنوان IP الخاص بك."
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "عبر PayPal فقط، الحد الأدنى $5، ورسوم 3% تظهر قبل التأكيد. يحفظ السحب الأول بريدك الإلكتروني في PayPal؛ وتغييره لاحقًا يتطلب تأكيدًا بالبريد الإلكتروني وانتظار 7 أيام، لذا تحقّق من العنوان قبل التأكيد. تُراجَع الطلبات وتُرسل خلال 7 أيام؛ ويمكنك إلغاء الطلب أثناء انتظاره، ولا يمكن تقديم طلب جديد إلا بعد دفع السابق."
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "يحتفظ PacketStream بالرصيد؛ ويُسحب عند الطلب."
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "سجّل الدخول في <a href='https://packetstream.io' target='_blank'>packetstream.io</a>، واضغط F12 ← Application ← Cookies، وانسخ قيمة ملف تعريف الارتباط <b>auth</b> (وهي رمز JWT)."
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "20% من أرباح عرض النطاق الخاصة بهم (مكافأة Packeter لفترة محدودة)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "رصيد إضافي بنسبة 10% على أول إيداع لك بالبطاقة أو PayPal (لعملاء البروكسي)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "يذكر مراجعون على Trustpilot في 2025 و2026 أن الدفعات تصل متأخرة أو لا تصل إطلاقًا، ويقول مستخدم قديم إن الدفعات تباطأت ثم توقفت؛ ويذكر آخرون في 2026 أنهم تلقّوا دفعاتهم."
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "عبر PayPal فقط، برسوم سحب 3%؛ والمستخدمون في البلدان التي لا يخدمها PayPal ليس لديهم أي طريقة أخرى."
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "تسمح الشروط لـ PacketStream بحجب الأرباح أو عكسها أو إبطالها إذا ربطها بالاحتيال أو التلاعب أو نشاط محظور."
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "تذكر الشروط أن عملاء البروكسي وPacketStream نفسها يوجّهون حركة المرور عبر اتصالك؛ ولا تصف أي تحقق من المشترين العاديين."
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "يشير Trustpilot إلى أن PacketStream لم ترد على المراجعات السلبية؛ ويذكر المراجعون رسائل بريد إلكتروني بلا رد."
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "تنشر PacketStream صورة حاوية Docker خاصة بها، packetstream/psclient."
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "لا تشترط الشروط سوى جهاز واتصال تملكهما أو يُسمح لك باستخدامهما."
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "لا تصف الشروط أي تحقق من الهوية؛ وتحتاج الدفعة إلى عنوان PayPal."
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "تذكر الشروط اسم PacketStream Inc. بموجب قانون ولاية كاليفورنيا."
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "تعمل PacketStream منذ عام 2018."
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp منصة DePIN تتيح لك كسب مكافآت بالعملات المشفرة وعبر PayPal بمشاركة عرض النطاق وموارد الحوسبة غير المستخدمة. عمليًا لنظام Windows فقط: تعرض صفحة التنزيل الخاصة بالمورّد نفسه Android وiOS وLinux على أنها \"coming soon\" دون تغيير منذ فبراير 2025 على الأقل، ولا يوجد إصدار لنظام macOS — رغم أن النصوص التسويقية على الموقع نفسه تدّعي دعمًا أوسع. لا توجد صورة حاوية Docker.\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "عرض النطاق/الحوسبة ضمن DePIN - Windows فقط، دفعات بالعملات المشفرة وعبر PayPal"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "تطبيق سطح مكتب لنظام Windows فقط (v1.0.x)؛ أعلن المورّد عن Android/iOS/Linux بأنها 'coming soon' منذ أوائل 2025 ولم تصدر قط. لا توجد صورة حاوية Docker رسمية."
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "10% من أرباحهم مدى الحياة"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "لا يشغّل CashPilot خدمة PassiveApp: أنت تستخدم تطبيق سطح المكتب الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "يذكر موقع PassiveApp طرق PayPal والعملات المشفرة وبطاقات الهدايا بدءًا من حد أدنى قدره $3."
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase منصة لمشاركة عرض النطاق تدفع للمستخدمين بالعملات المشفرة مقابل مشاركة اتصالهم غير المستخدم بالإنترنت. تصادق عميل النظير برمز وصول (Access Token) من لوحة التحكم الخاصة بك. عناوين IP المنزلية تكسب أكثر، لكن عناوين IP لمراكز البيانات مدعومة أيضًا. صورة حاوية Docker رسمية متعددة المعماريات (amd64/arm64/armv7).\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - مشاركة عرض النطاق، دفع بالعملات المشفرة، مصادقة برمز وصول. لا تُنشأ أي محفظة"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "رمز الوصول"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "اسم الجهاز"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "سجّل الدخول في <a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> ← انسخ رمز الوصول Access Token (يظهر في أمر Docker في صفحة الإعداد)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "أي اسم (دون مسافات) لتمييز هذا الجهاز في لوحة تحكم ProxyBase"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "لم يصل ProxyBase إلى خادم الترحيل الخاص به منذ نصف ساعة على الأقل، لذا لا يكسب شيئًا. تُصلح إعادة التشغيل ذلك؛ وإذا استمر بعد إعادة التشغيل، فتحقق من أن هذا الجهاز يستطيع الوصول إلى الإنترنت."
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "دفعات بالعملات المشفرة. تعتمد الأرباح على الموقع واستخدام عرض النطاق."
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "يذكر الموقع حدًا أدنى قدره $0.20، ونجح طلب بأقل من $1 في أكتوبر 2026. يسحب الطلب دائمًا الرصيد كاملًا، بعملة USDC على Polygon أو POL أو Litecoin، إلى عنوان تكتبه. تتحمل ProxyBase رسوم الشبكة."
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "تتراكم الأرباح في حساب ProxyBase الذي ينتمي إليه رمز الوصول، وتُسحب من لوحة التحكم عند الطلب. لا يحمل عميل النظير أي محفظة ولا تحتفظ الحاوية بأي حالة -- docker.volumes فارغ. لا تخلط بينه وبين proxybase-xyz (ProxyBase Markets، من المؤسسة نفسها)، الذي يُنشئ فعلًا محفظة محلية ويعلنها وحدة تخزين حرجة."
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "كتبت ProxyBase نفسها في أغسطس 2025 أنها جديدة وليست بعد المكان المناسب لتعظيم الأرباح."
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "غيّرت ProxyBase عميل النظير في 2026 وأغلقت الخادم الخلفي القديم، فاستمرت الحاويات التي تعمل بصورة الحاوية القديمة في العمل وتوقفت عن الكسب."
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "بالعملات المشفرة فقط، بعملة USDC على Polygon أو POL أو Litecoin، دون أي طريقة بالعملات التقليدية. الحد الأدنى $0.20 وتدفع ProxyBase رسوم الشبكة."
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "نجح سحبنا لمبلغ أقل من $1 في أكتوبر 2026."
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "لا يحتاج السحب إلا إلى عنوان يُكتب في الطلب."
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "تنشر ProxyBase صورة حاوية خاصة بعميل النظير وتدعم عناوين IP لمراكز البيانات."
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets سوق لبروكسي SOCKS5 مصمَّم لوكلاء الذكاء الاصطناعي. يشغّل البائعون برنامجًا خفيًا (daemon) خفيفًا بسطر الأوامر مكتوبًا بلغة Rust يتصل عبر WebSocket لترحيل حركة مرور المشترين عبر اتصالهم بالإنترنت، ويكسبون USDC على Tempo Chain عن كل GB يُباع. يدعم الوضعين المباشر (عرض النطاق الخاص بك) والمنبع (إعادة بيع بروكسيات خارجية) مع إعادة الاتصال التلقائي. يشتري المشترون جلسات البروكسي حسب البلد ومزوّد الإنترنت وعرض النطاق. تمر الدفعات عبر Machine Payments Protocol (MPP) على Tempo Chain. رابط الإحالة مخصص للمشترين: المشتري الذي يفتح لوحة التحكم عبره يحصل على 10% إضافية على أول إيداع له.\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - سوق SOCKS5 لوكلاء الذكاء الاصطناعي، دفع بـ USDC. يُنشئ محفظة تحمل وحدة تخزينها النسخة الوحيدة من المفتاح"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "عنوان URL لواجهة API الخلفية"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "تجاوز عنوان URL لواجهة API الخلفية (القيمة الافتراضية https://api.proxybase.xyz)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "تُهيّئ الحاوية نفسها تلقائيًا عند أول تشغيل: تُنشئ محفظة secp256k1 (BIP-39)، وتصادق عبر تحدٍّ واستجابة ECDSA، وتبدأ بيع عرض النطاق في الوضع المباشر فقط. تُحفظ الحالة كلها (المحفظة ورمز الجلسة وإعدادات البائع) في وحدة التخزين <code>proxybase-data</code>. راجع سجلات الحاوية عند أول تشغيل لمعرفة عنوان المحفظة. استخدم <code>--upstream</code> لإضافة مسارات لإعادة بيع بروكسيات خارجية.\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "ملف مفتاح المحفظة المُنشأة. وحدة التخزين هذه هي المال نفسه: لا توجد نسخة على الخادم، لذا فإن حذفها يُتلف الأموال معها."
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "الأرباح حسب عدد GB المبيعة بأسعار السوق. عناوين IP لخوادم VPS ومراكز البيانات تكسب أقل من المنزلية. يمكن لوضع المنابع المتعددة الجمع بين عرض النطاق الخاص بك وبروكسيات خارجية."
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "اقفل الأرباح عبر <code>proxybase-cli seller payout create</code>، وتُستلم بعملة USDC على Tempo Chain (Tempo MPP). يدفع إلى أي عنوان EVM تملك مفتاحه (Tempo سلسلة EVM)، دون الحاجة إلى توقيع أي شيء؛ أضف شبكة Tempo إلى المحفظة لرؤية USDC. المحفظة التي لا تزال لا تعرضها تحتاج إلى إضافة رمز USDC على Tempo يدويًا: استورده بعنوان العقد الذي تقدّمه Proxybase، وتحقّق من ذلك العنوان قبل أن تثق بالرصيد."
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "يُنشئ العميل محفظته الخاصة عند أول تشغيل."
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "15% من كل إيداع يقوم به مشترٍ محال، كرصيد لجلسات البروكسي الخاصة بك"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "+10% على أول إيداع للمشتري"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "عرض النطاق، كبروكسي SOCKS5 يُباع للمشترين في سوق ProxyBase."
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "نعم. يوجّه المشترون حركة مرورهم عبر اتصالك — وهذا بالضبط ما يُباع."
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "عنوان محفظة يُنشأ على جهازك، إضافة إلى حجم حركة المرور التي ترحّلها."
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "حقيقي، وينطبق مباشرة على الاتصالات المنزلية. تخرج حركة مرور البروكسي من مشترين مجهولين باسم عنوان IP الخاص بك، فتصل شكاوى إساءة الاستخدام إليك. لا شيء في هذا الكتالوج يقصر الخدمة على عناوين مراكز البيانات، وعناوين IP المنزلية تكسب أكثر، لذا فإن الحافز هنا يدفع في الاتجاه الخطأ: اقرأ شروط مزوّد الإنترنت قبل تشغيلها في المنزل."
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "غير معروف - لا ينشر المزوّد حدًا لعدد الأجهزة لكل حساب أو لكل عنوان IP، ولا يعلن الكتالوج عن حد."
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "الدفعات بعملة USDC على Tempo Chain، إلى أي عنوان EVM تملك مفتاحه."
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "يُباع اتصالك كبروكسي SOCKS5 لمشتري السوق؛ ولم نجد أي وصف لكيفية التحقق من المشترين."
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "عنوان صفحة الكسب الخاصة به يذكر أنه لا يحتاج إلى KYC، مع دفعة بقيمة $1."
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "تنشر ProxyBase صورة حاوية خاصة بعميلها وتقبل اتصالات مراكز البيانات."
+  source: "ae81d006093f"
+proxylite.description:
+  text: "يحقق ProxyLite دخلًا من حركة مرورك على الإنترنت بمشاركة عرض النطاق مع مؤسسات موثَّقة. يعمل على الاتصالات المنزلية واتصالات VPS ومراكز البيانات على حد سواء. إعداد بسيط لا يتطلب سوى معرّف المستخدم من لوحة التحكم. يقدّم عمولة إحالة سخية بنسبة 15% مدى الحياة.\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "مشاركة عرض النطاق - إحالة بنسبة 15% مدى الحياة، يعمل على VPS"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "معرّف المستخدم"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "سجّل الدخول في <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> ← يظهر معرّف المستخدم في الصفحة الرئيسية للوحة التحكم بجانب بريدك الإلكتروني. تحتاج إلى حساب؟ سجّل عبر <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a>"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "عناوين IP المنزلية تكسب أكثر. تُقبل اتصالات VPS ومراكز البيانات بأسعار أقل."
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "15% من أرباحهم مدى الحياة"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "مالك الموقع مخفي في سجلات النطاق، ولم نجد أي شركة معروفة بالاسم وراءه."
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "حد أدنى قدره $5، بالعملات المشفرة أو عبر PayPal."
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "تنشر ProxyLite صورة حاوية Docker، proxylite/proxyservice، وتقبل اتصالات مراكز البيانات بسعر أقل."
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "يتيح لك برنامج Peer من ProxyRack الكسب بمشاركة عرض النطاق كجزء من شبكة البروكسي الخاصة بهم. يتطلب كل جهاز معرّف UUID فريدًا من 64 حرفًا ست عشريًا، ومفتاح API اختياريًا لتسجيل الجهاز تلقائيًا. يعمل على الاتصالات المنزلية واتصالات VPS ومراكز البيانات على حد سواء. لوحة التحكم محمية بـ Cloudflare، ما قد يتطلب استخراج مفتاح API يدويًا عبر المتصفح.\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "مشاركة عرض النطاق - UUID لكل جهاز، يعمل على VPS"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "معرّف UUID للجهاز"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "مفتاح API"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "اسم الجهاز"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "معرّف فريد من 64 حرفًا ست عشريًا لكل جهاز. أنشئه بالأمر: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "سجّل الدخول في <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> ← يظهر مفتاح API في الصفحة الرئيسية للوحة التحكم (يسجّل الجهاز تلقائيًا إذا أُدخل). تحتاج إلى حساب؟ سجّل عبر <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "اسم سهل التمييز للجهاز في لوحة التحكم"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "لا يستطيع عميل ProxyRack العمل على هذه النسخة، لذا لا تربح شيئًا. السبب المعتاد هو أن خادم التحديثات لدى ProxyRack لا يستجيب، ولا يمكن للعميل أن يبدأ من دونه. تعيد النسخة المحاولة كل 5 دقائق وتبدأ تلقائيًا فور استجابة الخادم. لا حاجة إلى إصلاح أي شيء."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "لم يُنزَّل عميل ProxyRack عند بدء هذه النسخة، لأن خادم التحديثات لدى ProxyRack لم يكن متاحًا، لذا تعمل النسخة لكنها لا تربح شيئًا. يعيد CashPilot تشغيلها كل 6 ساعات ليحاول مجددًا. أعد نشرها لتحصل على بدء التشغيل الخاص بـ CashPilot، الذي يحتفظ بالعميل ويعيد المحاولة تلقائيًا كل 5 دقائق."
+  source: "0a2ee4b478b2"
+proxyrack.device_link.steps:
+  text: "سجّل الدخول في ProxyRack، وافتح Devices، واختر Add device والصق معرّف UUID هذا. وإلى أن يُضاف الجهاز إلى حسابك فإنه لا يكسب لأحد. إذا أدخلت مفتاح API، فإن الحاوية تسجّل نفسها: تحقّق من أن الجهاز مُدرج هناك."
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "عناوين IP المنزلية تكسب أكثر من عناوين مراكز البيانات. قد تعقّد حماية Cloudflare على لوحة التحكم الوصول الآلي."
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "اطلب الدفعة من لوحة التحكم. تراجعها ProxyRack خلال 72 ساعة، ثم ترسل لك Tremendous بالبريد الإلكتروني مكافأة تستردها عبر PayPal أو بطاقة هدايا أو حوالة مصرفية. لا يوجد خيار للعملات المشفرة."
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "يحتفظ ProxyRack بالرصيد؛ ويُسحب عند الطلب."
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "سجّل الدخول في <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>، واضغط F12 ← Network، وابحث عن أي طلب API وانسخ قيمة الترويسة <b>Api-Key</b>. تحتاج إلى حساب؟ سجّل عبر <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>."
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "توثّق Proxyrack حدًا قدره 500 جهاز لكل حساب، ولا حد لكل عنوان IP. تُقبل عناوين IP لمراكز البيانات لكن يُعاد تصنيفها بسعر أقل."
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "يذكر مركز المساعدة في ProxyRack أن إزالة جهاز تُخرج أرباح ذلك الجهاز من حسابك، ولا تعود إلا إذا أُضيف الجهاز نفسه مرة أخرى."
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "تنشر ProxyRack صورة حاوية Docker خاصة بها، proxyrack/pop، وتقبل عناوين IP لمراكز البيانات بسعر أقل."
+  source: "278541f81053"
+repocket.description:
+  text: "يتيح لك Repocket كسب دخل سلبي بمشاركة عرض النطاق غير المستخدم في اتصالك بالإنترنت. عناوين IP المنزلية تكسب أكثر؛ وتُقبل عناوين IP لخوادم VPS ومراكز البيانات بأسعار أقل. الحد الأقصى 5 أجهزة و5 جلسات نشطة لكل حساب. تصادق حاوية Docker باستخدام البريد الإلكتروني لحسابك ومفتاح API من لوحة تحكم Repocket (وليس كلمة المرور).\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "مشاركة عرض النطاق - 5 أجهزة كحد أقصى، مصادقة بمفتاح API"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "البريد الإلكتروني"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "مفتاح API (UUIDv4، وليس كلمة المرور)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "البريد الإلكتروني لحسابك في Repocket"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "مفتاح API الخاص بك في Repocket — سجّل الدخول في <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> وانسخ مفتاح API الظاهر في صفحة bandwidth-earnings (وهو ليس كلمة مرور حسابك). تحتاج إلى حساب؟ سجّل عبر <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a>"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "عناوين IP المنزلية تكسب أكثر. تُقبل عناوين IP لخوادم VPS ومراكز البيانات لكن بأسعار أقل."
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4 ($2 بعد الدفعة الأولى)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "يحدد Repocket الحد الأدنى لكل حساب: $4 قبل الدفعة الأولى و$2 بعدها في أكتوبر 2026، وهو أقل بكثير من $20 التي كان يعلن عنها سابقًا. الطرق: Tremendous (إلى بريدك الإلكتروني) أو USDT على Polygon. يُؤكَّد كل طلب من رابط يُرسل بالبريد الإلكتروني خلال ساعتين، ولا يمكن أن يكون هناك أكثر من طلب واحد معلّق في الوقت نفسه. في أكتوبر 2026 رفض Repocket طلبًا عبر Tremendous برسالة \"Please, message support\"، بينما نجح طلب USDT على Polygon."
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "يحتفظ Repocket بالرصيد؛ ويُسحب عند الطلب."
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "استخدم البريد الإلكتروني وكلمة المرور لحسابك في Repocket (نفس بيانات <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>). تحتاج إلى حساب؟ سجّل عبر <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a>."
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "$2 بمجرد أن يكسب الشخص المحال $7، ثم 5% من أرباحه مدى الحياة"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "مكافأة $2 في المحفظة عند التسجيل"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "يوثّق Repocket حدًا قدره خمسة أجهزة لكل حساب، لكنه لا ينشر أي حد لعدد الأجهزة لكل عنوان IP. رقم '2 devices per IP' المتكرر في مواقع المراجعات ليس له مصدر من المزوّد، لذا لا يؤكده CashPilot."
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "أبقِ جهازًا يشارك في Repocket، أو اسحب رصيدك"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "بعد 12 شهرًا دون تسجيل دخول أو دفعة أو مشاركة لعرض النطاق، قد يصادر Repocket الرصيد غير المدفوع."
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "أبقِ جهازًا يشارك، أو سجّل الدخول، أو اسحب الرصيد. إذا توقفت عن استخدام Repocket، فاسحب أولًا."
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "يذكر عدة مراجعين على Trustpilot دفعات أُلغيت وأرصدة أُعيدت إلى الصفر؛ ويقول أحدهم إن الدعم برّر ذلك بأرباح عرض نطاق غير منتظمة. تقيّم الصفحة Repocket بـ 2.7 وتشير إلى أنها لم ترد على المراجعات السلبية."
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "يذكر المراجعون رفض عمليات سحب واضطرارهم إلى ملاحقة الدفع."
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "تسمح سياسة الدفع في Repocket بعكس الأرباح أو إلغائها أو مصادرتها نهائيًا كلما اشتبهت في أنها غير صالحة، وبمصادرة الأرباح غير المدفوعة للحساب الخامل."
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "تسمح السياسة نفسها لـ Repocket بإضافة طرق الدفع أو إزالتها أو استبدالها في أي وقت دون إشعار؛ وقد أُزيل PayPal."
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "تذكر الشروط أن Repocket قد تطلب التحقق من الهوية أو الحساب في أي وقت، وأن أهلية الدفع تعتمد على ذلك."
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "تذكر الشروط أن Repocket وشركاءها يستخدمون سعة الشبكة، لكنها لا تذكر من هم الشركاء أو كيف يُتحقق منهم."
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "يشير Trustpilot إلى أن Repocket لم ترد على المراجعات السلبية، ويقول المراجعون إن رسائلهم تُتجاهل."
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "تذكر الشروط الحالية اسم Repocket Pte. Ltd. في سنغافورة؛ ولم تذكر الشروط القديمة أي شركة."
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "تنشر Repocket صورة حاوية Docker خاصة بها، repocket/repocket، وتسمح شروطها بالحاويات التي تملكها."
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "الحد الأدنى منخفض: $4 قبل الدفعة الأولى و$2 بعدها."
+  source: "ff8121a15aeb"
+salad.description:
+  text: "يتيح لك Salad.io مشاركة وحدة GPU لأحمال عمل الذكاء الاصطناعي الموزعة، وكسب رصيد Salad القابل للاسترداد ببطاقات هدايا أو ألعاب أو نقدًا. لنظام Windows فقط عبر تطبيق سطح مكتب أصلي. يتطلب وحدة GPU مخصصة (NVIDIA أو AMD). توجّه المنصة مهام الاستدلال بالذكاء الاصطناعي وعرض الرسوميات ومهام الحوسبة الأخرى إلى جهازك عندما يكون خاملًا. من أسهل منصات مشاركة GPU استخدامًا.\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "مشاركة GPU للذكاء الاصطناعي - Windows فقط، الدفع ببطاقات هدايا أو نقدًا"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "تعتمد الأرباح على طراز GPU وتوفر العمل. بطاقة RTX 3060 نحو $1-3 يوميًا. Windows فقط. تطبيق أصلي، دون دعم Docker. قابل للاسترداد ببطاقات هدايا أو ألعاب أو عبر PayPal."
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "PayPal أو بطاقات هدايا عبر متجر Salad."
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "PayPal وبطاقات الهدايا فقط، ولا عملات مشفرة أبدًا. لا يوجد عنوان محفظة، لذا لا يملك CashPilot رصيدًا على السلسلة لعرضه."
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "سجّل الدخول في <a href='https://app.salad.io' target='_blank'>app.salad.io</a>، واضغط F12 ← Application ← Cookies، وانسخ قيمة ملف تعريف الارتباط <b>auth</b>."
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "اكسب بعض نقاط Salad Reward Points، أو أنفق رصيدك"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "إذا لم يكسب الحساب أي نقاط Reward Points لمدة 12 شهرًا متتاليًا، فقد تنتهي صلاحية رصيده غير المسترد."
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "شغّل تطبيق Salad حتى يكسب، أو أنفق الرصيد كاملًا في Salad Storefront. إنفاق جزء منه فقط لا يعيد احتساب مدة الـ 12 شهرًا."
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "لا يشغّل CashPilot خدمة Salad: أنت تستخدم تطبيق سطح المكتب الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "يذكر عدة مراجعين على Trustpilot في أكتوبر ونوفمبر 2026 أن عمليات السحب عبر PayPal وصلت بسرعة، وبعضها أكثر من مرة؛ ويقول مراجع واحد في الفترة نفسها إن محاولات السحب المتكررة فشلت."
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel سلسلة بلوك تشين من الطبقة الأولى (Layer 1) على Cosmos لشبكات VPN اللامركزية. يبيع مشغّلو العقد عرض النطاق لمستخدمي VPN بتسعير مرن (لكل GB أو بالساعة). يتوفر دليل رسمي للنشر عبر Docker. مشروع قديم ذو مجتمع نشط.\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "VPN لامركزي على Cosmos - مشغّلو العقد يبيعون عرض النطاق"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "يحدد المشغّلون أسعارهم بأنفسهم لكل GB أو بالساعة. تعتمد الأرباح على طلب مستخدمي VPN في منطقتك."
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "لكل جلسة"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "الدفعات برمز P2P، ويذهب 20% من كل دفعة مقابل عرض النطاق إلى الراهنين (stakers) بدلًا من مضيف العقدة."
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "أُعيدت تسمية الرمز من SENT إلى DVPN في 2021، ومن DVPN إلى P2P في 2025."
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "لا يشغّل CashPilot خدمة Sentinel: أنت تستخدم برنامج العقدة الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "تنشر Sentinel الشيفرة المصدرية لعقدتها بموجب ترخيص مفتوح المصدر خاص بها."
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia سوق تخزين لامركزي تديره Sia Foundation (مؤسسة سويسرية غير ربحية) ويعمل منذ عام 2015. شغّل عقدة hostd الرسمية التابعة للمؤسسة لتأجير مساحة القرص الفائضة وكسب Siacoin من عقود التخزين وعرض النطاق. يجب أن تشتري بعض Siacoin قبل أن تتمكن العقدة من الكسب: يُقفل المضيفون ضمانًا مقابل كل عقد ويدفعون رسومًا عن كل إثبات تخزين. يعود الضمان عند اكتمال العقد، ويُحرق إذا انقطعت العقدة عن الاتصال أو فقدت البيانات، لذا تحتاج إلى جهاز يعمل دائمًا (تقول Sia إن مدة التشغيل يجب ألا تقل عن 95%). تعتمد الأرباح على كمية البيانات التي يخزنها المستأجرون فعلًا؛ وتوصي Sia بتسعير التخزين بـ $1 لكل TB شهريًا، لذا فهي تناسب الأجهزة ذات الأقراص الكبيرة الفائضة أكثر من خوادم VPS الصغيرة.\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "عقدة تخزين من Sia Foundation - صورة حاوية Docker رسمية، اكسب Siacoin"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "العبارة السرية للمحفظة"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "كلمة مرور لوحة التحكم"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "مجلد التخزين"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "عبارة سرية بمعيار BIP-39 تتحكم في محفظة Siacoin للمضيف. أنشئ واحدة بالأمر `docker run --rm ghcr.io/siafoundation/hostd seed` واحتفظ بنسخة احتياطية منها -- فهي الطريقة الوحيدة للوصول إلى الأرباح"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "كلمة المرور لواجهة الويب في hostd وواجهة API المحلية (BasicAuth). أي عبارة مرور طويلة"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "مسار على الجهاز المضيف في أكبر قرص لديك تُخزَّن فيه بيانات المستأجرين (مثلًا /srv/sia). يحتاج إلى 256GB فارغة على الأقل"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "عند النشر، يُنشئ CashPilot محفظة جديدة على الجهاز الذي يشغّل العقدة ويعرض عبارتها السرية مرة واحدة: دوّنها. لاستخدام محفظة لديك بالفعل، الصق عبارتها السرية بدلًا من ذلك. بعد النشر، أرسل بعض Siacoin إلى محفظة العقدة للضمان والرسوم، ثم أضف مجلد التخزين (/storage)، واضبط الأسعار، وأعلن عن المضيف في لوحة التحكم.\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "العبارة السرية للمحفظة (hostd.yml)، وقاعدة بيانات المحفظة، وإعدادات المضيف، وحالة العقود. فقدانها يعني فقدان هوية العقدة وتتبع إيرادات العقود؛ وتصبح العبارة السرية التي دوّنتها عندئذ الطريقة الوحيدة لاستعادة الأموال."
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "بيانات المستأجرين المخزنة. فقدانها يُفشل إثباتات التخزين ويؤدي إلى خسارة الضمان المقفل مقابل تلك العقود."
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "يحدد المضيفون أسعارهم بأنفسهم. توصي Sia بـ $1 لكل TB مخزَّن شهريًا وأكثر من $5 لكل TB يُنزَّل، ويذهب 3.9% من كل دفعة عقد إلى حاملي Siafund. يزداد الدخل مع كمية بيانات المستأجرين التي تصل إلى العقدة، وهي تبدأ من الصفر وتنمو مع مدة التشغيل والسعر. يُقفل الضمان (تقترح Sia ضعف سعر التخزين) لكل عقد ويُعاد عند اكتماله بنجاح.\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "تتراكم الأرباح في محفظة Siacoin الخاصة بالمضيف (التي تتحكم فيها العبارة السرية). حوّل SC في منصة تداول واسحب منها إلى حساب مصرفي أو بطاقة؛ لا يوجد طلب دفع لدى المزوّد.\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "توجد الأموال في محفظة Sia التي تتحكم فيها العبارة السرية داخل العقدة. لا توجد العبارة السرية إلا في وحدة تخزين البيانات الخاصة بـ hostd على الجهاز الذي يشغّلها؛ ولا يخزّنها CashPilot أبدًا. العبارة التي تدوّنها عند إنشاء المحفظة هي الطريقة الوحيدة للاستعادة.\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "عنوان عام ثابت مع إعادة توجيه المنفذين 9981 (TCP، للإجماع) و9984 (TCP وUDP، لعقود المستأجرين). الاستضافة على مراكز البيانات وخوادم VPS شائعة على Sia. تحتاج المحفظة إلى Siacoin قبل أن تتمكن العقدة من قبول العقود."
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "مساحة القرص وعرض النطاق اللازم لتقديمها."
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "لا. يخزّن المستأجرون أجزاء ملفات مشفرة على قرصك ويستعيدونها. لا يوجّه أشخاص آخرون حركة مرور عشوائية عبر عنوان IP الخاص بك."
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "عنوان محفظة Sia الخاص بك، والمفتاح العام للمضيف، وعنوان IP:المنفذ العام الذي تعلنه العقدة حتى يتمكن المستأجرون من الوصول إليها."
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "حركة رفع وتنزيل مستمرة على الخط، كما هو الحال عند تشغيل أي خادم تخزين؛ ولا تُنسب إليك أي حركة مرور ويب مجهولة الهوية من أطراف أخرى."
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "دون إذن مسبق: لا تسجيل ولا حساب. يُحرق الضمان إذا فاتت العقدة إثباتات التخزين، بسبب انقطاعها عن الاتصال أو فقدانها البيانات."
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "الأرباح بعملة Siacoin في محفظتك الخاصة: لا يوجد دفع إلى حساب مصرفي، لذا تبيع بنفسك في منصة تداول."
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "يُقفل الضمان لكل عقد ويُحرق إذا فات المضيف إثباتات التخزين بسبب انقطاعه عن الاتصال أو فقدانه البيانات."
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "لا يُستخدم إلا نحو 30% من مساحة التخزين المعروضة على الشبكة، لذا يتنافس المضيف الجديد على طلب قليل."
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "يخزّن المستأجرون أجزاء ملفات مشفرة ولا أحد يوجّه حركة مرور عبر عنوان IP الخاص بك، لكننا لم نجد أين تذكر Sia من هم المستأجرون أو كيف يُتحقق منهم."
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "تطوّر Sia Foundation برنامج hostd علنًا منذ عام 2022."
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd مفتوح المصدر بموجب ترخيص MIT."
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "تنشر Sia Foundation برنامج hostd كصورة حاوية."
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "دون إذن مسبق: لا تسجيل ولا حساب."
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide خدمة لمشاركة عرض النطاق تتيح لك تحقيق دخل من عرض النطاق غير المستخدم في اتصالك بالإنترنت. تستخدم معرّف جهاز اختياريًا لتتبع الأجهزة. متاحة عبر صور حاويات Docker مجتمعية من مشروع income-generator.\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "مشاركة عرض النطاق - قائمة على معرّف الجهاز"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "معرّف الجهاز"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "معرّف الجهاز لجهاز موجود مسجّل بالفعل (يُنشأ تلقائيًا إذا تُرك فارغًا)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "المعلومات المتاحة محدودة. تعتمد الأرباح على الموقع."
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "10% من أرباحهم"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "مكافأة تسجيل بقيمة $5"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "تُقسَّم حركة المرور عبر عنوان IP عام واحد بين الأجهزة التي تتشاركه، لذا لا يضيف جهاز ثانٍ على الاتصال نفسه شيئًا."
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "لا يشغّل CashPilot خدمة Spide: أنت تستخدم تطبيق المزوّد نفسه، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "عدّن Pearl أو Zano أو Ravencoin باستخدام NVIDIA GPU واحدة. ينزّل CashPilot الإصدار الرسمي من SRBMiner-Multi عند أول تشغيل ويتحقق من SHA-256 الخاص به. يدفع المجمّع الذي تختاره إلى عنوان الدفع العام الخاص بك. يحتفظ SRBMiner-Multi بنسبة 2% من وقت التجزئة على Pearl و0.85% على العملتين الأخريين. قد تكلّف الكهرباء أكثر من العملات التي تكسبها."
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "عدّن Pearl وعملات GPU أخرى على NVIDIA GPU"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "عنوان الدفع"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "اسم العامل"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "الخوارزمية"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "المجمّع (host:port)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "تشفير الاتصال بالمجمّع (TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "عنوان Pearl العام الخاص بك (prl1...). لـ Zano أو Ravencoin، أدخل عنوان تلك العملة ومجمّعًا خاصًا بها."
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "pearlhash لـ Pearl، وprogpow_zano لـ Zano، وkawpow لـ Ravencoin."
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "تقدير إجمالي قبل احتساب الكهرباء. في 2026-11-25 قدّر hashrate.no نحو $2.45 يوميًا على Pearl لبطاقة RTX 4070 تستهلك نحو 142 W. لم نقِس ذلك بأنفسنا. Pearl عملة جديدة، ويتغير سعرها وصعوبة تعدينها بسرعة. تحقّق من استهلاك GPU للطاقة ومن سعر الكهرباء لديك لترى إن كان التعدين مجديًا."
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL (HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "عند بلوغ حد الدفع في المجمّع"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "يدفع المجمّع إلى عنوانك عندما يبلغ رصيدك الحد الذي اخترته. يحتفظ المجمّع بالرصيد حتى يدفعه لك."
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64، وNVIDIA GPU، وNVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "يُبلغ هذا الجهاز عن اتصال استضافة. راجع شروط مزوّد الاستضافة قبل التعدين. بعض المزوّدين، ومنهم Hetzner Cloud، يحظرونه. تحقّق من تكاليف الكهرباء الفعلية قبل الاعتماد على أي تقدير للربح."
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "رسوم برنامج التعدين البالغة 2% خاصة بـ pearlhash. ويحتفظ SRBMiner-Multi بنسبة 0.85% على progpow_zano وkawpow. يفرض HeroMiners، مجمّع Pearl الافتراضي، رسوم مجمّع بنسبة 1%. ويتحقق من الدفعات كل ساعة ويدفع بدءًا من 1 PRL. تحدد المجمّعات الأخرى أسعارها وحدودها بنفسها."
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "الحوسبة"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "لا. يرسل برنامج التعدين العمل إلى المجمّع الذي تختاره."
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "يصل عنوان الدفع واسم العامل وعنوان IP الخاص بك إلى المجمّع. ينزّل أول تشغيل برنامج التعدين من GitHub."
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "بعض الشبكات وخوادم DNS تحظر الاتصالات بمجمّعات التعدين."
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "تتعرّف معظم المجمّعات عليك من خلال عنوان الدفع العام الخاص بك."
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "يحتفظ برنامج التعدين بنسبة 2% من وقت التجزئة على Pearl و0.85% على Zano وRavencoin."
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "بعض مزوّدي الاستضافة يحظرون تعدين العملات المشفرة."
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "برنامج التعدين مغلق المصدر، لذا لا يستطيع أحد خارج مطوّره تدقيق ما يشغّله."
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "قد تكلّف كهرباء GPU أكثر من العملات المكتسبة، وسعر Pearl يتغير بسرعة."
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "يرسل برنامج التعدين العمل إلى المجمّع ولا ينقل حركة مرور أي شخص آخر."
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "يمكنك تعدين Pearl على HeroMiners بعنوان عام دون حساب."
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj شبكة تخزين سحابي لامركزية تكسب فيها بتأجير مساحة القرص غير المستخدمة. شغّل عقدة التخزين عبر Docker واحصل على $1.35/TB مخزَّن شهريًا إضافة إلى $1/TB لحركة البيانات الصادرة (الأسعار منذ 1 سبتمبر 2026). تُدفع الدفعات شهريًا بعملة USDC، وهي عملة مستقرة مربوطة بالدولار الأمريكي، على شبكة Ethereum الرئيسية إلى محفظة تتحكم فيها، بمجرد أن يتجاوز الرصيد حدًا أدنى يعتمد على الرسوم (برمز STORJ حتى دفعة سبتمبر 2026). يتطلب 550GB على الأقل من مساحة القرص المتاحة واتصالًا مستقرًا بالإنترنت. لا حاجة إلى حساب أو تسجيل -- العقد لا تحتاج إلى إذن مسبق منذ منتصف 2025. تنبيه (أكتوبر 2026): تقدّمت Storj Labs بطلب الحماية بموجب الفصل 11 (Chapter 11) في 26 يوليو 2026 (US Bankruptcy Court، المنطقة الشمالية لولاية West Virginia، القضية 5:26-bk-00512) لإعادة هيكلة ديون سابقة. تستمر الشبكة في العمل وتواصل Storj الدفع للعقد النشطة، لكن أرباح العقد السابقة لتقديم الطلب مجمّدة حتى تبتّ فيها المحكمة. انخفض رمز STORJ بنحو 98% عن ذروته في 2021. أزالت Binance إدراجه في 3 سبتمبر 2026، وعلّقت Coinbase تداوله في 28 سبتمبر 2026. تحجب العقدة الجديدة جزءًا من أرباحها خلال أشهرها التسعة الأولى ولا تمتلئ إلا بقدر ما يسمح به طلب العملاء، لذا فإن بدء تشغيل عقدة الآن يربط استردادًا طويل الأمد لتكاليفك بشركة في طور إعادة الهيكلة لا يزال من الممكن أن تُصفّى أعمالها.\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "عقدة تخزين لامركزية - $1.35/TB مخزَّن + $1/TB صادر"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "عنوان المحفظة"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "البريد الإلكتروني"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "العنوان الخارجي"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "المساحة المخصصة"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "مجلد الهوية"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "مجلد التخزين"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "عنوان محفظة Ethereum لدفعات USDC (مثلًا 0x1234...abcd). يجب أن تكون محفظة ذاتية الحفظ (MetaMask أو Ledger أو غيرهما) -- لا تستخدم أبدًا عنوانًا في منصة تداول"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "عنوان البريد الإلكتروني لإشعارات المشغّل"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "اسم مضيف DDNS مع المنفذ (مثلًا mynode.ddns.net:28967) -- وهو مفضَّل بشدة على عنوان IP حرفي، الذي يعزل العقدة يوم يغيّره مزوّد الإنترنت دون إعلام. يجب إعادة توجيه المنفذ 28967 (TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "أقصى مساحة قرص تُخصَّص (مثلًا 2TB). استخدم أقراصًا دوّارة (HDD)، وليس SSD"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "مسار على الجهاز المضيف تُخزَّن فيه ملفات الهوية (يجب أن يحتوي على ca.cert وca.key وidentity.cert وidentity.key)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "مسار على الجهاز المضيف في قرص دوّار (HDD) لتخزين بيانات Storj. يحتاج إلى 550GB فارغة على الأقل"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "قبل أول تشغيل، هيّئ إعدادات عقدة التخزين: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "هوية العقدة. معرّفها مرتبط بإثبات العمل (proof-of-work) ويستغرق إنشاؤه من جديد ساعات، ولا يمكن إعادة إنشائه من نسخة احتياطية لأي شيء آخر. فقدانها يؤدي إلى خسارة رصيد الدفع المحتجز."
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "بيانات العملاء المخزنة والمبلغ المحتجز للعقدة. فقدانها يؤدي إلى استبعاد العقدة وخسارة الرصيد المحتجز."
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "لا تستطيع شبكة Storj الاتصال بعقدتك على العنوان ADDRESS المعلَن، لذا تعدّها الأقمار (satellites) غير متصلة: يتوقف وصول بيانات جديدة، ويتعطل دخل حركة البيانات الصادرة، ويؤدي الانقطاع المستمر إلى التعليق. تحقّق من أن ADDRESS يطابق عنوان IP العام الحالي (استخدم اسم مضيف DDNS، وليس عنوان IP حرفيًا، حتى لا يعزل تغيير مزوّد الإنترنت للعنوان العقدة)، ومن أن المنفذ 28967 TCP+UDP مُعاد توجيهه إلى هذا الجهاز."
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "$1.35/TB مخزَّن + $1/TB صادر + $1/TB للتدقيق/الإصلاح منذ 1 سبتمبر 2026. تزداد الأرباح مع كمية البيانات المخزنة وعمر العقدة. خلال الأشهر التسعة الأولى يُحتجز 75% ثم 50% ثم 25% من الأرباح؛ ويعود نصف المبلغ المحتجز في الشهر 16 والباقي عند الخروج المنظَّم. يجب إعادة توجيه المنفذ 28967."
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "4 أضعاف رسوم معاملة Ethereum، وتُرحَّل الأرصدة الأصغر"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "شهريًا"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "يُدفع شهريًا بعملة USDC على شبكة Ethereum الرئيسية بمجرد أن يبلغ رصيد المحفظة أربعة أضعاف رسوم المعاملة الحالية على الأقل؛ وتُرحَّل الأرصدة الأصغر إلى الشهر التالي. برمز STORJ حتى دفعة سبتمبر 2026. لوحة التحكم على المنفذ 14002."
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "يُدفع شهريًا بعملة USDC على شبكة Ethereum الرئيسية إلى العنوان في WALLET بمجرد أن يتجاوز الرصيد الحد الأدنى المعتمد على الرسوم. برمز STORJ حتى دفعة سبتمبر 2026؛ وانتهت دفعات zkSync Era في 1 سبتمبر 2026."
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "عنوان URL للوحة تحكم العقدة على المنفذ 14002، مع عنوان IP المحلي (LAN) للخادم بدلًا من localhost، مثلًا <b>http://192.168.1.10:14002</b>. لعدة عقد، اذكر عناوين URL الخاصة بها مفصولة بفواصل: يجمعها CashPilot."
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "عقد Storj على الشبكة الفرعية /24 نفسها تتشارك تخصيص البيانات، ما يقلل أرباح كل عقدة."
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "5 Mbps رفعًا"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "مساحة القرص وعرض النطاق اللازم لتقديمها."
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "لا. تخزّن أجزاء مشفرة ومرمَّزة بترميز المحو (erasure-coded) من بيانات العملاء. لا يوجّه أشخاص آخرون حركة مرورهم عبر عنوان IP الخاص بك."
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "هوية العقدة، وعنوان محفظتك، والبريد الإلكتروني الذي تتطلبه العقدة لإشعارات المشغّل، وعنوان IP والمنفذ الخاصان بك، اللذان يجب أن يكونا قابلين للوصول حتى تقدّم العقدة البيانات."
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "مسألة حد استهلاك البيانات أساسًا وليست مسألة مسؤولية: تقدّم العقدة بيانات العملاء وتستقبلها باستمرار، وهي حركة مرور حقيقية ومستمرة على خطك. لكنها، خلافًا للبروكسي أو عقدة الترحيل، ليست حركة مرور مجهولة الهوية من أطراف أخرى تُنسب إليك كمصدر لها، لذا لا تجلب شكاوى إساءة الاستخدام التي تجلبها تلك."
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "عدد غير محدود من العقد، لكن العقد على الشبكة الفرعية /24 نفسها تتشارك التخصيص، لذا تكسب كل واحدة منها أقل إذا شغّلت عدة عقد على اتصال واحد."
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "أفادت CoinDesk في 27 يوليو 2026 بأن Storj Labs تقدّمت بطلب الحماية من الإفلاس بموجب الفصل 11 (Chapter 11)."
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "دخلت الدفعات المستحقة لمشغّلي العقد عن الفترة السابقة لتقديم الطلب في إجراءات مطالبات الإفلاس."
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "تُحتجز من العقدة الجديدة 75% ثم 50% ثم 25% من أرباحها في أشهرها التسعة الأولى؛ ويعود النصف في الشهر 16 والباقي فقط عند الخروج المنظَّم."
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "يخزّن العملاء أجزاء ملفات مشفرة ولا أحد يوجّه حركة مرور عبر عنوان IP الخاص بك، لكننا لم نجد أين تذكر Storj من هم العملاء أو كيف يُتحقق منهم."
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "برنامج عقدة التخزين مفتوح المصدر بموجب ترخيص AGPL-3.0."
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "تنشر Storj صورة حاوية Docker خاصة بها، storjlabs/storagenode."
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "لا حساب: عنوان محفظة وبريد إلكتروني لإشعارات المشغّل."
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "استمر الدفع للعقد النشطة بعد تقديم الطلب."
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR مجمّع تعدين Monero بلا حساب: يسجّل برنامج التعدين الدخول باستخدام عنوان Monero الخاص بك كاسم مستخدم، ويدفع المجمّع إلى ذلك العنوان. لا يشغّل CashPilot أي برنامج تعدين هنا. بل يقرأ الرصيد الذي يحتفظ به SupportXMR لعنوانك، فترى ما كسبه برنامج التعدين على CPU بجانب دخلك الآخر. الرصيد مكتسب لكنه لم يصل بعد: يدفعه المجمّع بمجرد تجاوزه حد الدفع الذي حددته.\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "مجمّع تعدين Monero، يُتتبَّع عبر عنوان الدفع الخاص بك"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR (تلقائيًا)، 0.01 XMR عند الطلب"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "عندما يتجاوز رصيدك الحد الذي حددته، أو عند الطلب"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "يدفع SupportXMR إلى عنوانك بمجرد أن يبلغ الرصيد الحد الذي حددته (0.1 XMR افتراضيًا). ويمكنك أيضًا على موقعه طلب دفعة فورية بدءًا من 0.01 XMR، مقابل رسوم قدرها 0.001 XMR."
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "الرصيد مكتسب لكنه لا يصل حتى يدفعه SupportXMR إلى هذا العنوان. لا يمكن قراءة أرصدة Monero على السلسلة دون مفتاح العرض الخاص (private view key)، الذي لا يطلبه CashPilot أبدًا، لذا تؤكد كل دفعة بنفسك."
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "عنوان الدفع بعملة Monero: اسم المستخدم الذي يستخدمه برنامج التعدين على SupportXMR، دون أي جزء <b>.workername</b> أو <b>+difficulty</b>. وهو عام ولا يتيح الوصول إلى أي أموال."
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "يحتاج إلى برنامج تعدين Monero (XMRig) موجَّه إلى pool.supportxmr.com"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "الحوسبة"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "لا. يرسل برنامج التعدين قيم التجزئة إلى المجمّع؛ ولا أحد يوجّه حركة مرور عبر اتصالك."
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "عنوان Monero الخاص بك، وأسماء العمّال التي تختارها، ومعدل التجزئة، وعنوان IP لجهاز التعدين كما يراه المجمّع."
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "يُبقي برنامج التعدين اتصالًا واحدًا مفتوحًا مع المجمّع ويستخدم القليل من عرض النطاق. التكلفة التي يجب مراقبتها هي الكهرباء، وليس مزوّد الإنترنت."
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "لا يوجد حساب. العنوان هو الهوية، ويمكن لأي شخص قراءة إحصاءاته على supportxmr.com."
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "يُدفع بعملة Monero فقط، مع رسوم مجمّع بنسبة 0.6% وحد افتراضي قدره 0.1 XMR قبل الدفع التلقائي."
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "لا يشغّل CashPilot برنامج تعدين لـ SupportXMR: أنت توجّه برنامج التعدين الخاص بك إلى المجمّع، ويكتفي CashPilot بقراءة الرصيد."
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "يمنح Teneo Protocol وكلاء الذكاء الاصطناعي إمكانية الوصول إلى الويب الحي عبر شبكة من Beacons. Teneo Beacon هو تطبيق Teneo نفسه لأنظمة Android وiOS وmacOS وWindows وLinux، مع إصدار بسطر الأوامر للخوادم وRaspberry Pi. يشارك عرض النطاق غير المستخدم بعد أن توافق على شاشة الموافقة الخاصة به، ويكسب نقاط Teneo Protocol Points وFragments أثناء اتصاله. تُحتسب Fragments ضمن سحوبات موسمية تُدفع جوائزها بعملة USDC (Beacon Drop). تقول Teneo إن Beacon يكسب ضعف نقاط إضافة المتصفح القديمة. يكسب Beacon واحد فقط لكل اتصال بالإنترنت. أما الأجهزة الأخرى على الاتصال نفسه فتبقى في وضع الانتظار. سجّل في Expedition Hub باستخدام رابط الإحالة أو الرمز PSA3BHPJ، ثم سجّل الدخول في Beacon.\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "تطبيق عرض نطاق ضمن DePIN (Beacon) - Fragments للسحوبات الموسمية بـ USDC، و+100 Fragments مع رابط إحالة"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "يكسب نقاط Teneo Points وFragments. تُحتسب Fragments ضمن سحوبات موسمية بـ USDC، لذا يدفع الموسم جائزة وليس معدلًا ثابتًا. تقول Teneo إن Beacon يكسب ضعف نقاط إضافة المتصفح. طالب بالتعزيز كل 8 ساعات للحصول على ما يصل إلى 3x من Fragments؛ وتفويت النافذة يخفض المضاعِف."
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "سحب موسمي (Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "تُدفع جوائز Beacon Drop بعملة USDC إلى محفظة تربطها في Expedition Hub. يعرض Hub عدد الأيام المتبقية لك لربط محفظة؛ والجائزة التي لا تُربط لها محفظة في الوقت المحدد تُصادَر."
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "اربط محفظة في Expedition Hub قبل دفع جوائز الموسم؛ يصادر Hub الجائزة التي لم تُربط محفظتها في الوقت المحدد."
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "8% من Fragments كل صديق محال و2% من Fragments إحالاته، بمجرد أن يسجّل الصديق خلال 7 أيام ويكسب 480 Fragments"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "+100 Fragments عند التسجيل، و+150 أخرى بمجرد وصولك إلى 480 Fragments"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "يكسب Beacon واحد فقط لكل اتصال بالإنترنت. أجهزة مراكز البيانات لا تكسب إلا لدى مزوّدي الاستضافة الذين فعّلتهم Teneo، بنصف Fragments ودون نقاط أو مكافأة إحالة. اتصالات VPN لا تكسب أبدًا."
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "لا تدفع Fragments الخاصة بـ Beacon بعملة USDC إلا كجوائز في سحوبات موسمية، لذا لا يكسب تشغيله مبلغًا محددًا."
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "تقول Teneo إن النقاط ستُدمج في $AGENTIC، وهو رمز مكافآت غير قابل للتحويل، وليس رمز $TENEO."
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "لم يُؤكَّد أي موعد لإطلاق $TENEO أو تخصيصه أو آلية المطالبة به حتى نوفمبر 2026، بعد أن مضى موعد مستهدف سابق في الربع الثاني من 2026."
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "لا يشغّل CashPilot خدمة Teneo: أنت تثبّت تطبيق Beacon الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "تقول Teneo إن حركة المرور تأتي من عملاء أعمال موثَّقين، وإنها تحظر العناوين الخاصة والمنافذ المعرّضة لإساءة الاستخدام، لكنها لا تذكر كيف تتحقق من هؤلاء العملاء."
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network شبكة لامركزية راسخة لتوصيل الفيديو وحوسبة الذكاء الاصطناعي (منذ 2018). يشغّل المستخدمون عقد Edge Nodes تشارك عرض النطاق والتخزين وقدرة الحوسبة. شراكات كبيرة في مجال المحتوى. تكسب رموز TFUEL.\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "CDN لامركزية + حوسبة ذكاء اصطناعي - مكافآت TFUEL، مشروع راسخ"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "تطبيق سطح مكتب فقط. تعتمد الأرباح على الموارد والموقع. شراكات كبيرة، ومدرجة في جميع منصات التداول."
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "مستمر"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "لا يشغّل CashPilot خدمة Theta Edge: أنت تستخدم تطبيق سطح المكتب الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network منصة DePIN تشارك عنوان IP والتخزين وعرض النطاق الخاصة بك مقابل مكافآت برمز TNT. متاحة على Windows وMac وAndroid. تساهم العقد في شبكة CDN وطبقة تخزين لامركزيتين. تتراوح الأرباح المعتادة بين $5-30 شهريًا حسب الموارد المشتركة والموقع الجغرافي.\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "DePIN لمشاركة IP والتخزين وعرض النطاق - $5-30 شهريًا"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "يشارك عنوان IP والتخزين وعرض النطاق. تعتمد الأرباح على الموارد المقدَّمة والمنطقة. تخصيص مساحة تخزين أكبر يجلب مكافآت أعلى."
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "حسب الحقبة (epoch)"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "تذكر صفحة المساعدة في Titan نفسها أن تشغيل العقدة لا يضمن الأرباح: إذا لم تُسند إليها أي مهمة فلا تكسب شيئًا، والمكافآت برمز TNT."
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "لا يشغّل CashPilot خدمة Titan: أنت تستخدم تطبيق المزوّد أو إضافته، لذا لا يستطيع CashPilot نشرها أو تحديثها نيابة عنك. لم تُراجَع شروطها بشأن الحاويات."
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "يتيح لك Traffmonetizer تحقيق دخل من حركة مرورك على الإنترنت بمشاركة عرض النطاق مع شركات موثَّقة. من الخدمات القليلة لمشاركة عرض النطاق التي تعمل جيدًا على عناوين IP لخوادم VPS ومراكز البيانات إضافة إلى الاتصالات المنزلية. يستخدم مصادقة بسيطة برمز يُمرَّر عبر وسائط سطر الأوامر. يدعم معماريات ARM لأجهزة Raspberry Pi والأجهزة المشابهة.\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "مشاركة عرض النطاق - يعمل على VPS، مصادقة برمز"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "الرمز"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "اسم الجهاز"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "سجّل الدخول في <a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a>، واضغط F12 ← Application ← Local Storage ← انقر <code>https://app.traffmonetizer.io</code> ← انسخ قيمة <code>authToken</code> (نحو 54 حرفًا: أرقام، ثم <code>|</code>، ثم حروف وأرقام)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "الاسم المعروض في لوحة التحكم لإدارة الأجهزة"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "عناوين IP لخوادم VPS ومراكز البيانات تكسب أقل من المنزلية. المواقع في الولايات المتحدة وأوروبا تكسب أكثر. يدعم عناوين IP متعددة عبر شبكات Docker."
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "الحد الأدنى $10. لم يعد PayPal متاحًا. احفظ طريقة دفع واحدة في الملف الشخصي أولًا: USDT على Solana أو TON (أقل الرسوم)، أو Arbitrum (رسوم منخفضة)، أو Tron TRC20 (رسوم شبكة مرتفعة)، أو تحويل مصرفي بدءًا من $1,000. يُطبَّق أول عنوان تحفظه فورًا؛ وتغييره لاحقًا يتطلب تأكيدًا بالبريد الإلكتروني. قد تطلب لوحة التحكم وسيلة تواصل عبر تطبيق مراسلة (WhatsApp أو Telegram أو Skype) قبل السحب الأول. يدفع الطلب دولارات كاملة وتبقى السنتات في الرصيد."
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "USDT على السلسلة المحفوظة في إعدادات الدفع في الملف الشخصي (Solana أو TON أو Arbitrum أو Tron)، أو تحويل مصرفي. يُحفظ العنوان في إعدادات Traffmonetizer، وليس في الحاوية."
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "سجّل الدخول في <a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a>، واضغط F12 ← Application ← Local Storage ← قيمة <b>authToken</b> (نحو 54 حرفًا: أرقام، ثم <code>|</code>، ثم حروف وأرقام)."
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "10% من كل دفعة يطلبونها"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "تشترط شروط خدمة Traffmonetizer عنوان IP منزليًا، لكن عقد VPS مقبولة عمليًا."
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "يقيّمه Trustpilot بـ 1.9؛ ويذكر مراجعون من 2023 إلى نوفمبر 2026 دفعات معلّقة لأسابيع، أو موسومة بأنها مكتملة دون معاملة مطابقة."
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "ويذكر المراجعون أنفسهم أن الدعم عبر الدردشة المباشرة والبريد الإلكتروني لا يرد، أحيانًا لأسابيع."
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "بالعملات المشفرة أو بحوالة مصرفية بدءًا من $1,000 فقط؛ وأُلغي PayPal، ولا يدفع الطلب إلا دولارات كاملة."
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "تشترط شروط Traffmonetizer عنوان IP منزليًا، لذا فإن تشغيله على خادم باتصال استضافة يقع خارجها."
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "يذكر أربعة مراجعين على Trustpilot من 2023 إلى 2025 أرباحًا بطيئة جدًا، مثل سنت واحد يوميًا عبر أربعة أجهزة، أو قرابة عامين للوصول إلى $10."
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "لا تحتاج الدفعة إلا إلى عنوان عملة مشفرة محفوظ ومؤكَّد بالبريد الإلكتروني؛ وقد تطلب لوحة التحكم وسيلة تواصل عبر تطبيق مراسلة."
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "تنشر Traffmonetizer صورة حاوية Docker خاصة بها، traffmonetizer/cli_v2."
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "عدّن باستخدام CPU واحصل على الدفع بالعملة التي تختارها، مثل SHIB أو DOGE أو XMR. يشغّل CashPilot برنامج XMRig على مجمّع RandomX التابع لـ unMineable، وتحوّل unMineable عملة Monero التي يعدّنها CPU لديك إلى عملتك. وتدفع إلى عنوانك العام بمجرد أن يبلغ رصيدك حد الدفع الخاص بالعملة. يحمل كل عامل ينشره CashPilot رمز الإحالة الخاص بـ CashPilot في unMineable، ما يخفض رسوم المنصة عليك من 1% إلى 0.75%. قد تكلّف الكهرباء أكثر مما تكسب."
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "عدّن باستخدام CPU واحصل على الدفع بالعملة التي تختارها"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "عملة الدفع"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "عنوان الدفع"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "اسم العامل"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "الحد الأقصى لخيوط CPU (%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "وضع RandomX"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "رمز عملة تدفع بها unMineable، مثل SHIB أو DOGE أو XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "عنوانك العام لتلك العملة. العملات التي تحتاج إلى مذكرة (memo) أو وسم (tag) غير مدعومة."
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "تقدير إجمالي قبل احتساب الكهرباء، يُدفع بعملتك بسعر التحويل لدى unMineable. في 2026-11-25 كانت قيمة 1 kH/s من RandomX نحو $1 شهريًا. قد يستهلك معالج حاسوب مكتبي يعمل بنصف خيوطه 30 إلى 50 W إضافية. تحقّق من استهلاكك الفعلي وسعر الكهرباء لترى إن كان التعدين مجديًا."
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "تحدده unMineable لكل عملة (0.03 XMR في 2026-11-26)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "عند بلوغ حد الدفع الخاص بالعملة"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "تدفع unMineable إلى عنوانك بمجرد أن يبلغ رصيدك حد الدفع الخاص بالعملة. تختلف الحدود حسب العملة والشبكة؛ ويقرأ CashPilot الحد الذي تعلنه unMineable لعنوانك."
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "الرصيد مكتسب لكنه لا يصل حتى تدفعه unMineable إلى هذا العنوان. تعتمد السلسلة على العملة التي تختارها."
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "عنوان الدفع ورمز العملة نفسهما اللذان نشرت بهما برنامج التعدين، مثلًا <b>XMR</b>. أدخل العنوان وحده، دون العملة أو اسم العامل أو رمز الإحالة. وهو عام ولا يتيح الوصول إلى أي أموال."
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "0.25% من مكافآت التعدين لكل معدِّن محال"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "خفض رسوم المنصة من 1% إلى 0.75%"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "يُبلغ هذا الجهاز عن اتصال استضافة. راجع شروط مزوّد الاستضافة قبل التعدين. بعض المزوّدين، ومنهم Hetzner Cloud، يحظرونه. تحقّق من تكاليف الكهرباء الفعلية قبل الاعتماد على أي تقدير للربح."
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "تفرض unMineable رسوم منصة بنسبة 1%. يضيف CashPilot رمز الإحالة الخاص به (#awk6-j1z0) بعد كل اسم عامل، ما يخفض رسومك إلى 0.75%. ثم تدفع unMineable لمشرف CashPilot نسبة 0.25% من مكافآت التعدين الخاصة بك؛ وتحتفظ أنت بنسبة 99.25%. لكل عملة حد دفع خاص بها، مثلًا 0.03 XMR."
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "الحوسبة"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "لا. يرسل برنامج التعدين العمل إلى مجمّع unMineable."
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "يصل عنوان الدفع والعملة واسم العامل ومعدل التجزئة وعنوان IP الخاص بك إلى unMineable."
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "بعض الشبكات وخوادم DNS تحظر الاتصالات بمجمّعات التعدين."
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "لا حاجة إلى حساب. العنوان والعملة هما الهوية، ويمكن لأي شخص قراءة إحصاءاتهما على unmineable.com."
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "تحتفظ unMineable برسوم منصة بنسبة 0.75% مع رمز الإحالة، ولا تدفع إلا بدءًا من حد كل عملة."
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "بعض مزوّدي الاستضافة يحظرون تعدين العملات المشفرة."
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "قد تكلّف الكهرباء الإضافية أكثر من العملات المكتسبة."
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "إحصاءات العنوان، بما فيها الرصيد، علنية لكل من يعرف العنوان."
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "يرسل برنامج التعدين قيم التجزئة إلى المجمّع ولا ينقل حركة مرور أي شخص آخر."
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "يمكنك التعدين إلى عنوان عام بالعملة التي تختارها دون إنشاء حساب."
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock منصة DePIN (شبكة بنية تحتية مادية لامركزية) تتيح لك كسب العملات المشفرة بمشاركة اتصالك بالإنترنت. جزء من منظومة Web3 الأوسع. تتوفر صور حاويات Docker مجتمعية لكن لا توجد صورة رسمية. إضافة المتصفح هي الواجهة الأساسية.\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "مشاركة الإنترنت ضمن DePIN - دفع بالعملات المشفرة، إضافة المتصفح هي الأساس"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "أرباح بالعملات المشفرة/الرموز. لا توجد صورة حاوية Docker رسمية — إضافة المتصفح هي العميل الأساسي."
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "رموز UPT، تُسحب إلى محفظة Solana بدءًا من 250 UPT، مع تفعيل المصادقة الثنائية. تُطبَّق رسوم سحب."
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "يذكر مركز المساعدة في UpRock أن عمليات السحب برموز UPT إلى محفظة Solana، بحد أدنى قدره 250 UPT."
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "المكافآت رموز UPT؛ ويقول المراجعون ومراجعة من طرف ثالث إن قيمتها منخفضة جدًا."
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "لا يشغّل CashPilot خدمة UpRock: أنت تستخدم تطبيق المزوّد أو إضافته، لذا لا يستطيع CashPilot نشرها أو تحديثها نيابة عنك. لم تُراجَع شروطها بشأن الحاويات."
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork شبكة VPN ومشاركة عرض نطاق لامركزية. تكسب بتقديم عرض النطاق كمزوّد مجتمعي. يصادق البرنامج التنفيذي للمزوّد نفسه باستخدام البريد الإلكتروني وكلمة المرور لحسابك (الأمر الفرعي auth-provide)، ويخزّن رمز JWT للجلسة الناتجة في وحدة تخزين البيانات. صورة حاوية Docker رسمية من BringYour, Inc.\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "VPN/عرض نطاق لامركزي - مصادقة بالبريد الإلكتروني+كلمة المرور، جلسة JWT في وحدة التخزين"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "البريد الإلكتروني"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "كلمة المرور"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "البريد الإلكتروني لحسابك في URnetwork (بيانات الدخول التي تستخدمها في <a href=\"https://ur.io\" target=\"_blank\">ur.io</a>). الحسابات التي أُنشئت عبر تسجيل الدخول بـ Google/Apple تحتاج إلى تعيين كلمة مرور أولًا. تحتاج إلى حساب؟ سجّل عبر <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a>"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "كلمة مرور حسابك في URnetwork (دون مسافات). يستخدمها تسجيل الدخول auth-provide الخاص بالمزوّد؛ ثم تُحفظ الجلسة في وحدة تخزين البيانات."
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "يعمل على VPS والاتصالات المنزلية. يُدفع بـ SN25α (Bittensor subnet 25) لكل حقبة أسبوعية منذ 2026-10-06. يدعم وضع البروكسي للإعدادات متعددة عناوين IP."
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "حسب الحقبة (epoch)"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "اضبط مفتاح Bittensor البارد (coldkey) على ur.io/app/account/earnings (موقَّعًا باستخدام Talisman أو TAO.com أو محفظة WalletConnect)، ثم طالب بكل حقبة مكتملة. تدفع المطالبة رسوم الغاز بعملة TAO من مفتاح غاز EVM. الحقب التي لا يُطالب بها تنتهي صلاحيتها، وقد أُلغيت دفعات USDC القديمة عندما لم تُربط أي محفظة خلال 30 يومًا."
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "3 GiB يوميًا من بيانات UR المجانية عن كل صديق، حتى 20 صديقًا (بيانات، وليست أموالًا)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "3 GiB يوميًا من بيانات UR المجانية بمجرد أن تستخدم 10 MiB على الأقل عبر التطبيق في يومين خلال 90 يومًا من الانضمام؛ وإلا تنتهي الإحالة"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "الحقب التي لا يُطالب بها تنتهي صلاحيتها، وقد أُلغيت دفعات USDC القديمة للشبكات التي لم تُربط بها أي محفظة خلال 30 يومًا."
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "منذ أكتوبر 2026 تُدفع المكافآت بـ SN25α، وهو رمز شبكة فرعية في Bittensor، وكل مطالبة تكلّف رسوم غاز بعملة TAO."
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "كانت URnetwork تُعرف سابقًا باسم BringYour؛ وتحمل ورقتها البيضاء المؤرشفة الاسم القديم."
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "تنشر URnetwork الشيفرة المصدرية لعميل المزوّد الخاص بها."
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "تنشر URnetwork صورة حاوية Docker خاصة بها، bringyour/community-provider، وتعمل على اتصالات VPS والاتصالات المنزلية."
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "لا تحتاج المطالبة إلا إلى محفظة Bittensor تتحكم فيها."
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai سوق سحابي لوحدات GPU تؤجّر فيه NVIDIA GPU الخاصة بك لباحثي ومطوّري الذكاء الاصطناعي وتعلّم الآلة. منصة مبنية على Docker تحدد فيها أسعارك بالساعة بنفسك. تكسب بطاقة RTX 3090 عادةً $0.20-0.40/hr عند تأجيرها. يتطلب NVIDIA GPU بتعريفات حديثة واتصالًا مستقرًا بالإنترنت. تعتمد الإيرادات كثيرًا على طراز GPU واستراتيجية التسعير والطلب في السوق.\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "سوق GPU - حدد أسعارك بنفسك، بطاقة RTX 3090 نحو $0.20-0.40/hr"
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "مفتاح API"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "مفتاح API للمضيف في Vast.ai من لوحة التحكم"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "بطاقة RTX 3090 نحو $0.20-0.40/hr، وبطاقة RTX 4090 نحو $0.40-0.80/hr عند تأجيرها. تختلف نسبة الاستخدام. يتطلب NVIDIA GPU، وجهازًا مضيفًا يعمل بنظام Linux، وDocker، وnvidia-container-toolkit. حدد أسعارك بنفسك."
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "أسبوعيًا (أيام الجمعة)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "تتراكم الأرباح في رصيد Vast.ai. اسحب عبر Wise أو PayPal أو Stripe."
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "3% مما ينفقه المستأجرون المحالون، طوال عمر حساباتهم، كأرصدة إحالة؛ ويمكن سحب ما يصل إلى 75% منها نقدًا من حساب إحالة مخصص"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "لا يكسب المضيف إلا أثناء التأجير، وتعتمد الأرقام التي تذكرها Vast نفسها لوحدة GPU استهلاكية على نوع التأجير ودرجة الموثوقية."
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "لا يشغّل CashPilot خدمة Vast.ai: أنت تثبّت برنامج الاستضافة الخاص بـ Vast على جهاز GPU الخاص بك، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. تبني Vast الاستضافة على Docker في جهاز مضيف يعمل بنظام Linux."
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "تقول Vast إن السعر الذي يحدده المضيف هو السعر الذي يتقاضاه، دون خصم أي رسوم."
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "تُدفع الدفعات عبر Wise أو PayPal أو Stripe بدءًا من حد أدنى قدره $20، بفواتير أسبوعية؛ ويُرحَّل الرصيد الأصغر إلى الأسبوع التالي."
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter منصة لمشاركة عرض النطاق متاحة على Windows وMac وLinux وAndroid. تدّعي أنها تدفع حتى $1/GB من عرض النطاق المشترك، بحد أدنى للدفع قدره $20. تعمل المنصة بطريقة مشابهة لتطبيقات مشاركة عرض النطاق التقليدية، إذ توجّه حركة مرور مشروعة عبر الاتصالات المنزلية.\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "مشاركة عرض النطاق - تدّعي حتى $1/GB، الحد الأدنى للدفع $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "تدّعي حتى $1/GB لكن الأرباح الفعلية أقل. الحد الأدنى للدفع $20. تختلف الأرباح كثيرًا حسب الموقع والطلب."
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "عند الطلب"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "ليس لدى Wipter لوحة تحكم على الويب. افتح تطبيق Wipter لسطح المكتب أو الهاتف، وسجّل الدخول، واطلب الدفعة من هناك بمجرد أن يبلغ الرصيد $20. لا تدفع Wipter إلا بعملة USDT على BNB Smart Chain (BEP20)، إلى المحفظة التي تضبطها في قسم Payments في التطبيق؛ ولا يوجد خيار PayPal."
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "10% من أرباح حركة المرور الخاصة بهم بمجرد بلوغهم الحد الأدنى للدفع، لأي عدد من الأصدقاء تحيلهم"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "مكافأة تسجيل بقيمة $5"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "لا يشغّل CashPilot خدمة Wipter: أنت تستخدم تطبيق سطح المكتب أو الهاتف الخاص بالمزوّد، لذا لا يستطيع CashPilot نشره أو تحديثه نيابة عنك. لم تُراجَع شروطه بشأن الحاويات."
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "عدّن Monero باستخدام CPU. يشغّل CashPilot برنامج XMRig، ويدفع المجمّع الذي تختاره عملة Monero إلى عنوان الدفع العام الخاص بك. يستخدم XMRig نسبة 1% من وقت التجزئة لدعم مطوّريه. قد تكلّف الكهرباء أكثر من XMR التي تكسبها."
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "عدّن Monero باستخدام CPU وبالمجمّع الذي تختاره"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "عنوان Monero"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "المجمّع"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "اسم العامل"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "الحد الأقصى لخيوط CPU (%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "وضع RandomX"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "تقدير إجمالي قبل احتساب الكهرباء. في 2026-11-25 كانت قيمة 1 kH/s نحو $1 شهريًا بسعر XMR وصعوبة الشبكة الملحوظين. قد يستهلك معالج حاسوب مكتبي يعمل بنصف خيوطه 30 إلى 50 W إضافية. تحقّق من استهلاكك الفعلي وسعر الكهرباء لترى إن كان التعدين مجديًا."
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR (MoneroOcean، بعد أن تخفضه)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "عند بلوغ حد الدفع في المجمّع"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "يدفع المجمّع إلى عنوان Monero الخاص بك عندما يبلغ رصيدك الحد الذي اخترته. يحتفظ المجمّع بالرصيد حتى يدفعه لك."
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "يُبلغ هذا الجهاز عن اتصال استضافة. راجع شروط مزوّد الاستضافة قبل التعدين. بعض المزوّدين، ومنهم Hetzner Cloud، يحظرونه. تحقّق من تكاليف الكهرباء الفعلية قبل الاعتماد على أي تقدير للربح."
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "يفرض MoneroOcean، المجمّع الافتراضي، رسوم تعدين بنسبة 0%. حد الدفع الافتراضي 0.3 XMR، ويمكنك خفضه إلى 0.003 XMR. قد تكلّف الدفعات الأقل من 4 XMR ما يصل إلى 0.0004 XMR. تحدد المجمّعات الأخرى أسعارها وحدودها بنفسها."
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "الحوسبة"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "لا. يرسل برنامج التعدين العمل إلى مجمّعات التعدين."
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "يصل عنوان Monero واسم العامل وعنوان IP الخاص بك إلى المجمّع."
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "بعض الشبكات وخوادم DNS تحظر الاتصالات بمجمّعات التعدين."
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "تتعرّف معظم مجمّعات Monero عليك من خلال عنوان الدفع العام الخاص بك."
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "تتطلب الدفعة ما يكفي من XMR لبلوغ حد الدفع في المجمّع."
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "بعض مزوّدي الاستضافة يحظرون تعدين العملات المشفرة."
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "قد تكلّف الكهرباء الإضافية أكثر من XMR المكتسبة."
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "يرسل برنامج التعدين قيم التجزئة إلى المجمّعات ولا ينقل حركة مرور أي شخص آخر."
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "برنامج التعدين مفتوح المصدر، وصورة الحاوية تثبّت إصدارًا رسميًا موقّعًا من المصدر."
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "يمكنك التعدين بعنوان Monero عام دون الكشف عن اسمك."
+  source: "752cbb728aac"

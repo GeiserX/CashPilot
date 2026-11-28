@@ -1,0 +1,2514 @@
+# Indonesian translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/id.yml --restamp '<key>'
+2miners-etc.description:
+  text: "Pantau saldo Ethereum Classic yang belum dibayar, yang disimpan 2Miners untuk alamat pembayaran ETC publik Anda. Jalankan miner Anda sendiri dan arahkan ke pool. CashPilot membaca saldo tersebut dan meminta Anda mengonfirmasi pembayaran saat saldonya turun.\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "Pool penambangan Ethereum Classic, dipantau lewat alamat pembayaran Anda"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC (dapat diubah)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "Pool memeriksa ambang pembayaran Anda setiap dua jam"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "2Miners membayar ke alamat Anda secara otomatis begitu Anda mencapai ambang yang Anda pilih. Ambang terendah untuk pembayaran ETC adalah 0.1 ETC.\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "Saldo yang belum dibayar terkumpul di 2Miners. Saldo dompet dibaca terpisah dari jaringan Ethereum Classic. Periksa jumlah yang Anda terima di dompet sebelum mengonfirmasi pembayaran di CashPilot.\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "Masukkan alamat pembayaran Ethereum Classic publik yang digunakan miner Anda di 2Miners, diawali dengan <b>0x</b>. Jangan sertakan nama worker.\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "Memerlukan miner ETCHash yang diarahkan ke 2Miners"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "komputasi"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "Tidak. Miner Anda mengirim hasil kerja penambangan ke pool."
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "Pool menggunakan alamat pembayaran Anda, nama worker yang Anda pilih, dan alamat IP miner Anda."
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "Siapa pun dapat melihat statistik berdasarkan alamat pembayaran. Untuk mengubah ambang, pool meminta konfirmasi IP worker."
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "Pool mengenakan biaya 1% dan menahan pembayaran sampai ambang Anda tercapai."
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol (dulu ATOR) adalah jaringan privasi onion routing terdesentralisasi. Operator node menjalankan node relay dan mendapatkan token ANYONE atas bandwidth yang disumbangkan. Anggap saja \"Tor berinsentif.\" CashPilot menjalankannya dari image miliknya sendiri, yang dibangun dari paket Debian bertanda tangan milik proyek tersebut, untuk amd64 dan arm64. Konfigurasi berbasis file melalui file anonrc yang di-mount ke dalam kontainer (Nickname, ContactInfo, ORPort, dll.). Relay tidak menghasilkan apa pun sampai 100 ANYONE dikunci untuknya selama minimal 180 hari, dan reward diklaim dengan menandatangani di dompet Anda. Relay juga mencantumkan IP publik Anda di direktori relay jaringan, yang dapat merusak reputasi IP yang dibayar oleh aplikasi bandwidth residensial.\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "Onion routing terdesentralisasi - node relay Tor berinsentif"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "Kunci identitas ed25519 relay. Menghapusnya akan menghilangkan reputasi relay dan memulai riwayat penghasilannya dari nol."
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "Hanya membayar jika 100 ANYONE dikunci per relay selama minimal 180 hari dan klaim reward ditandatangani di dompet Anda. Tanpa stake, relay tidak menghasilkan apa pun. Dengan stake, penghasilan bergantung pada bandwidth yang disumbangkan dan waktu aktif."
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "Berbasis epoch"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "Diatur sebagai ContactInfo di anonrc, dengan awalan '@anon:0x...'."
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "Fingerprint relay yang dipisahkan koma. Tidak ada dasbor online yang menampilkannya. Untuk relay yang dijalankan CashPilot, jalankan <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> di host tempat relay itu berjalan. Untuk relay perangkat keras, buka Relay Control Panel-nya di <b>http://relayup.local</b> dan baca Fingerprint di halaman Home.\n"
+  source: "ffa5be0d4953"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "Bandwidth, sebagai relay di jaringan Anyone (fork dari Tor)."
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "Ya. Relay meneruskan lalu lintas orang lain. Apakah IP Anda menjadi lompatan terakhir bergantung pada apakah relay dikonfigurasi sebagai exit."
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "Kunci identitas publik relay, IP dan port Anda, serta statistik waktu aktif, semuanya memang dipublikasikan ke direktori jaringan. Jika Anda mengisi ContactInfo di anonrc, isinya juga dipublikasikan di sana dan diindeks secara publik untuk selamanya — biasanya berupa alamat email, jadi biarkan kosong kecuali Anda ingin itu publik."
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "Nyata. Lalu lintas relay dikaitkan dengan koneksi Anda. Relay exit khususnya mengundang keluhan penyalahgunaan; banyak ISP rumahan melarangnya."
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "Tidak ada akun yang perlu didaftarkan, jadi tidak ada batas per akun. Untuk menghasilkan, Anda tetap memerlukan dompet Ethereum dengan 100 ANYONE dikunci untuk setiap relay selama minimal 180 hari, dan CashPilot memerlukan fingerprint relay untuk membaca reward. Proyek ini tidak memublikasikan batas relay per IP, dan katalog juga tidak mencantumkannya."
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "Relay tidak menghasilkan apa pun kecuali 100 ANYONE dikunci untuknya selama minimal 180 hari, dan setiap klaim reward ditandatangani di dompet Anda."
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "Relay memang dirancang untuk meneruskan lalu lintas orang lain, tanpa memeriksa siapa mereka; relay exit mengundang keluhan penyalahgunaan."
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "Identitas, IP, dan waktu aktif relay dipublikasikan ke direktori jaringan, dan ContactInfo apa pun yang Anda isi menjadi publik selamanya."
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "Tidak ada akun yang perlu didaftarkan. Relay hanya memerlukan dompet, tanpa pemeriksaan identitas."
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "Perangkat lunak relay adalah fork Tor yang dipublikasikan, di bawah lisensi Tor."
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "CashPilot membangun image miliknya sendiri dari perangkat lunak relay Anyone yang dipublikasikan, yang tidak memerlukan akun."
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping adalah platform pemantauan jaringan terdesentralisasi yang membayar Anda untuk menjalankan node. Node Anda melakukan pemantauan situs web, uji latensi, dan pemeriksaan kualitas jaringan untuk pelanggan Bitping. Berfungsi di koneksi residensial maupun VPS. Image Docker masuk dengan variabel lingkungan BITPING_EMAIL dan BITPING_PASSWORD saat pertama kali dijalankan (\"Attempting login with environment variables\" di log-nya sendiri), lalu menyimpan sesi di volume yang di-mount sehingga restart tidak perlu autentikasi ulang.\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "Berbagi bandwidth - pemantauan jaringan terdesentralisasi, berfungsi di VPS"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "Kata sandi"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "Email akun Bitping Anda (login yang sama dengan <a href='https://app.bitping.com' target='_blank'>app.bitping.com</a>)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "Kata sandi akun Bitping Anda. Digunakan sekali untuk membuat sesi node, yang kemudian tersimpan di volume data."
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "Penghasilan bergantung pada kualitas jaringan dan permintaan pemantauan dari lokasi Anda. Node VPS diterima."
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "Penghasilan node ada di nodes.bitping.com; app.bitping.com adalah dasbor pelanggan API. Penarikan hanya dalam SOL: begitu saldo yang belum dibayar lebih dari $0.05, ketik alamat Solana di permintaan, diproses dalam 24 jam. Dompet Solana yang baru atau kosong perlu berisi sekitar 0.001 SOL terlebih dahulu, untuk minimum rent jaringan."
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "Sekarang hanya Solana, dan alamat diketik SAAT PENARIKAN, bukan disimpan."
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "Gunakan email dan kata sandi akun Bitping Anda (sama dengan <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)."
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "Tarik saldo Bitping Anda"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "Bitping dapat menghanguskan penghasilan yang tidak diklaim lebih dari 12 bulan, setelah pemberitahuan 30 hari melalui email."
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "Ajukan penarikan SOL di nodes.bitping.com dan ketik alamat Solana Anda di permintaan."
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "Penarikan dibayar dalam Solana (SOL), ke alamat yang Anda ketik di setiap permintaan."
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "Bantuan Bitping menyebutkan bahwa penarikan ke dompet Solana baru yang kosong bisa gagal sampai Anda sendiri mengisi dompet itu dengan sedikit SOL."
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "Bantuan Bitping menyebutkan bahwa server dan kontainer Docker didukung."
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "Penarikan hanya memerlukan alamat Solana yang diketik di permintaan."
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit adalah layanan berbagi bandwidth yang membayar melalui PayPal dan Stripe. Tidak ada image Docker resmi; kliennya adalah aplikasi desktop Windows dan aplikasi Android. Layanan ini berada di bytebenefit.io -- domain lama bytebenefit.com ditinggalkan dan diparkir di marketplace, itulah sebabnya dulu layanan ini ditandai mati di sini.\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "Berbagi bandwidth - pembayaran PayPal/Stripe, aplikasi desktop/Android"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "Tidak ada image Docker. Hanya aplikasi desktop Windows dan aplikasi Android."
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "20% dari penghasilan lalu lintas referal"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "Bonus sambutan $1 (10.000 Coins)"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "Halaman aplikasi di Google Play menyebutkan bahwa lalu lintas Anda melayani permintaan intelijen web dari klien Infatica, tanpa menyebut siapa mereka atau bagaimana mereka diperiksa."
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "Aplikasi Android keluar dari Google Play pada April 2026 setelah 17 bulan."
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "CashPilot tidak menjalankan ByteBenefit: Anda menggunakan aplikasi milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Bytelixir memungkinkan Anda memperoleh penghasilan pasif dengan berbagi bandwidth internet yang tidak terpakai. Hanya mendukung Windows dan Android — FAQ resmi menyatakan tidak ada rencana klien Linux atau Docker, iOS tidak didukung, dan macOS tidak tersedia. Penghasilan sangat bergantung pada lokasi. Dasbor web di dash.bytelixir.com untuk pemantauan. Tidak ada image Docker.\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "Berbagi bandwidth - hanya Windows + Android"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "Cookie sesi"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "Cookie Remember Web"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "Token XSRF"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "Masuk di <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a>, tekan F12 → Application → buka <b>Cookies</b> di sidebar kiri → klik sub-item <code>https://dash.bytelixir.com</code> → di daftar cookie sebelah kanan, cari <code>bytelixir_session</code> → salin Value-nya (JWT panjang yang diawali eyJ)"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "Di lokasi yang sama (Cookies → <code>https://dash.bytelixir.com</code>) → cari cookie bernama <code>remember_web_...</code> → salin Value-nya (opsional, memperpanjang masa berlaku sesi)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "Di lokasi yang sama → cari <code>XSRF-TOKEN</code> → salin Value-nya (opsional)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "Penghasilan bervariasi menurut lokasi ($2-50/bulan). Tidak ada image Docker. Memerlukan aplikasi desktop atau aplikasi Android."
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "Hanya kripto. Minimumnya bergantung pada koin: USDT $5, USDC $5, TON $8, LTC $10, ETH $40, BTC $250. Anda mengetik alamat di setiap permintaan. Permintaan diproses pada jam kerja, dalam 24 jam."
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "Saldo disimpan oleh Bytelixir; alamat dompet diketik di setiap permintaan pembayaran, tidak pernah disimpan di kontainer."
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "Masuk di <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> <b>dengan mencentang Remember Me</b>, tekan F12 → Application → buka <b>Cookies</b> di sidebar kiri → klik <code>https://dash.bytelixir.com</code>, lalu salin tiga nilai: <b>bytelixir_session</b>, <b>remember_web_…</b> (yang panjang dan diawali prefiks itu) dan <b>XSRF-TOKEN</b>. Cookie sesi saja kedaluwarsa sekitar dua jam setelah Anda menyalinnya, sehingga pengumpulan berhenti pada sore yang sama; cookie remember_web berlaku setahun dan itulah yang membuatnya tetap berfungsi."
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "50% dari keuntungan mereka seumur hidup"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "Bonus sambutan $1"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "Hanya kripto, dan minimumnya bergantung pada koin, dari $5 untuk USDT hingga $250 untuk Bitcoin."
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "CashPilot tidak menjalankan Bytelixir: Anda menggunakan aplikasi milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "Trustpilot memberinya nilai 4.6 dari 283 ulasan, sebagian besar memuji pembayaran kripto; beberapa melaporkan pembayaran tidak sampai."
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "Pembayaran hanya memerlukan alamat kripto yang diketik di permintaan."
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai adalah marketplace GPU peer-to-peer. Anda mendaftarkan mesin Linux dengan GPU NVIDIA, menetapkan sendiri harga spot dan on-demand, dan penyewa menjalankan kontainer Docker mereka sendiri di sana. Anda hanya dibayar untuk menit saat mesin disewa, dalam CLORE, BTC, USDT, atau USDC. Hosting memerlukan mesin x86_64 dengan Ubuntu 22.04 atau lebih baru (atau HiveOS), driver NVIDIA yang berfungsi, dan minimal 100 Mbps untuk unggah dan unduh. GPU AMD tidak didukung.\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "Marketplace GPU - sewakan GPU NVIDIA, dibayar dalam CLORE, BTC, atau stablecoin USD"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "Hanya dibayar untuk menit yang disewa, dengan harga yang Anda tetapkan. Ujung atas kisaran, $490, adalah batas atas versi Clore sendiri untuk satu RTX 4090 yang disewakan per menit ('hingga ~$490/bulan'); kartu yang lebih kecil menghasilkan lebih sedikit dan kartu yang menganggur tidak menghasilkan apa pun. Clore mengambil 5% (on-demand) atau 1.25% (spot) dari setiap sewa, ditambah 15% jika penyewa membayar dengan BTC, USDT, atau USDC alih-alih CLORE."
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "Tarik dari Account > Billing ke dompet Anda sendiri: CLORE (ERC-20, minimum 200, biaya sekitar $0.50), BTC (minimum 0.0001, biaya 0.00005 BTC) atau USDT/USDC di Ethereum atau BNB Chain (minimum $10, biaya $1)."
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "Clore menyimpan saldo (CLORE, BTC, dan satu saldo USD untuk USDT/USDC) sampai Anda menariknya. Jaringan dipilih per penarikan: Ethereum untuk CLORE, Bitcoin untuk BTC, Ethereum atau BNB Chain untuk USDT/USDC."
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "15% (tingkat standar) dari biaya platform yang dibayar oleh host dan penyewa yang Anda ajak, untuk setiap sewa; kodenya tidak pernah kedaluwarsa; dibayar dalam mata uang sewa (CLORE, BTC, atau USD)"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "100 Mbps unggah dan unduh"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "Waktu komputasi GPU di mesin Anda."
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "Ya. Penyewa menjalankan kontainer Docker mereka sendiri di mesin Anda, dan lalu lintas mereka keluar dari koneksi Anda; port SSH dan aplikasi diteruskan ke internet."
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "Kebijakan privasi Clore mencakup data akun dan alamat IP Anda beserta perkiraan lokasi; dokumen identitas hanya jika Clore meminta KYC."
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "Port masuk harus dapat dijangkau dari internet (22, 8080, dan 3000-4000 secara default) dan beban kerja orang asing berjalan di jaringan Anda. Panduan jaringan Clore sendiri menyebutkan bahwa beberapa ISP memblokir hosting."
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "Berusia 18 tahun atau lebih, tidak berada di negara yang terkena sanksi. Clore dapat menangguhkan atau menutup akun atas kebijakannya sendiri, dan penggunaan yang dilarang dapat membuat Anda kehilangan dana."
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "Baik ketentuan maupun kebijakan privasi tidak menyebutkan badan hukum, dan ketentuan menyerahkan yurisdiksi yang berlaku ke versi berikutnya."
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Clore dapat menangguhkan atau menutup akun atas kebijakannya sendiri, dan penggunaan yang dilarang dapat berujung pada penyitaan dana."
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "Pembayaran hanya dalam kripto (CLORE, BTC, USDT, atau USDC), dan Clore mengambil tambahan 15% dari sewa yang dibayar penyewa dengan BTC, USDT, atau USDC, kecuali host mengunci CLORE untuk memangkasnya."
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "Host hanya dibayar untuk menit yang disewa, dan angka Clore untuk RTX 4090 adalah batas atas (\"hingga ~$490/bulan\") untuk satu kartu."
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "Penggunaan dasar tidak memerlukan KYC, tetapi Clore dapat meminta verifikasi identitas untuk penarikan besar atau kasus kepatuhan."
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "Penyewa menjalankan image Docker publik apa pun di mesin Anda. Ketentuan mencantumkan penggunaan yang dilarang (malware, DDoS, CSAM, dan lainnya), tetapi kami tidak menemukan penjelasan tentang bagaimana penyewa diperiksa."
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "CashPilot tidak menjalankan Clore.ai: Anda memasang agen hosting Clore di mesin GPU Anda sendiri (Ubuntu 22.04 atau lebih baru, atau HiveOS), jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda."
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "Clore mengambil 5% dari sewa on-demand (1.25% untuk spot) jika penyewa membayar dengan CLORE, tanpa biaya tambahan."
+  source: "699adf0a2179"
+dawn.description:
+  text: "DAWN menjalankan jaringan validator yang memeriksa bandwidth dan cakupan untuk infrastruktur AI yang didanai melalui protokol DAWN. Ekstensi browser DAWN Validator ikut serta dalam pemeriksaan proof-of-bandwidth dan cakupan ini dan mendapatkan reward DAWN selama berjalan. Reward tersebut belum memiliki nilai tunai yang pasti. Buat akun di ekstensi dan masukkan kode referal 2QLQV97F saat diminta.\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "Validator DePIN - ekstensi browser mendapatkan poin DAWN"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "Mendapatkan Dawn Points sebelum peluncuran token. Nilai sebenarnya bergantung pada harga token di masa depan. Perangkat keras menghasilkan lebih banyak daripada ekstensi browser."
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "Airdrop token (akan diumumkan)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "Ekstensi berfungsi tetapi belum matang. Perangkat keras Black Box sudah diumumkan. Periksa lagi nanti."
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "Ekstensi menghasilkan poin; hingga Oktober 2026 belum ada distribusi token kepada operator node yang dikonfirmasi."
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "Poin tidak memiliki nilai pasti sampai token diluncurkan dan konversinya diumumkan."
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "CashPilot tidak menjalankan Dawn: Anda menggunakan ekstensi browser milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network adalah proyek VPN terdesentralisasi dan infrastruktur web3. Terutama memerlukan perangkat keras khusus Deeper Connect. Moken adalah platform mining/staking terkait. Tidak bisa hanya dengan perangkat lunak.\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "VPN terdesentralisasi - memerlukan perangkat keras khusus"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "Memerlukan perangkat keras Deeper Connect ($200-500). Platform Moken untuk mining/staking. Tidak bisa hanya dengan perangkat lunak."
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "Berkelanjutan"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "Komisi dari penjualan perangkat"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "Diskon 5% untuk perangkat Deeper Connect dengan kupon SERGIO"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "Reward mining dalam DPR dan bergantung pada skor kredit yang naik perlahan atau dengan staking DPR."
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "CashPilot tidak menjalankan Deeper Network: Anda menggunakan perangkat router milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "EarnApp dari Bright Data memungkinkan Anda menjual bandwidth yang tidak terpakai untuk penghasilan pasif. Bright Data adalah jaringan proxy terbesar di dunia, yang menjalankan pengumpulan data untuk perusahaan Fortune 500. CashPilot menjalankannya dari image miliknya sendiri, yang mengunduh build EarnApp yang dipatok dari CDN Bright Data saat pertama kali dijalankan, memeriksa sha256-nya, dan menjalankannya dalam mode lite hanya dengan UUID.\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "Berbagi bandwidth - didukung oleh Bright Data"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "UUID node"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "ID node EarnApp Anda: sdk-node- diikuti 32 karakter heksadesimal huruf kecil, seperti yang ditampilkan 'earnapp showid'. Setelah menerapkan, tautkan sekali dengan membuka https://earnapp.com/r/ diikuti UUID ini saat masuk ke EarnApp; node yang tidak ditautkan tetap menghasilkan, tetapi tidak ada yang masuk ke saldo Anda"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "EarnApp terus gagal menjangkau servernya dan terus restart, sehingga menghasilkan sedikit atau tidak sama sekali. Restart salinan ini; jika terus terjadi, periksa koneksi internet mesin ini."
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "Buka tautan ini saat masuk ke EarnApp untuk menambahkan node ke akun Anda. Sampai Anda melakukannya, node tetap menghasilkan tetapi tidak ada yang masuk ke saldo Anda."
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "Sangat bergantung pada lokasi. IP AS/UE menghasilkan paling banyak. Penghasilan meningkat seiring bandwidth yang terpakai."
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "Sesuai permintaan (penukaran otomatis tersedia: PayPal min $10, Wise min $10, Amazon min $50)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "Aktifkan penukaran otomatis sekali dan EarnApp akan membayar sendiri setiap kali saldo mencapai minimum metode: PayPal $10, Wise $10, Amazon $50. Pembayaran PayPal dikirim dari Bright Data Ltd. Pada Oktober 2026 sebuah pembayaran PayPal tiba sekitar 2% di bawah saldo yang ditukarkan."
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "Saldo disimpan oleh EarnApp; ditukarkan ke Amazon/Wise/PayPal."
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "Masuk di <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, tekan F12 → Application → Cookies, salin nilai <b>oauth-refresh-token</b>."
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "10% dari penghasilan mereka seumur hidup, dibayar di luar penghasilan mereka"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "Pusat bantuan EarnApp menyebutkan bahwa memasangnya di kontainer Docker, mesin virtual, layanan hosting, atau server rumahan dilarang keras, padahal begitulah cara CashPilot menjalankannya."
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "Artikel bantuan yang sama menyebutkan bahwa akun yang ketahuan berjalan dengan cara itu ditutup tanpa pemberitahuan dan pembayaran yang tertunda dibatalkan."
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "Pembayaran PayPal kami tiba pada Oktober 2026, sekitar 2% di bawah saldo yang ditukarkan."
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "Minimum $10 untuk PayPal dan Wise, dengan penukaran otomatis yang membayar dengan sendirinya."
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "EarnApp milik Bright Data, dan pembayaran PayPal-nya dikirim dari Bright Data Ltd., perusahaan yang jelas namanya."
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Earn.fm membayar Anda untuk berbagi bandwidth internet. Kolektor penghasilan menggunakan autentikasi email/kata sandi melalui Supabase. Image Docker ringan dengan penerapan yang mudah (klien Docker menggunakan token UUID terpisah).\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "Berbagi bandwidth - autentikasi email/kata sandi, klien ringan"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "Kunci API"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "Masuk di <a href=\"https://app.earn.fm\">app.earn.fm</a> → klik ikon profil Anda (kanan atas) → Account Settings → salin API Key (format UUID)"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "Platform yang relatif baru. Penghasilan bervariasi menurut lokasi dan ketersediaan bandwidth."
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "Minimum $15. Metode: USDT di BEP20 atau Polygon (biaya $1) atau TRC20 (biaya $3), PayPal, kartu hadiah Amazon atau Starbucks mulai $15, atau transfer bank mulai $1.000 dengan biaya transfer dipotong. Sebelum pembayaran pertama Anda mengisi profil penagihan (nama resmi dan alamat), yang digunakan untuk tanda terima pembayaran."
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "Saldo disimpan oleh Earn.fm; ditarik sesuai permintaan."
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "Gunakan email dan kata sandi akun Earn.fm Anda (sama dengan login <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a>)."
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "10% dari penghasilan mereka seumur hidup"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "Saldo awal $5"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "Minimum $15, biaya $1 hingga $3 untuk USDT, dan transfer bank hanya mulai $1.000."
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "Sebelum pembayaran pertama Anda mengisi profil penagihan dengan nama resmi dan alamat Anda."
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "Pengulas pada 2025 melaporkan dukungan lewat email dan Discord tidak menjawab; Trustpilot mencatat Earn.fm belum membalas ulasan negatif."
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Earn.fm memublikasikan image Docker miliknya sendiri, earnfm/earnfm-client."
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher adalah platform pertukaran lalu lintas tempat Anda mendapatkan kredit dengan mengunjungi situs web melalui surfbar otomatis. Berjalan sebagai ekstensi/add-on browser. Bukan layanan berbagi bandwidth biasa — layanan ini menghasilkan lalu lintas dengan menjelajahi situs web secara otomatis.\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "Surfbar pertukaran lalu lintas - ekstensi browser"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "Penghasilan dalam poin BTP yang dapat dikonversi ke EUR. Hanya ekstensi browser."
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "Pembayaran dalam euro melalui PayPal atau transfer bank."
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "CashPilot tidak menjalankan eBesucher: ini adalah ekstensi browser, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "Pembayaran mulai 2 euro melalui PayPal atau SEPA, setidaknya mingguan, tanpa biaya."
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "eBesucher sudah beroperasi sejak 2002."
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "Impresum menyebutkan operatornya, TurboAd GmbH, terdaftar di Berlin-Charlottenburg (HRB 160730 B)."
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux adalah infrastruktur komputasi yang tersebar secara global. Operator node melakukan stake token FLUX dan menyediakan sumber daya server. Tiga tingkat: Cumulus (1.000 FLUX), Nimbus (12.500 FLUX), Stratus (40.000 FLUX). Image Docker resmi tersedia.\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "Komputasi terdesentralisasi - memerlukan stake token FLUX"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "Memerlukan stake 1.000+ FLUX (~$50-500 tergantung harga). Tingkat yang lebih tinggi memerlukan jaminan lebih besar tetapi menghasilkan lebih banyak."
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "Reward blok"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "Tingkat node terkecil memerlukan 1.000 FLUX yang dikunci sebagai jaminan."
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "Reward blok turun 10% setiap tahun, dan sebuah panduan 2026 menilai reward tingkat kecil lemah jika dihitung dalam dolar."
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "CashPilot tidak menjalankan Flux: Anda menggunakan perangkat lunak node milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "Daemon Flux bersifat open source di bawah lisensi MIT."
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network adalah marketplace komputasi terdesentralisasi tempat Anda berbagi sumber daya CPU dan GPU dengan imbalan token GLM. Penyedia menjalankan agen Yagna yang mengelola eksekusi beban kerja di lingkungan sandbox. Salah satu proyek komputasi terdesentralisasi tertua (didirikan 2016). Mendukung tugas CPU, rendering GPU, dan komputasi serbaguna. Pembayaran melalui Polygon L2.\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "Marketplace komputasi terdesentralisasi - token GLM melalui agen Yagna"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "Penghasilan bergantung pada perangkat keras, harga, dan permintaan tugas. Node yang hanya CPU menghasilkan lebih sedikit. Node GPU menghasilkan lebih banyak tetapi memerlukan NVIDIA. Jalankan agen penyedia Yagna (bukan image Docker). Pembayaran di Polygon dalam token GLM."
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "Per penyelesaian tugas"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "Token GLM yang diperoleh. Atur dompet pembayaran saat penyiapan penyedia."
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "CashPilot tidak menjalankan Golem: Anda memasang sendiri agen penyedia, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Golem mendokumentasikan cara menjalankan penyedia dalam image Docker miliknya sendiri."
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "Agen penyedia, yagna, bersifat open source di bawah GPL-3.0."
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "Tanpa akun: Anda mengatur dompet pembayaran saat penyiapan penyedia."
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "Jaringan ini sudah berjalan sekitar sepuluh tahun."
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "Kebijakan privasi Golem menyebutkan operatornya, Golem Factory GmbH di Zug, Swiss."
+  source: "bae79b651923"
+grass.description:
+  text: "Grass adalah jaringan terdesentralisasi yang memungkinkan Anda menjual bandwidth yang tidak terpakai untuk data pelatihan AI. Berjalan sebagai ekstensi browser dan aplikasi desktop, meneruskan permintaan web scraping melalui koneksi Anda untuk membangun dataset terstruktur. Dengan 8.5M+ pengguna, ini salah satu jaringan bandwidth DePIN terbesar. Mendapatkan token GRASS di blockchain Solana.\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "Berbagi bandwidth DePIN untuk data AI - mendapatkan token GRASS"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "Token akses"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "Masuk di <a href=\"https://app.grass.io\">app.grass.io</a>, tekan F12 → Application → Local Storage → klik <code>https://app.grass.io</code> → salin nilai <code>token</code>"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "Mendapatkan Grass Points yang dapat dikonversi menjadi token GRASS melalui airdrop. Nilai USD sebenarnya bergantung pada harga token. Memerlukan ekstensi browser atau aplikasi desktop."
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "Airdrop berbasis epoch"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "Reward datang sebagai distribusi berkala yang diklaim di dasbor Grass. Distribusi Stage 2 (aktivitas Oktober 2024 hingga Juni 2026) dibayar dalam USDC: klaim di app.grass.io/dashboard paling lambat 22 Januari 2027, atau lebih awal jika semua alokasi sudah diklaim lebih dulu. Grass menyimpan reward yang tidak diklaim."
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "Mengumpulkan POIN; GRASS diklaim dari dasbor Grass saat airdrop berkala."
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "Masuk di <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, tekan F12 → Application → Local Storage, salin nilai <b>accessToken</b>."
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "20% dari poin waktu aktif referal langsung, 10% di tingkat kedua, 5% di tingkat ketiga"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "Klaim USDC Grass Stage 2 Anda"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "Grass menyimpan setiap alokasi Stage 2 yang tidak diklaim paling lambat 22 Jan 2027, dan jendelanya bisa tutup lebih awal jika semua alokasi sudah diklaim."
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "Masuk di app.grass.io dengan akun yang Anda gunakan di Stage 2, aktifkan Grass Wallet, buka tab Allocation, dan konfirmasi. Klaim hanya di app.grass.io. Tidak punya poin Stage 2? Pilih Bukan untuk saya."
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "Reward hanya datang melalui musim airdrop. Operator node lama melaporkan perkiraan musim 2 di kisaran beberapa dolar hingga belasan dolar."
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "Reward musim 2 yang tidak diklaim paling lambat 22 Januari 2027 hilang untuk selamanya."
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "Airdrop pertama menuai protes karena reward per poin yang kecil, terbagi ke lebih dari dua juta pengguna."
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "CashPilot tidak menjalankan Grass: Anda menggunakan aplikasi atau ekstensi milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "Airdrop pertama menjangkau hampir 1.5 juta alamat yang melakukan klaim."
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium adalah jaringan nirkabel terdesentralisasi yang sudah mapan. Awalnya hotspot LoRaWAN, kini diperluas ke 5G. Memerlukan perangkat keras khusus ($500+). Mendapatkan token HNT/MOBILE. ROI sudah turun drastis - biasanya $4-8/bulan.\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "Jaringan nirkabel terdesentralisasi - memerlukan perangkat keras, token HNT"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "Memerlukan pembelian perangkat keras $500+. ROI sudah turun drastis. Ada proses persetujuan untuk operator baru."
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "Berbasis epoch"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "HIP 149 menghentikan reward Proof-of-Coverage pada 6 Juli 2026; hotspot IoT kini hanya menghasilkan dari data yang mereka bawa, dan lebih dari 114.000 di antaranya tidak membawa data sama sekali."
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "Model reward Helium sudah beberapa kali berubah lewat pemungutan suara, CEO-nya mundur, dan HNT turun sekitar 96%."
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "CashPilot tidak menjalankan Helium: Anda menggunakan perangkat hotspot milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "Perangkat lunak gateway hotspot bersifat open source di bawah lisensi Apache-2.0."
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "Pantau saldo Kaspa yang belum dibayar, yang disimpan HeroMiners untuk alamat pembayaran publik Anda. Jalankan miner Kaspa Anda sendiri dan arahkan ke pool. CashPilot membaca saldo pool dan meminta Anda mengonfirmasi pembayaran saat saldonya turun.\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "Pool penambangan Kaspa, dipantau lewat alamat pembayaran Anda"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS (dapat diubah)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "Pool memeriksa ambang pembayaran Anda setiap jam"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "HeroMiners membayar ke alamat Anda secara otomatis begitu Anda mencapai ambang yang Anda pilih. Ambang terendah adalah 1 KAS.\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "Saldo terkumpul di HeroMiners. Periksa jumlah yang Anda terima di dompet sebelum mengonfirmasi pembayaran di CashPilot.\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "Masukkan alamat pembayaran Kaspa publik lengkap yang digunakan miner Anda di HeroMiners. Sertakan awalan <b>kaspa:</b> dan jangan sertakan nama worker.\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "Memerlukan miner Kaspa yang diarahkan ke HeroMiners"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "komputasi"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "Tidak. Miner Anda mengirim hasil kerja penambangan ke pool."
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "Statistik publik pool menampilkan setiap alamat pembayaran dan aktivitas penambangannya."
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "Pool menggunakan alamat pembayaran Anda sebagai pengganti akun."
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "Pool mengenakan biaya 0.9% dan menahan pembayaran sampai ambang Anda tercapai."
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "Bagikan bandwidth internet Anda yang tidak terpakai dan dapatkan penghasilan pasif. Honeygain meneruskan lalu lintas intelijen web, pengiriman konten, dan riset pasar melalui koneksi Anda. Salah satu platform berbagi bandwidth paling mapan dengan 12M+ pengguna dan lebih dari 1M pembayaran yang telah diselesaikan.\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "Berbagi bandwidth - platform paling mapan"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "Kata sandi"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "Nama perangkat"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "Email akun Honeygain Anda"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "Kata sandi akun Honeygain Anda"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "Nama yang ditampilkan di dasbor Honeygain Anda"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "Bervariasi menurut lokasi. IP AS/UE menghasilkan lebih banyak. Maksimal 10 perangkat per akun."
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "Minimum $20 (20.000 kredit). Dua pilihan: PayPal melalui Tipalti, dengan biaya sekitar 15%, atau kredit JumpTask tanpa biaya, dibayarkan ke dompet JumpTask. Permintaan memerlukan kode 6 digit yang dikirim lewat email. Pembayaran PayPal pertama tetap berstatus \"waiting for details\" sampai Anda mendaftar di Tipalti dari tautan yang mereka kirim lewat email. Tautan itu hanya berfungsi sekali, jadi buka saat Anda bisa menyelesaikannya dalam satu kali duduk dan ponsel ada di dekat Anda: setelah membuat kata sandi, Tipalti meminta Anda mengonfirmasi nomor ponsel lewat SMS (kodenya kedaluwarsa dalam beberapa menit), lalu meminta nama, alamat, negara, dan tanggal lahir, serta alamat PayPal Anda. Tipalti mengenakan $2.02 per pembayaran; pilih USD untuk menghindari biaya konversi mata uang 1.9-3%. Pembayaran menyusul dalam 2 hari kerja. Saldo keluar dari akun Anda segera setelah Anda mengajukan permintaan, bahkan saat pembayaran masih menunggu Tipalti. Setiap login Tipalti berikutnya mengirim kode SMS baru kecuali Anda mencentang opsi untuk mengingat perangkat selama 30 hari. Pada Oktober 2026 Tipalti tidak meminta formulir pajak dari penerima di Spanyol."
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "Saldo disimpan oleh Honeygain; ditarik sesuai permintaan."
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "Gunakan email dan kata sandi akun Honeygain Anda (sama dengan <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>)."
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "Hingga 25% dari penghasilan setiap teman yang diajak dalam mode Honeygain"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "Bonus pendaftaran $3 dengan tautan ini"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "Tarik saldo Honeygain Anda"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "Biarkan perangkat Honeygain tetap berbagi, atau lakukan pembayaran"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "Penghasilan tetap berlaku selama 24 bulan setelah mencapai minimum $20. Setelah itu Honeygain dapat menghapus yang belum dibayarkan."
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "Jika aplikasi tidak digunakan lebih dari 6 bulan, Honeygain menganggap saldo yang belum dibayar sudah kedaluwarsa, bahkan di bawah $20."
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "Biarkan perangkat tetap berbagi, atau ajukan pembayaran. Dalam mode JumpTask, saldo yang tidak berubah itu normal, jadi pilih Bukan untuk saya."
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "Ketentuan mengizinkan Honeygain menghapus penghasilan yang mencapai ambang $20 dan tidak dibayarkan dalam 24 bulan, serta menganggap penghasilan kedaluwarsa setelah enam bulan tidak digunakan."
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "Minimumnya $20, dan pembayaran PayPal melalui Tipalti, yang mengenakan $2.02 per pembayaran."
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "Ketentuan mengizinkan Honeygain menangguhkan akun dan menahan atau menghapus penghasilan yang dianggapnya dikumpulkan dengan alasan palsu."
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "Sebelum pembayaran PayPal pertama, Tipalti meminta Anda mengonfirmasi nomor ponsel lewat SMS dan memberikan nama, alamat, dan tanggal lahir."
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "Ketentuan menyebutkan bahwa klien bisnis menggunakan lalu lintas untuk mengumpulkan data web yang tersedia untuk umum, tetapi tidak menyebut klien mana pun, dan Anda tidak dapat mengetahui klien mana yang menggunakan koneksi Anda."
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "Balasan Honeygain sendiri atas ulasan tentang penghasilan rendah menyebutkan bahwa penghasilan bergantung pada permintaan jaringan dan lokasi; pengulas melaporkan butuh waktu sangat lama untuk mencapai minimum $20."
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Honeygain memublikasikan image Docker miliknya sendiri, honeygain/honeygain."
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "Ketentuan menyebutkan operatornya, Honeygain UAB, terdaftar di Vilnius, Lituania."
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "Halaman pers Honeygain menyebutkan perusahaan ini didirikan pada 2019."
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net adalah jaringan GPU terdesentralisasi untuk beban kerja AI/ML. Mengumpulkan GPU yang menganggur dari konsumen dan pusat data. Memerlukan GPU NVIDIA dengan VRAM 8GB+ untuk penghasilan yang berarti. Penerapan berbasis kontainer didukung.\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "Jaringan GPU terdesentralisasi untuk AI - memerlukan GPU NVIDIA"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "Memerlukan GPU NVIDIA dengan VRAM 8GB+. Klaim untuk RTX 4090 sebesar $500-1000/bulan (kemungkinan lebih rendah dalam praktiknya)."
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "Berbasis epoch"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "Reward pemasok dibayar dari emisi token terlepas dari ada tidaknya pekerjaan berbayar, dan pemilik GPU melaporkan kartu mereka menganggur hampir sepanjang waktu."
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "Reward dalam token IO dan model pembayarannya berubah pada 2026 menjadi mesin yang dipatok ke dolar."
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "Pada April 2024 sekitar 1.8 juta GPU palsu mencoba bergabung melalui token autentikasi yang bocor, dan CEO-nya kemudian mundur sebelum peluncuran token."
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "CashPilot tidak menjalankan io.net: Anda menggunakan perangkat lunak worker milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "IPRoyal Pawns memungkinkan Anda menghasilkan dengan berbagi bandwidth yang tidak terpakai. IPRoyal adalah penyedia proxy yang sudah mapan, dan Pawns adalah lini berbagi bandwidth residensial mereka. Image Docker CLI menerima kredensial melalui flag baris perintah. Pengguna baru yang mendaftar melalui tautan referal mendapat $1 untuk masing-masing dari tiga pembayaran pertamanya, hingga $3. Setiap pembayaran harus terjadi dalam jendela waktu satu hingga tiga minggu, yang ditentukan oleh lokasi. Jendela dimulai saat pendaftaran dan dimulai lagi setelah setiap pembayaran. Jika jendela tutup lebih dulu, bonus yang tersisa hilang.\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "Berbagi bandwidth - bonus hingga $3 untuk pembayaran pertama Anda"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "Kata sandi"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "Nama perangkat"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "ID perangkat"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "Email akun IPRoyal Pawns Anda (diteruskan sebagai flag -email)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "Kata sandi akun IPRoyal Pawns Anda (diteruskan sebagai flag -password)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "Nama yang ditampilkan di dasbor Pawns Anda (diteruskan sebagai flag -device-name)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "Pengenal perangkat yang unik (diteruskan sebagai flag -device-id)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "IPRoyal Pawns telah menonaktifkan akun ini."
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "Pawns melihat perangkat aktif lain di alamat IP ini dan hanya membayar satu per IP, sehingga salinan ini berjalan tetapi tidak berbagi apa pun dan tidak menghasilkan apa pun. Hentikan aplikasi Pawns lain di IP ini, di mesin lain, PC, atau ponsel. Jika tidak ada, tunggu Pawns melepas perangkat lama, atau minta dukungan Pawns untuk melepaskannya."
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "Penghasilan bergantung pada lokasi dan penggunaan bandwidth. IP residensial AS/UE menghasilkan lebih banyak."
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "Minimum $5. Pilih negara Anda terlebih dahulu; metodenya bergantung pada negara. Dari Spanyol (Oktober 2026): PayPal 4% dengan biaya minimum $0.25, dibayar melalui Tremendous, yang mengirim tautan lewat email tempat Anda memasukkan nama dan alamat PayPal; USDT (BEP20, ERC20, TRC20) atau USDC (BEP20, ERC20) dengan biaya jaringan $1; Bitcoin dengan biaya minimum $2; kartu hadiah tanpa biaya. Pembayaran pertama memerlukan pemeriksaan SMS satu kali untuk nomor telepon Anda: Withdraw membukanya, dan nomor dimasukkan dengan kode negaranya. Setelah itu setiap pembayaran meminta kode yang dikirim ke email akun Anda dan ditinjau hingga 72 jam sebelum dikirim."
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "Saldo disimpan oleh IPRoyal Pawns; ditarik sesuai permintaan."
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "Gunakan email dan kata sandi akun IPRoyal Pawns Anda (sama dengan <a href='https://pawns.app' target='_blank'>pawns.app</a>)."
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "$1 untuk masing-masing dari tiga pembayaran pertama mereka, hingga $3, jika masing-masing terjadi dalam jendela 1-3 minggunya"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "$1 untuk masing-masing dari tiga pembayaran pertama Anda, hingga $3; lewatkan jendela 1-3 minggu dan sisanya kedaluwarsa"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "Ketentuan menyebutkan bahwa akun dapat diblokir tanpa pemberitahuan sebelumnya karena penyalahgunaan syarat penarikan atau akun ganda, dan penghasilannya mungkin tidak dibayarkan."
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "Ketentuan menyebutkan bahwa Pawns tidak mengizinkan server, VPN, atau layanan proxy apa pun untuk berbagi lalu lintas, dan hanya satu perangkat per IP."
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "PayPal dikenai 4% (minimal $0.25) melalui Tremendous, dan setiap pembayaran ditinjau hingga 72 jam."
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "Pembayaran pertama memerlukan pemeriksaan SMS untuk nomor telepon Anda, dan setiap pembayaran memerlukan kode yang dikirim lewat email."
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "Kebijakan privasi menyebutkan operatornya, Pawns.App Ltd (perusahaan 16043795 di Inggris dan Wales), yang menurut Companies House didirikan pada 28 Oktober 2024, kurang dari tiga tahun lalu."
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "Ketentuan menyebutkan bahwa Pawns dan klien bisnisnya meneruskan lalu lintas melalui perangkat Anda, dan bahwa Anda tidak dapat mengetahui klien mana yang menggunakannya."
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "Minimum $5, dengan kartu hadiah tanpa biaya."
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "Tambang Pearl dengan KRig di satu GPU NVIDIA. Kryptex mengonversi reward ke Bitcoin dan menyimpan saldo di akun Anda sampai Anda mengajukan penarikan."
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "Tambang Pearl di GPU NVIDIA dan dapatkan kredit akun dalam Bitcoin"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "Email akun Kryptex"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "Nama worker"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "Email terverifikasi di akun Kryptex Anda."
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "Beri setiap mesin nama yang berbeda di akun Kryptex Anda."
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "0.00001 BTC melalui Lightning (metode lain bervariasi)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kryptex mengonversi reward Pearl ke BTC dan menyimpan saldo di akun Anda. Ajukan penarikan di Kryptex. Setiap metode memiliki minimum dan biayanya sendiri. Minimum untuk Bitcoin Lightning adalah 0.00001 BTC."
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "Kryptex menyimpan Bitcoin hasil konversi di akun Anda sampai Anda menariknya."
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "20% dari pendapatan pool Kryptex dari pengguna yang diajak"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64, GPU NVIDIA generasi Volta (sm_70) atau lebih baru, dan NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "Mesin ini melaporkan koneksi hosting. Periksa ketentuan penyedia Anda sebelum menambang. Beberapa penyedia, termasuk Hetzner Cloud, melarangnya. Periksa biaya listrik Anda yang sebenarnya sebelum mengandalkan perkiraan keuntungan."
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "KRig mengenakan biaya miner 0% di Kryptex Pool. Kryptex mencantumkan biaya pool Pearl PPS+ terpisah sebesar 3%. Biaya penarikan bervariasi menurut metode."
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "komputasi"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "Tidak. KRig mengirim hasil kerja penambangan ke Kryptex Pool."
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Kryptex melihat email akun, nama worker, hashrate, dan alamat IP Anda."
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "Beberapa jaringan dan resolver DNS memblokir koneksi ke pool penambangan."
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "Verifikasi email akun Kryptex Anda sebelum menambang ke akun tersebut."
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Kryptex dapat menangguhkan akun yang tidak aktif setelah enam bulan dan menghapusnya setelah satu tahun."
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "Minimum dan biaya penarikan bervariasi menurut metode."
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "Lisensi KRig mengizinkan mengunduh rilisnya dan menjalankannya dari perangkat lunak penambangan."
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "KRig menggunakan endpoint TLS yang dipublikasikan untuk mengirim share Pearl ke Kryptex Pool."
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes (Mysterium Network) adalah jaringan VPN dan proxy terdesentralisasi yang dibangun dengan teknologi blockchain. Anda mendapatkan token MYST dengan menjalankan node yang menyediakan layanan VPN, proxy, dan pengambilan data (scraping) kepada pengguna. Memerlukan capability NET_ADMIN, SETUID, dan SETGID serta perangkat TUN, yang digunakannya di dalam namespace jaringannya sendiri di bridge aplikasi penghasil yang dipagari. Dilengkapi UI web bawaan untuk mengelola node. Berfungsi di koneksi residensial maupun VPS, tetapi bonus referal hanya dibayar untuk node di IP residensial.\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "Node VPN terdesentralisasi - berbasis blockchain, berfungsi di VPS"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "Alamat WebUI"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "Rentang port UDP"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "Alamat host tempat WebUI node (port 4449) dipublikasikan. 127.0.0.1 membuatnya hanya bisa diakses di mesin ini. Untuk mengaksesnya melalui reverse proxy, tambahkan alamat yang dihubungi proxy, dipisahkan koma tanpa spasi: 127.0.0.1,172.18.0.1."
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "Port UDP yang digunakan node untuk sesi VPN, dalam format start:end. Teruskan rentang yang sama ini di router Anda. Setiap sesi memakai sekitar dua port, jadi 30 port default menampung sekitar 15 sesi sekaligus, lebih dari yang didapat node rumahan. Rentang yang lebih lebar tidak memperbaiki apa pun dan lebih mahal: setiap port yang dipublikasikan memperlambat start dan penghapusan node (300 port butuh sekitar 12 detik untuk start), CashPilot menerima paling banyak 300, dan dengan userland proxy default Docker setiap port juga memakan sekitar 2.5 MB memori. Jika semua sesi gagal, masalahnya ada di router, bukan karena port terlalu sedikit: lihat \"Routers that rewrite UDP source ports\" di panduan Mysterium. Jaga di bawah 32768: port 32768-60999 adalah rentang ephemeral Linux, tempat program apa pun di host bisa memakainya sesaat, dan satu port yang terpakai membuat start node gagal. Node yang sudah memiliki rentang tetap mempertahankannya."
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "Keystore identitas node. Menghapusnya akan membuat identitas yang benar-benar baru: node kehilangan reputasinya dan semua penghasilan yang masih tertahan pada identitas lama."
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "Node tidak dapat menjalankan sudo di dalam kontainernya, sehingga tidak dapat mengonfigurasi antarmuka VPN atau firewall-nya dan setiap sesi gagal saat penyiapan: node terlihat online tetapi tidak menghasilkan apa pun. Kontainer dibuat tanpa capability SETUID dan SETGID. Perbarui CashPilot dan worker yang menjalankan node ini, lalu terapkan ulang Mysterium dari dasbor; identitas node tersimpan di volume datanya dan tetap dipertahankan."
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "Tidak ada sesi VPN dalam 6 jam terakhir yang menjangkau node ini secara langsung. Semuanya beralih ke hole punching, dan banyak pembeli gagal terhubung dengan cara itu, sehingga node menghasilkan lebih sedikit. Port UDP-nya tidak dapat dijangkau dari internet. Di router Anda, teruskan rentang port UDP ${UDP_PORTS} (start:end, rentang yang sama di kedua sisi) ke ${HOST_ADDRESS}. Peringatan ini hilang dengan sendirinya begitu ada sesi yang terhubung langsung."
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "Pemantauan Mysterium menandai node di ${WORKER_NAME} sebagai gagal, sehingga node tidak masuk daftar node yang dipilih sebagian besar pembeli, bahkan saat pemeriksaan node itu sendiri menyatakan semua port dapat dijangkau. Pertama, pastikan node memiliki /dev/net/tun dan SETUID/SETGID, karena tanpa itu node gagal dengan cara yang sama: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 Jika itu sudah ada, penyebab umumnya adalah router di depan ${WORKER_NAME} yang menulis ulang port sumber UDP dari jawaban node begitu paket dari luar mencapai port tersebut. Lihat pengujiannya di panduan: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "Lima sesi VPN terakhir dari node di ${WORKER_NAME} masing-masing berakhir setelah sekitar satu menit tanpa memindahkan data, sehingga node tidak menghasilkan apa pun meskipun terlihat online. Kemungkinan penyebabnya adalah router di depan ${WORKER_NAME}: begitu paket dari luar mencapai sebuah port, router menulis ulang port sumber dari jawaban node berikutnya dari port itu, dan setiap sesi dimulai dengan paket seperti itu (pemeriksaan port oleh node itu sendiri), sehingga pembeli membuang jawaban node. Rentang port yang lebih lebar tidak membantu. Lihat pengujian dan perbaikannya di panduan: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports Peringatan ini hilang begitu ada sesi yang membawa data."
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "Penghasilan dalam token MYST. IP residensial menghasilkan jauh lebih banyak. WebUI node di port 4449 untuk pengelolaan, secara default hanya dipublikasikan di mesin tempat node berjalan (127.0.0.1); dari mesin lain, buka terowongan SSH terlebih dahulu (ssh -L 14449:127.0.0.1:4449 diikuti alamat mesin node, lalu buka http://127.0.0.1:14449; port lokal 14449 agar tidak bentrok dengan node di mesin Anda sendiri), atau tambahkan alamat ke UI_ADDRESS (lihat WebUI address di panduan Mysterium). VPS diterima. Penerusan port UDP 23000-23029 (default UDP_PORTS) sangat dianjurkan -- tanpanya, node mendapat status Strict NAT dan banyak sesi VPN gagal, sehingga pendapatan sangat berkurang. Penting: setelah pertama kali dijalankan, atur dompet penerima (settlement) melalui WebUI node atau CLI agar sesuai dengan akun mystnodes.com Anda -- ini menautkan penghasilan on-chain ke dasbor cloud Anda."
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "Settlement on-chain otomatis setiap kali node menyimpan 5 MYST yang belum di-settle"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "Tidak ada tombol yang perlu ditekan. Setiap node melakukan settlement di Polygon dengan sendirinya begitu menyimpan 5 MYST yang belum di-settle, dan sekitar 21% habis untuk biaya (biaya Hermes 20% ditambah biaya transaksi kecil), jadi kira-kira 3.9 MYST sampai ke dompet penerima per settlement. TequilAPI setiap node mencantumkan settlement-nya di /transactor/settle/history. Angka \"total earnings\" di MystNodes hanya mencakup 30 hari terakhir; itu bukan saldo dan bukan total seumur hidup. Bonus MYST dari program reward MystNodes tidak di-settle dengan sendirinya: klaim di halaman Rewards, dalam 30 hari setelah distribusi menurut pusat bantuan MystNodes."
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "Dompet penerima diatur SETELAH penerapan, melalui TequilAPI atau WebUI node -- bukan lewat variabel lingkungan, sehingga tidak dapat dibaca dari spesifikasi kontainer."
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "Gunakan email dan kata sandi akun MystNodes Anda (sama dengan <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>)."
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "5 MYST per teman yang node-nya menghasilkan 5 MYST (hanya IP residensial)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "5 MYST begitu node Anda menghasilkan 5 MYST pertamanya (IP residensial, node diklaim di mystnodes.com)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "Klaim reward MystNodes bulan lalu"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "Reward yang tidak diklaim dalam 30 hari setelah distribusi bulanan hangus dan kembali ke pool bulan berikutnya."
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "Buka halaman Rewards dan tukar poin Anda dengan MYST."
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "Bandwidth. Koneksi Anda digunakan sebagai exit node untuk jaringan Mysterium, yang menjual layanan VPN, proxy, DAN pengambilan data (scraping). Lalu lintas scraping yang keluar dari IP residensial adalah penggunaan yang paling mungkin mengundang keluhan, dan Anda tidak dapat memilih mana dari ketiganya yang dibawa node Anda."
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "Ya. Orang asing meneruskan lalu lintas mereka melalui alamat IP Anda — itulah produknya."
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "Identitas node (alamat blockchain), IP Anda, dan perkiraan lokasi (negara/kota/ISP), yang dipublikasikan node ke jaringan agar pembeli dapat memilihnya."
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "Nyata dan perlu dipahami. Lalu lintas dari orang lain keluar dari koneksi Anda dan dikaitkan dengan Anda, sehingga apa pun yang mereka lakukan tampak berasal dari jaringan Anda. Banyak kontrak ISP rumahan melarang hal ini. Periksa kontrak Anda sebelum menjalankannya."
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "Perangkat tak terbatas per akun dan per IP."
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "Sekitar 21% dari setiap settlement habis untuk biaya, yaitu biaya Hermes 20% ditambah biaya transaksi, dan penghasilan dibayar dalam token MYST."
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "Node Anda menjadi exit untuk pelanggan VPN, proxy, dan pengambilan data Mysterium, dan Anda tidak dapat memilih lalu lintas siapa yang dibawanya."
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "Perangkat lunak node bersifat open source di bawah GPL-3.0."
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Mysterium memublikasikan image Docker miliknya sendiri, mysteriumnetwork/myst."
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "Settlement masuk ke dompet milik Anda sendiri; tidak perlu nomor telepon atau identitas."
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "Proyek node ini sudah berjalan sejak 2017."
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "Situs Mysterium menyebutkan bahwa jaringan ini dikembangkan oleh Blockdev AG, Zug, Swiss."
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay adalah jaringan DePIN yang memberi reward kepada pengguna karena berbagi bandwidth melalui ekstensi browser. Platform ini berada di balik perlindungan Cloudflare, yang dapat menyulitkan akses otomatis. Pengguna mendapatkan Nodepay Points dengan menjaga ekstensi tetap aktif. Jaringan ini berfokus pada penyediaan infrastruktur data pelatihan AI.\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "Berbagi bandwidth DePIN untuk AI - ekstensi browser"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "Mendapatkan Nodepay Points; poin pengguna yang lolos pemeriksaan kelayakan Nodepay dikonversi menjadi token NC. Perlindungan Cloudflare dapat memblokir pengumpulan otomatis. Memerlukan ekstensi browser."
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "Airdrop token NC (waktu belum dikonfirmasi)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "Sistem berbasis poin. Poin pengguna yang lolos pemeriksaan kelayakan Nodepay dikonversi menjadi token NC, yang diluncurkan pada Januari 2025."
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "Dalam tinjauan musim pertamanya, Nodepay menghapus lebih dari 300.000 akun yang dianggapnya bot dan membatalkan 17 miliar poin."
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "Reward berupa poin yang dikonversi menjadi token NC, sehingga nilainya bergantung pada token tersebut."
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "CashPilot tidak menjalankan Nodepay: Anda menggunakan ekstensi browser milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes adalah tingkat awal gratis dari Noderr Protocol, proyek DeFi di Base L2. Micronode adalah agen kecil di ponsel Android cadangan, PC Windows, Mac, atau browser Chromium. Di Android, ia membagikan koneksi seluler ponsel: lalu lintas Noderr lain keluar melalui IP operator seluler ponsel, sehingga memerlukan SIM dengan data seluler. Di PC atau browser, ia menjalankan tugas otomatisasi untuk protokol dengan daya komputasi cadangan. Reward dirancang untuk dibayar dalam NODR, disesuaikan dengan skor waktu aktif dan keandalan on-chain, tetapi selama beta jaringan berada di testnet Base Sepolia: reward node belum didanai dan belum ada yang dibayarkan.\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "Micronode gratis (berbagi koneksi Android, Windows, Mac, browser) - testnet, reward belum didanai"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "Beta testnet: reward node belum didanai dan belum ada yang dibayarkan. APY 5-10% di situs adalah target rancangan. Tinjau lagi saat jaringan keluar dari Base Sepolia."
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "Reward terkumpul di dompet node itu sendiri dan diklaim dari aplikasi atau dApp. Selama beta, reward berupa token testnet Base Sepolia tanpa nilai pasar."
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "Aplikasi membuat dompet node saat pertama kali dijalankan dan mencetak Utility NFT soulbound gratis ke dompet itu. Cadangkan dompet dari aplikasi: kehilangan perangkat berarti kehilangan identitas node. Selama beta, reward berada di Base Sepolia (testnet)."
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Android memerlukan SIM dengan data seluler; klien desktop dan browser tidak memublikasikan persyaratan IP."
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "Bergantung pada perangkat. Ponsel Android menjual koneksi selulernya: lalu lintas Noderr lain keluar melalui alamat IP operator seluler ponsel dan memotong kuota paket datanya. PC Windows, Mac, atau browser menjual daya komputasi cadangan untuk apa yang disebut penyedia sebagai tugas otomatisasi media sosial dan konten."
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "Ya. Di Android, lalu lintas Noderr lain keluar melalui alamat IP seluler ponsel Anda; aplikasi meminta persetujuan yang direkam sebelum mulai, dan Anda dapat berhenti berbagi dari layar yang sama. Untuk klien Windows, Mac, dan browser, penyedia menjelaskan tugas otomatisasi dan tidak menyebutkan apakah tugas itu membawa lalu lintas orang lain."
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "Alamat dompet node beserta angka waktu aktif dan penyelesaian tugasnya dicatat on-chain sebagai skor reputasi (TrustFingerprint). Penyedia menyatakan bahwa tugas dianonimkan, dijalankan di sandbox, dan kunci dompet tidak pernah meninggalkan perangkat. Tidak ada yang lebih spesifik yang dipublikasikan."
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "Di Android, koneksi yang dibagikan adalah paket seluler operator: dokumen penyedia sendiri memperingatkan bahwa berbagi mungkin tidak diizinkan oleh kebijakan penggunaan wajar sebagian operator, dan lalu lintas yang dibagikan memakai kuota paket. Untuk klien desktop dan browser, penyedia tidak menyebut apa pun tentang ketentuan ISP."
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "Satu node per perangkat, masing-masing dengan Utility NFT soulbound sendiri; menjalankan beberapa perangkat diizinkan dan dianjurkan. Tidak ada batas per IP yang dipublikasikan. Tidak ada akun dalam arti biasa: identitasnya adalah dompet yang dibuat aplikasi saat pertama kali dijalankan."
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "Reward node berupa token testnet yang belum didanai tanpa nilai pasar, dan belum ada yang dibayarkan; APY 5 hingga 10% di situsnya adalah target rancangan."
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "Untuk klien desktop dan browser, Noderr menjelaskan tugas otomatisasi dan tidak menyebutkan apakah tugas itu membawa lalu lintas orang lain."
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "Penyedia menyatakan bahwa tugas dianonimkan dan dijalankan di sandbox, tetapi tidak memublikasikan hal yang lebih spesifik."
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "Masih beta testnet di Base Sepolia."
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "CashPilot tidak menjalankan Noderr: Anda menggunakan aplikasi atau ekstensi milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "Tanpa akun: aplikasi membuat dompet saat pertama kali dijalankan."
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Nodle menggunakan Bluetooth smartphone untuk membangun infrastruktur IoT. Aplikasi secara pasif mendeteksi dan meneruskan data dari perangkat IoT di sekitar, sehingga mendapatkan token NODL. Pernah diliput Forbes, memiliki kemitraan perusahaan dengan Vivendi dan Hayden AI. Hanya seluler (iOS dan Android).\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "Relay IoT Bluetooth - aplikasi seluler, reward token NODL"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "Penghasilan sangat rendah. Aplikasi ponsel latar belakang yang menggunakan Bluetooth. Koneksi dompet mungkin tidak stabil."
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "Berkelanjutan"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "NODL berada di dompet aplikasi itu sendiri di ZKsync Era; periksa di aplikasi atau di block explorer ZKsync Era. Nodle meninggalkan parachain Polkadot-nya, dan jembatan Polkadot-ke-ZKsync ditutup pada 31 Desember 2025, sehingga NODL yang masih berada di sisi Polkadot tidak dapat lagi dipindahkan ke ZKsync."
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "NODL Anda berada di dompet milik aplikasi Nodle sendiri di ZKsync Era. CashPilot tidak dapat melihat alamat dompet itu."
+  source: "796d67192f5f"
+nodle.referral.bonus.referrer:
+  text: "Reward NODL untuk setiap pengguna aktif baru yang bergabung melalui undangan (Nodle tidak memublikasikan jumlahnya)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "Seorang pengulas melaporkan sekitar $3 yang diperoleh selama tiga hingga empat tahun; yang lain melaporkan penghasilan harian turun tajam."
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "CashPilot tidak menjalankan Nodle: Anda menggunakan aplikasi ponsel milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana adalah marketplace komputasi GPU terdesentralisasi yang dibangun di Solana. Platform ini menghubungkan pemilik GPU dengan permintaan beban kerja AI, dan membayar dalam token NOS. RTX 3060 menghasilkan sekitar $0.048/jam. Platform ini berfokus pada beban kerja inferensi AI dan menggunakan blockchain Solana untuk penjadwalan pekerjaan dan penyelesaian pembayaran. Node menjalankan beban kerja dalam kontainer melalui Nosana CLI.\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "Komputasi GPU di Solana - token NOS, RTX 3060 ~$0.048/jam"
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 ~$0.048/jam, GPU kelas atas menghasilkan lebih banyak. Penghasilan bergantung pada ketersediaan pekerjaan dan model GPU. Memerlukan GPU NVIDIA, Linux, Docker, dan Nosana CLI. Pembayaran dalam token NOS di Solana."
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "Per penyelesaian pekerjaan"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "Token NOS yang diperoleh di Solana. Pembayaran ke dompet yang dikonfigurasi."
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "Secara default Nosana membuat dompet Solana, sehingga sebagian besar pengguna tidak pernah melihat alamatnya."
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "Setiap host harus mengunci stake NOS yang besarnya disesuaikan dengan harga per jam GPU-nya."
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "Host dibayar dalam NOS, sehingga penghasilan dalam dolar bergerak mengikuti token dan permintaan untuk kartu mereka."
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "CashPilot tidak menjalankan Nosana: Anda menggunakan perangkat lunak host milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN adalah pool penambangan Bitcoin tanpa akun: miner Anda masuk dengan alamat Bitcoin Anda sebagai nama pengguna, dan pool membayar ke alamat itu. CashPilot tidak menjalankan miner di sini. CashPilot membaca saldo belum dibayar yang disimpan OCEAN untuk alamat Anda, sehingga Anda melihat apa yang dihasilkan ASIC Anda (Bitaxe, Antminer) di samping penghasilan Anda yang lain. Saldo belum dibayar sudah diperoleh tetapi belum diterima: OCEAN membayarnya on-chain begitu melewati ambang pembayaran.\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "Pool penambangan Bitcoin, dipantau lewat alamat pembayaran Anda"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "Saat sebuah blok membuat saldo Anda melewati ambang"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "OCEAN membayar on-chain ke alamat Anda begitu saldo belum dibayar mencapai ambang. Pembayaran Lightning (opsional, BOLT12) tidak terdeteksi oleh CashPilot."
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "Saldo belum dibayar sudah diperoleh tetapi belum diterima sampai OCEAN membayarnya on-chain ke alamat ini, kecuali Anda mengaktifkan pembayaran Lightning."
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "Alamat pembayaran BTC Anda: nama pengguna yang digunakan miner Anda di OCEAN, tanpa bagian <b>.workername</b>. Alamat ini publik dan tidak membuka akses ke dana apa pun."
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "Memerlukan miner ASIC Bitcoin (Bitaxe, Antminer) yang diarahkan ke mine.ocean.xyz:3334"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "komputasi"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "Tidak. Miner Anda mengirim hash ke pool; tidak ada yang meneruskan lalu lintas melalui koneksi Anda."
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "Alamat Bitcoin Anda, nama worker yang Anda pilih, hashrate Anda, dan alamat IP miner Anda sebagaimana dilihat pool."
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "Miner menjaga satu koneksi terbuka ke pool dan memakai sedikit bandwidth. Biaya yang perlu diperhatikan adalah listrik, bukan ISP Anda."
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "Tidak ada akun. Alamat adalah identitasnya, dan siapa pun dapat membaca statistiknya di ocean.xyz."
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "Hanya dibayar dalam Bitcoin, dan tidak ada yang dibayar on-chain sampai saldo Anda mencapai 0.01048576 BTC."
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "Biaya pool 2%, atau 1% jika Anda membuat template blok sendiri dengan DATUM."
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "CashPilot tidak menjalankan miner untuk OCEAN: Anda mengarahkan perangkat keras Anda sendiri ke pool, dan CashPilot hanya membaca saldo."
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "Tanpa akun dan tanpa pemeriksaan identitas. OCEAN hanya meminta alamat Bitcoin yang dibayarnya."
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream adalah marketplace bandwidth peer-to-peer tempat Anda dapat menjual bandwidth yang tidak terpakai. Marketplace ini menjalankan jaringan proxy residensial yang digunakan untuk riset pasar, pemantauan SEO, dan verifikasi iklan. Penyiapan Docker sederhana, hanya memerlukan CID (Client ID). Perlu diketahui bahwa login yang dilindungi CAPTCHA dapat menyulitkan pengumpulan penghasilan otomatis.\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "Berbagi bandwidth - penyiapan sederhana berbasis CID"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "Client ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "Masuk di <a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> → klik Setup di sidebar → CID Anda ditampilkan di perintah Docker"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "PacketStream menolak alamat IP salinan ini karena bukan residensial, sehingga salinan ini tidak menghasilkan apa pun. Jalankan di mesin yang koneksi internetnya adalah jaringan rumahan, atau hapus salinan ini."
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "PacketStream sudah memiliki klien lain di alamat IP ini, dan hanya membayar satu per IP. Hapus salinan ini, atau salinan lain yang memakai IP yang sama."
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "Membayar $0.10/GB untuk bandwidth yang dibagikan. Penghasilan sangat bergantung pada permintaan untuk lokasi IP Anda."
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "Hanya PayPal, minimum $5, biaya 3% ditampilkan sebelum Anda mengonfirmasi. Penarikan pertama menyimpan email PayPal Anda; mengubahnya nanti memerlukan konfirmasi email dan menunggu 7 hari, jadi periksa alamatnya sebelum mengonfirmasi. Permintaan ditinjau dan dikirim dalam 7 hari; Anda dapat membatalkan permintaan selama masih menunggu, dan permintaan baru hanya dapat dibuat setelah yang sebelumnya dibayar."
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "Saldo disimpan oleh PacketStream; ditarik sesuai permintaan."
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "Masuk di <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, tekan F12 → Application → Cookies, salin nilai cookie <b>auth</b> (berupa JWT)."
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "20% dari penghasilan bandwidth mereka (bonus Packeter waktu terbatas)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "Bonus kredit 10% untuk setoran pertama Anda dengan kartu atau PayPal (pelanggan proxy)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "Pengulas Trustpilot pada 2025 dan 2026 melaporkan pembayaran datang terlambat atau tidak datang sama sekali, dan seorang pengguna lama mengatakan pembayaran melambat lalu berhenti; yang lain pada 2026 melaporkan sudah dibayar."
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "Hanya PayPal, dengan biaya penarikan 3%; pengguna di negara yang tidak dilayani PayPal tidak punya metode lain."
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "Ketentuan mengizinkan PacketStream menahan, membatalkan, atau menganulir penghasilan yang dikaitkannya dengan penipuan, manipulasi, atau aktivitas terlarang."
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "Ketentuan menyebutkan bahwa pelanggan proxy dan PacketStream sendiri meneruskan lalu lintas melalui koneksi Anda; tidak dijelaskan adanya pemeriksaan terhadap pembeli biasa."
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "Trustpilot mencatat PacketStream belum membalas ulasan negatif; pengulas melaporkan email yang tidak dijawab."
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "PacketStream memublikasikan image Docker miliknya sendiri, packetstream/psclient."
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "Ketentuan hanya mensyaratkan perangkat dan koneksi yang Anda miliki atau boleh Anda gunakan."
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "Ketentuan tidak menjelaskan pemeriksaan identitas; pembayaran memerlukan alamat PayPal."
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "Ketentuan menyebutkan PacketStream Inc. di bawah hukum California."
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "PacketStream sudah beroperasi sejak 2018."
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp adalah platform DePIN yang memungkinkan Anda mendapatkan reward kripto dan PayPal dengan berbagi bandwidth dan sumber daya komputasi yang tidak terpakai. Dalam praktiknya hanya Windows: halaman unduhan vendor sendiri mencantumkan Android, iOS, dan Linux sebagai \"coming soon\" tanpa perubahan sejak setidaknya Februari 2025, dan tidak ada versi macOS — meskipun teks pemasaran di situs yang sama mengklaim dukungan yang lebih luas. Tidak ada image Docker.\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "Bandwidth/komputasi DePIN - hanya Windows, pembayaran kripto dan PayPal"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "Hanya aplikasi desktop Windows (v1.0.x); Android/iOS/Linux diumumkan vendor sebagai 'coming soon' sejak awal 2025 dan tidak pernah dirilis. Tidak ada image Docker resmi."
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "10% dari penghasilan mereka seumur hidup"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "CashPilot tidak menjalankan PassiveApp: Anda menggunakan aplikasi desktop milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "Situs PassiveApp mencantumkan PayPal, kripto, dan kartu hadiah mulai minimum $3."
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase adalah platform berbagi bandwidth yang membayar pengguna dalam mata uang kripto karena berbagi koneksi internet yang tidak terpakai. Anda mengautentikasi klien peer dengan Access Token dari dasbor Anda. IP residensial menghasilkan paling banyak, tetapi IP pusat data juga didukung. Image Docker resmi multi-arsitektur (amd64/arm64/armv7).\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - berbagi bandwidth, pembayaran kripto, autentikasi Access Token. Tidak ada dompet yang dibuat"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Access Token"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "Nama perangkat"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "Masuk di <a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> → salin Access Token Anda (ditampilkan di perintah Docker pada halaman penyiapan)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "Nama apa saja (tanpa spasi) untuk mengenali perangkat ini di dasbor ProxyBase Anda"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "ProxyBase tidak dapat menjangkau relay-nya selama setidaknya setengah jam, sehingga tidak menghasilkan apa pun. Restart akan mengatasinya; jika tetap ada setelah restart, periksa apakah mesin ini dapat menjangkau internet."
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "Pembayaran kripto. Penghasilan bergantung pada lokasi dan penggunaan bandwidth."
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "Situs mencantumkan minimum $0.20, dan permintaan di bawah $1 berhasil pada Oktober 2026. Permintaan selalu menarik seluruh saldo, sebagai USDC di Polygon, POL, atau Litecoin, ke alamat yang Anda ketik. ProxyBase menanggung biaya jaringan."
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "Penghasilan terkumpul di AKUN ProxyBase pemilik Access Token, dan ditarik dari dasbor sesuai permintaan. Klien peer tidak menyimpan dompet dan kontainer tidak menyimpan state -- docker.volumes kosong. Jangan tertukar dengan proxybase-xyz (ProxyBase Markets, organisasi yang sama), yang memang membuat dompet lokal dan menyatakannya sebagai volume penting."
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "ProxyBase sendiri menulis pada Agustus 2025 bahwa platformnya masih baru dan belum menjadi tempat untuk memaksimalkan penghasilan."
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "ProxyBase mengganti klien peer pada 2026 dan mematikan backend lama, sehingga kontainer dengan image lama tetap berjalan tetapi berhenti menghasilkan."
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "Hanya kripto, sebagai USDC di Polygon, POL, atau Litecoin, tanpa metode fiat. Minimumnya $0.20 dan ProxyBase membayar biaya jaringan."
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "Penarikan kami di bawah $1 berhasil pada Oktober 2026."
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "Penarikan hanya memerlukan alamat yang diketik di permintaan."
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "ProxyBase memublikasikan image klien peer miliknya sendiri dan mendukung IP pusat data."
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets adalah marketplace proxy SOCKS5 yang dibuat untuk agen AI. Penjual menjalankan daemon CLI Rust ringan yang terhubung melalui WebSocket untuk meneruskan lalu lintas pembeli melalui koneksi internet mereka, dan mendapatkan USDC di Tempo Chain per GB yang terjual. Mendukung mode direct (bandwidth sendiri) dan upstream (menjual ulang proxy eksternal) dengan sambung ulang otomatis. Pembeli membeli sesi proxy berdasarkan negara, ISP, dan bandwidth. Pembayaran mengalir melalui Machine Payments Protocol (MPP) di Tempo Chain. Tautan referal ditujukan untuk pembeli: pembeli yang membuka konsol melalui tautan itu mendapat tambahan 10% pada setoran pertamanya.\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - marketplace SOCKS5 untuk agen AI, pembayaran USDC. Membuat dompet yang volumenya menyimpan satu-satunya salinan kunci"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "URL API backend"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "Mengganti URL API backend (default https://api.proxybase.xyz)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "Kontainer melakukan bootstrap otomatis saat pertama kali dijalankan: membuat dompet secp256k1 (BIP-39), mengautentikasi melalui challenge-response ECDSA, dan mulai menjual bandwidth dalam mode direct-only. Semua state (dompet, token sesi, konfigurasi penjual) disimpan di volume <code>proxybase-data</code>. Periksa log kontainer saat pertama kali dijalankan untuk melihat alamat dompet. Gunakan <code>--upstream</code> untuk menambahkan jalur penjualan ulang proxy eksternal.\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "File kunci dompet yang dibuat. Volume ini ADALAH uangnya: tidak ada salinan di sisi server, jadi menghapusnya berarti memusnahkan dananya juga."
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "Penghasilan berdasarkan GB yang terjual dengan harga pasar. IP VPS/pusat data menghasilkan lebih sedikit daripada residensial. Mode multi-upstream dapat menggabungkan bandwidth Anda sendiri dengan proxy eksternal."
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "Kunci penghasilan melalui <code>proxybase-cli seller payout create</code>, diterima sebagai USDC di Tempo Chain (Tempo MPP). Membayar ke alamat EVM mana pun yang kuncinya Anda pegang (Tempo adalah jaringan EVM), tanpa perlu menandatangani apa pun; tambahkan jaringan Tempo ke dompet untuk melihat USDC-nya. Dompet yang masih tidak menampilkannya perlu menambahkan token Tempo USDC secara manual: impor berdasarkan alamat kontrak yang diberikan Proxybase, dan periksa alamat itu sebelum Anda memercayai saldonya."
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "Klien membuat dompetnya sendiri saat pertama kali dijalankan."
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "15% dari setiap setoran pembeli yang diajak, sebagai kredit untuk sesi proxy Anda sendiri"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "+10% pada setoran pertama pembeli"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "Bandwidth, sebagai proxy SOCKS5 yang dijual kepada pembeli di marketplace ProxyBase."
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "Ya. Pembeli meneruskan lalu lintas mereka melalui koneksi Anda — itulah tepatnya yang dijual."
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "Alamat dompet yang dibuat di mesin Anda, ditambah volume lalu lintas yang Anda teruskan."
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "Nyata, dan berlaku langsung untuk koneksi rumahan. Lalu lintas proxy dari pembeli yang tidak dikenal keluar dengan IP Anda, sehingga keluhan penyalahgunaan sampai ke Anda. Tidak ada apa pun di katalog ini yang membatasi layanan ke alamat pusat data, dan IP residensial menghasilkan lebih banyak, jadi insentifnya justru mengarah ke arah yang salah: baca ketentuan ISP Anda sebelum menjalankannya di rumah."
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "tidak diketahui - penyedia tidak memublikasikan batas perangkat per akun atau per IP, dan katalog juga tidak mencantumkannya."
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "Pembayaran berupa USDC di Tempo Chain, ke alamat EVM mana pun yang kuncinya Anda pegang."
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "Koneksi Anda dijual sebagai proxy SOCKS5 kepada pembeli marketplace; kami tidak menemukan penjelasan tentang bagaimana pembeli diperiksa."
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "Judul halaman penghasilannya sendiri menyatakan tidak perlu KYC, dengan pembayaran $1."
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "ProxyBase memublikasikan image klien miliknya sendiri dan menerima koneksi pusat data."
+  source: "ae81d006093f"
+proxylite.description:
+  text: "ProxyLite memonetisasi lalu lintas internet Anda dengan berbagi bandwidth kepada organisasi terverifikasi. Berfungsi di koneksi residensial maupun VPS/pusat data. Penyiapan sederhana, hanya memerlukan user ID dari dasbor. Menawarkan komisi referal seumur hidup yang besar, 15%.\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "Berbagi bandwidth - referal seumur hidup 15%, berfungsi di VPS"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "User ID"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "Masuk di <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → User ID Anda ditampilkan di halaman utama dasbor di samping email Anda. Belum punya akun? Daftar dengan <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a>"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "IP residensial menghasilkan lebih banyak. Koneksi VPS/pusat data diterima dengan tarif lebih rendah."
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "15% dari penghasilan mereka seumur hidup"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "Pemilik situs disembunyikan di catatan domainnya, dan kami tidak menemukan perusahaan bernama yang berada di baliknya."
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "Minimum $5, melalui kripto atau PayPal."
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "ProxyLite memublikasikan image Docker, proxylite/proxyservice, dan menerima koneksi pusat data dengan tarif lebih rendah."
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "Program Peer dari ProxyRack memungkinkan Anda menghasilkan dengan berbagi bandwidth sebagai bagian dari jaringan proxy mereka. Setiap perangkat memerlukan UUID heksadesimal 64 karakter yang unik dan, opsional, kunci API untuk mendaftarkan perangkat secara otomatis. Berfungsi di koneksi residensial maupun VPS/pusat data. Dasbor berada di balik Cloudflare, yang mungkin mengharuskan Anda mengambil kunci API secara manual lewat browser.\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "Berbagi bandwidth - UUID per perangkat, berfungsi di VPS"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "UUID perangkat"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "Kunci API"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "Nama perangkat"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "ID heksadesimal 64 karakter yang unik per perangkat. Buat dengan: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "Masuk di <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → Kunci API ditampilkan di halaman utama dasbor (mendaftarkan perangkat secara otomatis jika diisi). Belum punya akun? Daftar dengan <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "Nama yang mudah dikenali untuk perangkat di dasbor"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "Klien ProxyRack tidak dapat berjalan di salinan ini, jadi salinan ini tidak menghasilkan apa pun. Penyebab yang biasa adalah server pembaruan ProxyRack tidak merespons, dan klien tidak dapat dimulai tanpanya. Salinan ini mencoba lagi setiap 5 menit dan mulai dengan sendirinya begitu server merespons. Tidak ada yang perlu Anda perbaiki."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "Klien ProxyRack tidak terunduh saat salinan ini dimulai, karena server pembaruan ProxyRack tidak dapat dijangkau, jadi salinan ini berjalan tetapi tidak menghasilkan apa pun. CashPilot memulai ulang salinan ini setiap 6 jam untuk mencoba lagi. Terapkan ulang salinan ini agar mendapat proses mulai milik CashPilot sendiri, yang menyimpan klien dan mencoba lagi dengan sendirinya setiap 5 menit."
+  source: "0a2ee4b478b2"
+proxyrack.device_link.steps:
+  text: "Masuk ke ProxyRack, buka Devices, pilih Add device, dan tempel UUID ini. Sampai perangkat ada di akun Anda, perangkat itu tidak menghasilkan untuk siapa pun. Jika Anda memasukkan kunci API, kontainer mendaftarkan dirinya sendiri: periksa bahwa perangkat tercantum di sana."
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "IP residensial menghasilkan lebih banyak daripada pusat data. Dasbor di balik Cloudflare dapat menyulitkan akses otomatis."
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "Ajukan pembayaran di dasbor. ProxyRack meninjaunya dalam 72 jam, lalu Tremendous mengirimi Anda reward lewat email untuk ditukarkan sebagai PayPal, kartu hadiah, atau transfer bank. Tidak ada pilihan kripto."
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "Saldo disimpan oleh ProxyRack; ditarik sesuai permintaan."
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "Masuk di <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, tekan F12 → Network, cari permintaan API mana pun dan salin nilai header <b>Api-Key</b>. Belum punya akun? Daftar dengan <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>."
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Proxyrack mendokumentasikan batas 500 perangkat per AKUN dan tanpa batas per IP. IP pusat data diterima tetapi diklasifikasikan ulang ke tarif lebih rendah."
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "Pusat bantuan ProxyRack menyebutkan bahwa menghapus perangkat akan menghapus penghasilan perangkat itu dari akun Anda, dan penghasilan itu hanya kembali jika perangkat yang sama ditambahkan lagi."
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "ProxyRack memublikasikan image Docker miliknya sendiri, proxyrack/pop, dan menerima IP pusat data dengan tarif lebih rendah."
+  source: "278541f81053"
+repocket.description:
+  text: "Repocket memungkinkan Anda memperoleh penghasilan pasif dengan berbagi bandwidth internet yang tidak terpakai. IP residensial menghasilkan paling banyak; IP VPS/pusat data diterima dengan tarif lebih rendah. Maksimal 5 perangkat dan 5 sesi aktif per akun. Kontainer Docker mengautentikasi dengan email akun Anda dan kunci API dari dasbor Repocket (bukan kata sandi Anda).\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "Berbagi bandwidth - maks 5 perangkat, autentikasi kunci API"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "Kunci API (UUIDv4, bukan kata sandi)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "Email akun Repocket Anda"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "Kunci API Repocket Anda — masuk di <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> dan salin kunci API yang ditampilkan di halaman bandwidth-earnings (ini BUKAN kata sandi akun Anda). Belum punya akun? Daftar dengan <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a>"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "IP residensial menghasilkan lebih banyak. IP VPS/pusat data diterima tetapi dengan tarif lebih rendah."
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4 ($2 setelah pembayaran pertama)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Repocket menetapkan minimum per akun: $4 sebelum pembayaran pertama dan $2 setelahnya pada Oktober 2026, jauh di bawah $20 yang dulu diiklankan. Metode: Tremendous (ke email Anda) atau USDT di Polygon. Setiap permintaan dikonfirmasi dari tautan yang dikirim lewat email dalam 2 jam, dan hanya satu permintaan yang boleh menunggu dalam satu waktu. Pada Oktober 2026 Repocket menolak permintaan Tremendous dengan pesan \"Please, message support\", sementara USDT di Polygon berhasil."
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "Saldo disimpan oleh Repocket; ditarik sesuai permintaan."
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "Gunakan email dan kata sandi akun Repocket Anda (sama dengan <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>). Belum punya akun? Daftar dengan <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a>."
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "$2 begitu orang yang diajak menghasilkan $7, lalu 5% dari penghasilan mereka seumur hidup"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "Bonus dompet $2 saat mendaftar"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Repocket mendokumentasikan batas lima perangkat per AKUN tetapi tidak memublikasikan batas perangkat per IP. Angka '2 perangkat per IP' yang diulang di situs ulasan tidak bersumber dari penyedia, jadi CashPilot tidak menyatakannya."
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "Biarkan perangkat Repocket tetap berbagi, atau tarik saldo Anda"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "Setelah 12 bulan tanpa login, pembayaran, atau berbagi bandwidth, Repocket dapat menghanguskan saldo yang belum dibayar."
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "Biarkan perangkat tetap berbagi, masuk ke akun, atau tarik dana. Jika Anda berhenti menggunakan Repocket, tarik dana terlebih dahulu."
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "Beberapa pengulas Trustpilot melaporkan pembayaran yang dibatalkan dan saldo yang direset ke nol; seorang di antaranya mengatakan dukungan menyebut penghasilan bandwidth yang tidak wajar. Halaman tersebut memberi Repocket nilai 2.7 dan mencatat bahwa Repocket belum membalas ulasan negatif."
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "Pengulas melaporkan penarikan yang ditolak dan harus mengejar pembayaran."
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "Kebijakan pembayaran Repocket mengizinkannya membatalkan, menarik kembali, atau menghanguskan penghasilan secara permanen kapan pun ia mencurigai penghasilan itu tidak sah, serta menghanguskan penghasilan belum dibayar dari akun yang tidak aktif."
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "Kebijakan yang sama mengizinkan Repocket menambah, menghapus, atau mengganti metode pembayaran kapan saja tanpa pemberitahuan; PayPal sudah dihapus."
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "Ketentuan menyebutkan bahwa Repocket dapat meminta verifikasi identitas atau akun kapan saja, dan kelayakan pembayaran bergantung padanya."
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "Ketentuan menyebutkan bahwa Repocket dan mitranya menggunakan kapasitas jaringan, tetapi tidak menyebutkan siapa mitranya atau bagaimana mereka diperiksa."
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "Trustpilot mencatat Repocket belum membalas ulasan negatif, dan pengulas mengatakan pesan mereka diabaikan."
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "Ketentuan saat ini menyebutkan Repocket Pte. Ltd. di Singapura; ketentuan lama tidak menyebutkan perusahaan apa pun."
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Repocket memublikasikan image Docker miliknya sendiri, repocket/repocket, dan ketentuannya mengizinkan kontainer milik Anda."
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "Minimumnya rendah: $4 sebelum pembayaran pertama dan $2 setelahnya."
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Salad.io memungkinkan Anda berbagi GPU untuk beban kerja AI terdistribusi dan mendapatkan saldo Salad yang dapat ditukar dengan kartu hadiah, game, atau uang tunai. Hanya Windows dengan aplikasi desktop native. Memerlukan GPU khusus (NVIDIA atau AMD). Platform ini meneruskan inferensi AI, rendering, dan tugas komputasi lainnya ke mesin Anda saat sedang menganggur. Salah satu platform berbagi GPU yang lebih ramah pengguna.\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "Berbagi GPU untuk AI - hanya Windows, pembayaran kartu hadiah atau tunai"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "Penghasilan bergantung pada model GPU dan ketersediaan pekerjaan. RTX 3060 ~$1-3/hari. Hanya Windows. Aplikasi native, tidak mendukung Docker. Dapat ditukar dengan kartu hadiah, game, atau PayPal."
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "PayPal atau kartu hadiah melalui toko Salad."
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "Hanya PayPal dan kartu hadiah, tidak pernah kripto. Tidak ada alamat dompet, sehingga CashPilot tidak punya saldo on-chain untuk ditampilkan."
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "Masuk di <a href='https://app.salad.io' target='_blank'>app.salad.io</a>, tekan F12 → Application → Cookies, salin nilai cookie <b>auth</b>."
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "Kumpulkan beberapa Salad Reward Points, atau belanjakan saldo Anda"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "Jika sebuah akun tidak mendapatkan Reward Points selama 12 bulan berturut-turut, saldo yang belum ditukarkan dapat kedaluwarsa."
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "Jalankan aplikasi Salad sampai menghasilkan, atau belanjakan seluruh saldo di Salad Storefront. Membelanjakan sebagian saja tidak mengatur ulang hitungan 12 bulan."
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "CashPilot tidak menjalankan Salad: Anda menggunakan aplikasi desktop milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "Beberapa pengulas Trustpilot pada Oktober dan November 2026 melaporkan penarikan PayPal tiba dengan cepat, sebagian lebih dari sekali; seorang pengulas pada periode yang sama mengatakan beberapa kali percobaan penarikan gagal."
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel adalah blockchain Layer 1 Cosmos untuk VPN terdesentralisasi. Operator node menjual bandwidth kepada pengguna VPN dengan harga fleksibel (per GB atau per jam). Tersedia panduan penerapan Docker resmi. Proyek lama dengan komunitas yang aktif.\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "VPN terdesentralisasi di Cosmos - operator node menjual bandwidth"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "Operator menetapkan harga sendiri per GB atau per jam. Penghasilan bergantung pada permintaan pengguna VPN di wilayah Anda."
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "Per sesi"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "Pembayaran dalam token P2P, dan 20% dari setiap pembayaran bandwidth masuk ke staker, bukan ke host node."
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "Token ini berganti nama dari SENT menjadi DVPN pada 2021 dan dari DVPN menjadi P2P pada 2025."
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "CashPilot tidak menjalankan Sentinel: Anda menggunakan perangkat lunak node milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Sentinel memublikasikan kode sumber node-nya di bawah lisensi open source miliknya sendiri."
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia adalah marketplace penyimpanan terdesentralisasi yang dikelola Sia Foundation (organisasi nirlaba Swiss) dan beroperasi sejak 2015. Jalankan node hostd resmi dari Foundation untuk menyewakan ruang disk cadangan dan mendapatkan Siacoin dari kontrak penyimpanan dan bandwidth. Anda harus membeli sejumlah Siacoin sebelum node dapat menghasilkan: host mengunci jaminan untuk setiap kontrak dan membayar biaya untuk setiap bukti penyimpanan. Jaminan dikembalikan saat kontrak selesai dan dibakar jika node offline atau kehilangan data, jadi diperlukan mesin yang selalu menyala (Sia menyebut waktu aktif minimal 95%). Penghasilan bergantung pada berapa banyak data yang benar-benar disimpan penyewa; Sia menyarankan harga penyimpanan $1 per TB per bulan, jadi layanan ini cocok untuk mesin dengan disk cadangan besar, bukan VPS kecil.\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "Node penyimpanan Sia Foundation - image Docker resmi, dapatkan Siacoin"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "Frasa pemulihan dompet"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "Kata sandi dasbor"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "Direktori penyimpanan"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "Frasa pemulihan BIP-39 yang mengendalikan dompet Siacoin host. Buat dengan `docker run --rm ghcr.io/siafoundation/hostd seed` dan cadangkan -- ini SATU-SATUNYA cara untuk menjangkau penghasilan"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "Kata sandi untuk UI web hostd dan API lokal (BasicAuth). Frasa sandi panjang apa saja"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "Path host di disk terbesar Anda tempat data penyewa disimpan (mis. /srv/sia). Memerlukan ruang kosong minimal 256GB"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "Saat penerapan, CashPilot membuat dompet baru di mesin yang menjalankan node dan menampilkan frasa pemulihannya satu kali: catatlah. Untuk menggunakan dompet yang sudah Anda miliki, tempel frasa pemulihannya sebagai gantinya. Setelah penerapan, kirim sejumlah Siacoin ke dompet node untuk jaminan dan biaya, lalu tambahkan folder penyimpanan (/storage), atur harga, dan umumkan host di dasbor.\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "Frasa pemulihan dompet (hostd.yml), database dompet, pengaturan host, dan state kontrak. Kehilangan ini berarti kehilangan identitas node dan pencatatan pendapatan kontrak; frasa pemulihan yang Anda catat lalu menjadi satu-satunya jalan untuk memulihkan dana."
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "Data penyewa yang disimpan. Kehilangan data ini membuat bukti penyimpanan gagal dan menghanguskan jaminan yang dikunci untuk kontrak tersebut."
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "Host menetapkan harga sendiri. Sia menyarankan $1 per TB yang disimpan per bulan dan lebih dari $5 per TB yang diunduh, dan 3.9% dari setiap pembayaran kontrak masuk ke pemegang Siafund. Pendapatan meningkat seiring banyaknya data penyewa yang masuk ke node, yang dimulai dari nol dan tumbuh seiring waktu aktif dan harga. Jaminan (Sia menyarankan 2x harga penyimpanan) dikunci per kontrak dan dikembalikan saat kontrak selesai dengan sukses.\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "Penghasilan terkumpul di dompet Siacoin milik host sendiri (dikendalikan frasa pemulihan). Konversikan SC di exchange dan tarik ke bank/kartu dari sana; tidak ada permintaan pembayaran di sisi penyedia.\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "Dana berada di dompet Sia yang dikendalikan frasa pemulihan di dalam node. Frasa pemulihan hanya ada di volume data hostd di mesin yang menjalankannya; CashPilot tidak pernah menyimpannya. Frasa yang Anda catat saat dompet dibuat adalah satu-satunya jalan pemulihan.\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "Alamat publik yang stabil dengan port 9981 (TCP, konsensus) dan 9984 (TCP dan UDP, kontrak penyewa) diteruskan. Hosting di pusat data/VPS umum di Sia. Dompet memerlukan Siacoin sebelum node dapat menerima kontrak."
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "Ruang disk dan bandwidth untuk melayaninya."
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "Tidak. Penyewa menyimpan fragmen file terenkripsi di disk Anda dan mengambilnya kembali. Orang lain tidak meneruskan lalu lintas sembarang melalui IP Anda."
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "Alamat dompet Sia Anda, kunci publik host, dan IP:port publik yang diumumkan node agar penyewa dapat menjangkaunya."
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "Lalu lintas unggah/unduh yang terus-menerus di jaringan, mirip dengan menjalankan server penyimpanan apa pun; tidak ada lalu lintas web pihak ketiga yang dianonimkan yang dikaitkan dengan Anda."
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "Tanpa izin: tanpa pendaftaran atau akun. Jaminan dibakar jika node melewatkan bukti penyimpanan, karena offline atau kehilangan data."
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "Penghasilan berupa Siacoin di dompet Anda sendiri: tidak ada pembayaran ke bank, jadi Anda menjualnya sendiri di exchange."
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "Jaminan dikunci per kontrak dan dibakar jika host melewatkan bukti penyimpanan karena offline atau kehilangan data."
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "Hanya sekitar 30% dari penyimpanan yang ditawarkan di jaringan yang terpakai, sehingga host baru bersaing untuk permintaan yang sedikit."
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "Penyewa menyimpan fragmen file terenkripsi dan tidak ada yang meneruskan lalu lintas melalui IP Anda, tetapi kami tidak menemukan di mana Sia menyebutkan siapa penyewanya atau bagaimana mereka diperiksa."
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "hostd dikembangkan secara terbuka oleh Sia Foundation sejak 2022."
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd bersifat open source di bawah lisensi MIT."
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "Sia Foundation memublikasikan hostd sebagai image kontainer."
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "Tanpa izin: tanpa pendaftaran atau akun."
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide adalah layanan berbagi bandwidth yang memungkinkan Anda memonetisasi bandwidth internet yang tidak terpakai. Menggunakan machine ID opsional untuk pelacakan perangkat. Tersedia melalui image Docker komunitas dari proyek income-generator.\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "Berbagi bandwidth - berbasis machine ID"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "Machine ID"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "Machine ID untuk perangkat yang sudah terdaftar (dibuat otomatis jika kosong)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "Informasi yang tersedia terbatas. Penghasilan bergantung pada lokasi."
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "10% dari penghasilan mereka"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "Bonus pendaftaran $5"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "Lalu lintas melalui satu IP publik dibagi di antara perangkat yang memakainya, jadi perangkat kedua di koneksi yang sama tidak menambah apa pun."
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "CashPilot tidak menjalankan Spide: Anda menggunakan aplikasi milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "Tambang Pearl, Zano, atau Ravencoin dengan satu GPU NVIDIA. CashPilot mengunduh rilis resmi SRBMiner-Multi saat pertama kali dijalankan dan memeriksa SHA-256-nya. Pool yang Anda pilih membayar ke alamat pembayaran publik Anda. SRBMiner-Multi mengambil 2% waktu hashing untuk Pearl dan 0.85% untuk dua koin lainnya. Listrik bisa lebih mahal daripada koin yang Anda hasilkan."
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "Tambang Pearl dan koin GPU lainnya di GPU NVIDIA"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "Alamat pembayaran"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "Nama worker"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "Algoritma"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "Pool (host:port)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "Enkripsi koneksi pool (TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "Alamat Pearl publik Anda (prl1...). Untuk Zano atau Ravencoin, masukkan alamat koin tersebut dan pool untuknya."
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "pearlhash untuk Pearl, progpow_zano untuk Zano, kawpow untuk Ravencoin."
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "Perkiraan kotor sebelum biaya listrik. Pada 2026-11-25 hashrate.no memperkirakan sekitar $2.45 per hari untuk Pearl dengan RTX 4070 yang menarik daya sekitar 142 W. Kami belum mengukurnya. Pearl adalah koin baru, dan harga serta tingkat kesulitannya berubah cepat. Periksa konsumsi daya GPU Anda dan harga listrik Anda untuk melihat apakah ini menguntungkan."
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL (HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "Saat ambang pool tercapai"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "Pool membayar ke alamat Anda saat saldo mencapai ambang Anda. Pool menyimpan saldo sampai membayar Anda."
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64, GPU NVIDIA, dan NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "Mesin ini melaporkan koneksi hosting. Periksa ketentuan penyedia Anda sebelum menambang. Beberapa penyedia, termasuk Hetzner Cloud, melarangnya. Periksa biaya listrik Anda yang sebenarnya sebelum mengandalkan perkiraan keuntungan."
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "Biaya miner 2% berlaku untuk pearlhash. SRBMiner-Multi mengambil 0.85% untuk progpow_zano dan kawpow. HeroMiners, pool Pearl default, mengenakan biaya pool 1%. Pool ini memeriksa pembayaran setiap jam dan membayar mulai 1 PRL. Pool lain menetapkan tarif dan ambangnya sendiri."
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "komputasi"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "Tidak. Miner mengirim hasil kerja ke pool yang Anda pilih."
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "Alamat pembayaran, nama worker, dan alamat IP Anda dikirim ke pool. Saat pertama kali dijalankan, miner diunduh dari GitHub."
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "Beberapa jaringan dan resolver DNS memblokir koneksi ke pool penambangan."
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "Sebagian besar pool mengenali Anda dari alamat pembayaran publik Anda."
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "Miner mengambil 2% waktu hashing untuk Pearl dan 0.85% untuk Zano dan Ravencoin."
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "Beberapa penyedia hosting melarang penambangan mata uang kripto."
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "Miner ini bersifat closed source, jadi tidak ada orang di luar pengembangnya yang dapat mengaudit apa yang dijalankannya."
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "Listrik GPU bisa lebih mahal daripada koin yang dihasilkan, dan harga Pearl bergerak cepat."
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "Miner mengirim hasil kerja ke pool dan tidak meneruskan lalu lintas orang lain."
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "Anda dapat menambang Pearl di HeroMiners dengan alamat publik dan tanpa akun."
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj adalah jaringan penyimpanan cloud terdesentralisasi tempat Anda menghasilkan dengan menyewakan ruang disk yang tidak terpakai. Jalankan node penyimpanan melalui Docker dan dapatkan bayaran $1.35/TB yang disimpan per bulan ditambah $1/TB egress (tarif sejak 1 September 2026). Pembayaran bulanan dalam USDC, stablecoin dolar AS, di mainnet Ethereum ke dompet yang Anda kendalikan, begitu saldo melewati minimum berbasis biaya (token STORJ hingga pembayaran September 2026). Memerlukan ruang disk tersedia minimal 550GB dan koneksi internet yang stabil. Tidak perlu akun atau pendaftaran -- node bersifat tanpa izin sejak pertengahan 2025. PERHATIAN (Oktober 2026): Storj Labs mengajukan Chapter 11 pada 26 Juli 2026 (Pengadilan Kepailitan AS, Distrik Utara West Virginia, perkara 5:26-bk-00512) untuk merestrukturisasi utang lama. Jaringan tetap berjalan dan Storj tetap membayar node aktif, tetapi penghasilan node dari sebelum pengajuan dibekukan sampai pengadilan memutuskannya. Token STORJ turun sekitar 98% dari puncaknya pada 2021. Binance menghapusnya dari daftar pada 3 September 2026, dan Coinbase menangguhkan perdagangannya pada 28 September 2026. Node baru menahan sebagian penghasilannya selama sembilan bulan pertama dan hanya terisi sesuai permintaan pelanggan, jadi memulai node sekarang berarti mengikat masa balik modal yang panjang pada perusahaan yang sedang direstrukturisasi dan masih bisa berhenti beroperasi.\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "Node penyimpanan terdesentralisasi - $1.35/TB disimpan + $1/TB egress"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "Alamat dompet"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "Alamat eksternal"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "Alokasi penyimpanan"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "Direktori identitas"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "Direktori penyimpanan"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "Alamat dompet Ethereum untuk pembayaran USDC (mis. 0x1234...abcd). Harus self-custodial (MetaMask, Ledger, dll.) -- jangan pernah menggunakan alamat exchange"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "Alamat email untuk notifikasi operator"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "Hostname DDNS dengan port (mis. mynode.ddns.net:28967) -- jauh lebih baik daripada IP literal, yang membuat node terputus pada hari ISP Anda diam-diam mengganti IP. Port 28967 harus diteruskan (TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "Ruang disk maksimum yang dialokasikan (mis. 2TB). Gunakan hard disk (HDD), bukan SSD"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "Path host tempat file identitas disimpan (harus berisi ca.cert, ca.key, identity.cert, identity.key)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "Path host di hard disk (HDD) untuk penyimpanan data Storj. Memerlukan ruang kosong minimal 550GB"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "Sebelum pertama kali dijalankan, inisialisasi konfigurasi node penyimpanan: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "Identitas node. ID-nya terikat proof-of-work dan butuh berjam-jam untuk dibuat ulang, dan tidak dapat dibuat ulang dari cadangan data lain. Kehilangannya berarti kehilangan saldo pembayaran yang ditahan."
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "Data pelanggan yang disimpan dan jumlah yang ditahan node. Kehilangannya membuat node didiskualifikasi dan saldo yang ditahan hangus."
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "Jaringan Storj tidak dapat menghubungi node Anda di ADDRESS yang diumumkannya, sehingga satelit menganggapnya offline: data baru berhenti masuk, pendapatan egress terhenti, dan waktu offline yang berkepanjangan berujung pada penangguhan. Periksa bahwa ADDRESS sesuai dengan IP publik Anda SAAT INI (gunakan hostname DDNS, bukan IP literal, agar penggantian IP oleh ISP tidak membuat node terputus) dan bahwa port 28967 TCP+UDP diteruskan ke mesin ini."
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "$1.35/TB disimpan + $1/TB egress + $1/TB audit/perbaikan sejak 1 September 2026. Penghasilan meningkat seiring data yang disimpan dan usia node. Sembilan bulan pertama menahan 75%, lalu 50%, lalu 25% dari penghasilan; separuh jumlah yang ditahan kembali di bulan ke-16 dan sisanya saat keluar dengan benar (graceful exit). Port 28967 harus diteruskan."
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "4x biaya transaksi Ethereum, saldo yang lebih kecil dibawa ke bulan berikutnya"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "Bulanan"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "Dibayar bulanan dalam USDC di mainnet Ethereum begitu saldo dompet setidaknya empat kali biaya transaksi saat ini; saldo yang lebih kecil dibawa ke bulan berikutnya. Token STORJ hingga pembayaran September 2026. Dasbor di port 14002."
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "Dibayar bulanan dalam USDC di mainnet Ethereum ke alamat di WALLET begitu saldo melewati minimum berbasis biaya. Token STORJ hingga pembayaran September 2026; pembayaran zkSync Era berakhir 1 September 2026."
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "URL dasbor node di port 14002, dengan IP LAN server, bukan localhost, misalnya <b>http://192.168.1.10:14002</b>. Untuk beberapa node, cantumkan URL-nya dipisahkan koma: CashPilot menjumlahkannya."
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "Node Storj di subnet /24 yang sama berbagi alokasi data, sehingga mengurangi penghasilan per node."
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "Unggah 5 Mbps"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "Ruang disk dan bandwidth untuk melayaninya."
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "Tidak. Anda menyimpan fragmen data pelanggan yang terenkripsi dan di-erasure-code. Orang lain tidak meneruskan lalu lintas mereka sendiri melalui IP Anda."
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "Identitas node, alamat dompet Anda, alamat email yang diwajibkan node untuk notifikasi operator, serta IP dan port Anda, yang harus dapat dijangkau agar node dapat melayani data."
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "Terutama soal batas kuota data, bukan soal tanggung jawab hukum: node terus-menerus melayani dan menerima data pelanggan, yang merupakan lalu lintas nyata dan berkelanjutan di jaringan Anda. Namun, tidak seperti proxy atau relay, ini bukan lalu lintas pihak ketiga yang dianonimkan dan dikaitkan dengan Anda sebagai asalnya, sehingga tidak mengundang keluhan penyalahgunaan seperti keduanya."
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "Node tak terbatas, tetapi node di subnet /24 yang sama berbagi alokasi, jadi beberapa node di satu koneksi masing-masing menghasilkan lebih sedikit."
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "CoinDesk melaporkan pada 27 Juli 2026 bahwa Storj Labs telah mengajukan perlindungan kepailitan Chapter 11."
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "Pembayaran kepada operator node dari sebelum pengajuan masuk ke proses klaim kepailitan."
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "Node baru ditahan 75%, lalu 50%, lalu 25% penghasilannya dalam sembilan bulan pertama; separuhnya kembali di bulan ke-16 dan sisanya hanya saat keluar dengan benar (graceful exit)."
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "Pelanggan menyimpan fragmen file terenkripsi dan tidak ada yang meneruskan lalu lintas melalui IP Anda, tetapi kami tidak menemukan di mana Storj menyebutkan siapa pelanggannya atau bagaimana mereka diperiksa."
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "Perangkat lunak node penyimpanan bersifat open source di bawah AGPL-3.0."
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Storj memublikasikan image Docker miliknya sendiri, storjlabs/storagenode."
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "Tanpa akun: cukup alamat dompet dan email untuk pemberitahuan operator."
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "Node aktif tetap dibayar setelah pengajuan."
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR adalah pool penambangan Monero tanpa akun: miner Anda masuk dengan alamat Monero Anda sebagai nama pengguna, dan pool membayar ke alamat itu. CashPilot tidak menjalankan miner di sini. CashPilot membaca saldo yang disimpan SupportXMR untuk alamat Anda, sehingga Anda melihat apa yang dihasilkan miner CPU Anda di samping penghasilan Anda yang lain. Saldo sudah diperoleh tetapi belum diterima: pool membayarnya begitu melewati ambang pembayaran Anda.\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "Pool penambangan Monero, dipantau lewat alamat pembayaran Anda"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR (otomatis), 0.01 XMR sesuai permintaan"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "Saat saldo Anda melewati ambang, atau sesuai permintaan"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "SupportXMR membayar ke alamat Anda begitu saldo mencapai ambang Anda (0.1 XMR secara default). Di situsnya Anda juga dapat meminta pembayaran instan mulai 0.01 XMR, dengan biaya 0.001 XMR."
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "Saldo sudah diperoleh tetapi belum diterima sampai SupportXMR membayarnya ke alamat ini. Saldo Monero tidak dapat dibaca on-chain tanpa private view key, yang tidak pernah diminta CashPilot, jadi Anda mengonfirmasi setiap pembayaran sendiri."
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "Alamat pembayaran Monero Anda: nama pengguna yang digunakan miner Anda di SupportXMR, tanpa bagian <b>.workername</b> atau <b>+difficulty</b>. Alamat ini publik dan tidak membuka akses ke dana apa pun."
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "Memerlukan miner Monero (XMRig) yang diarahkan ke pool.supportxmr.com"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "komputasi"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "Tidak. Miner Anda mengirim hash ke pool; tidak ada yang meneruskan lalu lintas melalui koneksi Anda."
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "Alamat Monero Anda, nama worker yang Anda pilih, hashrate Anda, dan alamat IP miner Anda sebagaimana dilihat pool."
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "Miner menjaga satu koneksi terbuka ke pool dan memakai sedikit bandwidth. Biaya yang perlu diperhatikan adalah listrik, bukan ISP Anda."
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "Tidak ada akun. Alamat adalah identitasnya, dan siapa pun dapat membaca statistiknya di supportxmr.com."
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "Hanya dibayar dalam Monero, dengan biaya pool 0.6% dan ambang default 0.1 XMR sebelum pembayaran otomatis."
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "CashPilot tidak menjalankan miner untuk SupportXMR: Anda mengarahkan miner Anda sendiri ke pool, dan CashPilot hanya membaca saldo."
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Teneo Protocol memberi agen AI akses ke web secara langsung melalui jaringan Beacon. Teneo Beacon adalah aplikasi milik Teneo untuk Android, iOS, macOS, Windows, dan Linux, dengan versi baris perintah untuk server dan Raspberry Pi. Aplikasi ini membagikan bandwidth Anda yang tidak terpakai setelah Anda menyetujui layar persetujuannya, dan mendapatkan Teneo Protocol Points dan Fragments selama online. Fragments dihitung untuk undian musiman yang dibayar dalam USDC (Beacon Drop). Teneo menyatakan Beacon menghasilkan poin dua kali lipat dibandingkan ekstensi browser lamanya. Hanya satu Beacon yang menghasilkan per koneksi internet. Perangkat lain di koneksi yang sama berstatus siaga. Daftar di Expedition Hub dengan tautan referal atau kode PSA3BHPJ, lalu masuk ke Beacon.\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "Aplikasi bandwidth DePIN (Beacon) - Fragments untuk undian USDC musiman, +100 Fragments dengan tautan referal"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "Mendapatkan Teneo Points dan Fragments. Fragments dihitung untuk undian USDC musiman, jadi satu musim membayar hadiah, bukan tarif. Teneo menyatakan Beacon menghasilkan poin dua kali lipat dibandingkan ekstensi browser. Klaim boost setiap 8 jam untuk hingga 3x Fragments; jendela yang terlewat menurunkan pengalinya."
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "Undian musiman (Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "Hadiah Beacon Drop dibayar dalam USDC ke dompet yang Anda tautkan di Expedition Hub. Hub menampilkan berapa hari waktu yang Anda miliki untuk menautkannya; hadiah tanpa dompet yang ditautkan tepat waktu hangus."
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "Tautkan dompet di Expedition Hub sebelum hadiah musim dibayarkan; Hub menghanguskan hadiah yang dompetnya tidak ditautkan tepat waktu."
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "8% dari Fragments setiap teman yang diajak dan 2% dari Fragments referal mereka, begitu teman tersebut mendaftar dalam 7 hari dan mendapatkan 480 Fragments"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "+100 Fragments saat mendaftar, dan +150 lagi begitu Anda mencapai 480 Fragments"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "Hanya satu Beacon yang menghasilkan per koneksi internet. Mesin pusat data hanya menghasilkan di penyedia hosting yang telah diaktifkan Teneo, dengan separuh Fragments dan tanpa poin atau bonus referal. Koneksi VPN tidak pernah menghasilkan."
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "Fragments dari Beacon hanya membayar USDC sebagai hadiah dalam undian musiman, jadi menjalankannya tidak menghasilkan jumlah yang pasti."
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Teneo menyatakan poin akan digabungkan ke dalam $AGENTIC, token reward yang tidak dapat dipindahtangankan, bukan token $TENEO."
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "Tanggal peluncuran, alokasi, maupun proses klaim $TENEO belum dikonfirmasi hingga November 2026, setelah target sebelumnya, kuartal kedua 2026, terlewati."
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "CashPilot tidak menjalankan Teneo: Anda memasang aplikasi Beacon milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Teneo menyatakan lalu lintas berasal dari pelanggan bisnis yang telah diperiksa dan memblokir alamat privat serta port yang rawan penyalahgunaan, tetapi tidak menjelaskan bagaimana pelanggan tersebut diperiksa."
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network adalah jaringan pengiriman video dan komputasi AI terdesentralisasi yang sudah mapan (sejak 2018). Pengguna menjalankan Edge Node yang berbagi bandwidth, penyimpanan, dan daya komputasi. Kemitraan konten besar. Mendapatkan token TFUEL.\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "CDN terdesentralisasi + komputasi AI - reward TFUEL, proyek mapan"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "Hanya aplikasi desktop. Penghasilan bergantung pada sumber daya dan lokasi. Kemitraan besar, terdaftar di semua exchange."
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "Berkelanjutan"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "CashPilot tidak menjalankan Theta Edge: Anda menggunakan aplikasi desktop milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network adalah platform DePIN yang membagikan alamat IP, penyimpanan, dan bandwidth Anda dengan imbalan reward token TNT. Tersedia di Windows, Mac, dan Android. Node berkontribusi pada CDN dan lapisan penyimpanan terdesentralisasi. Penghasilan umumnya berkisar $5-30/bulan tergantung sumber daya yang dibagikan dan lokasi geografis.\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "DePIN berbagi IP, penyimpanan, bandwidth - $5-30/bulan"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "Membagikan IP, penyimpanan, dan bandwidth. Penghasilan bergantung pada sumber daya yang disumbangkan dan wilayah. Alokasi penyimpanan yang lebih besar menghasilkan reward lebih tinggi."
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "Berbasis epoch"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "Bantuan Titan sendiri menyebutkan bahwa node yang berjalan tidak menjamin penghasilan: tanpa tugas yang diberikan, node tidak menghasilkan apa pun, dan reward dalam token TNT."
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "CashPilot tidak menjalankan Titan: Anda menggunakan aplikasi atau ekstensi milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Traffmonetizer memungkinkan Anda memonetisasi lalu lintas internet dengan berbagi bandwidth kepada bisnis terverifikasi. Salah satu dari sedikit layanan berbagi bandwidth yang berfungsi baik di IP VPS dan pusat data selain koneksi residensial. Menggunakan autentikasi berbasis token sederhana yang diteruskan melalui argumen baris perintah. Mendukung arsitektur ARM untuk Raspberry Pi dan perangkat serupa.\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "Berbagi bandwidth - berfungsi di VPS, autentikasi berbasis token"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "Token"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "Nama perangkat"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "Masuk di <a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a>, tekan F12 → Application → Local Storage → klik <code>https://app.traffmonetizer.io</code> → salin nilai <code>authToken</code> (sekitar 54 karakter: angka, sebuah <code>|</code>, lalu huruf dan angka)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "Nama yang ditampilkan di dasbor untuk pengelolaan perangkat"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "IP VPS dan pusat data menghasilkan lebih sedikit daripada residensial. Lokasi AS/UE menghasilkan lebih banyak. Beberapa IP didukung melalui jaringan Docker."
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "Minimum $10. PayPal tidak lagi tersedia. Simpan satu metode pembayaran di profil terlebih dahulu: USDT di Solana atau TON (biaya terendah), Arbitrum (biaya rendah), atau Tron TRC20 (biaya jaringan tinggi), atau transfer bank mulai $1.000. Alamat pertama yang Anda simpan langsung berlaku; mengubahnya nanti memerlukan konfirmasi email. Dasbor mungkin meminta kontak messenger (WhatsApp, Telegram, atau Skype) sebelum penarikan pertama. Permintaan membayar dalam dolar bulat dan sennya tetap di saldo."
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "USDT di jaringan yang disimpan di pengaturan pembayaran profil (Solana, TON, Arbitrum, atau Tron), atau transfer bank. Alamatnya disimpan di pengaturan Traffmonetizer, bukan di kontainer."
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "Masuk di <a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a>, tekan F12 → Application → Local Storage → nilai <b>authToken</b> (sekitar 54 karakter: angka, sebuah <code>|</code>, lalu huruf dan angka)."
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "10% dari setiap pembayaran yang mereka minta"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "Ketentuan layanan Traffmonetizer mensyaratkan IP residensial, tetapi dalam praktiknya node VPS diterima."
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "Trustpilot memberinya nilai 1.9; pengulas dari 2023 hingga November 2026 melaporkan pembayaran tertunda berminggu-minggu, atau ditandai selesai tanpa transaksi yang sesuai."
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "Pengulas yang sama melaporkan dukungan live chat dan email tidak menjawab, terkadang berminggu-minggu."
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "Hanya kripto atau transfer bank mulai $1.000; PayPal sudah tidak ada, dan permintaan hanya membayar dalam dolar bulat."
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "Ketentuan Traffmonetizer mensyaratkan IP residensial, jadi server di koneksi hosting berada di luar ketentuan tersebut."
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "Empat pengulas Trustpilot dari 2023 hingga 2025 melaporkan penghasilan yang sangat lambat, seperti satu sen per hari di empat perangkat, atau hampir dua tahun untuk mencapai $10."
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "Pembayaran hanya memerlukan alamat kripto tersimpan yang dikonfirmasi lewat email; dasbor mungkin meminta kontak messenger."
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Traffmonetizer memublikasikan image Docker miliknya sendiri, traffmonetizer/cli_v2."
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "Menambang dengan CPU Anda dan dibayar dengan koin pilihan Anda, seperti SHIB, DOGE, atau XMR. CashPilot menjalankan XMRig ke pool RandomX milik unMineable, dan unMineable mengonversi Monero yang ditambang CPU Anda menjadi koin Anda. Pembayaran dikirim ke alamat publik Anda begitu saldo mencapai ambang pembayaran koin tersebut. Setiap worker yang diterapkan CashPilot membawa kode referal unMineable milik CashPilot, yang menurunkan biaya platform Anda dari 1% menjadi 0.75%. Listrik bisa lebih mahal daripada yang Anda hasilkan."
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "Menambang dengan CPU Anda dan dibayar dengan koin pilihan Anda"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "Koin pembayaran"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "Alamat pembayaran"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "Nama worker"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "Maks thread CPU (%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "Mode RandomX"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "Ticker koin yang dibayar unMineable, seperti SHIB, DOGE, atau XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "Alamat publik Anda untuk koin tersebut. Koin yang memerlukan memo atau tag tidak didukung."
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "Perkiraan kotor sebelum biaya listrik, dibayar dalam koin Anda dengan kurs konversi unMineable. Pada 2026-11-25, 1 kH/s RandomX bernilai sekitar $1 per bulan. CPU desktop dengan separuh thread-nya bisa menarik daya tambahan 30 hingga 50 W. Periksa pemakaian Anda yang sebenarnya dan harga listrik untuk melihat apakah ini menguntungkan."
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "Ditetapkan per koin oleh unMineable (0.03 XMR pada 2026-11-26)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "Saat ambang pembayaran koin tercapai"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "unMineable membayar ke alamat Anda begitu saldo mencapai ambang pembayaran koin tersebut. Ambang berbeda menurut koin dan jaringan; CashPilot membaca ambang yang dilaporkan unMineable untuk alamat Anda."
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "Saldo sudah diperoleh tetapi belum diterima sampai unMineable membayarnya ke alamat ini. Jaringannya bergantung pada koin yang Anda pilih."
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "Alamat pembayaran dan ticker koin yang sama dengan yang Anda gunakan saat menerapkan miner, misalnya <b>XMR</b>. Masukkan alamatnya saja, tanpa koin, nama worker, atau kode referal. Alamat ini publik dan tidak membuka akses ke dana apa pun."
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "0.25% dari reward penambangan setiap miner yang diajak"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "Biaya platform diturunkan dari 1% menjadi 0.75%"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "Mesin ini melaporkan koneksi hosting. Periksa ketentuan penyedia Anda sebelum menambang. Beberapa penyedia, termasuk Hetzner Cloud, melarangnya. Periksa biaya listrik Anda yang sebenarnya sebelum mengandalkan perkiraan keuntungan."
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "unMineable mengenakan biaya platform 1%. CashPilot menambahkan kode referalnya (#awk6-j1z0) setelah setiap nama worker, yang menurunkan biaya Anda menjadi 0.75%. unMineable kemudian membayar pengelola CashPilot 0.25% dari reward penambangan Anda; Anda tetap mendapat 99.25%. Setiap koin memiliki ambang pembayarannya sendiri, misalnya 0.03 XMR."
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "komputasi"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "Tidak. Miner mengirim hasil kerja ke pool unMineable."
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "Alamat pembayaran, koin, nama worker, hashrate, dan alamat IP Anda dikirim ke unMineable."
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "Beberapa jaringan dan resolver DNS memblokir koneksi ke pool penambangan."
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "Tidak perlu akun. Alamat dan koin adalah identitasnya, dan siapa pun dapat membaca statistiknya di unmineable.com."
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "unMineable tetap mengenakan biaya platform 0.75% dengan kode referal dan hanya membayar mulai ambang masing-masing koin."
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "Beberapa penyedia hosting melarang penambangan mata uang kripto."
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "Listrik tambahan bisa lebih mahal daripada koin yang dihasilkan."
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "Statistik alamat, termasuk saldo, terbuka untuk siapa pun yang mengetahui alamat tersebut."
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "Miner mengirim hash ke pool dan tidak meneruskan lalu lintas orang lain."
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "Anda dapat menambang ke alamat publik dalam koin pilihan Anda tanpa membuat akun."
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock adalah platform DePIN (Decentralized Physical Infrastructure Network) yang memungkinkan Anda mendapatkan mata uang kripto dengan berbagi koneksi internet. Bagian dari ekosistem Web3 yang lebih luas. Tersedia image Docker komunitas tetapi tidak ada image resmi. Ekstensi browser adalah antarmuka utamanya.\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "Berbagi internet DePIN - pembayaran kripto, utamanya ekstensi browser"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "Penghasilan berbasis kripto/token. Tidak ada image Docker resmi — ekstensi browser adalah klien utamanya."
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "Token UPT, ditarik ke dompet Solana mulai 250 UPT, dengan autentikasi dua faktor aktif. Ada biaya penarikan."
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "Pusat bantuan UpRock menyebutkan bahwa penarikan berupa token UPT ke dompet Solana, dengan minimum 250 UPT."
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "Reward berupa token UPT; pengulas dan sebuah ulasan pihak ketiga mengatakan nilainya sangat rendah."
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "CashPilot tidak menjalankan UpRock: Anda menggunakan aplikasi atau ekstensi milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork adalah jaringan VPN dan berbagi bandwidth terdesentralisasi. Anda menghasilkan dengan menyediakan bandwidth sebagai penyedia komunitas. Binary penyedia mengautentikasi dirinya sendiri dengan email dan kata sandi akun Anda (subperintah auth-provide-nya) dan menyimpan JWT sesi yang dihasilkan di volume data. Image Docker resmi dari BringYour, Inc.\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "VPN/bandwidth terdesentralisasi - autentikasi email+kata sandi, sesi JWT di volume"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "Email"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "Kata sandi"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "Email akun URnetwork Anda (login yang Anda gunakan di <a href=\"https://ur.io\" target=\"_blank\">ur.io</a>). Akun yang dibuat melalui login Google/Apple perlu mengatur kata sandi terlebih dahulu. Belum punya akun? Daftar dengan <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a>"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "Kata sandi akun URnetwork Anda (tanpa spasi). Digunakan oleh login auth-provide milik penyedia; setelah itu sesi tersimpan di volume data."
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "Berfungsi di VPS dan residensial. Dibayar dalam SN25α (subnet Bittensor 25) per epoch mingguan sejak 2026-10-06. Mendukung mode proxy untuk penyiapan multi-IP."
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "Berbasis epoch"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "Atur coldkey Bittensor di ur.io/app/account/earnings (ditandatangani dengan Talisman, TAO.com, atau dompet WalletConnect), lalu klaim setiap epoch yang sudah final. Klaim membayar gas dalam TAO dari kunci gas EVM. EPOCH YANG TIDAK DIKLAIM KEDALUWARSA, dan pembayaran USDC lama dibatalkan jika tidak ada dompet yang ditautkan dalam 30 hari."
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "3 GiB data UR gratis per hari per teman, hingga 20 teman (data, bukan uang)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "3 GiB data UR gratis per hari begitu Anda memakai setidaknya 10 MiB melalui aplikasi pada 2 hari dalam 90 hari sejak bergabung; jika tidak, referal berakhir"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "Epoch yang tidak diklaim kedaluwarsa, dan pembayaran USDC lama dibatalkan untuk jaringan yang tidak menautkan dompet dalam 30 hari."
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "Sejak Oktober 2026 reward dibayar dalam SN25α, token subnet Bittensor, dan setiap klaim memakan gas dalam TAO."
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "URnetwork dulunya bernama BringYour; whitepaper yang diarsipkan masih memakai nama lama."
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "URnetwork memublikasikan kode sumber klien penyedianya."
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "URnetwork memublikasikan image Docker miliknya sendiri, bringyour/community-provider, dan berfungsi di koneksi VPS maupun residensial."
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "Klaim hanya memerlukan dompet Bittensor yang Anda kendalikan."
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai adalah marketplace cloud GPU tempat Anda menyewakan GPU NVIDIA Anda kepada peneliti dan pengembang AI/ML. Platform berbasis Docker tempat Anda menetapkan sendiri harga per jam. RTX 3090 biasanya menghasilkan $0.20-0.40/jam saat disewa. Memerlukan GPU NVIDIA dengan driver terbaru dan koneksi internet yang stabil. Pendapatan sangat bergantung pada model GPU, strategi harga, dan permintaan pasar.\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "Marketplace GPU - tetapkan harga sendiri, RTX 3090 ~$0.20-0.40/jam"
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "Kunci API"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "Kunci API host Vast.ai dari dasbor"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "RTX 3090 ~$0.20-0.40/jam, RTX 4090 ~$0.40-0.80/jam saat disewa. Tingkat pemakaian bervariasi. Memerlukan GPU NVIDIA, host Linux, Docker, dan nvidia-container-toolkit. Tetapkan harga sendiri."
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "Mingguan (hari Jumat)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "Penghasilan terkumpul di saldo Vast.ai. Tarik melalui Wise, PayPal, atau Stripe."
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "3% dari pengeluaran penyewa yang diajak, selama akun mereka ada, sebagai kredit referal; hingga 75% dapat dicairkan dari akun referal khusus"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "Host hanya menghasilkan saat disewa, dan angka Vast sendiri untuk GPU konsumen bergantung pada jenis sewa dan skor keandalan."
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "CashPilot tidak menjalankan Vast.ai: Anda memasang perangkat lunak host Vast di mesin GPU Anda sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Vast membangun hosting di atas Docker pada host Linux."
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Vast menyatakan tarif yang ditetapkan host adalah tarif yang diterimanya, tanpa potongan biaya."
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "Pembayaran melalui Wise, PayPal, atau Stripe mulai minimum $20, ditagihkan mingguan; saldo yang lebih kecil dibawa ke minggu berikutnya."
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter adalah platform berbagi bandwidth yang tersedia di Windows, Mac, Linux, dan Android. Platform ini mengklaim membayar hingga $1/GB bandwidth yang dibagikan dengan ambang pembayaran minimum $20. Platform ini bekerja mirip dengan aplikasi berbagi bandwidth tradisional, meneruskan lalu lintas yang sah melalui koneksi residensial.\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "Berbagi bandwidth - klaim hingga $1/GB, pembayaran min $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "Mengklaim hingga $1/GB tetapi penghasilan nyata lebih rendah. Pembayaran minimum $20. Penghasilan sangat bervariasi menurut lokasi dan permintaan."
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "Sesuai permintaan"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "Wipter tidak memiliki dasbor web. Buka aplikasi desktop atau ponsel Wipter, masuk, dan ajukan pembayaran di sana begitu saldo mencapai $20. Wipter hanya membayar dalam USDT di BNB Smart Chain (BEP20), ke dompet yang Anda atur di bagian Payments aplikasi; tidak ada pilihan PayPal."
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "10% dari penghasilan lalu lintas mereka begitu mereka mencapai pembayaran minimum, untuk berapa pun teman yang Anda ajak"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "Bonus pendaftaran $5"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "CashPilot tidak menjalankan Wipter: Anda menggunakan aplikasi desktop atau ponsel milik penyedia sendiri, jadi CashPilot tidak dapat menerapkan atau memperbaruinya untuk Anda. Ketentuannya belum diperiksa terkait kontainer."
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "Tambang Monero dengan CPU Anda. CashPilot menjalankan XMRig, dan pool pilihan Anda membayar Monero ke alamat pembayaran publik Anda. XMRig memakai 1% waktu hashing untuk mendukung pengembangnya. Listrik bisa lebih mahal daripada XMR yang Anda hasilkan."
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "Tambang Monero dengan CPU Anda dan pool pilihan Anda"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "Alamat Monero"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "Pool"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "Nama worker"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "Maks thread CPU (%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "Mode RandomX"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "Perkiraan kotor sebelum biaya listrik. Pada 2026-11-25, 1 kH/s bernilai sekitar $1 per bulan pada harga XMR dan tingkat kesulitan jaringan yang teramati. CPU desktop dengan separuh thread-nya bisa menarik daya tambahan 30 hingga 50 W. Periksa pemakaian Anda yang sebenarnya dan harga listrik untuk melihat apakah ini menguntungkan."
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR (MoneroOcean, setelah Anda menurunkannya)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "Saat ambang pool tercapai"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "Pool membayar ke alamat Monero Anda saat saldo mencapai ambang Anda. Pool menyimpan saldo sampai membayar Anda."
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "Mesin ini melaporkan koneksi hosting. Periksa ketentuan penyedia Anda sebelum menambang. Beberapa penyedia, termasuk Hetzner Cloud, melarangnya. Periksa biaya listrik Anda yang sebenarnya sebelum mengandalkan perkiraan keuntungan."
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "MoneroOcean, pool default, mengenakan biaya penambangan 0%. Ambang pembayaran default adalah 0.3 XMR, dan Anda dapat menurunkannya hingga 0.003 XMR. Pembayaran di bawah 4 XMR dapat dikenai biaya hingga 0.0004 XMR. Pool lain menetapkan tarif dan ambangnya sendiri."
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "komputasi"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "Tidak. Miner mengirim hasil kerja ke pool penambangan."
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "Alamat Monero, nama worker, dan alamat IP Anda dikirim ke pool."
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "Beberapa jaringan dan resolver DNS memblokir koneksi ke pool penambangan."
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "Sebagian besar pool Monero mengenali Anda dari alamat pembayaran publik Anda."
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "Pembayaran memerlukan XMR yang cukup untuk memenuhi ambang pool Anda."
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "Beberapa penyedia hosting melarang penambangan mata uang kripto."
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "Listrik tambahan bisa lebih mahal daripada XMR yang dihasilkan."
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "Miner mengirim hash ke pool dan tidak meneruskan lalu lintas orang lain."
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "Miner ini open source dan image-nya mematok rilis upstream yang bertanda tangan."
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "Anda dapat menambang dengan alamat Monero publik tanpa mengungkapkan nama Anda."
+  source: "752cbb728aac"

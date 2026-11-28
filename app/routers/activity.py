@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app import activity_ui, database, deps, ipgeo, placement
+from app.i18n import t
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -50,12 +51,12 @@ async def _worker(worker_id: int) -> dict[str, Any]:
     for w in await _workers():
         if w["id"] == worker_id:
             return w
-    raise HTTPException(status_code=404, detail="Worker not found")
+    raise HTTPException(status_code=404, detail=t("api.worker_not_found"))
 
 
 def _days(days: int) -> int:
     if days not in DAYS:
-        raise HTTPException(status_code=400, detail="days must be 1, 7 or 30")
+        raise HTTPException(status_code=400, detail=t("api.days_must_1_7_30"))
     return days
 
 
@@ -113,7 +114,7 @@ async def api_activity_container(
     # a 422 to an anonymous caller would describe the route to them.
     deps._require_owner(request)
     if not container:
-        raise HTTPException(status_code=400, detail="container is required")
+        raise HTTPException(status_code=400, detail=t("api.container_required"))
     days = _days(days)
     w = await _worker(worker_id)
     now = int(time.time())
@@ -177,12 +178,12 @@ async def api_activity_asn_refresh(request: Request) -> dict[str, Any]:
     """Download the network table now, instead of waiting for the weekly refresh."""
     deps._require_owner(request)
     if not ipgeo.source_url():
-        raise HTTPException(status_code=409, detail="The download is disabled (CASHPILOT_ACTIVITY_ASN_URL is empty).")
+        raise HTTPException(status_code=409, detail=t("api.download_disabled_cashpilot_activity_asn"))
     try:
         await asyncio.to_thread(ipgeo.download)
     except ipgeo.DownloadBusy:
-        raise HTTPException(status_code=409, detail="A download is already running.") from None
+        raise HTTPException(status_code=409, detail=t("api.download_already_running")) from None
     except Exception as exc:  # noqa: BLE001 - a fixed message, never the exception text
         logger.warning("Network table download failed: %s", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="The network table could not be downloaded.") from None
+        raise HTTPException(status_code=502, detail=t("api.network_table_could_not_downloaded")) from None
     return await asyncio.to_thread(ipgeo.status)

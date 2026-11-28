@@ -54,6 +54,8 @@ def load_services(services_dir: pathlib.Path) -> list[dict]:
     """
     services = []
     for path in sorted(services_dir.glob("*/*.yml")):
+        if path.parent.name.startswith("_"):  # the translations in _i18n/
+            continue
         try:
             data = yaml.safe_load(path.read_text())
         except yaml.YAMLError as exc:

@@ -59,4 +59,4 @@ collector:
 
 payout:
   model: unknown
-  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+  notes: "Not yet determined: CashPilot has not checked yet where this service keeps your earnings."

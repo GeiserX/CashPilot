@@ -65,7 +65,7 @@ def load_services() -> list[dict]:
     """Every catalog entry, sorted by display name within its category."""
     services = []
     for path in sorted((ROOT / "services").glob("*/*.yml")):
-        if path.name.startswith("_"):
+        if path.name.startswith("_") or path.parent.name.startswith("_"):  # _i18n/ holds translations
             continue
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         slug = data.get("slug") or path.stem

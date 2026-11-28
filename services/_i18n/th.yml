@@ -1,0 +1,2514 @@
+# Thai translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/th.yml --restamp '<key>'
+2miners-etc.description:
+  text: "ติดตามยอดคงเหลือ Ethereum Classic ที่ยังไม่ได้จ่ายซึ่ง 2Miners เก็บไว้ให้ที่อยู่รับเงิน ETC สาธารณะ เรียกใช้เครื่องขุดของตนเองและชี้ไปที่พูล CashPilot จะอ่านยอดคงเหลือและขอให้ยืนยันการจ่ายเงินเมื่อยอดคงเหลือลดลง\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "พูลขุด Ethereum Classic ติดตามด้วยที่อยู่รับเงิน"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC (ปรับได้)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "พูลตรวจสอบเกณฑ์การจ่ายเงินทุกสองชั่วโมง"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "2Miners จ่ายเงินเข้าที่อยู่โดยอัตโนมัติเมื่อถึงเกณฑ์ที่เลือกไว้ เกณฑ์ต่ำสุดสำหรับการจ่าย ETC คือ 0.1 ETC\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "ยอดคงเหลือที่ยังไม่ได้จ่ายจะสะสมอยู่ที่ 2Miners ส่วนยอดคงเหลือในกระเป๋าเงินเป็นการอ่านแยกต่างหากจาก Ethereum Classic ตรวจสอบจำนวนที่ได้รับในกระเป๋าเงินก่อนยืนยันการจ่ายเงินใน CashPilot\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "ป้อนที่อยู่รับเงิน Ethereum Classic สาธารณะที่เครื่องขุดใช้บน 2Miners ซึ่งขึ้นต้นด้วย <b>0x</b> ไม่ต้องใส่ชื่อเวิร์กเกอร์\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "ต้องมีเครื่องขุด ETCHash ที่ชี้ไปที่ 2Miners"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "การประมวลผล"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "ไม่ เครื่องขุดส่งงานขุดไปยังพูล"
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "พูลใช้ที่อยู่รับเงิน ชื่อเวิร์กเกอร์ที่เลือก และที่อยู่ IP ของเครื่องขุด"
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "ทุกคนดูสถิติได้จากที่อยู่รับเงิน พูลจะขอให้ยืนยัน IP ของเวิร์กเกอร์ก่อนเปลี่ยนเกณฑ์"
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "พูลเก็บค่าธรรมเนียม 1% และระงับการจ่ายเงินไว้จนกว่าจะถึงเกณฑ์"
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol (เดิมชื่อ ATOR) เป็นเครือข่ายความเป็นส่วนตัวแบบกระจายศูนย์ที่ใช้การกำหนดเส้นทางแบบหัวหอม (onion routing) ผู้ดูแลโหนดเรียกใช้โหนดรีเลย์และได้รับโทเค็น ANYONE ตามแบนด์วิดท์ที่ให้ ลองนึกถึง \"Tor ที่มีสิ่งจูงใจ\" CashPilot เรียกใช้จากอิมเมจของตนเองซึ่งสร้างจากแพ็กเกจ Debian ที่ลงนามแล้วของโครงการ สำหรับ amd64 และ arm64 การตั้งค่าทำผ่านไฟล์ anonrc ที่เมานต์เข้าไปในคอนเทนเนอร์ (Nickname, ContactInfo, ORPort ฯลฯ) รีเลย์จะไม่มีรายได้จนกว่าจะล็อก 100 ANYONE ไว้ให้เป็นเวลาอย่างน้อย 180 วัน และต้องเคลมรางวัลด้วยการลงนามในกระเป๋าเงิน รีเลย์ยังเผยแพร่ IP สาธารณะในไดเรกทอรีรีเลย์ของเครือข่ายด้วย ซึ่งอาจทำให้ชื่อเสียงของ IP ที่แอปแบนด์วิดท์แบบ IP ที่อยู่อาศัยจ่ายเงินให้เสียหายได้\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "การกำหนดเส้นทางแบบหัวหอมแบบกระจายศูนย์ - โหนดรีเลย์ Tor ที่มีสิ่งจูงใจ"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "คีย์ข้อมูลระบุตัวตน ed25519 ของรีเลย์ หากทำลายคีย์นี้ ชื่อเสียงของรีเลย์จะหายไปและประวัติรายได้จะเริ่มใหม่จากศูนย์"
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "จ่ายเงินเฉพาะเมื่อล็อก 100 ANYONE ต่อรีเลย์ไว้อย่างน้อย 180 วัน และมีการเคลมรางวัลที่ลงนามในกระเป๋าเงินแล้ว หากไม่มีการสเตก รีเลย์จะไม่มีรายได้ หากมี รายได้จะขึ้นอยู่กับแบนด์วิดท์ที่ให้และเวลาที่ออนไลน์"
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "ตามรอบ Epoch"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "ตั้งเป็น ContactInfo ใน anonrc โดยขึ้นต้นด้วย '@anon:0x...'"
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "ลายนิ้วมือ (fingerprint) ของรีเลย์ คั่นด้วยเครื่องหมายจุลภาค ไม่มีแดชบอร์ดออนไลน์ใดแสดงค่านี้ สำหรับรีเลย์ที่ CashPilot เรียกใช้ ให้รัน <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> บนเครื่องที่เรียกใช้รีเลย์นั้น สำหรับรีเลย์แบบฮาร์ดแวร์ ให้เปิด Relay Control Panel ที่ <b>http://relayup.local</b> แล้วอ่านค่า Fingerprint ในหน้า Home\n"
+  source: "ffa5be0d4953"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "แบนด์วิดท์ ในฐานะรีเลย์ในเครือข่าย Anyone (ซึ่งแยกมาจาก Tor)"
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "ใช่ รีเลย์ส่งต่อทราฟฟิกของผู้อื่น IP นี้จะเป็นจุดสุดท้ายหรือไม่ขึ้นอยู่กับว่ารีเลย์ตั้งค่าเป็นทางออก (exit) หรือไม่"
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "คีย์ข้อมูลระบุตัวตนสาธารณะของรีเลย์ IP และพอร์ต และสถิติเวลาที่ออนไลน์ ทั้งหมดนี้เผยแพร่ในไดเรกทอรีของเครือข่ายโดยการออกแบบ หากตั้ง ContactInfo ใน anonrc ค่านี้จะถูกเผยแพร่ที่นั่นด้วย และจะถูกจัดทำดัชนีแบบสาธารณะอย่างถาวร โดยมักเป็นที่อยู่อีเมล จึงควรเว้นว่างไว้ เว้นแต่ต้องการให้เป็นสาธารณะ"
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "มีจริง ทราฟฟิกของรีเลย์จะถูกระบุว่ามาจากการเชื่อมต่อนี้ โดยเฉพาะรีเลย์ทางออกมักถูกร้องเรียนเรื่องการใช้งานในทางที่ผิด ISP สำหรับผู้ใช้ทั่วไปหลายรายห้ามใช้งาน"
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "ไม่มีบัญชีให้สมัคร จึงไม่มีอะไรให้จำกัดต่อบัญชี แต่การจะมีรายได้ยังต้องมีกระเป๋าเงิน Ethereum ที่ล็อก 100 ANYONE ไว้ต่อรีเลย์เป็นเวลาอย่างน้อย 180 วัน และ CashPilot ต้องใช้ลายนิ้วมือของรีเลย์เพื่ออ่านรางวัล โครงการไม่ได้เผยแพร่ขีดจำกัดจำนวนรีเลย์ต่อ IP และแคตตาล็อกก็ไม่ได้ระบุไว้"
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "รีเลย์จะไม่มีรายได้เลย เว้นแต่จะล็อก 100 ANYONE ไว้ให้อย่างน้อย 180 วัน และการเคลมรางวัลแต่ละครั้งต้องลงนามในกระเป๋าเงิน"
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "ส่งต่อทราฟฟิกของผู้อื่นโดยการออกแบบ โดยไม่มีการตรวจสอบว่าเป็นใคร รีเลย์ทางออกมักถูกร้องเรียนเรื่องการใช้งานในทางที่ผิด"
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "ข้อมูลระบุตัวตน IP และเวลาที่ออนไลน์ของรีเลย์ถูกเผยแพร่ในไดเรกทอรีของเครือข่าย และ ContactInfo ที่ตั้งไว้จะเป็นสาธารณะตลอดไป"
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "ไม่มีบัญชีให้สมัคร รีเลย์ต้องการแค่กระเป๋าเงิน โดยไม่มีการยืนยันตัวตน"
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "ซอฟต์แวร์รีเลย์เป็น Tor ฉบับแยกที่เผยแพร่แล้ว ภายใต้สัญญาอนุญาตของ Tor"
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "CashPilot สร้างอิมเมจของตนเองจากซอฟต์แวร์รีเลย์ที่ Anyone เผยแพร่ ซึ่งไม่ต้องใช้บัญชี"
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping เป็นแพลตฟอร์มตรวจสอบเครือข่ายแบบกระจายศูนย์ที่จ่ายเงินให้สำหรับการเรียกใช้โหนด โหนดจะตรวจสอบเว็บไซต์ ทดสอบความหน่วง และตรวจคุณภาพเครือข่ายให้ลูกค้าของ Bitping ใช้ได้ทั้งการเชื่อมต่อแบบที่อยู่อาศัยและ VPS อิมเมจ Docker จะเข้าสู่ระบบด้วยตัวแปรสภาพแวดล้อม BITPING_EMAIL และ BITPING_PASSWORD ในการเริ่มครั้งแรก (\"Attempting login with environment variables\" ในบันทึกของอิมเมจเอง) จากนั้นจะเก็บเซสชันไว้ในวอลุ่มที่เมานต์ไว้ การรีสตาร์ทจึงไม่ต้องยืนยันตัวตนใหม่\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "แชร์แบนด์วิดท์ - ตรวจสอบเครือข่ายแบบกระจายศูนย์ ใช้บน VPS ได้"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "อีเมล"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "รหัสผ่าน"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "อีเมลบัญชี Bitping (ใช้เข้าสู่ระบบเดียวกับ <a href='https://app.bitping.com' target='_blank'>app.bitping.com</a>)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "รหัสผ่านบัญชี Bitping ใช้เพียงครั้งเดียวเพื่อสร้างเซสชันของโหนด ซึ่งจะถูกเก็บไว้ในวอลุ่มข้อมูลต่อไป"
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "รายได้ขึ้นอยู่กับคุณภาพเครือข่ายและความต้องการการตรวจสอบจากตำแหน่งที่ตั้ง รับโหนดบน VPS"
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "รายได้ของโหนดอยู่ที่ nodes.bitping.com ส่วน app.bitping.com เป็นแดชบอร์ดสำหรับลูกค้า API ถอนได้เป็น SOL เท่านั้น เมื่อยอดคงเหลือที่ยังไม่ได้จ่ายเกิน $0.05 ให้พิมพ์ที่อยู่ Solana ลงในคำขอ ซึ่งจะดำเนินการภายใน 24 ชั่วโมง กระเป๋าเงิน Solana ใหม่หรือว่างเปล่าต้องมี SOL ประมาณ 0.001 SOL ก่อน เพื่อให้ถึงค่าเช่าขั้นต่ำของเครือข่าย"
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "ตอนนี้รองรับ Solana เท่านั้น และพิมพ์ที่อยู่ในขณะถอนเงิน แทนที่จะบันทึกไว้"
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "ใช้อีเมลและรหัสผ่านบัญชี Bitping (เหมือนกับ <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)"
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "ถอนยอดคงเหลือ Bitping"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "Bitping อาจริบรายได้ที่ไม่ได้เคลมนานกว่า 12 เดือน หลังแจ้งทางอีเมลล่วงหน้า 30 วัน"
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "ส่งคำขอถอน SOL บน nodes.bitping.com และพิมพ์ที่อยู่ Solana ลงในคำขอ"
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "การถอนจ่ายเป็น Solana (SOL) ไปยังที่อยู่ที่พิมพ์ลงในคำขอแต่ละครั้ง"
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "ศูนย์ช่วยเหลือของ Bitping ระบุว่าการถอนไปยังกระเป๋าเงิน Solana ใหม่ที่ว่างเปล่าอาจล้มเหลว จนกว่าจะเติม SOL เล็กน้อยเข้ากระเป๋าเงินนั้นเอง"
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "ศูนย์ช่วยเหลือของ Bitping ระบุว่ารองรับเซิร์ฟเวอร์และคอนเทนเนอร์ Docker"
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "การถอนต้องการเพียงที่อยู่ Solana ที่พิมพ์ลงในคำขอ"
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit เป็นบริการแชร์แบนด์วิดท์ที่จ่ายเงินผ่าน PayPal และ Stripe ไม่มีอิมเมจ Docker อย่างเป็นทางการ ไคลเอนต์คือแอปเดสก์ท็อป Windows และแอป Android บริการอยู่ที่ bytebenefit.io -- โดเมนเก่า bytebenefit.com ถูกทิ้งและถูกพักไว้ในตลาดซื้อขายโดเมน จึงเคยถูกทำเครื่องหมายว่าเลิกให้บริการไว้ที่นี่\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "แชร์แบนด์วิดท์ - จ่ายผ่าน PayPal/Stripe แอปเดสก์ท็อป/Android"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "ไม่มีอิมเมจ Docker มีเฉพาะแอปเดสก์ท็อป Windows และแอป Android"
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "20% ของรายได้จากทราฟฟิกของผู้ที่ได้รับการแนะนำ"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "โบนัสต้อนรับ $1 (10,000 Coins)"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "หน้าแอปบน Google Play ระบุว่าทราฟฟิกจะใช้รองรับคำขอข่าวกรองเว็บของลูกค้า Infatica โดยไม่บอกว่าลูกค้าเหล่านั้นเป็นใครหรือตรวจสอบอย่างไร"
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "แอป Android ถูกนำออกจาก Google Play ในเดือนเมษายน 2026 หลังจากอยู่มา 17 เดือน"
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "CashPilot ไม่ได้เรียกใช้ ByteBenefit ต้องใช้แอปของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Bytelixir ช่วยสร้างรายได้แบบพาสซีฟจากการแชร์แบนด์วิดท์อินเทอร์เน็ตที่ไม่ได้ใช้ รองรับเฉพาะ Windows และ Android — คำถามที่พบบ่อยอย่างเป็นทางการระบุว่าไม่มีแผนทำไคลเอนต์สำหรับ Linux หรือ Docker ไม่รองรับ iOS และไม่มีเวอร์ชัน macOS รายได้ขึ้นอยู่กับตำแหน่งที่ตั้งเป็นอย่างมาก ติดตามได้ที่แดชบอร์ดเว็บ dash.bytelixir.com ไม่มีอิมเมจ Docker\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "แชร์แบนด์วิดท์ - Windows + Android เท่านั้น"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "คุกกี้เซสชัน"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "คุกกี้ Remember Web"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "โทเค็น XSRF"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "เข้าสู่ระบบที่ <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a> กด F12 → Application → ขยาย <b>Cookies</b> ในแถบด้านซ้าย → คลิกรายการย่อย <code>https://dash.bytelixir.com</code> → ในรายการคุกกี้ทางขวา หา <code>bytelixir_session</code> → คัดลอก Value (JWT ยาวที่ขึ้นต้นด้วย eyJ)"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "ตำแหน่งเดียวกัน (Cookies → <code>https://dash.bytelixir.com</code>) → หาคุกกี้ชื่อ <code>remember_web_...</code> → คัดลอก Value (ไม่บังคับ ช่วยให้เซสชันอยู่ได้นานขึ้น)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "ตำแหน่งเดียวกัน → หา <code>XSRF-TOKEN</code> → คัดลอก Value (ไม่บังคับ)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "รายได้แตกต่างกันตามตำแหน่งที่ตั้ง ($2-50/เดือน) ไม่มีอิมเมจ Docker ต้องใช้แอปเดสก์ท็อปหรือแอป Android"
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "คริปโตเท่านั้น ยอดขั้นต่ำขึ้นอยู่กับเหรียญ: USDT $5, USDC $5, TON $8, LTC $10, ETH $40, BTC $250 พิมพ์ที่อยู่ในคำขอแต่ละครั้ง คำขอจะดำเนินการในเวลาทำการ ภายใน 24 ชั่วโมง"
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "Bytelixir เก็บยอดคงเหลือไว้ ที่อยู่กระเป๋าเงินจะพิมพ์ลงในคำขอจ่ายเงินแต่ละครั้ง และไม่เคยบันทึกไว้ในคอนเทนเนอร์"
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "เข้าสู่ระบบที่ <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> โดย<b>ติ๊ก Remember Me</b> กด F12 → Application → ขยาย <b>Cookies</b> ในแถบด้านซ้าย → คลิก <code>https://dash.bytelixir.com</code> แล้วคัดลอกสามค่า: <b>bytelixir_session</b>, <b>remember_web_…</b> (ค่ายาวที่ขึ้นต้นด้วยคำนำหน้านั้น) และ <b>XSRF-TOKEN</b> คุกกี้เซสชันอย่างเดียวจะหมดอายุประมาณสองชั่วโมงหลังคัดลอก การเก็บข้อมูลจึงจะหยุดในบ่ายวันเดียวกัน คุกกี้ remember_web อยู่ได้หนึ่งปีและเป็นตัวที่ทำให้ยังทำงานต่อได้"
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "50% ของกำไรของผู้ที่ได้รับการแนะนำตลอดชีพ"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "โบนัสต้อนรับ $1"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "คริปโตเท่านั้น และยอดขั้นต่ำขึ้นอยู่กับเหรียญ ตั้งแต่ $5 สำหรับ USDT ถึง $250 สำหรับ Bitcoin"
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Bytelixir ต้องใช้แอปของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "Trustpilot ให้คะแนน 4.6 จาก 283 รีวิว ส่วนใหญ่ชมการจ่ายเงินเป็นคริปโต มีบางรายที่แจ้งว่าไม่ได้รับเงิน"
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "การจ่ายเงินต้องการเพียงที่อยู่คริปโตที่พิมพ์ลงในคำขอ"
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai เป็นตลาด GPU แบบเพียร์ทูเพียร์ ลงประกาศเครื่อง Linux ที่มี GPU NVIDIA ตั้งราคาแบบ spot และแบบ on-demand เอง แล้วผู้เช่าจะเรียกใช้คอนเทนเนอร์ Docker ของตนบนเครื่องนั้น ได้รับเงินเฉพาะนาทีที่มีการเช่า เป็น CLORE, BTC, USDT หรือ USDC การเป็นโฮสต์ต้องใช้เครื่อง x86_64 ที่ใช้ Ubuntu 22.04 ขึ้นไป (หรือ HiveOS) ไดรเวอร์ NVIDIA ที่ใช้งานได้ และความเร็วอัปโหลดและดาวน์โหลดอย่างน้อย 100 Mbps ไม่รองรับ GPU ของ AMD\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "ตลาด GPU - ปล่อยเช่า GPU NVIDIA รับเงินเป็น CLORE, BTC หรือ stablecoin สกุล USD"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "ได้รับเงินเฉพาะนาทีที่มีการเช่า ตามราคาที่ตั้งไว้ ค่าสูงสุดของช่วง $490 คือเพดานที่ Clore ระบุเองสำหรับ RTX 4090 หนึ่งใบที่ลงประกาศแบบรายนาที ('up to ~$490/month') การ์ดที่เล็กกว่าจะได้น้อยกว่า และการ์ดที่ว่างจะไม่มีรายได้ Clore หัก 5% (on-demand) หรือ 1.25% (spot) จากการเช่าแต่ละครั้ง และหักเพิ่ม 15% เมื่อผู้เช่าจ่ายเป็น BTC, USDT หรือ USDC แทน CLORE"
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "ถอนจาก Account > Billing ไปยังกระเป๋าเงินของตนเอง: CLORE (ERC-20 ขั้นต่ำ 200 ค่าธรรมเนียมประมาณ $0.50), BTC (ขั้นต่ำ 0.0001 ค่าธรรมเนียม 0.00005 BTC) หรือ USDT/USDC บน Ethereum หรือ BNB Chain (ขั้นต่ำ $10 ค่าธรรมเนียม $1)"
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "Clore เก็บยอดคงเหลือไว้ (CLORE, BTC และยอด USD หนึ่งยอดสำหรับ USDT/USDC) จนกว่าจะถอน เลือกเชนได้ในการถอนแต่ละครั้ง: Ethereum สำหรับ CLORE, Bitcoin สำหรับ BTC, Ethereum หรือ BNB Chain สำหรับ USDT/USDC"
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "15% (ระดับมาตรฐาน) ของค่าธรรมเนียมแพลตฟอร์มที่โฮสต์และผู้เช่าที่แนะนำมาจ่าย ในการเช่าทุกครั้ง รหัสไม่มีวันหมดอายุ จ่ายเป็นสกุลเงินของการเช่า (CLORE, BTC หรือ USD)"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "อัปโหลดและดาวน์โหลด 100 Mbps"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "เวลาประมวลผล GPU บนเครื่องนี้"
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "ใช่ ผู้เช่าเรียกใช้คอนเทนเนอร์ Docker ของตนบนเครื่องนี้ และทราฟฟิกของผู้เช่าออกจากการเชื่อมต่อนี้ พอร์ต SSH และพอร์ตแอปพลิเคชันจะถูกส่งต่อไปยังอินเทอร์เน็ต"
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "นโยบายความเป็นส่วนตัวของ Clore ครอบคลุมข้อมูลบัญชีและที่อยู่ IP พร้อมตำแหน่งโดยประมาณ ส่วนเอกสารยืนยันตัวตนจะขอเฉพาะเมื่อ Clore ขอ KYC"
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "พอร์ตขาเข้าต้องเข้าถึงได้จากอินเทอร์เน็ต (ค่าเริ่มต้นคือ 22, 8080 และ 3000-4000) และงานของคนแปลกหน้าจะรันบนสายนี้ คู่มือเครือข่ายของ Clore เองระบุว่า ISP บางรายบล็อกการโฮสต์"
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "อายุ 18 ปีขึ้นไป และไม่อยู่ในประเทศที่ถูกคว่ำบาตร Clore อาจระงับหรือปิดบัญชีได้ตามดุลยพินิจของตนแต่เพียงผู้เดียว และการใช้งานที่ต้องห้ามอาจทำให้เสียเงินทุน"
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "ทั้งข้อกำหนดและนโยบายความเป็นส่วนตัวไม่ได้ระบุนิติบุคคล และข้อกำหนดปล่อยเรื่องเขตอำนาจศาลที่ใช้บังคับไว้ให้เวอร์ชันถัดไป"
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Clore อาจระงับหรือปิดบัญชีได้ตามดุลยพินิจของตนแต่เพียงผู้เดียว และการใช้งานที่ต้องห้ามอาจนำไปสู่การริบเงินทุน"
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "จ่ายเป็นคริปโตเท่านั้น (CLORE, BTC, USDT หรือ USDC) และ Clore หักเพิ่ม 15% จากการเช่าที่ผู้เช่าจ่ายเป็น BTC, USDT หรือ USDC เว้นแต่โฮสต์จะล็อก CLORE ไว้เพื่อลดส่วนนี้"
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "โฮสต์ได้รับเงินเฉพาะนาทีที่มีการเช่า และตัวเลขของ Clore สำหรับ RTX 4090 เป็นเพดาน (\"up to ~$490/month\") สำหรับการ์ดเพียงใบเดียว"
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "การใช้งานพื้นฐานไม่ต้องทำ KYC แต่ Clore อาจขอยืนยันตัวตนสำหรับการถอนจำนวนมากหรือกรณีด้านการปฏิบัติตามกฎระเบียบ"
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "ผู้เช่าเรียกใช้อิมเมจ Docker สาธารณะใดก็ได้บนเครื่องนี้ ข้อกำหนดระบุการใช้งานที่ต้องห้าม (มัลแวร์, DDoS, CSAM และอื่นๆ) แต่เราไม่พบคำอธิบายว่าตรวจสอบผู้เช่าอย่างไร"
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Clore.ai ต้องติดตั้งเอเจนต์โฮสต์ของ Clore บนเครื่อง GPU ของตนเอง (Ubuntu 22.04 ขึ้นไป หรือ HiveOS) CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้"
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "Clore หัก 5% จากการเช่าแบบ on-demand (1.25% สำหรับ spot) เมื่อผู้เช่าจ่ายเป็น CLORE โดยไม่มีค่าธรรมเนียมเพิ่ม"
+  source: "699adf0a2179"
+dawn.description:
+  text: "DAWN ดำเนินเครือข่ายผู้ตรวจสอบ (validator) ที่ตรวจแบนด์วิดท์และความครอบคลุมของโครงสร้างพื้นฐาน AI ที่ได้รับเงินทุนผ่านโปรโตคอล DAWN ส่วนขยายเบราว์เซอร์ DAWN Validator มีส่วนร่วมในการตรวจพิสูจน์แบนด์วิดท์และความครอบคลุมเหล่านี้ และได้รับรางวัล DAWN ขณะทำงาน รางวัลยังไม่มีมูลค่าเงินสดที่แน่นอน สร้างบัญชีในส่วนขยายและป้อนรหัสแนะนำ 2QLQV97F เมื่อระบบถาม\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "ผู้ตรวจสอบ DePIN - ส่วนขยายเบราว์เซอร์ได้รับคะแนน DAWN"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "ได้รับ Dawn Points ก่อนการเปิดตัวโทเค็น มูลค่าจริงขึ้นอยู่กับราคาโทเค็นในอนาคต อุปกรณ์ฮาร์ดแวร์ได้มากกว่าส่วนขยายเบราว์เซอร์"
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "แอร์ดรอปโทเค็น (รอประกาศ)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "ส่วนขยายใช้งานได้แต่ยังไม่สมบูรณ์ มีการประกาศฮาร์ดแวร์ Black Box แล้ว ให้ตรวจสอบอีกครั้งในภายหลัง"
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "ส่วนขยายได้รับคะแนน และจนถึงเดือนตุลาคม 2026 ยังไม่มีการยืนยันการแจกโทเค็นให้ผู้ดูแลโหนด"
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "คะแนนยังไม่มีมูลค่าที่แน่นอน จนกว่าจะมีการเปิดตัวโทเค็นและประกาศอัตราแลกเปลี่ยน"
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Dawn ต้องใช้ส่วนขยายเบราว์เซอร์ของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network เป็นโครงการ VPN และโครงสร้างพื้นฐาน web3 แบบกระจายศูนย์ ส่วนใหญ่ต้องใช้อุปกรณ์ฮาร์ดแวร์เฉพาะ Deeper Connect ส่วน Moken เป็นแพลตฟอร์มขุด/สเตกที่เกี่ยวข้อง ใช้ซอฟต์แวร์อย่างเดียวไม่ได้\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "VPN แบบกระจายศูนย์ - ต้องใช้อุปกรณ์ฮาร์ดแวร์เฉพาะ"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "ต้องใช้ฮาร์ดแวร์ Deeper Connect ($200-500) แพลตฟอร์ม Moken สำหรับขุด/สเตก ใช้ซอฟต์แวร์อย่างเดียวไม่ได้"
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "ต่อเนื่อง"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "ค่าคอมมิชชันจากการขายอุปกรณ์"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "ลด 5% สำหรับอุปกรณ์ Deeper Connect ด้วยคูปอง SERGIO"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "รางวัลการขุดเป็น DPR และขึ้นอยู่กับคะแนนเครดิตที่เพิ่มขึ้นช้าๆ หรือเพิ่มได้ด้วยการสเตก DPR"
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Deeper Network ต้องใช้ฮาร์ดแวร์เราเตอร์ของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "EarnApp โดย Bright Data ให้ขายแบนด์วิดท์ที่ไม่ได้ใช้เพื่อสร้างรายได้แบบพาสซีฟ Bright Data เป็นเครือข่ายพร็อกซีที่ใหญ่ที่สุดในโลก ให้บริการเก็บข้อมูลแก่บริษัทใน Fortune 500 CashPilot เรียกใช้จากอิมเมจของตนเอง ซึ่งจะดาวน์โหลด EarnApp เวอร์ชันที่ตรึงไว้จาก CDN ของ Bright Data ในการเริ่มครั้งแรก ตรวจ sha256 แล้วรันในโหมด lite โดยใช้เพียง UUID\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "แชร์แบนด์วิดท์ - สนับสนุนโดย Bright Data"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "UUID ของโหนด"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "ID ของโหนด EarnApp: sdk-node- ตามด้วยอักขระฐานสิบหกตัวพิมพ์เล็ก 32 ตัว ตามที่ 'earnapp showid' แสดง หลังติดตั้งใช้งาน ให้ลิงก์หนึ่งครั้งโดยเปิด https://earnapp.com/r/ ตามด้วย UUID นี้ ขณะที่เข้าสู่ระบบ EarnApp อยู่ โหนดที่ยังไม่ได้ลิงก์จะมีรายได้ แต่จะไม่เข้ายอดคงเหลือเลย"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "EarnApp เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จและรีสตาร์ทซ้ำๆ จึงมีรายได้น้อยหรือไม่มีเลย ให้รีสตาร์ทสำเนานี้ หากยังเกิดขึ้นอีก ให้ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของเครื่องนี้"
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "เปิดลิงก์นี้ขณะเข้าสู่ระบบ EarnApp อยู่ เพื่อเพิ่มโหนดเข้าบัญชี จนกว่าจะทำขั้นตอนนี้ โหนดจะมีรายได้แต่จะไม่เข้ายอดคงเหลือเลย"
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "ขึ้นอยู่กับตำแหน่งที่ตั้งเป็นอย่างมาก IP ในสหรัฐฯ/EU ได้มากที่สุด รายได้เพิ่มตามแบนด์วิดท์ที่ถูกใช้"
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "เมื่อร้องขอ (มีแลกอัตโนมัติ: PayPal ขั้นต่ำ $10, Wise ขั้นต่ำ $10, Amazon ขั้นต่ำ $50)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "เปิดการแลกอัตโนมัติครั้งเดียว แล้ว EarnApp จะจ่ายเองทุกครั้งที่ยอดคงเหลือถึงขั้นต่ำของช่องทางนั้น: PayPal $10, Wise $10, Amazon $50 เงินทาง PayPal จะมาจาก Bright Data Ltd. ในเดือนตุลาคม 2026 มีการจ่ายทาง PayPal ที่ได้น้อยกว่ายอดที่แลกประมาณ 2%"
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "EarnApp เก็บยอดคงเหลือไว้ แลกเป็น Amazon/Wise/PayPal"
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "เข้าสู่ระบบที่ <a href='https://earnapp.com' target='_blank'>earnapp.com</a> กด F12 → Application → Cookies แล้วคัดลอกค่า <b>oauth-refresh-token</b>"
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "10% ของรายได้ของผู้ที่ได้รับการแนะนำตลอดชีพ จ่ายเพิ่มจากส่วนของเขา"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "ศูนย์ช่วยเหลือของ EarnApp ระบุว่าห้ามติดตั้งในคอนเทนเนอร์ Docker, เครื่องเสมือน, บริการโฮสติ้ง หรือเซิร์ฟเวอร์ในบ้านโดยเด็ดขาด ซึ่งเป็นวิธีที่ CashPilot เรียกใช้"
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "บทความช่วยเหลือเดียวกันระบุว่าบัญชีที่ตรวจพบว่าทำงานแบบนั้นจะถูกยกเลิกโดยไม่แจ้งล่วงหน้า และการจ่ายเงินที่รอดำเนินการจะถูกยกเลิก"
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "การจ่ายเงินทาง PayPal ของเรามาถึงในเดือนตุลาคม 2026 น้อยกว่ายอดที่แลกประมาณ 2%"
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "ขั้นต่ำ $10 สำหรับ PayPal และ Wise พร้อมการแลกอัตโนมัติที่จ่ายเงินเอง"
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "EarnApp เป็นของ Bright Data และเงินทาง PayPal มาจาก Bright Data Ltd. ซึ่งเป็นบริษัทที่ระบุชื่อชัดเจน"
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Earn.fm จ่ายเงินให้สำหรับการแชร์แบนด์วิดท์อินเทอร์เน็ต ตัวเก็บข้อมูลรายได้ใช้การยืนยันตัวตนด้วยอีเมล/รหัสผ่านผ่าน Supabase อิมเมจ Docker มีขนาดเล็ก ติดตั้งใช้งานได้ง่าย (ไคลเอนต์ Docker ใช้โทเค็น UUID แยกต่างหาก)\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "แชร์แบนด์วิดท์ - ยืนยันตัวตนด้วยอีเมล/รหัสผ่าน ไคลเอนต์ขนาดเล็ก"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "คีย์ API"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "เข้าสู่ระบบที่ <a href=\"https://app.earn.fm\">app.earn.fm</a> → คลิกไอคอนโปรไฟล์ (มุมขวาบน) → Account Settings → คัดลอก API Key (รูปแบบ UUID)"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "แพลตฟอร์มค่อนข้างใหม่ รายได้แตกต่างกันตามตำแหน่งที่ตั้งและแบนด์วิดท์ที่มี"
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "ขั้นต่ำ $15 ช่องทาง: USDT บน BEP20 หรือ Polygon (ค่าธรรมเนียม $1) หรือ TRC20 (ค่าธรรมเนียม $3), PayPal, บัตรของขวัญ Amazon หรือ Starbucks ตั้งแต่ $15 หรือโอนเงินผ่านธนาคารตั้งแต่ $1,000 โดยหักค่าธรรมเนียมการโอน ก่อนการจ่ายเงินครั้งแรกต้องกรอกโปรไฟล์การเรียกเก็บเงิน (ชื่อตามกฎหมายและที่อยู่) ซึ่งใช้ออกใบเสร็จการจ่ายเงิน"
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "Earn.fm เก็บยอดคงเหลือไว้ ถอนได้เมื่อร้องขอ"
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "ใช้อีเมลและรหัสผ่านบัญชี Earn.fm (เหมือนกับที่ใช้เข้าสู่ระบบ <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a>)"
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "10% ของรายได้ของผู้ที่ได้รับการแนะนำตลอดชีพ"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "ยอดเริ่มต้น $5"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "ขั้นต่ำ $15 ค่าธรรมเนียม $1 ถึง $3 สำหรับ USDT และโอนผ่านธนาคารได้ตั้งแต่ $1,000 เท่านั้น"
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "ก่อนการจ่ายเงินครั้งแรกต้องกรอกโปรไฟล์การเรียกเก็บเงินพร้อมชื่อตามกฎหมายและที่อยู่"
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "ผู้รีวิวในปี 2025 แจ้งว่าฝ่ายสนับสนุนทางอีเมลและ Discord ไม่ตอบกลับ Trustpilot ระบุว่า Earn.fm ไม่ได้ตอบรีวิวเชิงลบ"
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Earn.fm เผยแพร่อิมเมจ Docker ของตนเอง คือ earnfm/earnfm-client"
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher เป็นแพลตฟอร์มแลกเปลี่ยนทราฟฟิกที่ได้รับเครดิตจากการเข้าชมเว็บไซต์ผ่าน surfbar อัตโนมัติ ทำงานเป็นส่วนขยาย/ส่วนเสริมของเบราว์เซอร์ ไม่ใช่บริการแชร์แบนด์วิดท์แบบทั่วไป — แต่สร้างทราฟฟิกด้วยการท่องเว็บไซต์โดยอัตโนมัติ\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "surfbar แลกเปลี่ยนทราฟฟิก - ส่วนขยายเบราว์เซอร์"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "รายได้เป็นคะแนน BTP ที่แปลงเป็น EUR ได้ ส่วนขยายเบราว์เซอร์เท่านั้น"
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "จ่ายเป็นยูโรผ่าน PayPal หรือโอนผ่านธนาคาร"
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "CashPilot ไม่ได้เรียกใช้ eBesucher เพราะเป็นส่วนขยายเบราว์เซอร์ CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "จ่ายเงินตั้งแต่ 2 ยูโรผ่าน PayPal หรือ SEPA อย่างน้อยสัปดาห์ละครั้ง ไม่มีค่าธรรมเนียม"
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "eBesucher ดำเนินการมาตั้งแต่ปี 2002"
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "ข้อมูลผู้ให้บริการระบุผู้ดำเนินการคือ TurboAd GmbH จดทะเบียนที่ Berlin-Charlottenburg (HRB 160730 B)"
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux เป็นโครงสร้างพื้นฐานการประมวลผลที่กระจายอยู่ทั่วโลก ผู้ดูแลโหนดสเตกโทเค็น FLUX และให้ทรัพยากรเซิร์ฟเวอร์ มีสามระดับ: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX) มีอิมเมจ Docker อย่างเป็นทางการ\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "การประมวลผลแบบกระจายศูนย์ - ต้องสเตกโทเค็น FLUX"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "ต้องสเตก FLUX ตั้งแต่ 1,000 ขึ้นไป (~$50-500 ตามราคา) ระดับที่สูงกว่าต้องใช้หลักประกันมากกว่า แต่ได้มากกว่า"
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "รางวัลบล็อก"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "โหนดระดับเล็กที่สุดต้องล็อก 1,000 FLUX เป็นหลักประกัน"
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "รางวัลบล็อกลดลง 10% ทุกปี และคู่มือปี 2026 พบว่ารางวัลของระดับเล็กค่อนข้างต่ำเมื่อคิดเป็นดอลลาร์"
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Flux ต้องใช้ซอฟต์แวร์โหนดของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "daemon ของ Flux เป็นโอเพนซอร์สภายใต้สัญญาอนุญาต MIT"
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network เป็นตลาดการประมวลผลแบบกระจายศูนย์ที่แชร์ทรัพยากร CPU และ GPU เพื่อแลกกับโทเค็น GLM ผู้ให้บริการเรียกใช้เอเจนต์ Yagna ซึ่งจัดการการรันงานในสภาพแวดล้อมแบบแซนด์บ็อกซ์ เป็นหนึ่งในโครงการประมวลผลแบบกระจายศูนย์ที่เก่าแก่ที่สุด (ก่อตั้งปี 2016) รองรับงาน CPU การเรนเดอร์ด้วย GPU และการประมวลผลทั่วไป จ่ายเงินผ่าน Polygon L2\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "ตลาดการประมวลผลแบบกระจายศูนย์ - โทเค็น GLM ผ่านเอเจนต์ Yagna"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "รายได้ขึ้นอยู่กับฮาร์ดแวร์ ราคา และความต้องการงาน โหนดที่มีแค่ CPU ได้น้อยกว่า โหนด GPU ได้มากกว่าแต่ต้องใช้ NVIDIA เรียกใช้เอเจนต์ผู้ให้บริการ Yagna (ไม่ใช่อิมเมจ Docker) จ่ายเงินบน Polygon เป็นโทเค็น GLM"
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "ต่องานที่เสร็จ"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "ได้รับโทเค็น GLM ตั้งค่ากระเป๋าเงินรับเงินในการตั้งค่าผู้ให้บริการ"
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Golem ต้องติดตั้งเอเจนต์ผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ Golem มีเอกสารวิธีรันผู้ให้บริการในอิมเมจ Docker ของตนเอง"
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "เอเจนต์ผู้ให้บริการ yagna เป็นโอเพนซอร์สภายใต้ GPL-3.0"
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "ไม่มีบัญชี เพียงตั้งกระเป๋าเงินรับเงินในการตั้งค่าผู้ให้บริการ"
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "เครือข่ายดำเนินการมาประมาณสิบปีแล้ว"
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "นโยบายความเป็นส่วนตัวของ Golem ระบุผู้ดำเนินการคือ Golem Factory GmbH ในเมือง Zug ประเทศสวิตเซอร์แลนด์"
+  source: "bae79b651923"
+grass.description:
+  text: "Grass เป็นเครือข่ายแบบกระจายศูนย์ที่ให้ขายแบนด์วิดท์ที่ไม่ได้ใช้เพื่อเป็นข้อมูลฝึก AI ทำงานเป็นส่วนขยายเบราว์เซอร์และแอปเดสก์ท็อป โดยส่งคำขอเก็บข้อมูลเว็บ (web scraping) ผ่านการเชื่อมต่อนี้เพื่อสร้างชุดข้อมูลที่มีโครงสร้าง มีผู้ใช้มากกว่า 8.5M ราย เป็นหนึ่งในเครือข่ายแบนด์วิดท์ DePIN ที่ใหญ่ที่สุด ได้รับโทเค็น GRASS บนบล็อกเชน Solana\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "แชร์แบนด์วิดท์ DePIN สำหรับข้อมูล AI - ได้รับโทเค็น GRASS"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "โทเค็นการเข้าถึง"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "เข้าสู่ระบบที่ <a href=\"https://app.grass.io\">app.grass.io</a> กด F12 → Application → Local Storage → คลิก <code>https://app.grass.io</code> → คัดลอกค่า <code>token</code>"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "ได้รับ Grass Points ที่แปลงเป็นโทเค็น GRASS ผ่านแอร์ดรอป มูลค่าจริงเป็น USD ขึ้นอยู่กับราคาโทเค็น ต้องใช้ส่วนขยายเบราว์เซอร์หรือแอปเดสก์ท็อป"
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "แอร์ดรอปตามรอบ Epoch"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "รางวัลมาในรูปการแจกเป็นระยะที่ต้องเคลมบนแดชบอร์ด Grass การแจกของ Stage 2 (กิจกรรมตั้งแต่ตุลาคม 2024 ถึงมิถุนายน 2026) จ่ายเป็น USDC ให้เคลมที่ app.grass.io/dashboard ไม่เกินวันที่ 22 มกราคม 2027 หรือเร็วกว่านั้นหากมีการเคลมส่วนแบ่งครบทั้งหมดก่อน Grass จะเก็บรางวัลที่ไม่ได้เคลมไว้"
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "สะสมเป็น POINTS ส่วน GRASS จะเคลมได้จากแดชบอร์ด Grass ในช่วงแอร์ดรอปเป็นระยะ"
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "เข้าสู่ระบบที่ <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a> กด F12 → Application → Local Storage แล้วคัดลอกค่า <b>accessToken</b>"
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "20% ของคะแนนเวลาออนไลน์ของผู้ที่แนะนำโดยตรง 10% ในระดับที่สอง และ 5% ในระดับที่สาม"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "เคลม USDC ของ Grass Stage 2"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "Grass จะเก็บส่วนแบ่ง Stage 2 ทั้งหมดที่ยังไม่ได้เคลมเมื่อสิ้นวันที่ 22 ม.ค. 2027 และช่วงเวลาอาจปิดเร็วกว่านั้นเมื่อมีการเคลมส่วนแบ่งครบทั้งหมดแล้ว"
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "เข้าสู่ระบบ app.grass.io ด้วยบัญชีที่ใช้ใน Stage 2 เปิดใช้งาน Grass Wallet เปิดแท็บ Allocation แล้วยืนยัน เคลมที่ app.grass.io เท่านั้น ไม่มีคะแนน Stage 2 ใช่ไหม เลือก ไม่เกี่ยวข้อง"
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "รางวัลมาเฉพาะช่วงฤดูกาลแอร์ดรอป ผู้ดูแลโหนดที่ใช้งานมานานรายงานว่าประมาณการของฤดูกาล 2 อยู่ที่หลักหน่วยถึงหลักสิบต้นๆ ดอลลาร์"
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "รางวัลฤดูกาล 2 ที่ยังไม่ได้เคลมเมื่อสิ้นวันที่ 22 มกราคม 2027 จะหายไปถาวร"
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "แอร์ดรอปครั้งแรกถูกวิจารณ์อย่างหนักเรื่องรางวัลต่อคะแนนที่น้อย ซึ่งถูกเฉลี่ยให้ผู้ใช้มากกว่าสองล้านราย"
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Grass ต้องใช้แอปหรือส่วนขยายของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "แอร์ดรอปครั้งแรกไปถึงที่อยู่ที่เคลมเกือบ 1.5 ล้านที่อยู่"
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium เป็นเครือข่ายไร้สายแบบกระจายศูนย์ที่มีมานาน เริ่มจากฮอตสปอต LoRaWAN และขยายไปสู่ 5G แล้ว ต้องใช้ฮาร์ดแวร์เฉพาะ ($500+) ได้รับโทเค็น HNT/MOBILE ผลตอบแทนการลงทุนลดลงมาก โดยทั่วไปอยู่ที่ $4-8/เดือน\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "เครือข่ายไร้สายแบบกระจายศูนย์ - ต้องใช้ฮาร์ดแวร์ โทเค็น HNT"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "ต้องซื้อฮาร์ดแวร์ราคา $500+ ผลตอบแทนการลงทุนลดลงมาก มีขั้นตอนอนุมัติสำหรับผู้ดูแลรายใหม่"
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "ตามรอบ Epoch"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "HIP 149 ยกเลิกรางวัล Proof-of-Coverage เมื่อวันที่ 6 กรกฎาคม 2026 ตอนนี้ฮอตสปอต IoT ได้รับรางวัลเฉพาะข้อมูลที่รับส่ง และมีมากกว่า 114,000 เครื่องที่ไม่ได้รับส่งข้อมูลเลย"
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "รูปแบบรางวัลของ Helium เปลี่ยนตามการโหวตหลายครั้ง CEO ลาออก และ HNT ลดลงประมาณ 96%"
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Helium ต้องใช้ฮาร์ดแวร์ฮอตสปอตของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "ซอฟต์แวร์เกตเวย์ของฮอตสปอตเป็นโอเพนซอร์สภายใต้สัญญาอนุญาต Apache-2.0"
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "ติดตามยอดคงเหลือ Kaspa ที่ยังไม่ได้จ่ายซึ่ง HeroMiners เก็บไว้ให้ที่อยู่รับเงินสาธารณะ เรียกใช้เครื่องขุด Kaspa ของตนเองและชี้ไปที่พูล CashPilot จะอ่านยอดคงเหลือในพูลและขอให้ยืนยันการจ่ายเงินเมื่อยอดคงเหลือลดลง\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "พูลขุด Kaspa ติดตามด้วยที่อยู่รับเงิน"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS (ปรับได้)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "พูลตรวจสอบเกณฑ์การจ่ายเงินทุกชั่วโมง"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "HeroMiners จ่ายเงินเข้าที่อยู่โดยอัตโนมัติเมื่อถึงเกณฑ์ที่เลือกไว้ เกณฑ์ต่ำสุดคือ 1 KAS\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "ยอดคงเหลือสะสมอยู่ที่ HeroMiners ตรวจสอบจำนวนที่ได้รับในกระเป๋าเงินก่อนยืนยันการจ่ายเงินใน CashPilot\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "ป้อนที่อยู่รับเงิน Kaspa สาธารณะแบบเต็มที่เครื่องขุดใช้บน HeroMiners รวมคำนำหน้า <b>kaspa:</b> และไม่ต้องใส่ชื่อเวิร์กเกอร์\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "ต้องมีเครื่องขุด Kaspa ที่ชี้ไปที่ HeroMiners"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "การประมวลผล"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "ไม่ เครื่องขุดส่งงานขุดไปยังพูล"
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "สถิติสาธารณะของพูลแสดงที่อยู่รับเงินแต่ละที่อยู่และกิจกรรมการขุด"
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "พูลใช้ที่อยู่รับเงินแทนบัญชี"
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "พูลเก็บค่าธรรมเนียม 0.9% และระงับการจ่ายเงินไว้จนกว่าจะถึงเกณฑ์"
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "แชร์แบนด์วิดท์อินเทอร์เน็ตที่ไม่ได้ใช้เพื่อสร้างรายได้แบบพาสซีฟ Honeygain ส่งทราฟฟิกข่าวกรองเว็บ การส่งเนื้อหา และการวิจัยตลาดผ่านการเชื่อมต่อนี้ เป็นหนึ่งในแพลตฟอร์มแชร์แบนด์วิดท์ที่มีมานานที่สุด มีผู้ใช้มากกว่า 12M ราย และจ่ายเงินสำเร็จแล้วมากกว่า 1M ครั้ง\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "แชร์แบนด์วิดท์ - แพลตฟอร์มที่มีมานานที่สุด"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "อีเมล"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "รหัสผ่าน"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "ชื่ออุปกรณ์"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "อีเมลบัญชี Honeygain"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "รหัสผ่านบัญชี Honeygain"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "ชื่อที่แสดงในแดชบอร์ด Honeygain"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "แตกต่างกันตามตำแหน่งที่ตั้ง IP ในสหรัฐฯ/EU ได้มากกว่า สูงสุด 10 อุปกรณ์ต่อบัญชี"
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "ขั้นต่ำ $20 (20,000 เครดิต) มีสองตัวเลือก: PayPal ผ่าน Tipalti ค่าธรรมเนียมประมาณ 15% หรือเครดิต JumpTask ไม่มีค่าธรรมเนียม จ่ายเข้ากระเป๋าเงิน JumpTask คำขอแต่ละครั้งต้องใช้รหัส 6 หลักที่ส่งทางอีเมล การจ่ายทาง PayPal ครั้งแรกจะค้างอยู่ที่ \"waiting for details\" จนกว่าจะลงทะเบียนกับ Tipalti จากลิงก์ที่ส่งมาทางอีเมล ลิงก์นั้นใช้ได้เพียงครั้งเดียว จึงควรเปิดเมื่อทำให้เสร็จได้ในครั้งเดียวและมีโทรศัพท์อยู่ใกล้มือ หลังตั้งรหัสผ่าน Tipalti จะให้ยืนยันหมายเลขโทรศัพท์มือถือทาง SMS (รหัสหมดอายุภายในไม่กี่นาที) แล้วขอชื่อ ที่อยู่ ประเทศ วันเกิด และที่อยู่ PayPal Tipalti เก็บค่าธรรมเนียม $2.02 ต่อการจ่ายหนึ่งครั้ง เลือก USD เพื่อเลี่ยงค่าธรรมเนียมแปลงสกุลเงิน 1.9-3% เงินจะเข้าภายใน 2 วันทำการ ยอดคงเหลือจะถูกตัดออกจากบัญชีทันทีที่ส่งคำขอ แม้การจ่ายเงินยังรอ Tipalti อยู่ การเข้าสู่ระบบ Tipalti ครั้งต่อไปแต่ละครั้งจะส่งรหัส SMS ใหม่ เว้นแต่จะติ๊กตัวเลือกให้จดจำอุปกรณ์ไว้ 30 วัน ในเดือนตุลาคม 2026 Tipalti ไม่ได้ขอแบบฟอร์มภาษีจากผู้รับเงินในสเปน"
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "Honeygain เก็บยอดคงเหลือไว้ ถอนได้เมื่อร้องขอ"
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "ใช้อีเมลและรหัสผ่านบัญชี Honeygain (เหมือนกับ <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>)"
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "สูงสุด 25% ของรายได้ของเพื่อนที่แนะนำแต่ละคนในโหมด Honeygain"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "โบนัสสมัคร $3 เมื่อใช้ลิงก์นี้"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "ถอนยอดคงเหลือ Honeygain"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "ให้อุปกรณ์ Honeygain แชร์อยู่เสมอ หรือขอจ่ายเงิน"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "รายได้มีผลอยู่ 24 เดือนหลังจากถึงขั้นต่ำ $20 จากนั้น Honeygain อาจตัดส่วนที่ยังไม่ได้จ่ายทิ้ง"
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "หากไม่ได้ใช้แอปนานกว่า 6 เดือน Honeygain จะถือว่ายอดคงเหลือที่ยังไม่ได้จ่ายหมดอายุ แม้จะต่ำกว่า $20"
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "ให้อุปกรณ์แชร์อยู่เสมอ หรือขอจ่ายเงิน ในโหมด JumpTask ยอดคงเหลือที่ไม่เปลี่ยนแปลงเป็นเรื่องปกติ ให้เลือก ไม่เกี่ยวข้อง"
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "ข้อกำหนดให้ Honeygain ตัดรายได้ที่ถึงเกณฑ์ $20 แล้วแต่ไม่ได้จ่ายภายใน 24 เดือนทิ้งได้ และถือว่ารายได้หมดอายุหลังไม่ได้ใช้งานหกเดือน"
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "ขั้นต่ำคือ $20 และการจ่ายทาง PayPal ผ่าน Tipalti ซึ่งเก็บค่าธรรมเนียม $2.02 ต่อครั้ง"
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "ข้อกำหนดให้ Honeygain ระงับบัญชีและระงับหรือตัดรายได้ที่เห็นว่าสะสมมาโดยการหลอกลวงได้"
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "ก่อนการจ่ายทาง PayPal ครั้งแรก Tipalti จะให้ยืนยันหมายเลขโทรศัพท์มือถือทาง SMS และให้ข้อมูลชื่อ ที่อยู่ และวันเกิด"
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "ข้อกำหนดระบุว่าลูกค้าธุรกิจใช้ทราฟฟิกเพื่อเก็บข้อมูลเว็บที่เปิดเผยต่อสาธารณะ แต่ไม่ได้ระบุชื่อลูกค้า และไม่มีทางรู้ว่าลูกค้ารายใดใช้การเชื่อมต่อนี้"
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "คำตอบของ Honeygain ต่อรีวิวเรื่องรายได้ต่ำระบุว่ารายได้ขึ้นอยู่กับความต้องการของเครือข่ายและตำแหน่งที่ตั้ง ผู้รีวิวแจ้งว่าใช้เวลานานมากกว่าจะถึงขั้นต่ำ $20"
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Honeygain เผยแพร่อิมเมจ Docker ของตนเอง คือ honeygain/honeygain"
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "ข้อกำหนดระบุผู้ดำเนินการคือ Honeygain UAB จดทะเบียนในเมือง Vilnius ประเทศลิทัวเนีย"
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "หน้าข่าวประชาสัมพันธ์ของ Honeygain ระบุว่าก่อตั้งในปี 2019"
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net เป็นเครือข่าย GPU แบบกระจายศูนย์สำหรับงาน AI/ML รวบรวม GPU ที่ว่างจากผู้ใช้ทั่วไปและศูนย์ข้อมูล ต้องใช้ GPU NVIDIA ที่มี VRAM 8GB+ จึงจะมีรายได้ที่มีนัยสำคัญ รองรับการติดตั้งใช้งานแบบคอนเทนเนอร์\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "เครือข่าย GPU แบบกระจายศูนย์สำหรับ AI - ต้องใช้ GPU NVIDIA"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "ต้องใช้ GPU NVIDIA ที่มี VRAM 8GB+ มีการอ้างว่า RTX 4090 ได้ $500-1000/เดือน (ในทางปฏิบัติน่าจะต่ำกว่านี้)"
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "ตามรอบ Epoch"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "รางวัลของผู้ให้ทรัพยากรจ่ายจากการปล่อยโทเค็น ไม่ว่าจะมีงานที่จ่ายเงินหรือไม่ และเจ้าของ GPU รายงานว่าเครื่องว่างอยู่เป็นส่วนใหญ่"
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "รางวัลเป็นโทเค็น IO และรูปแบบการจ่ายเงินเปลี่ยนในปี 2026 เป็นระบบที่ผูกกับดอลลาร์"
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "ในเดือนเมษายน 2024 มี GPU ปลอมประมาณ 1.8 ล้านตัวพยายามเข้าร่วมผ่านโทเค็นยืนยันตัวตนที่รั่วไหล และต่อมา CEO ลาออกก่อนการเปิดตัวโทเค็น"
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "CashPilot ไม่ได้เรียกใช้ io.net ต้องใช้ซอฟต์แวร์เวิร์กเกอร์ของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "IPRoyal Pawns ให้สร้างรายได้จากการแชร์แบนด์วิดท์ที่ไม่ได้ใช้ IPRoyal เป็นผู้ให้บริการพร็อกซีที่มีชื่อเสียง และ Pawns เป็นธุรกิจแชร์แบนด์วิดท์แบบ IP ที่อยู่อาศัยของบริษัท อิมเมจ Docker แบบ CLI รับข้อมูลเข้าสู่ระบบผ่านแฟล็กบรรทัดคำสั่ง ผู้ใช้ใหม่ที่สมัครผ่านลิงก์แนะนำจะได้รับ $1 ในการจ่ายเงินแต่ละครั้งของสามครั้งแรก รวมสูงสุด $3 การจ่ายเงินแต่ละครั้งต้องเกิดภายในช่วงเวลาหนึ่งถึงสามสัปดาห์ ซึ่งกำหนดตามตำแหน่งที่ตั้ง ช่วงเวลาเริ่มนับตั้งแต่สมัคร และเริ่มใหม่หลังการจ่ายเงินแต่ละครั้ง หากช่วงเวลาปิดก่อน โบนัสที่เหลือจะหายไป\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "แชร์แบนด์วิดท์ - โบนัสสูงสุด $3 ในการจ่ายเงินครั้งแรกๆ"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "อีเมล"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "รหัสผ่าน"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "ชื่ออุปกรณ์"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "ID อุปกรณ์"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "อีเมลบัญชี IPRoyal Pawns (ส่งเป็นแฟล็ก -email)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "รหัสผ่านบัญชี IPRoyal Pawns (ส่งเป็นแฟล็ก -password)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "ชื่อที่แสดงในแดชบอร์ด Pawns (ส่งเป็นแฟล็ก -device-name)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "ตัวระบุอุปกรณ์ที่ไม่ซ้ำกัน (ส่งเป็นแฟล็ก -device-id)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "IPRoyal Pawns ปิดใช้งานบัญชีนี้แล้ว"
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "Pawns พบอุปกรณ์อื่นที่ทำงานอยู่บนที่อยู่ IP นี้ และจ่ายเงินให้เพียงหนึ่งเครื่องต่อ IP สำเนานี้จึงทำงานอยู่แต่ไม่ได้แชร์อะไรและไม่มีรายได้ ให้หยุดแอป Pawns อื่นบน IP นี้ ไม่ว่าจะอยู่บนเครื่องอื่น PC หรือโทรศัพท์ หากไม่มี ให้รอให้ Pawns ลบอุปกรณ์เก่าออก หรือขอให้ฝ่ายสนับสนุนของ Pawns ปลดอุปกรณ์นั้น"
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "รายได้ขึ้นอยู่กับตำแหน่งที่ตั้งและการใช้แบนด์วิดท์ IP ที่อยู่อาศัยในสหรัฐฯ/EU ได้มากกว่า"
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "ขั้นต่ำ $5 เลือกประเทศก่อน เพราะช่องทางขึ้นอยู่กับประเทศ จากสเปน (ตุลาคม 2026): PayPal 4% ค่าธรรมเนียมขั้นต่ำ $0.25 จ่ายผ่าน Tremendous ซึ่งจะส่งลิงก์ทางอีเมลให้ป้อนชื่อและที่อยู่ PayPal; USDT (BEP20, ERC20, TRC20) หรือ USDC (BEP20, ERC20) ค่าธรรมเนียมเครือข่าย $1; Bitcoin ค่าธรรมเนียมขั้นต่ำ $2; บัตรของขวัญไม่มีค่าธรรมเนียม การจ่ายเงินครั้งแรกต้องยืนยันหมายเลขโทรศัพท์ทาง SMS หนึ่งครั้ง โดย Withdraw จะเปิดขั้นตอนนี้ และต้องใส่หมายเลขพร้อมรหัสประเทศ หลังจากนั้นการจ่ายเงินทุกครั้งจะขอรหัสที่ส่งไปยังอีเมลของบัญชี และจะถูกตรวจสอบนานสูงสุด 72 ชั่วโมงก่อนส่ง"
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "IPRoyal Pawns เก็บยอดคงเหลือไว้ ถอนได้เมื่อร้องขอ"
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "ใช้อีเมลและรหัสผ่านบัญชี IPRoyal Pawns (เหมือนกับ <a href='https://pawns.app' target='_blank'>pawns.app</a>)"
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "$1 ในการจ่ายเงินแต่ละครั้งของสามครั้งแรกของผู้ที่ได้รับการแนะนำ รวมสูงสุด $3 หากแต่ละครั้งเกิดภายในช่วงเวลา 1-3 สัปดาห์"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "$1 ในการจ่ายเงินแต่ละครั้งของสามครั้งแรก รวมสูงสุด $3 หากพลาดช่วงเวลา 1-3 สัปดาห์ ส่วนที่เหลือจะหมดอายุ"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "ข้อกำหนดระบุว่าบัญชีอาจถูกบล็อกโดยไม่แจ้งล่วงหน้าหากใช้เงื่อนไขการถอนในทางที่ผิดหรือมีหลายบัญชี และรายได้อาจไม่ได้รับการจ่าย"
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "ข้อกำหนดระบุว่า Pawns ไม่อนุญาตให้ใช้เซิร์ฟเวอร์ VPN หรือบริการพร็อกซีใดๆ ในการแชร์ทราฟฟิก และอนุญาตเพียงหนึ่งอุปกรณ์ต่อ IP"
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "PayPal มีค่าใช้จ่าย 4% (อย่างน้อย $0.25) ผ่าน Tremendous และการจ่ายเงินทุกครั้งจะถูกตรวจสอบนานสูงสุด 72 ชั่วโมง"
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "การจ่ายเงินครั้งแรกต้องยืนยันหมายเลขโทรศัพท์ทาง SMS และทุกครั้งต้องใช้รหัสที่ส่งทางอีเมล"
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "นโยบายความเป็นส่วนตัวระบุผู้ดำเนินการคือ Pawns.App Ltd (บริษัทเลขที่ 16043795 ในอังกฤษและเวลส์) ซึ่ง Companies House แสดงว่าจดทะเบียนเมื่อวันที่ 28 ตุลาคม 2024 ไม่ถึงสามปีมาแล้ว"
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "ข้อกำหนดระบุว่า Pawns และลูกค้าธุรกิจส่งทราฟฟิกผ่านอุปกรณ์นี้ และไม่สามารถระบุได้ว่าลูกค้ารายใดใช้งาน"
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "ขั้นต่ำ $5 และบัตรของขวัญไม่มีค่าธรรมเนียม"
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "ขุด Pearl ด้วย KRig บน GPU NVIDIA หนึ่งตัว Kryptex แปลงรางวัลเป็น Bitcoin และเก็บยอดคงเหลือไว้ในบัญชีจนกว่าจะขอถอน"
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "ขุด Pearl บน GPU NVIDIA และรับเครดิตในบัญชีเป็น Bitcoin"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "อีเมลบัญชี Kryptex"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "ชื่อเวิร์กเกอร์"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "อีเมลที่ยืนยันแล้วของบัญชี Kryptex"
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "ตั้งชื่อที่ไม่ซ้ำกันให้แต่ละเครื่องในบัญชี Kryptex"
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "0.00001 BTC ผ่าน Lightning (ช่องทางอื่นแตกต่างกัน)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kryptex แปลงรางวัล Pearl เป็น BTC และเก็บยอดคงเหลือไว้ในบัญชี ขอถอนได้ที่ Kryptex แต่ละช่องทางมียอดขั้นต่ำและค่าธรรมเนียมของตนเอง ขั้นต่ำสำหรับ Bitcoin Lightning คือ 0.00001 BTC"
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "Kryptex เก็บ Bitcoin ที่แปลงแล้วไว้ในบัญชีจนกว่าจะถอน"
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "20% ของรายได้พูล Kryptex จากผู้ใช้ที่ได้รับการแนะนำ"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64, GPU NVIDIA ตั้งแต่ Volta (sm_70) ขึ้นไป และ NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "เครื่องนี้รายงานว่าใช้การเชื่อมต่อแบบโฮสติ้ง ตรวจสอบข้อกำหนดของผู้ให้บริการก่อนขุด ผู้ให้บริการบางราย รวมถึง Hetzner Cloud ห้ามการขุด ตรวจสอบค่าไฟจริงก่อนเชื่อถือประมาณการกำไร"
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "KRig เก็บค่าธรรมเนียมเครื่องขุด 0% บน Kryptex Pool ส่วน Kryptex ระบุค่าธรรมเนียมพูล Pearl PPS+ แยกต่างหาก 3% ค่าธรรมเนียมการถอนแตกต่างกันตามช่องทาง"
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "การประมวลผล"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "ไม่ KRig ส่งงานขุดไปยัง Kryptex Pool"
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Kryptex เห็นอีเมลบัญชี ชื่อเวิร์กเกอร์ อัตราแฮช และที่อยู่ IP"
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "เครือข่ายและตัวแปลง DNS บางแห่งบล็อกการเชื่อมต่อกับพูลขุด"
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "ยืนยันอีเมลบัญชี Kryptex ก่อนขุดเข้าบัญชีนั้น"
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Kryptex อาจระงับบัญชีที่ไม่ได้ใช้งานเมื่อครบหกเดือน และลบเมื่อครบหนึ่งปี"
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "ยอดถอนขั้นต่ำและค่าธรรมเนียมแตกต่างกันตามช่องทาง"
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "สัญญาอนุญาตของ KRig อนุญาตให้ดาวน์โหลดรุ่นที่เผยแพร่และเรียกใช้จากซอฟต์แวร์ขุด"
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "KRig ใช้ปลายทาง TLS ที่เผยแพร่ไว้เพื่อส่ง share ของ Pearl ไปยัง Kryptex Pool"
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes (Mysterium Network) เป็นเครือข่าย VPN และพร็อกซีแบบกระจายศูนย์ที่สร้างบนเทคโนโลยีบล็อกเชน ได้รับโทเค็น MYST จากการเรียกใช้โหนดที่ให้บริการ VPN พร็อกซี และการเก็บข้อมูลเว็บแก่ผู้ใช้ ต้องมีสิทธิ์ NET_ADMIN, SETUID และ SETGID และอุปกรณ์ TUN ซึ่งใช้ภายใน network namespace ของตนเองบนบริดจ์ของแอปหารายได้ที่มีรั้วกั้น มีเว็บ UI ในตัวสำหรับจัดการโหนด ใช้ได้ทั้งการเชื่อมต่อแบบที่อยู่อาศัยและ VPS แต่โบนัสการแนะนำจะจ่ายเฉพาะโหนดที่ใช้ IP ที่อยู่อาศัย\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "โหนด VPN แบบกระจายศูนย์ - ใช้บล็อกเชน ใช้บน VPS ได้"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "ที่อยู่ WebUI"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "ช่วงพอร์ต UDP"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "ที่อยู่ของโฮสต์ที่เผยแพร่ WebUI ของโหนด (พอร์ต 4449) 127.0.0.1 จำกัดให้อยู่บนเครื่องนี้เท่านั้น หากต้องการเข้าถึงผ่านรีเวิร์สพร็อกซี ให้เพิ่มที่อยู่ที่พร็อกซีเชื่อมต่อเข้ามา คั่นด้วยเครื่องหมายจุลภาคโดยไม่มีช่องว่าง: 127.0.0.1,172.18.0.1"
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "พอร์ต UDP ที่โหนดใช้สำหรับเซสชัน VPN ในรูปแบบ start:end ให้ส่งต่อพอร์ตช่วงเดียวกันนี้บนเราเตอร์ แต่ละเซสชันใช้ประมาณสองพอร์ต ค่าเริ่มต้น 30 พอร์ตจึงรองรับได้ประมาณ 15 เซสชันพร้อมกัน ซึ่งมากกว่าที่โหนดในบ้านจะได้รับ ช่วงที่กว้างขึ้นไม่ได้แก้ปัญหาอะไรและมีต้นทุนมากขึ้น: ทุกพอร์ตที่เผยแพร่ทำให้การเริ่มและการลบโหนดช้าลง (300 พอร์ตใช้เวลาเริ่มประมาณ 12 s) CashPilot รับได้สูงสุด 300 พอร์ต และเมื่อใช้ userland proxy ค่าเริ่มต้นของ Docker แต่ละพอร์ตยังใช้หน่วยความจำประมาณ 2.5 MB ด้วย หากเซสชันล้มเหลวทั้งหมด เป็นปัญหาที่เราเตอร์ ไม่ใช่พอร์ตน้อยเกินไป ดู \"Routers that rewrite UDP source ports\" ในคู่มือ Mysterium ให้อยู่ต่ำกว่า 32768: พอร์ต 32768-60999 เป็นช่วง ephemeral ของ Linux ซึ่งโปรแกรมใดบนโฮสต์ก็อาจจองไว้ชั่วขณะ และหากมีพอร์ตเดียวถูกใช้อยู่ การเริ่มโหนดจะล้มเหลว โหนดที่มีช่วงพอร์ตอยู่แล้วจะใช้ช่วงเดิมต่อไป"
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "คีย์สโตร์ข้อมูลระบุตัวตนของโหนด หากทำลาย จะได้ข้อมูลระบุตัวตนใหม่ทั้งหมด โหนดจะสูญเสียชื่อเสียงและรายได้ที่ยังถูกระงับไว้กับข้อมูลระบุตัวตนเดิม"
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "โหนดรัน sudo ภายในคอนเทนเนอร์ไม่ได้ จึงตั้งค่าอินเทอร์เฟซ VPN หรือไฟร์วอลล์ไม่ได้ และทุกเซสชันล้มเหลวตอนตั้งค่า โหนดดูเหมือนออนไลน์แต่ไม่มีรายได้ คอนเทนเนอร์ถูกสร้างโดยไม่มีสิทธิ์ SETUID และ SETGID ให้อัปเดต CashPilot และเวิร์กเกอร์ที่เรียกใช้โหนดนี้ แล้วติดตั้งใช้งาน Mysterium ใหม่จากแดชบอร์ด ข้อมูลระบุตัวตนของโหนดอยู่ในวอลุ่มข้อมูลและจะถูกเก็บไว้"
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "ในช่วง 6 ชั่วโมงที่ผ่านมาไม่มีเซสชัน VPN ใดเข้าถึงโหนดนี้ได้โดยตรง ทุกเซสชันต้องใช้ hole punching แทน และผู้ซื้อจำนวนมากเชื่อมต่อแบบนั้นไม่สำเร็จ โหนดจึงได้น้อยลง พอร์ต UDP ของโหนดเข้าถึงไม่ได้จากอินเทอร์เน็ต บนเราเตอร์ ให้ส่งต่อช่วงพอร์ต UDP ${UDP_PORTS} (start:end ช่วงเดียวกันทั้งสองฝั่ง) ไปยัง ${HOST_ADDRESS} สถานะนี้จะหายไปเองเมื่อมีเซสชันเชื่อมต่อได้โดยตรง"
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "ระบบตรวจสอบของ Mysterium ทำเครื่องหมายว่าโหนดบน ${WORKER_NAME} ล้มเหลว โหนดจึงไม่อยู่ในรายการโหนดที่ผู้ซื้อส่วนใหญ่เลือกใช้ แม้การตรวจสอบของโหนดเองจะบอกว่าทุกพอร์ตเข้าถึงได้ ก่อนอื่นให้ตรวจสอบว่าโหนดมี /dev/net/tun และ SETUID/SETGID เพราะหากขาดสิ่งเหล่านี้จะล้มเหลวแบบเดียวกัน: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 เมื่อมีครบแล้ว สาเหตุที่พบบ่อยคือเราเตอร์ที่อยู่หน้า ${WORKER_NAME} เขียนพอร์ตต้นทาง UDP ของคำตอบจากโหนดใหม่ หลังจากมีแพ็กเก็ตจากภายนอกมาถึงพอร์ตนั้นแล้ว ดูวิธีทดสอบในคู่มือ: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "เซสชัน VPN ห้าครั้งล่าสุดของโหนดบน ${WORKER_NAME} แต่ละครั้งจบลงหลังจากประมาณหนึ่งนาทีโดยไม่มีการรับส่งข้อมูล โหนดจึงไม่มีรายได้ทั้งที่ดูเหมือนออนไลน์ สาเหตุที่น่าจะเป็นคือเราเตอร์ที่อยู่หน้า ${WORKER_NAME}: เมื่อแพ็กเก็ตจากภายนอกมาถึงพอร์ตหนึ่ง เราเตอร์จะเขียนพอร์ตต้นทางของคำตอบหลังจากนั้นของโหนดจากพอร์ตนั้นใหม่ และทุกเซสชันเริ่มด้วยแพ็กเก็ตแบบนั้น (การตรวจพอร์ตของโหนดเอง) ผู้ซื้อจึงทิ้งคำตอบของโหนด ช่วงพอร์ตที่กว้างขึ้นไม่ช่วย ดูวิธีทดสอบและวิธีแก้ในคู่มือ: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports สถานะนี้จะหายไปเมื่อมีเซสชันรับส่งข้อมูลได้"
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "รายได้เป็นโทเค็น MYST IP ที่อยู่อาศัยได้มากกว่าอย่างเห็นได้ชัด WebUI ของโหนดอยู่ที่พอร์ต 4449 สำหรับการจัดการ และโดยค่าเริ่มต้นจะเผยแพร่เฉพาะบนเครื่องที่รันอยู่ (127.0.0.1) หากต้องการเข้าจากเครื่องอื่น ให้เปิด SSH tunnel ก่อน (ssh -L 14449:127.0.0.1:4449 ตามด้วยที่อยู่ของเครื่องที่รันโหนด แล้วเปิด http://127.0.0.1:14449 พอร์ตในเครื่อง 14449 จะไม่ชนกับโหนดบนเครื่องของตนเอง) หรือเพิ่มที่อยู่ใน UI_ADDRESS (ดู WebUI address ในคู่มือ Mysterium) รับ VPS แนะนำอย่างยิ่งให้ส่งต่อพอร์ต UDP 23000-23029 (ค่าเริ่มต้นของ UDP_PORTS) -- หากไม่ทำ โหนดจะได้สถานะ Strict NAT และเซสชัน VPN จำนวนมากจะล้มเหลว ทำให้รายได้ลดลงอย่างมาก สำคัญ: หลังรันครั้งแรก ให้ตั้งกระเป๋าเงินผู้รับประโยชน์ (settlement) ผ่าน WebUI หรือ CLI ของโหนดให้ตรงกับบัญชี mystnodes.com -- เพื่อเชื่อมรายได้บนเชนเข้ากับแดชบอร์ดบนคลาวด์"
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "ชำระบนเชนโดยอัตโนมัติทุกครั้งที่โหนดมี MYST ที่ยังไม่ได้ชำระครบ 5 MYST"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "ไม่มีปุ่มให้กด แต่ละโหนดจะชำระบน Polygon เองเมื่อมี MYST ที่ยังไม่ได้ชำระครบ 5 MYST และประมาณ 21% จะเสียไปกับค่าธรรมเนียม (ค่าธรรมเนียม Hermes 20% บวกค่าธรรมเนียมธุรกรรมเล็กน้อย) ในการชำระแต่ละครั้งจึงมีประมาณ 3.9 MYST เข้ากระเป๋าเงินผู้รับประโยชน์ TequilAPI ของแต่ละโหนดแสดงรายการชำระที่ /transactor/settle/history ตัวเลข \"total earnings\" บน MystNodes ครอบคลุมเฉพาะ 30 วันล่าสุด ไม่ใช่ยอดคงเหลือหรือยอดรวมตลอดอายุ MYST โบนัสจากโปรแกรมรางวัลของ MystNodes จะไม่ชำระเอง ต้องเคลมที่หน้า Rewards ภายใน 30 วันหลังการแจก ตามศูนย์ช่วยเหลือของ MystNodes"
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "กระเป๋าเงินผู้รับประโยชน์ตั้งค่าหลังการติดตั้งใช้งาน ผ่าน TequilAPI หรือ WebUI ของโหนด -- ไม่ได้ตั้งผ่านตัวแปรสภาพแวดล้อม จึงอ่านจากสเปกของคอนเทนเนอร์ไม่ได้"
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "ใช้อีเมลและรหัสผ่านบัญชี MystNodes (เหมือนกับ <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>)"
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "5 MYST ต่อเพื่อนหนึ่งคนที่โหนดได้รับ 5 MYST (IP ที่อยู่อาศัยเท่านั้น)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "5 MYST เมื่อโหนดได้รับ 5 MYST แรก (IP ที่อยู่อาศัย และเคลมโหนดบน mystnodes.com แล้ว)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "เคลมรางวัล MystNodes ของเดือนที่แล้ว"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "รางวัลที่ไม่ได้เคลมภายใน 30 วันหลังการแจกรายเดือนจะถูกริบและกลับเข้าพูลของเดือนถัดไป"
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "เปิดหน้า Rewards และแลกคะแนนเป็น MYST"
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "แบนด์วิดท์ การเชื่อมต่อนี้ถูกใช้เป็นโหนดทางออกของเครือข่าย Mysterium ซึ่งขายบริการ VPN พร็อกซี และการเก็บข้อมูลเว็บ ทราฟฟิกการเก็บข้อมูลเว็บที่ออกจาก IP ที่อยู่อาศัยเป็นการใช้งานที่มีแนวโน้มถูกร้องเรียนมากที่สุด และเลือกไม่ได้ว่าโหนดจะรับส่งแบบใดในสามแบบนี้"
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "ใช่ คนแปลกหน้าส่งทราฟฟิกของตนผ่านที่อยู่ IP นี้ — นั่นคือตัวสินค้า"
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "ข้อมูลระบุตัวตนของโหนด (ที่อยู่บล็อกเชน) IP และตำแหน่งโดยคร่าว (ประเทศ/เมือง/ISP) ซึ่งโหนดเผยแพร่ในเครือข่ายเพื่อให้ผู้ซื้อเลือกได้"
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "มีจริงและควรทำความเข้าใจ ทราฟฟิกของผู้อื่นออกจากการเชื่อมต่อนี้โดยถูกระบุว่าเป็นของเจ้าของสาย สิ่งที่พวกเขาทำจึงดูเหมือนมาจากสายนี้ สัญญา ISP สำหรับผู้ใช้ทั่วไปหลายรายห้ามการกระทำนี้ ตรวจสอบสัญญาก่อนเรียกใช้"
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "ไม่จำกัดจำนวนอุปกรณ์ต่อบัญชีและต่อ IP"
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "ประมาณ 21% ของการชำระแต่ละครั้งเสียไปกับค่าธรรมเนียม คือค่าธรรมเนียม Hermes 20% บวกค่าธรรมเนียมธุรกรรม และรายได้จ่ายเป็นโทเค็น MYST"
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "โหนดเป็นทางออกให้ลูกค้า VPN พร็อกซี และการเก็บข้อมูลเว็บของ Mysterium และเลือกไม่ได้ว่าจะรับส่งให้ลูกค้ากลุ่มใด"
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "ซอฟต์แวร์โหนดเป็นโอเพนซอร์สภายใต้ GPL-3.0"
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Mysterium เผยแพร่อิมเมจ Docker ของตนเอง คือ mysteriumnetwork/myst"
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "การชำระเข้ากระเป๋าเงินที่เป็นของตนเอง ไม่ต้องใช้หมายเลขโทรศัพท์หรือบัตรประจำตัว"
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "โครงการโหนดดำเนินการมาตั้งแต่ปี 2017"
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "เว็บไซต์ของ Mysterium ระบุว่าเครือข่ายพัฒนาโดย Blockdev AG เมือง Zug ประเทศสวิตเซอร์แลนด์"
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay เป็นเครือข่าย DePIN ที่ให้รางวัลแก่ผู้ใช้สำหรับการแชร์แบนด์วิดท์ผ่านส่วนขยายเบราว์เซอร์ แพลตฟอร์มอยู่หลังการป้องกันของ Cloudflare ซึ่งอาจทำให้การเข้าถึงแบบอัตโนมัติยุ่งยาก ผู้ใช้ได้รับ Nodepay Points จากการเปิดส่วนขยายไว้ เครือข่ายเน้นการให้โครงสร้างพื้นฐานข้อมูลสำหรับฝึก AI\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "แชร์แบนด์วิดท์ DePIN สำหรับ AI - ส่วนขยายเบราว์เซอร์"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "ได้รับ Nodepay Points คะแนนของผู้ใช้ที่ผ่านการตรวจสอบสิทธิ์ของ Nodepay จะแปลงเป็นโทเค็น NC การป้องกันของ Cloudflare อาจบล็อกการเก็บข้อมูลอัตโนมัติ ต้องใช้ส่วนขยายเบราว์เซอร์"
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "แอร์ดรอปโทเค็น NC (ยังไม่ยืนยันเวลา)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "ระบบคะแนน คะแนนของผู้ใช้ที่ผ่านการตรวจสอบสิทธิ์ของ Nodepay จะแปลงเป็นโทเค็น NC ซึ่งเปิดตัวในเดือนมกราคม 2025"
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "ในการทบทวนฤดูกาลแรก Nodepay ลบบัญชีที่ตัดสินว่าเป็นบอทมากกว่า 300,000 บัญชี และยกเลิกคะแนน 17 พันล้านคะแนน"
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "รางวัลเป็นคะแนนที่แปลงเป็นโทเค็น NC มูลค่าจึงขึ้นอยู่กับโทเค็น"
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Nodepay ต้องใช้ส่วนขยายเบราว์เซอร์ของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes เป็นระดับเริ่มต้นแบบฟรีของ Noderr Protocol ซึ่งเป็นโครงการ DeFi บน Base L2 ไมโครโหนดคือเอเจนต์ขนาดเล็กบนโทรศัพท์ Android เครื่องสำรอง PC ที่ใช้ Windows เครื่อง Mac หรือเบราว์เซอร์ Chromium บน Android จะแชร์การเชื่อมต่อมือถือของโทรศัพท์: ทราฟฟิกอื่นของ Noderr จะออกผ่าน IP ของผู้ให้บริการเครือข่ายมือถือ จึงต้องมี SIM ที่มีอินเทอร์เน็ตมือถือ บน PC หรือในเบราว์เซอร์ จะรันงานอัตโนมัติให้โปรโตคอลด้วยพลังประมวลผลที่เหลือ รางวัลออกแบบให้จ่ายเป็น NODR โดยปรับตามคะแนนเวลาออนไลน์และความน่าเชื่อถือบนเชน แต่ระหว่างช่วงเบต้าเครือข่ายอยู่บนเทสต์เน็ต Base Sepolia: รางวัลของโหนดยังไม่มีเงินทุนรองรับและยังไม่เคยจ่ายเลย\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "ไมโครโหนดฟรี (แชร์การเชื่อมต่อบน Android, Windows, Mac, เบราว์เซอร์) - เทสต์เน็ต รางวัลยังไม่มีเงินทุนรองรับ"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "เบต้าบนเทสต์เน็ต: รางวัลของโหนดยังไม่มีเงินทุนรองรับและยังไม่เคยจ่ายเลย APY 5-10% บนเว็บไซต์เป็นเป้าหมายการออกแบบ ให้กลับมาดูอีกครั้งเมื่อเครือข่ายออกจาก Base Sepolia"
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "รางวัลสะสมในกระเป๋าเงินของโหนดเอง และเคลมได้จากแอปหรือ dApp ระหว่างช่วงเบต้าเป็นโทเค็นเทสต์เน็ต Base Sepolia ที่ไม่มีมูลค่าในตลาด"
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "แอปสร้างกระเป๋าเงินของโหนดเมื่อเปิดครั้งแรก และมินต์ Utility NFT แบบ soulbound ให้ฟรี สำรองกระเป๋าเงินจากแอปไว้: หากอุปกรณ์หาย ข้อมูลระบุตัวตนของโหนดจะหายไปด้วย ระหว่างช่วงเบต้ารางวัลอยู่บน Base Sepolia (เทสต์เน็ต)"
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Android ต้องมี SIM ที่มีอินเทอร์เน็ตมือถือ ไคลเอนต์เดสก์ท็อปและเบราว์เซอร์ไม่ได้ระบุข้อกำหนดเรื่อง IP"
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "ขึ้นอยู่กับอุปกรณ์ โทรศัพท์ Android ขายการเชื่อมต่อมือถือ: ทราฟฟิกอื่นของ Noderr ออกผ่านที่อยู่ IP ของผู้ให้บริการเครือข่ายมือถือและนับรวมในแพ็กเกจข้อมูล PC ที่ใช้ Windows, Mac หรือเบราว์เซอร์ขายพลังประมวลผลที่เหลือสำหรับสิ่งที่ผู้ให้บริการเรียกว่างานอัตโนมัติด้านโซเชียลมีเดียและเนื้อหา"
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "ใช่ บน Android ทราฟฟิกอื่นของ Noderr ออกผ่านที่อยู่ IP มือถือของโทรศัพท์ แอปจะขอความยินยอมที่บันทึกไว้ก่อนเริ่ม และหยุดแชร์ได้จากหน้าจอเดียวกัน สำหรับไคลเอนต์ Windows, Mac และเบราว์เซอร์ ผู้ให้บริการอธิบายว่าเป็นงานอัตโนมัติ และไม่ได้บอกว่างานเหล่านั้นรับส่งทราฟฟิกของผู้อื่นหรือไม่"
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "ที่อยู่กระเป๋าเงินของโหนด ตัวเลขเวลาออนไลน์และงานที่ทำเสร็จจะถูกบันทึกบนเชนเป็นคะแนนชื่อเสียง (TrustFingerprint) ผู้ให้บริการระบุว่างานถูกทำให้เป็นนิรนาม รันในแซนด์บ็อกซ์ และคีย์กระเป๋าเงินไม่เคยออกจากอุปกรณ์ ไม่มีการเผยแพร่รายละเอียดมากกว่านี้"
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "บน Android การเชื่อมต่อที่แชร์คือแพ็กเกจมือถือของผู้ให้บริการเครือข่าย เอกสารของผู้ให้บริการเองเตือนว่าการแชร์อาจไม่ได้รับอนุญาตตามนโยบายการใช้งานที่ยอมรับได้ของผู้ให้บริการเครือข่ายบางราย และทราฟฟิกที่แชร์จะใช้ปริมาณข้อมูลของแพ็กเกจ สำหรับไคลเอนต์เดสก์ท็อปและเบราว์เซอร์ ผู้ให้บริการไม่ได้กล่าวถึงข้อกำหนดของ ISP"
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "หนึ่งโหนดต่ออุปกรณ์ แต่ละโหนดมี Utility NFT แบบ soulbound ของตนเอง อนุญาตและสนับสนุนให้ใช้หลายอุปกรณ์ ไม่มีการเผยแพร่ขีดจำกัดต่อ IP ไม่มีบัญชีในความหมายทั่วไป ข้อมูลระบุตัวตนคือกระเป๋าเงินที่แอปสร้างขึ้นเมื่อเปิดครั้งแรก"
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "รางวัลของโหนดเป็นโทเค็นเทสต์เน็ตที่ยังไม่มีเงินทุนรองรับและไม่มีมูลค่าในตลาด และยังไม่เคยจ่ายเลย APY 5 ถึง 10% บนเว็บไซต์เป็นเป้าหมายการออกแบบ"
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "สำหรับไคลเอนต์เดสก์ท็อปและเบราว์เซอร์ Noderr อธิบายว่าเป็นงานอัตโนมัติ และไม่ได้บอกว่ารับส่งทราฟฟิกของผู้อื่นหรือไม่"
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "ผู้ให้บริการระบุว่างานถูกทำให้เป็นนิรนามและรันในแซนด์บ็อกซ์ แต่ไม่ได้เผยแพร่รายละเอียดมากกว่านี้"
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "ยังเป็นเบต้าบนเทสต์เน็ต Base Sepolia"
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Noderr ต้องใช้แอปหรือส่วนขยายของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "ไม่มีบัญชี แอปสร้างกระเป๋าเงินเมื่อเปิดครั้งแรก"
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Nodle ใช้ Bluetooth ของสมาร์ทโฟนสร้างโครงสร้างพื้นฐาน IoT แอปจะตรวจจับและส่งต่อข้อมูลจากอุปกรณ์ IoT ใกล้เคียงแบบพาสซีฟ และได้รับโทเค็น NODL เคยได้ลง Forbes และมีความร่วมมือระดับองค์กรกับ Vivendi และ Hayden AI ใช้บนมือถือเท่านั้น (iOS และ Android)\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "ส่งต่อข้อมูล IoT ผ่าน Bluetooth - แอปมือถือ รางวัลเป็นโทเค็น NODL"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "รายได้ต่ำมาก แอปโทรศัพท์ทำงานเบื้องหลังโดยใช้ Bluetooth การเชื่อมต่อกระเป๋าเงินอาจไม่เสถียร"
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "ต่อเนื่อง"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "NODL อยู่ในกระเป๋าเงินของแอปบน ZKsync Era ตรวจสอบได้ในแอปหรือใน block explorer ของ ZKsync Era Nodle ออกจาก parachain บน Polkadot แล้ว และบริดจ์จาก Polkadot ไป ZKsync ปิดเมื่อวันที่ 31 ธันวาคม 2025 NODL ที่ยังอยู่ฝั่ง Polkadot จึงย้ายไป ZKsync ไม่ได้อีกต่อไป"
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "NODL อยู่ในกระเป๋าเงินของแอป Nodle เองบน ZKsync Era และ CashPilot มองไม่เห็นที่อยู่ของกระเป๋าเงินนั้น"
+  source: "796d67192f5f"
+nodle.referral.bonus.referrer:
+  text: "รางวัล NODL สำหรับผู้ใช้ใหม่ที่ใช้งานจริงแต่ละรายที่เข้าร่วมผ่านคำเชิญ (Nodle ไม่ได้เผยแพร่จำนวน)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "ผู้รีวิวรายหนึ่งรายงานว่าได้ประมาณ $3 ในเวลาสามถึงสี่ปี รายอื่นรายงานว่ารายได้ต่อวันลดลงอย่างมาก"
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Nodle ต้องใช้แอปโทรศัพท์ของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana เป็นตลาดการประมวลผลด้วย GPU แบบกระจายศูนย์ที่สร้างบน Solana เชื่อมเจ้าของ GPU กับความต้องการงาน AI และจ่ายเป็นโทเค็น NOS RTX 3060 ได้ประมาณ $0.048/ชม. แพลตฟอร์มเน้นงาน AI inference และใช้บล็อกเชน Solana จัดตารางงานและชำระเงิน โหนดรันงานในคอนเทนเนอร์ผ่าน Nosana CLI\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "การประมวลผล GPU บน Solana - โทเค็น NOS, RTX 3060 ~$0.048/ชม."
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 ~$0.048/ชม. GPU ระดับสูงกว่าได้มากกว่า รายได้ขึ้นอยู่กับงานที่มีและรุ่น GPU ต้องใช้ GPU NVIDIA, Linux, Docker และ Nosana CLI จ่ายเป็นโทเค็น NOS บน Solana"
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "ต่องานที่เสร็จ"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "ได้รับโทเค็น NOS บน Solana จ่ายเข้ากระเป๋าเงินที่ตั้งค่าไว้"
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "โดยค่าเริ่มต้น Nosana จะสร้างกระเป๋าเงิน Solana ขึ้นมา ผู้ใช้ส่วนใหญ่จึงไม่เคยเห็นที่อยู่ของกระเป๋าเงินนี้"
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "โฮสต์แต่ละรายต้องล็อก NOS เป็นสเตกตามราคารายชั่วโมงของ GPU"
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "โฮสต์ได้รับเงินเป็น NOS รายได้เป็นดอลลาร์จึงขึ้นลงตามโทเค็นและความต้องการการ์ดของตน"
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Nosana ต้องใช้ซอฟต์แวร์โฮสต์ของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN เป็นพูลขุด Bitcoin ที่ไม่ต้องมีบัญชี เครื่องขุดเข้าสู่ระบบโดยใช้ที่อยู่ Bitcoin เป็นชื่อผู้ใช้ และพูลจะจ่ายเงินเข้าที่อยู่นั้น CashPilot ไม่ได้เรียกใช้เครื่องขุดที่นี่ แต่จะอ่านยอดคงเหลือที่ยังไม่ได้จ่ายซึ่ง OCEAN เก็บไว้ให้ที่อยู่นี้ เพื่อให้เห็นว่า ASIC (Bitaxe, Antminer) ทำรายได้ได้เท่าไรเทียบกับรายได้อื่น ยอดที่ยังไม่ได้จ่ายคือรายได้ที่ได้มาแล้วแต่ยังไม่ได้รับ OCEAN จะจ่ายบนเชนเมื่อยอดเกินเกณฑ์การจ่ายเงิน\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "พูลขุด Bitcoin ติดตามด้วยที่อยู่รับเงิน"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "เมื่อบล็อกที่ขุดได้ทำให้ยอดคงเหลือเกินเกณฑ์"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "OCEAN จ่ายบนเชนเข้าที่อยู่เมื่อยอดคงเหลือที่ยังไม่ได้จ่ายถึงเกณฑ์ CashPilot ตรวจไม่พบการจ่ายผ่าน Lightning (เลือกเปิดเอง, BOLT12)"
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "ยอดที่ยังไม่ได้จ่ายคือรายได้ที่ได้มาแล้วแต่ยังไม่ได้รับ จนกว่า OCEAN จะจ่ายบนเชนเข้าที่อยู่นี้ เว้นแต่จะเปิดการจ่ายผ่าน Lightning ไว้"
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "ที่อยู่รับเงิน BTC: ชื่อผู้ใช้ที่เครื่องขุดใช้บน OCEAN โดยไม่มีส่วน <b>.workername</b> ที่อยู่นี้เป็นสาธารณะและใช้เข้าถึงเงินไม่ได้"
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "ต้องมีเครื่องขุด ASIC สำหรับ Bitcoin (Bitaxe, Antminer) ที่ชี้ไปที่ mine.ocean.xyz:3334"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "การประมวลผล"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "ไม่ เครื่องขุดส่งแฮชไปยังพูล ไม่มีใครส่งทราฟฟิกผ่านการเชื่อมต่อนี้"
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "ที่อยู่ Bitcoin ชื่อเวิร์กเกอร์ที่เลือก อัตราแฮช และที่อยู่ IP ของเครื่องขุดตามที่พูลเห็น"
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "เครื่องขุดเปิดการเชื่อมต่อไปยังพูลไว้หนึ่งเส้นและใช้แบนด์วิดท์น้อย ต้นทุนที่ต้องระวังคือค่าไฟ ไม่ใช่ ISP"
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "ไม่มีบัญชี ที่อยู่คือข้อมูลระบุตัวตน และทุกคนอ่านสถิติได้ที่ ocean.xyz"
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "จ่ายเป็น Bitcoin เท่านั้น และจะไม่จ่ายบนเชนเลยจนกว่ายอดคงเหลือจะถึง 0.01048576 BTC"
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "ค่าธรรมเนียมพูล 2% หรือ 1% เมื่อสร้างเทมเพลตบล็อกเองด้วย DATUM"
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "CashPilot ไม่ได้เรียกใช้เครื่องขุดสำหรับ OCEAN ต้องชี้ฮาร์ดแวร์ของตนเองไปที่พูล และ CashPilot ทำได้เพียงอ่านยอดคงเหลือ"
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "ไม่มีบัญชีและไม่มีการยืนยันตัวตน OCEAN ขอเพียงที่อยู่ Bitcoin ที่จะจ่ายเงินเข้า"
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream เป็นตลาดแบนด์วิดท์แบบเพียร์ทูเพียร์ที่ให้ขายแบนด์วิดท์ที่ไม่ได้ใช้ เป็นฐานของเครือข่ายพร็อกซีแบบ IP ที่อยู่อาศัยที่ใช้สำหรับการวิจัยตลาด การตรวจสอบ SEO และการยืนยันโฆษณา ตั้งค่า Docker ง่ายๆ ต้องการเพียง CID (Client ID) โปรดทราบว่าการเข้าสู่ระบบที่มี CAPTCHA อาจทำให้การเก็บข้อมูลรายได้อัตโนมัติทำได้ยาก\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "แชร์แบนด์วิดท์ - ตั้งค่าง่ายด้วย CID"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "Client ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "เข้าสู่ระบบที่ <a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> → คลิก Setup ในแถบด้านข้าง → CID จะแสดงอยู่ในคำสั่ง Docker"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "PacketStream ปฏิเสธที่อยู่ IP ของสำเนานี้เพราะไม่ใช่ IP ที่อยู่อาศัย จึงไม่มีรายได้ ให้รันบนเครื่องที่ใช้อินเทอร์เน็ตบ้าน หรือลบสำเนานี้"
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "PacketStream มีไคลเอนต์อื่นบนที่อยู่ IP นี้อยู่แล้ว และจ่ายเงินให้เพียงหนึ่งไคลเอนต์ต่อ IP ให้ลบสำเนานี้ หรือลบอีกสำเนาที่ใช้ IP เดียวกัน"
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "จ่าย $0.10/GB สำหรับแบนด์วิดท์ที่แชร์ รายได้ขึ้นอยู่กับความต้องการในตำแหน่งที่ตั้งของ IP เป็นอย่างมาก"
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "PayPal เท่านั้น ขั้นต่ำ $5 ค่าธรรมเนียม 3% แสดงก่อนยืนยัน การถอนครั้งแรกจะบันทึกอีเมล PayPal ไว้ การเปลี่ยนภายหลังต้องยืนยันทางอีเมลและรอ 7 วัน จึงควรตรวจสอบที่อยู่ก่อนยืนยัน คำขอจะถูกตรวจสอบและส่งภายใน 7 วัน ยกเลิกคำขอได้ขณะรอ และส่งคำขอใหม่ได้เมื่อคำขอเดิมจ่ายแล้วเท่านั้น"
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "PacketStream เก็บยอดคงเหลือไว้ ถอนได้เมื่อร้องขอ"
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "เข้าสู่ระบบที่ <a href='https://packetstream.io' target='_blank'>packetstream.io</a> กด F12 → Application → Cookies แล้วคัดลอกค่าคุกกี้ <b>auth</b> (เป็น JWT)"
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "20% ของรายได้จากแบนด์วิดท์ของผู้ที่ได้รับการแนะนำ (โบนัส Packeter ช่วงเวลาจำกัด)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "เครดิตโบนัส 10% สำหรับการฝากเงินครั้งแรกด้วยบัตรหรือ PayPal (ลูกค้าพร็อกซี)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "ผู้รีวิวบน Trustpilot ในปี 2025 และ 2026 รายงานว่าเงินมาช้าหรือไม่มาเลย และผู้ใช้ระยะยาวรายหนึ่งบอกว่าการจ่ายเงินช้าลงแล้วหยุดไป ส่วนรายอื่นในปี 2026 รายงานว่าได้รับเงิน"
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "PayPal เท่านั้น ค่าธรรมเนียมการถอน 3% ผู้ใช้ในประเทศที่ PayPal ไม่ให้บริการไม่มีช่องทางอื่น"
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "ข้อกำหนดให้ PacketStream ระงับ ย้อนกลับ หรือทำให้รายได้ที่เชื่อมโยงกับการฉ้อโกง การบิดเบือน หรือกิจกรรมต้องห้ามเป็นโมฆะได้"
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "ข้อกำหนดระบุว่าลูกค้าพร็อกซีและ PacketStream เองส่งทราฟฟิกผ่านการเชื่อมต่อนี้ โดยไม่ได้อธิบายการตรวจสอบผู้ซื้อทั่วไป"
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "Trustpilot ระบุว่า PacketStream ไม่ได้ตอบรีวิวเชิงลบ ผู้รีวิวรายงานว่าอีเมลไม่ได้รับคำตอบ"
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "PacketStream เผยแพร่อิมเมจ Docker ของตนเอง คือ packetstream/psclient"
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "ข้อกำหนดต้องการเพียงอุปกรณ์และการเชื่อมต่อที่เป็นของตนเองหรือมีสิทธิ์ใช้"
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "ข้อกำหนดไม่ได้กล่าวถึงการยืนยันตัวตน การจ่ายเงินต้องใช้ที่อยู่ PayPal"
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "ข้อกำหนดระบุชื่อ PacketStream Inc. ภายใต้กฎหมายแคลิฟอร์เนีย"
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "PacketStream ดำเนินการมาตั้งแต่ปี 2018"
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp เป็นแพลตฟอร์ม DePIN ที่ให้รับรางวัลเป็นคริปโตและ PayPal จากการแชร์แบนด์วิดท์และทรัพยากรประมวลผลที่ไม่ได้ใช้ ในทางปฏิบัติใช้ได้เฉพาะ Windows: หน้าดาวน์โหลดของผู้จำหน่ายเองแสดง Android, iOS และ Linux เป็น \"coming soon\" โดยไม่เปลี่ยนแปลงมาตั้งแต่อย่างน้อยกุมภาพันธ์ 2025 และไม่มีเวอร์ชัน macOS — แม้ข้อความโฆษณาบนเว็บไซต์เดียวกันจะอ้างว่ารองรับมากกว่านั้น ไม่มีอิมเมจ Docker\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "แบนด์วิดท์/การประมวลผล DePIN - Windows เท่านั้น จ่ายเป็นคริปโตและ PayPal"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "แอปเดสก์ท็อป Windows เท่านั้น (v1.0.x) ผู้จำหน่ายประกาศ Android/iOS/Linux ว่า 'coming soon' มาตั้งแต่ต้นปี 2025 และไม่เคยออกมาเลย ไม่มีอิมเมจ Docker อย่างเป็นทางการ"
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "10% ของรายได้ของผู้ที่ได้รับการแนะนำตลอดชีพ"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "CashPilot ไม่ได้เรียกใช้ PassiveApp ต้องใช้แอปเดสก์ท็อปของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "เว็บไซต์ของ PassiveApp ระบุ PayPal คริปโต และบัตรของขวัญ โดยมีขั้นต่ำ $3"
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase เป็นแพลตฟอร์มแชร์แบนด์วิดท์ที่จ่ายเงินเป็นคริปโตให้ผู้ใช้สำหรับการแชร์การเชื่อมต่ออินเทอร์เน็ตที่ไม่ได้ใช้ ไคลเอนต์เพียร์ยืนยันตัวตนด้วย Access Token จากแดชบอร์ด IP ที่อยู่อาศัยได้มากที่สุด แต่ก็รองรับ IP ศูนย์ข้อมูลด้วย มีอิมเมจ Docker อย่างเป็นทางการแบบหลายสถาปัตยกรรม (amd64/arm64/armv7)\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - แชร์แบนด์วิดท์ จ่ายเป็นคริปโต ยืนยันตัวตนด้วย Access Token ไม่มีการสร้างกระเป๋าเงิน"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Access Token"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "ชื่ออุปกรณ์"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "เข้าสู่ระบบที่ <a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> → คัดลอก Access Token (แสดงอยู่ในคำสั่ง Docker บนหน้าการตั้งค่า)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "ชื่อใดก็ได้ (ไม่มีช่องว่าง) เพื่อระบุอุปกรณ์นี้ในแดชบอร์ด ProxyBase"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "ProxyBase เชื่อมต่อรีเลย์ไม่ได้มาอย่างน้อยครึ่งชั่วโมง จึงไม่มีรายได้ การรีสตาร์ทจะแก้ปัญหานี้ได้ หากยังคงอยู่หลังรีสตาร์ท ให้ตรวจสอบว่าเครื่องนี้เข้าถึงอินเทอร์เน็ตได้"
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "จ่ายเป็นคริปโต รายได้ขึ้นอยู่กับตำแหน่งที่ตั้งและการใช้แบนด์วิดท์"
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "เว็บไซต์ระบุขั้นต่ำ $0.20 และคำขอที่ต่ำกว่า $1 ได้รับเงินจริงในเดือนตุลาคม 2026 คำขอจะถอนยอดคงเหลือทั้งหมดเสมอ เป็น USDC บน Polygon, POL หรือ Litecoin ไปยังที่อยู่ที่พิมพ์ลงไป ProxyBase เป็นผู้ออกค่าธรรมเนียมเครือข่าย"
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "รายได้สะสมเข้าบัญชี ProxyBase ที่ Access Token นั้นเป็นของ และถอนจากแดชบอร์ดเมื่อร้องขอ ไคลเอนต์เพียร์ไม่มีกระเป๋าเงิน และคอนเทนเนอร์ไม่เก็บสถานะใดๆ -- docker.volumes ว่างเปล่า อย่าสับสนกับ proxybase-xyz (ProxyBase Markets องค์กรเดียวกัน) ซึ่งสร้างกระเป๋าเงินในเครื่องจริงและประกาศเป็นวอลุ่มสำคัญ"
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "ProxyBase เองเขียนไว้ในเดือนสิงหาคม 2025 ว่ายังใหม่และยังไม่ใช่ที่ที่จะได้รายได้สูงสุด"
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "ProxyBase เปลี่ยนไคลเอนต์เพียร์ในปี 2026 และปิดแบ็กเอนด์เดิม คอนเทนเนอร์ที่ใช้อิมเมจเก่าจึงยังทำงานอยู่แต่หยุดมีรายได้"
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "คริปโตเท่านั้น เป็น USDC บน Polygon, POL หรือ Litecoin ไม่มีช่องทางเงินตราทั่วไป ขั้นต่ำ $0.20 และ ProxyBase จ่ายค่าธรรมเนียมเครือข่ายให้"
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "การถอนที่ต่ำกว่า $1 ของเราได้รับเงินจริงในเดือนตุลาคม 2026"
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "การถอนต้องการเพียงที่อยู่ที่พิมพ์ลงในคำขอ"
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "ProxyBase เผยแพร่อิมเมจไคลเอนต์เพียร์ของตนเองและรองรับ IP ศูนย์ข้อมูล"
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets เป็นตลาดพร็อกซี SOCKS5 ที่สร้างมาสำหรับเอเจนต์ AI ผู้ขายเรียกใช้ daemon แบบ CLI ขนาดเล็กที่เขียนด้วย Rust ซึ่งเชื่อมต่อผ่าน WebSocket เพื่อส่งต่อทราฟฟิกของผู้ซื้อผ่านการเชื่อมต่ออินเทอร์เน็ตของผู้ขาย และได้รับ USDC บน Tempo Chain ต่อ GB ที่ขาย รองรับทั้งโหมด direct (แบนด์วิดท์ของตนเอง) และ upstream (ขายต่อพร็อกซีภายนอก) พร้อมการเชื่อมต่อใหม่อัตโนมัติ ผู้ซื้อซื้อเซสชันพร็อกซีตามประเทศ ISP และแบนด์วิดท์ การชำระเงินผ่าน Machine Payments Protocol (MPP) บน Tempo Chain ลิงก์แนะนำมีไว้สำหรับผู้ซื้อ: ผู้ซื้อที่เปิดคอนโซลผ่านลิงก์นี้จะได้รับเพิ่ม 10% ในการฝากเงินครั้งแรก\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - ตลาด SOCKS5 สำหรับเอเจนต์ AI จ่ายเป็น USDC สร้างกระเป๋าเงินที่วอลุ่มเก็บสำเนาคีย์เพียงชุดเดียว"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "URL ของ Backend API"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "แทนที่ URL ของ Backend API (ค่าเริ่มต้นคือ https://api.proxybase.xyz)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "คอนเทนเนอร์จะตั้งค่าตัวเองในการเริ่มครั้งแรก: สร้างกระเป๋าเงิน secp256k1 (BIP-39) ยืนยันตัวตนด้วย ECDSA challenge-response และเริ่มขายแบนด์วิดท์ในโหมด direct เท่านั้น สถานะทั้งหมด (กระเป๋าเงิน โทเค็นเซสชัน การตั้งค่าผู้ขาย) จะเก็บไว้ในวอลุ่ม <code>proxybase-data</code> ตรวจสอบบันทึกของคอนเทนเนอร์ในการรันครั้งแรกเพื่อดูที่อยู่กระเป๋าเงิน ใช้ <code>--upstream</code> เพื่อเพิ่มเส้นทางขายต่อพร็อกซีภายนอก\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "ไฟล์คีย์ของกระเป๋าเงินที่สร้างขึ้น วอลุ่มนี้คือตัวเงิน: ไม่มีสำเนาฝั่งเซิร์ฟเวอร์ การลบวอลุ่มจึงทำลายเงินทุนไปด้วย"
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "รายได้คิดตาม GB ที่ขายในราคาตลาด IP ของ VPS/ศูนย์ข้อมูลได้น้อยกว่า IP ที่อยู่อาศัย โหมด multi-upstream รวมแบนด์วิดท์ของตนเองเข้ากับพร็อกซีภายนอกได้"
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "ล็อกรายได้ด้วย <code>proxybase-cli seller payout create</code> และรับเป็น USDC บน Tempo Chain (Tempo MPP) จ่ายเข้าที่อยู่ EVM ใดก็ได้ที่ถือคีย์อยู่ (Tempo เป็นเชน EVM) โดยไม่ต้องลงนามอะไร เพิ่มเครือข่าย Tempo ลงในกระเป๋าเงินเพื่อดู USDC หากกระเป๋าเงินยังไม่แสดง ต้องเพิ่มโทเค็น USDC ของ Tempo เอง โดยนำเข้าด้วยที่อยู่สัญญาที่ Proxybase ให้มา และตรวจสอบที่อยู่นั้นก่อนเชื่อถือยอดคงเหลือ"
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "ไคลเอนต์สร้างกระเป๋าเงินของตนเองในการรันครั้งแรก"
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "15% ของเงินฝากทุกครั้งที่ผู้ซื้อที่ได้รับการแนะนำทำ เป็นเครดิตสำหรับเซสชันพร็อกซีของตนเอง"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "+10% ในการฝากเงินครั้งแรกของผู้ซื้อ"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "แบนด์วิดท์ ในรูปพร็อกซี SOCKS5 ที่ขายให้ผู้ซื้อในตลาด ProxyBase"
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "ใช่ ผู้ซื้อส่งทราฟฟิกของตนผ่านการเชื่อมต่อนี้ — นั่นคือสิ่งที่ขายอยู่"
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "ที่อยู่กระเป๋าเงินที่สร้างขึ้นบนเครื่องนี้ และปริมาณทราฟฟิกที่ส่งต่อ"
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "มีจริง และมีผลโดยตรงกับการเชื่อมต่อในบ้าน ทราฟฟิกพร็อกซีจากผู้ซื้อที่ไม่รู้จักออกโดยใช้ IP นี้ คำร้องเรียนเรื่องการใช้งานในทางที่ผิดจึงมาถึงเจ้าของสาย ไม่มีอะไรในแคตตาล็อกนี้จำกัดบริการไว้เฉพาะที่อยู่ของศูนย์ข้อมูล และ IP ที่อยู่อาศัยได้มากกว่า สิ่งจูงใจจึงชี้ไปผิดทาง ควรอ่านข้อกำหนดของ ISP ก่อนเรียกใช้ที่บ้าน"
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "ไม่ทราบ - ผู้ให้บริการไม่ได้เผยแพร่ขีดจำกัดจำนวนอุปกรณ์ต่อบัญชีหรือต่อ IP และแคตตาล็อกก็ไม่ได้ระบุไว้"
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "จ่ายเป็น USDC บน Tempo Chain เข้าที่อยู่ EVM ใดก็ได้ที่ถือคีย์อยู่"
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "การเชื่อมต่อนี้ถูกขายเป็นพร็อกซี SOCKS5 ให้ผู้ซื้อในตลาด เราไม่พบคำอธิบายว่าตรวจสอบผู้ซื้ออย่างไร"
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "หน้าหารายได้ของผู้ให้บริการเองตั้งชื่อว่าไม่ต้อง KYC และจ่ายเงินที่ $1"
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "ProxyBase เผยแพร่อิมเมจไคลเอนต์ของตนเองและรับการเชื่อมต่อจากศูนย์ข้อมูล"
+  source: "ae81d006093f"
+proxylite.description:
+  text: "ProxyLite สร้างรายได้จากทราฟฟิกอินเทอร์เน็ตโดยแชร์แบนด์วิดท์กับองค์กรที่ผ่านการตรวจสอบ ใช้ได้ทั้งการเชื่อมต่อแบบที่อยู่อาศัยและ VPS/ศูนย์ข้อมูล ตั้งค่าง่าย ต้องการเพียง ID ผู้ใช้จากแดชบอร์ด มีค่าคอมมิชชันการแนะนำตลอดชีพ 15%\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "แชร์แบนด์วิดท์ - ค่าแนะนำตลอดชีพ 15% ใช้บน VPS ได้"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "ID ผู้ใช้"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "เข้าสู่ระบบที่ <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → User ID แสดงอยู่บนหน้าหลักของแดชบอร์ดข้างอีเมล ยังไม่มีบัญชีใช่ไหม สมัครที่ <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a>"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "IP ที่อยู่อาศัยได้มากกว่า รับการเชื่อมต่อ VPS/ศูนย์ข้อมูลในอัตราที่ต่ำกว่า"
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "15% ของรายได้ของผู้ที่ได้รับการแนะนำตลอดชีพ"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "เจ้าของเว็บไซต์ถูกซ่อนไว้ในข้อมูลการจดโดเมน และเราไม่พบบริษัทที่ระบุชื่ออยู่เบื้องหลัง"
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "ขั้นต่ำ $5 ผ่านคริปโตหรือ PayPal"
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "ProxyLite เผยแพร่อิมเมจ Docker คือ proxylite/proxyservice และรับการเชื่อมต่อจากศูนย์ข้อมูลในอัตราที่ต่ำกว่า"
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "โปรแกรม Peer ของ ProxyRack ให้สร้างรายได้จากการแชร์แบนด์วิดท์เป็นส่วนหนึ่งของเครือข่ายพร็อกซี แต่ละอุปกรณ์ต้องมี UUID ฐานสิบหก 64 อักขระที่ไม่ซ้ำกัน และคีย์ API (ไม่บังคับ) เพื่อลงทะเบียนอุปกรณ์อัตโนมัติ ใช้ได้ทั้งการเชื่อมต่อแบบที่อยู่อาศัยและ VPS/ศูนย์ข้อมูล แดชบอร์ดอยู่หลัง Cloudflare จึงอาจต้องดึงคีย์ API ด้วยตนเองผ่านเบราว์เซอร์\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "แชร์แบนด์วิดท์ - UUID ต่ออุปกรณ์ ใช้บน VPS ได้"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "UUID ของอุปกรณ์"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "คีย์ API"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "ชื่ออุปกรณ์"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "ID ฐานสิบหก 64 อักขระที่ไม่ซ้ำกันต่ออุปกรณ์ สร้างด้วย: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "เข้าสู่ระบบที่ <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → API Key แสดงอยู่บนหน้าหลักของแดชบอร์ด (หากใส่ไว้ จะลงทะเบียนอุปกรณ์อัตโนมัติ) ยังไม่มีบัญชีใช่ไหม สมัครที่ <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "ชื่อที่จำง่ายของอุปกรณ์ในแดชบอร์ด"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "ไคลเอนต์ของ ProxyRack ทำงานบนสำเนานี้ไม่ได้ จึงไม่มีรายได้ สาเหตุที่พบบ่อยคือเซิร์ฟเวอร์อัปเดตของ ProxyRack ไม่ตอบสนอง และไคลเอนต์เริ่มทำงานไม่ได้หากไม่มีเซิร์ฟเวอร์นั้น สำเนาจะลองใหม่ทุก 5 นาที และเริ่มทำงานเองทันทีที่เซิร์ฟเวอร์ตอบสนอง ไม่ต้องแก้ไขอะไร"
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "ไคลเอนต์ของ ProxyRack ไม่ได้ดาวน์โหลดตอนที่สำเนานี้เริ่มทำงาน เพราะติดต่อเซิร์ฟเวอร์อัปเดตของ ProxyRack ไม่ได้ สำเนาจึงทำงานอยู่แต่ไม่มีรายได้ CashPilot จะรีสตาร์ตสำเนานี้ทุก 6 ชั่วโมงเพื่อลองใหม่ ติดตั้งใช้งานใหม่เพื่อให้สำเนาได้การเริ่มทำงานแบบของ CashPilot เอง ซึ่งเก็บไคลเอนต์ไว้และลองใหม่เองทุก 5 นาที"
+  source: "0a2ee4b478b2"
+proxyrack.device_link.steps:
+  text: "เข้าสู่ระบบ ProxyRack เปิด Devices เลือก Add device แล้ววาง UUID นี้ จนกว่าอุปกรณ์จะอยู่ในบัญชี อุปกรณ์จะไม่สร้างรายได้ให้ใครเลย หากใส่คีย์ API ไว้ คอนเทนเนอร์จะลงทะเบียนเอง ให้ตรวจสอบว่าอุปกรณ์ปรากฏอยู่ในรายการ"
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "IP ที่อยู่อาศัยได้มากกว่า IP ศูนย์ข้อมูล แดชบอร์ดที่อยู่หลัง Cloudflare อาจทำให้การเข้าถึงแบบอัตโนมัติยุ่งยาก"
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "ขอจ่ายเงินบนแดชบอร์ด ProxyRack จะตรวจสอบภายใน 72 ชั่วโมง จากนั้น Tremendous จะส่งรางวัลทางอีเมลเพื่อแลกเป็น PayPal บัตรของขวัญ หรือการโอนผ่านธนาคาร ไม่มีตัวเลือกคริปโต"
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "ProxyRack เก็บยอดคงเหลือไว้ ถอนได้เมื่อร้องขอ"
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "เข้าสู่ระบบที่ <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a> กด F12 → Network หาคำขอ API ใดก็ได้ แล้วคัดลอกค่าส่วนหัว <b>Api-Key</b> ยังไม่มีบัญชีใช่ไหม สมัครที่ <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>"
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Proxyrack ระบุขีดจำกัด 500 อุปกรณ์ต่อบัญชี และไม่มีขีดจำกัดต่อ IP รับ IP ศูนย์ข้อมูลแต่จะจัดเป็นอัตราที่ต่ำกว่า"
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "ศูนย์ช่วยเหลือของ ProxyRack ระบุว่าการลบอุปกรณ์จะนำรายได้ของอุปกรณ์นั้นออกจากบัญชี และจะกลับมาเฉพาะเมื่อเพิ่มอุปกรณ์เดิมกลับเข้าไป"
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "ProxyRack เผยแพร่อิมเมจ Docker ของตนเอง คือ proxyrack/pop และรับ IP ศูนย์ข้อมูลในอัตราที่ต่ำกว่า"
+  source: "278541f81053"
+repocket.description:
+  text: "Repocket ช่วยสร้างรายได้แบบพาสซีฟจากการแชร์แบนด์วิดท์อินเทอร์เน็ตที่ไม่ได้ใช้ IP ที่อยู่อาศัยได้มากที่สุด ส่วน IP ของ VPS/ศูนย์ข้อมูลรับในอัตราที่ต่ำกว่า สูงสุด 5 อุปกรณ์และ 5 เซสชันที่ใช้งานอยู่ต่อบัญชี คอนเทนเนอร์ Docker ยืนยันตัวตนด้วยอีเมลบัญชีและคีย์ API จากแดชบอร์ด Repocket (ไม่ใช่รหัสผ่าน)\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "แชร์แบนด์วิดท์ - สูงสุด 5 อุปกรณ์ ยืนยันตัวตนด้วยคีย์ API"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "อีเมล"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "คีย์ API (UUIDv4 ไม่ใช่รหัสผ่าน)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "อีเมลบัญชี Repocket"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "คีย์ API ของ Repocket — เข้าสู่ระบบที่ <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> แล้วคัดลอกคีย์ API ที่แสดงบนหน้า bandwidth-earnings (ไม่ใช่รหัสผ่านบัญชี) ยังไม่มีบัญชีใช่ไหม สมัครที่ <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a>"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "IP ที่อยู่อาศัยได้มากกว่า รับ IP ของ VPS/ศูนย์ข้อมูลแต่ในอัตราที่ต่ำกว่า"
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4 ($2 หลังการจ่ายเงินครั้งแรก)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Repocket กำหนดขั้นต่ำต่อบัญชี: $4 ก่อนการจ่ายเงินครั้งแรก และ $2 หลังจากนั้น ณ เดือนตุลาคม 2026 ต่ำกว่า $20 ที่เคยประกาศไว้มาก ช่องทาง: Tremendous (ส่งไปยังอีเมล) หรือ USDT บน Polygon คำขอแต่ละครั้งต้องยืนยันจากลิงก์ที่ส่งทางอีเมลภายใน 2 ชั่วโมง และมีคำขอที่รอดำเนินการได้ครั้งละหนึ่งรายการเท่านั้น ในเดือนตุลาคม 2026 Repocket ปฏิเสธคำขอทาง Tremendous ด้วยข้อความ \"Please, message support\" ขณะที่ USDT บน Polygon ได้รับเงิน"
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "Repocket เก็บยอดคงเหลือไว้ ถอนได้เมื่อร้องขอ"
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "ใช้อีเมลและรหัสผ่านบัญชี Repocket (เหมือนกับ <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>) ยังไม่มีบัญชีใช่ไหม สมัครที่ <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a>"
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "$2 เมื่อผู้ที่ได้รับการแนะนำมีรายได้ $7 จากนั้น 5% ของรายได้ของเขาตลอดชีพ"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "โบนัส $2 เข้ากระเป๋าเงินเมื่อสมัคร"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Repocket ระบุขีดจำกัดห้าอุปกรณ์ต่อบัญชี แต่ไม่ได้เผยแพร่ขีดจำกัดจำนวนอุปกรณ์ต่อ IP ตัวเลข '2 อุปกรณ์ต่อ IP' ที่เว็บไซต์รีวิวพูดซ้ำๆ ไม่มีแหล่งที่มาจากผู้ให้บริการ CashPilot จึงไม่ยืนยันตัวเลขนี้"
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "ให้อุปกรณ์ Repocket แชร์อยู่เสมอ หรือถอนยอดคงเหลือ"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "หลังจาก 12 เดือนที่ไม่มีการเข้าสู่ระบบ การจ่ายเงิน หรือการแชร์แบนด์วิดท์ Repocket อาจริบยอดคงเหลือที่ยังไม่ได้จ่าย"
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "ให้อุปกรณ์แชร์อยู่เสมอ เข้าสู่ระบบ หรือถอนเงิน หากจะเลิกใช้ Repocket ให้ถอนเงินก่อน"
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "ผู้รีวิวบน Trustpilot หลายรายรายงานว่าการจ่ายเงินถูกยกเลิกและยอดคงเหลือถูกรีเซ็ตเป็นศูนย์ รายหนึ่งบอกว่าฝ่ายสนับสนุนอ้างว่ารายได้จากแบนด์วิดท์ผิดปกติ หน้านั้นให้คะแนน Repocket 2.7 และระบุว่าไม่ได้ตอบรีวิวเชิงลบ"
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "ผู้รีวิวรายงานว่าการถอนถูกปฏิเสธและต้องตามทวงเงิน"
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "นโยบายการชำระเงินของ Repocket ให้ย้อนกลับ ยกเลิก หรือริบรายได้อย่างถาวรได้ทุกเมื่อที่สงสัยว่าไม่ถูกต้อง และริบรายได้ที่ยังไม่ได้จ่ายของบัญชีที่ไม่ได้ใช้งานได้"
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "นโยบายเดียวกันให้ Repocket เพิ่ม ลบ หรือเปลี่ยนช่องทางการจ่ายเงินได้ทุกเมื่อโดยไม่แจ้งล่วงหน้า PayPal ถูกนำออกไปแล้ว"
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "ข้อกำหนดระบุว่า Repocket อาจขอยืนยันตัวตนหรือยืนยันบัญชีได้ทุกเมื่อ และสิทธิ์รับเงินขึ้นอยู่กับการยืนยันนี้"
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "ข้อกำหนดระบุว่า Repocket และพันธมิตรใช้ความจุของเครือข่าย แต่ไม่ได้บอกว่าพันธมิตรเป็นใครหรือตรวจสอบอย่างไร"
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "Trustpilot ระบุว่า Repocket ไม่ได้ตอบรีวิวเชิงลบ และผู้รีวิวบอกว่าข้อความถูกเพิกเฉย"
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "ข้อกำหนดปัจจุบันระบุชื่อ Repocket Pte. Ltd. ในสิงคโปร์ ข้อกำหนดฉบับเก่าไม่ได้ระบุชื่อบริษัท"
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Repocket เผยแพร่อิมเมจ Docker ของตนเอง คือ repocket/repocket และข้อกำหนดอนุญาตคอนเทนเนอร์ที่เป็นของตนเอง"
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "ขั้นต่ำต่ำ: $4 ก่อนการจ่ายเงินครั้งแรก และ $2 หลังจากนั้น"
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Salad.io ให้แชร์ GPU สำหรับงาน AI แบบกระจาย และได้รับยอดเงิน Salad ที่แลกเป็นบัตรของขวัญ เกม หรือเงินสดได้ Windows เท่านั้น ใช้แอปพลิเคชันเดสก์ท็อปแบบเนทีฟ ต้องมี GPU แยก (NVIDIA หรือ AMD) แพลตฟอร์มจะส่งงาน AI inference การเรนเดอร์ และงานประมวลผลอื่นๆ มายังเครื่องเมื่อเครื่องว่าง เป็นหนึ่งในแพลตฟอร์มแชร์ GPU ที่ใช้งานง่ายกว่า\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "แชร์ GPU สำหรับ AI - Windows เท่านั้น จ่ายเป็นบัตรของขวัญหรือเงินสด"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "รายได้ขึ้นอยู่กับรุ่น GPU และงานที่มี RTX 3060 ~$1-3/วัน Windows เท่านั้น แอปเนทีฟ ไม่รองรับ Docker แลกเป็นบัตรของขวัญ เกม หรือ PayPal ได้"
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "PayPal หรือบัตรของขวัญผ่านหน้าร้าน Salad"
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "PayPal และบัตรของขวัญเท่านั้น ไม่มีคริปโตเลย ไม่มีที่อยู่กระเป๋าเงิน CashPilot จึงไม่มียอดคงเหลือบนเชนให้แสดง"
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "เข้าสู่ระบบที่ <a href='https://app.salad.io' target='_blank'>app.salad.io</a> กด F12 → Application → Cookies แล้วคัดลอกค่าคุกกี้ <b>auth</b>"
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "หา Salad Reward Points บ้าง หรือใช้ยอดคงเหลือ"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "หากบัญชีไม่ได้รับ Reward Points เลยติดต่อกัน 12 เดือน ยอดคงเหลือที่ยังไม่ได้แลกอาจหมดอายุ"
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "รันแอป Salad จนกว่าจะได้รับคะแนน หรือใช้ยอดคงเหลือทั้งหมดใน Salad Storefront การใช้เพียงบางส่วนไม่ได้รีเซ็ตระยะ 12 เดือน"
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Salad ต้องใช้แอปเดสก์ท็อปของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "ผู้รีวิวบน Trustpilot หลายรายในเดือนตุลาคมและพฤศจิกายน 2026 รายงานว่าการถอนเงินทาง PayPal ได้รับเร็ว บางรายได้มากกว่าหนึ่งครั้ง ผู้รีวิวรายหนึ่งในช่วงเดียวกันบอกว่าพยายามถอนเงินหลายครั้งแต่ไม่สำเร็จ"
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel เป็นบล็อกเชน Layer 1 บน Cosmos สำหรับ VPN แบบกระจายศูนย์ ผู้ดูแลโหนดขายแบนด์วิดท์ให้ผู้ใช้ VPN ด้วยราคาที่ยืดหยุ่น (ต่อ GB หรือรายชั่วโมง) มีคู่มือการติดตั้งใช้งานด้วย Docker อย่างเป็นทางการ เป็นโครงการที่ดำเนินมานานและมีชุมชนที่ยังเคลื่อนไหวอยู่\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "VPN แบบกระจายศูนย์บน Cosmos - ผู้ดูแลโหนดขายแบนด์วิดท์"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "ผู้ดูแลตั้งราคาเองต่อ GB หรือรายชั่วโมง รายได้ขึ้นอยู่กับความต้องการของผู้ใช้ VPN ในภูมิภาค"
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "ต่อเซสชัน"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "จ่ายเป็นโทเค็น P2P และ 20% ของการจ่ายค่าแบนด์วิดท์ทุกครั้งไปให้ผู้สเตก ไม่ใช่โฮสต์โหนด"
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "โทเค็นเปลี่ยนชื่อจาก SENT เป็น DVPN ในปี 2021 และจาก DVPN เป็น P2P ในปี 2025"
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Sentinel ต้องใช้ซอฟต์แวร์โหนดของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Sentinel เผยแพร่ซอร์สโค้ดของโหนดภายใต้สัญญาอนุญาตโอเพนซอร์สของตนเอง"
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia เป็นตลาดพื้นที่จัดเก็บแบบกระจายศูนย์ที่ดำเนินการโดย Sia Foundation (องค์กรไม่แสวงผลกำไรในสวิตเซอร์แลนด์) มาตั้งแต่ปี 2015 เรียกใช้โหนด hostd อย่างเป็นทางการของมูลนิธิเพื่อปล่อยเช่าพื้นที่ดิสก์ที่เหลือ และได้รับ Siacoin จากสัญญาพื้นที่จัดเก็บและแบนด์วิดท์ ต้องซื้อ Siacoin จำนวนหนึ่งก่อนที่โหนดจะมีรายได้: โฮสต์ต้องล็อกหลักประกันไว้กับทุกสัญญาและจ่ายค่าธรรมเนียมสำหรับการพิสูจน์การจัดเก็บแต่ละครั้ง หลักประกันจะได้คืนเมื่อสัญญาเสร็จสมบูรณ์ และจะถูกเผาทิ้งหากโหนดออฟไลน์หรือข้อมูลสูญหาย จึงต้องใช้เครื่องที่เปิดตลอดเวลา (Sia กำหนดเวลาออนไลน์อย่างน้อย 95%) รายได้ขึ้นอยู่กับปริมาณข้อมูลที่ผู้เช่าจัดเก็บจริง Sia แนะนำให้ตั้งราคาพื้นที่จัดเก็บที่ $1 ต่อ TB ต่อเดือน จึงเหมาะกับเครื่องที่มีดิสก์ว่างขนาดใหญ่มากกว่า VPS ขนาดเล็ก\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "โหนดพื้นที่จัดเก็บของ Sia Foundation - อิมเมจ Docker อย่างเป็นทางการ ได้รับ Siacoin"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "วลีกู้คืนของกระเป๋าเงิน"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "รหัสผ่านแดชบอร์ด"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "ไดเรกทอรีพื้นที่จัดเก็บ"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "วลีกู้คืน BIP-39 ที่ควบคุมกระเป๋าเงิน Siacoin ของโฮสต์ สร้างด้วย `docker run --rm ghcr.io/siafoundation/hostd seed` และสำรองไว้ -- นี่คือทางเดียวที่จะเข้าถึงรายได้"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "รหัสผ่านสำหรับเว็บ UI และ API ในเครื่องของ hostd (BasicAuth) ใช้วลีรหัสผ่านยาวๆ ใดก็ได้"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "พาธบนโฮสต์ในดิสก์ที่ใหญ่ที่สุดซึ่งใช้เก็บข้อมูลของผู้เช่า (เช่น /srv/sia) ต้องมีพื้นที่ว่างอย่างน้อย 256GB"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "เมื่อติดตั้งใช้งาน CashPilot จะสร้างกระเป๋าเงินใหม่บนเครื่องที่รันโหนด และแสดงวลีกู้คืนเพียงครั้งเดียว: ให้จดไว้ หากต้องการใช้กระเป๋าเงินที่มีอยู่แล้ว ให้วางวลีกู้คืนของกระเป๋าเงินนั้นแทน หลังติดตั้งใช้งาน ให้ส่ง Siacoin จำนวนหนึ่งไปยังกระเป๋าเงินของโหนดสำหรับหลักประกันและค่าธรรมเนียม จากนั้นเพิ่มโฟลเดอร์พื้นที่จัดเก็บ (/storage) ตั้งราคา และประกาศโฮสต์ในแดชบอร์ด\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "วลีกู้คืนของกระเป๋าเงิน (hostd.yml) ฐานข้อมูลกระเป๋าเงิน การตั้งค่าโฮสต์ และสถานะสัญญา หากสูญหาย โหนดจะเสียข้อมูลระบุตัวตนและการติดตามรายได้จากสัญญา วลีกู้คืนที่จดไว้จะเป็นทางเดียวในการกู้คืนเงินทุน"
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "ข้อมูลของผู้เช่าที่จัดเก็บไว้ หากสูญหาย การพิสูจน์การจัดเก็บจะล้มเหลวและหลักประกันที่ล็อกไว้กับสัญญาเหล่านั้นจะถูกริบ"
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "โฮสต์ตั้งราคาเอง Sia แนะนำ $1 ต่อ TB ที่จัดเก็บต่อเดือน และมากกว่า $5 ต่อ TB ที่ดาวน์โหลด และ 3.9% ของการจ่ายเงินจากสัญญาทุกครั้งไปให้ผู้ถือ Siafund รายได้เพิ่มตามปริมาณข้อมูลของผู้เช่าที่มาอยู่บนโหนด ซึ่งเริ่มจากศูนย์และเพิ่มขึ้นตามเวลาออนไลน์และราคา หลักประกัน (Sia แนะนำ 2 เท่าของราคาพื้นที่จัดเก็บ) จะล็อกไว้ต่อสัญญาและได้คืนเมื่อสัญญาเสร็จสมบูรณ์\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "รายได้สะสมในกระเป๋าเงิน Siacoin ของโฮสต์เอง (ควบคุมด้วยวลีกู้คืน) แปลง SC บนกระดานเทรดแล้วถอนเข้าบัญชีธนาคาร/บัตรจากที่นั่น ไม่มีการขอจ่ายเงินจากฝั่งผู้ให้บริการ\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "เงินทุนอยู่ในกระเป๋าเงิน Sia ภายในโหนดที่ควบคุมด้วยวลีกู้คืน วลีกู้คืนอยู่เฉพาะในวอลุ่มข้อมูลของ hostd บนเครื่องที่รันเท่านั้น CashPilot ไม่เคยเก็บไว้ วลีที่จดไว้ตอนสร้างกระเป๋าเงินเป็นทางเดียวในการกู้คืน\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "ที่อยู่สาธารณะที่คงที่ พร้อมส่งต่อพอร์ต 9981 (TCP, consensus) และ 9984 (TCP และ UDP, สัญญาของผู้เช่า) การโฮสต์บนศูนย์ข้อมูล/VPS เป็นเรื่องปกติบน Sia กระเป๋าเงินต้องมี Siacoin ก่อนที่โหนดจะรับสัญญาได้"
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "พื้นที่ดิสก์และแบนด์วิดท์สำหรับให้บริการข้อมูล"
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "ไม่ ผู้เช่าเก็บชิ้นส่วนไฟล์ที่เข้ารหัสไว้บนดิสก์และดึงกลับไป ผู้อื่นไม่ได้ส่งทราฟฟิกใดๆ ผ่าน IP นี้"
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "ที่อยู่กระเป๋าเงิน Sia คีย์สาธารณะของโฮสต์ และ IP:พอร์ต สาธารณะที่โหนดประกาศเพื่อให้ผู้เช่าเข้าถึงได้"
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "มีทราฟฟิกอัปโหลด/ดาวน์โหลดต่อเนื่องบนสาย เช่นเดียวกับการรันเซิร์ฟเวอร์พื้นที่จัดเก็บทั่วไป ไม่มีทราฟฟิกเว็บแบบนิรนามของบุคคลที่สามถูกระบุว่ามาจากสายนี้"
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "ไม่ต้องขออนุญาต: ไม่ต้องสมัครหรือมีบัญชี หลักประกันจะถูกเผาทิ้งหากโหนดพลาดการพิสูจน์การจัดเก็บ เพราะออฟไลน์หรือข้อมูลสูญหาย"
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "รายได้เป็น Siacoin ในกระเป๋าเงินของตนเอง ไม่มีการจ่ายเข้าบัญชีธนาคาร ต้องขายบนกระดานเทรดเอง"
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "หลักประกันถูกล็อกไว้ต่อสัญญา และจะถูกเผาทิ้งหากโฮสต์พลาดการพิสูจน์การจัดเก็บเพราะออฟไลน์หรือข้อมูลสูญหาย"
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "มีการใช้พื้นที่จัดเก็บที่เสนอในเครือข่ายเพียงประมาณ 30% โฮสต์รายใหม่จึงต้องแข่งกันในความต้องการที่มีน้อย"
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "ผู้เช่าเก็บชิ้นส่วนไฟล์ที่เข้ารหัสไว้ และไม่มีใครส่งทราฟฟิกผ่าน IP นี้ แต่เราไม่พบว่า Sia ระบุไว้ที่ใดว่าผู้เช่าเป็นใครหรือตรวจสอบอย่างไร"
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "hostd พัฒนาแบบเปิดโดย Sia Foundation มาตั้งแต่ปี 2022"
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd เป็นโอเพนซอร์สภายใต้สัญญาอนุญาต MIT"
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "Sia Foundation เผยแพร่ hostd เป็นอิมเมจคอนเทนเนอร์"
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "ไม่ต้องขออนุญาต: ไม่ต้องสมัครหรือมีบัญชี"
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide เป็นบริการแชร์แบนด์วิดท์ที่ให้สร้างรายได้จากแบนด์วิดท์อินเทอร์เน็ตที่ไม่ได้ใช้ ใช้ machine ID (ไม่บังคับ) สำหรับติดตามอุปกรณ์ มีให้ใช้ผ่านอิมเมจ Docker ของชุมชนจากโครงการ income-generator\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "แชร์แบนด์วิดท์ - อิงตาม machine ID"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "Machine ID"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "Machine ID ของอุปกรณ์ที่ลงทะเบียนไว้แล้ว (สร้างอัตโนมัติหากเว้นว่าง)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "มีข้อมูลจำกัด รายได้ขึ้นอยู่กับตำแหน่งที่ตั้ง"
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "10% ของรายได้ของผู้ที่ได้รับการแนะนำ"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "โบนัสสมัคร $5"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "ทราฟฟิกผ่าน IP สาธารณะหนึ่ง IP จะถูกแบ่งระหว่างอุปกรณ์ที่ใช้ร่วมกัน อุปกรณ์เครื่องที่สองบนการเชื่อมต่อเดียวกันจึงไม่ได้เพิ่มอะไร"
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Spide ต้องใช้แอปของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "ขุด Pearl, Zano หรือ Ravencoin ด้วย GPU NVIDIA หนึ่งตัว CashPilot ดาวน์โหลด SRBMiner-Multi รุ่นทางการในการเริ่มครั้งแรกและตรวจ SHA-256 พูลที่เลือกจะจ่ายเงินเข้าที่อยู่รับเงินสาธารณะ SRBMiner-Multi เก็บ 2% ของเวลาแฮชบน Pearl และ 0.85% บนอีกสองเหรียญ ค่าไฟอาจสูงกว่ามูลค่าเหรียญที่ได้"
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "ขุด Pearl และเหรียญ GPU อื่นๆ บน GPU NVIDIA"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "ที่อยู่รับเงิน"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "ชื่อเวิร์กเกอร์"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "อัลกอริทึม"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "พูล (host:port)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "เข้ารหัสการเชื่อมต่อพูล (TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "ที่อยู่ Pearl สาธารณะ (prl1...) สำหรับ Zano หรือ Ravencoin ให้ป้อนที่อยู่ของเหรียญนั้นและพูลสำหรับเหรียญนั้น"
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "pearlhash สำหรับ Pearl, progpow_zano สำหรับ Zano, kawpow สำหรับ Ravencoin"
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "ประมาณการรวมก่อนหักค่าไฟ เมื่อ 2026-11-25 hashrate.no ประมาณว่าได้ราว $2.45 ต่อวันบน Pearl สำหรับ RTX 4070 ที่ใช้ไฟประมาณ 142 W เรายังไม่ได้วัดจริง Pearl เป็นเหรียญใหม่ และราคากับความยากเปลี่ยนแปลงเร็ว ตรวจสอบกำลังไฟของ GPU และค่าไฟเพื่อดูว่าคุ้มหรือไม่"
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL (HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "เมื่อถึงเกณฑ์ของพูล"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "พูลจ่ายเงินเข้าที่อยู่เมื่อยอดคงเหลือถึงเกณฑ์ พูลจะเก็บยอดคงเหลือไว้จนกว่าจะจ่าย"
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64, GPU NVIDIA และ NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "เครื่องนี้รายงานว่าใช้การเชื่อมต่อแบบโฮสติ้ง ตรวจสอบข้อกำหนดของผู้ให้บริการก่อนขุด ผู้ให้บริการบางราย รวมถึง Hetzner Cloud ห้ามการขุด ตรวจสอบค่าไฟจริงก่อนเชื่อถือประมาณการกำไร"
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "ค่าธรรมเนียมเครื่องขุด 2% ใช้กับ pearlhash SRBMiner-Multi เก็บ 0.85% บน progpow_zano และ kawpow HeroMiners ซึ่งเป็นพูล Pearl ค่าเริ่มต้น เก็บค่าธรรมเนียมพูล 1% ตรวจสอบการจ่ายเงินทุกชั่วโมง และจ่ายตั้งแต่ 1 PRL พูลอื่นกำหนดอัตราและเกณฑ์ของตนเอง"
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "การประมวลผล"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "ไม่ เครื่องขุดส่งงานไปยังพูลที่เลือก"
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "ที่อยู่รับเงิน ชื่อเวิร์กเกอร์ และที่อยู่ IP จะส่งไปยังพูล การเริ่มครั้งแรกจะดาวน์โหลดเครื่องขุดจาก GitHub"
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "เครือข่ายและตัวแปลง DNS บางแห่งบล็อกการเชื่อมต่อกับพูลขุด"
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "พูลส่วนใหญ่ระบุตัวผู้ใช้จากที่อยู่รับเงินสาธารณะ"
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "เครื่องขุดเก็บ 2% ของเวลาแฮชบน Pearl และ 0.85% บน Zano และ Ravencoin"
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "ผู้ให้บริการโฮสติ้งบางรายห้ามการขุดคริปโต"
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "เครื่องขุดเป็นซอฟต์แวร์ปิดซอร์ส ไม่มีใครนอกจากผู้พัฒนาตรวจสอบได้ว่ารันอะไรอยู่"
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "ค่าไฟของ GPU อาจสูงกว่ามูลค่าเหรียญที่ได้ และราคา Pearl เปลี่ยนแปลงเร็ว"
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "เครื่องขุดส่งงานไปยังพูลและไม่ได้ส่งต่อทราฟฟิกของผู้อื่น"
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "ขุด Pearl บน HeroMiners ได้ด้วยที่อยู่สาธารณะ โดยไม่ต้องมีบัญชี"
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj เป็นเครือข่ายพื้นที่จัดเก็บบนคลาวด์แบบกระจายศูนย์ที่สร้างรายได้จากการปล่อยเช่าพื้นที่ดิสก์ที่ไม่ได้ใช้ เรียกใช้โหนดพื้นที่จัดเก็บผ่าน Docker และรับ $1.35/TB ที่จัดเก็บต่อเดือน บวก $1/TB สำหรับข้อมูลขาออก (อัตราตั้งแต่ 1 กันยายน 2026) จ่ายเงินรายเดือนเป็น USDC ซึ่งเป็น stablecoin สกุลดอลลาร์สหรัฐ บน Ethereum mainnet เข้ากระเป๋าเงินที่ควบคุมเอง เมื่อยอดคงเหลือเกินขั้นต่ำที่คิดตามค่าธรรมเนียม (เป็นโทเค็น STORJ จนถึงการจ่ายเงินเดือนกันยายน 2026) ต้องมีพื้นที่ดิสก์ว่างอย่างน้อย 550GB และการเชื่อมต่ออินเทอร์เน็ตที่เสถียร ไม่ต้องมีบัญชีหรือสมัคร -- โหนดไม่ต้องขออนุญาตตั้งแต่กลางปี 2025 ข้อควรระวัง (ตุลาคม 2026): Storj Labs ยื่นขอ Chapter 11 เมื่อวันที่ 26 กรกฎาคม 2026 (US Bankruptcy Court, Northern District of West Virginia, คดี 5:26-bk-00512) เพื่อปรับโครงสร้างหนี้เดิม เครือข่ายยังทำงานต่อและ Storj ยังจ่ายเงินให้โหนดที่ใช้งานอยู่ แต่รายได้ของโหนดก่อนการยื่นถูกระงับไว้จนกว่าศาลจะมีคำตัดสิน โทเค็น STORJ ลดลงประมาณ 98% จากจุดสูงสุดในปี 2021 Binance ถอดออกจากรายการเมื่อวันที่ 3 กันยายน 2026 และ Coinbase ระงับการซื้อขายเมื่อวันที่ 28 กันยายน 2026 โหนดใหม่จะถูกหักรายได้บางส่วนไว้ในเก้าเดือนแรก และจะมีข้อมูลเต็มเท่าที่ความต้องการของลูกค้าเอื้ออำนวยเท่านั้น การเริ่มโหนดตอนนี้จึงเป็นการผูกระยะคืนทุนที่ยาวนานไว้กับบริษัทที่กำลังปรับโครงสร้างและอาจยังปิดกิจการได้\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "โหนดพื้นที่จัดเก็บแบบกระจายศูนย์ - $1.35/TB ที่จัดเก็บ + $1/TB ขาออก"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "ที่อยู่กระเป๋าเงิน"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "อีเมล"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "ที่อยู่ภายนอก"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "พื้นที่ที่จัดสรร"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "ไดเรกทอรีข้อมูลระบุตัวตน"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "ไดเรกทอรีพื้นที่จัดเก็บ"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "ที่อยู่กระเป๋าเงิน Ethereum สำหรับรับเงิน USDC (เช่น 0x1234...abcd) ต้องเป็นกระเป๋าเงินที่ดูแลคีย์เอง (MetaMask, Ledger ฯลฯ) -- ห้ามใช้ที่อยู่ของกระดานเทรด"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "ที่อยู่อีเมลสำหรับการแจ้งเตือนผู้ดูแล"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "ชื่อโฮสต์ DDNS พร้อมพอร์ต (เช่น mynode.ddns.net:28967) -- ดีกว่า IP ตรงๆ มาก เพราะ IP ตรงๆ จะทำให้โหนดเข้าถึงไม่ได้ในวันที่ ISP เปลี่ยน IP โดยไม่แจ้ง ต้องส่งต่อพอร์ต 28967 (TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "พื้นที่ดิสก์สูงสุดที่จะจัดสรร (เช่น 2TB) ใช้ฮาร์ดดิสก์แบบจานหมุน (HDD) ไม่ใช่ SSD"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "พาธบนโฮสต์ที่เก็บไฟล์ข้อมูลระบุตัวตน (ต้องมี ca.cert, ca.key, identity.cert, identity.key)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "พาธบนโฮสต์ในฮาร์ดดิสก์แบบจานหมุน (HDD) สำหรับเก็บข้อมูล Storj ต้องมีพื้นที่ว่างอย่างน้อย 550GB"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "ก่อนรันครั้งแรก ให้เริ่มต้นการตั้งค่าโหนดพื้นที่จัดเก็บ: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "ข้อมูลระบุตัวตนของโหนด ID ผูกกับ proof-of-work และใช้เวลาหลายชั่วโมงในการสร้างใหม่ และสร้างขึ้นใหม่จากข้อมูลสำรองของสิ่งอื่นไม่ได้ หากสูญหาย ยอดเงินที่ถูกหักเก็บไว้จะถูกริบ"
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "ข้อมูลของลูกค้าที่จัดเก็บไว้และยอดที่ถูกหักเก็บไว้ของโหนด หากสูญหาย โหนดจะถูกตัดสิทธิ์และยอดที่ถูกหักเก็บไว้จะถูกริบ"
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "เครือข่าย Storj เชื่อมต่อกลับมายังโหนดที่ ADDRESS ที่ประกาศไว้ไม่ได้ ดาวเทียม (satellite) จึงนับว่าโหนดออฟไลน์: ข้อมูลใหม่หยุดเข้ามา รายได้ขาออกหยุดนิ่ง และหากออฟไลน์ต่อเนื่องจะถูกระงับ ตรวจสอบว่า ADDRESS ตรงกับ IP สาธารณะปัจจุบัน (ใช้ชื่อโฮสต์ DDNS ไม่ใช่ IP ตรงๆ เพื่อไม่ให้โหนดเข้าถึงไม่ได้เมื่อ ISP เปลี่ยน IP) และส่งต่อพอร์ต 28967 TCP+UDP มายังเครื่องนี้แล้ว"
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "$1.35/TB ที่จัดเก็บ + $1/TB ขาออก + $1/TB สำหรับการตรวจสอบ/ซ่อมแซม ตั้งแต่ 1 กันยายน 2026 รายได้เพิ่มตามข้อมูลที่จัดเก็บและอายุของโหนด ใน 9 เดือนแรกจะหักรายได้ไว้ 75% จากนั้น 50% แล้ว 25% ครึ่งหนึ่งของยอดที่หักไว้จะคืนในเดือนที่ 16 และส่วนที่เหลือเมื่อออกจากเครือข่ายอย่างถูกวิธี (graceful exit) ต้องส่งต่อพอร์ต 28967"
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "4 เท่าของค่าธรรมเนียมธุรกรรม Ethereum ยอดที่น้อยกว่าจะยกไปเดือนถัดไป"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "รายเดือน"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "จ่ายรายเดือนเป็น USDC บน Ethereum mainnet เมื่อยอดคงเหลือในกระเป๋าเงินอย่างน้อยสี่เท่าของค่าธรรมเนียมธุรกรรมขณะนั้น ยอดที่น้อยกว่าจะยกไปเดือนถัดไป เป็นโทเค็น STORJ จนถึงการจ่ายเงินเดือนกันยายน 2026 แดชบอร์ดอยู่ที่พอร์ต 14002"
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "จ่ายรายเดือนเป็น USDC บน Ethereum mainnet เข้าที่อยู่ใน WALLET เมื่อยอดคงเหลือเกินขั้นต่ำที่คิดตามค่าธรรมเนียม เป็นโทเค็น STORJ จนถึงการจ่ายเงินเดือนกันยายน 2026 การจ่ายบน zkSync Era สิ้นสุดเมื่อ 1 กันยายน 2026"
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "URL ของแดชบอร์ดโหนดที่พอร์ต 14002 โดยใช้ IP ใน LAN ของเซิร์ฟเวอร์แทน localhost เช่น <b>http://192.168.1.10:14002</b> หากมีหลายโหนด ให้ใส่ URL คั่นด้วยเครื่องหมายจุลภาค CashPilot จะรวมยอดให้"
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "โหนด Storj บนซับเน็ต /24 เดียวกันจะแบ่งการจัดสรรข้อมูลกัน ทำให้รายได้ต่อโหนดลดลง"
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "อัปโหลด 5 Mbps"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "พื้นที่ดิสก์และแบนด์วิดท์สำหรับให้บริการข้อมูล"
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "ไม่ เครื่องจะเก็บชิ้นส่วนข้อมูลของลูกค้าที่เข้ารหัสและเข้ารหัสแบบ erasure-coding ไว้ ผู้อื่นไม่ได้ส่งทราฟฟิกของตนผ่าน IP นี้"
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "ข้อมูลระบุตัวตนของโหนด ที่อยู่กระเป๋าเงิน ที่อยู่อีเมลที่โหนดต้องใช้สำหรับการแจ้งเตือนผู้ดูแล และ IP กับพอร์ตซึ่งต้องเข้าถึงได้เพื่อให้โหนดให้บริการข้อมูลได้"
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "ส่วนใหญ่เป็นเรื่องโควตาข้อมูลมากกว่าเรื่องความรับผิด: โหนดให้บริการและรับข้อมูลลูกค้าอย่างต่อเนื่อง ซึ่งเป็นทราฟฟิกจริงที่ต่อเนื่องบนสาย แต่ต่างจากพร็อกซีหรือรีเลย์ เพราะไม่ใช่ทราฟฟิกนิรนามของบุคคลที่สามที่ถูกระบุว่ามาจากสายนี้ จึงไม่ถูกร้องเรียนเรื่องการใช้งานในทางที่ผิดแบบที่บริการเหล่านั้นเจอ"
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "ไม่จำกัดจำนวนโหนด แต่โหนดบนซับเน็ต /24 เดียวกันจะแบ่งการจัดสรรกัน หลายโหนดบนการเชื่อมต่อเดียวจึงได้น้อยลงต่อโหนด"
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "CoinDesk รายงานเมื่อวันที่ 27 กรกฎาคม 2026 ว่า Storj Labs ยื่นขอความคุ้มครองการล้มละลายตาม Chapter 11"
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "เงินที่ค้างจ่ายให้ผู้ดูแลโหนดก่อนการยื่นเข้าสู่กระบวนการยื่นคำร้องในคดีล้มละลาย"
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "โหนดใหม่ถูกหักรายได้ไว้ 75% จากนั้น 50% แล้ว 25% ในเก้าเดือนแรก ครึ่งหนึ่งจะคืนในเดือนที่ 16 และส่วนที่เหลือจะคืนเฉพาะเมื่อออกจากเครือข่ายอย่างถูกวิธี"
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "ลูกค้าเก็บชิ้นส่วนไฟล์ที่เข้ารหัสไว้ และไม่มีใครส่งทราฟฟิกผ่าน IP นี้ แต่เราไม่พบว่า Storj ระบุไว้ที่ใดว่าลูกค้าเป็นใครหรือตรวจสอบอย่างไร"
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "ซอฟต์แวร์โหนดพื้นที่จัดเก็บเป็นโอเพนซอร์สภายใต้ AGPL-3.0"
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Storj เผยแพร่อิมเมจ Docker ของตนเอง คือ storjlabs/storagenode"
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "ไม่มีบัญชี ใช้เพียงที่อยู่กระเป๋าเงินและอีเมลสำหรับการแจ้งเตือนผู้ดูแล"
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "โหนดที่ใช้งานอยู่ยังได้รับเงินต่อหลังการยื่น"
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR เป็นพูลขุด Monero ที่ไม่ต้องมีบัญชี เครื่องขุดเข้าสู่ระบบโดยใช้ที่อยู่ Monero เป็นชื่อผู้ใช้ และพูลจะจ่ายเงินเข้าที่อยู่นั้น CashPilot ไม่ได้เรียกใช้เครื่องขุดที่นี่ แต่จะอ่านยอดคงเหลือที่ SupportXMR เก็บไว้ให้ที่อยู่นี้ เพื่อให้เห็นว่าเครื่องขุดด้วย CPU ทำรายได้ได้เท่าไรเทียบกับรายได้อื่น ยอดคงเหลือคือรายได้ที่ได้มาแล้วแต่ยังไม่ได้รับ พูลจะจ่ายเมื่อยอดเกินเกณฑ์การจ่ายเงิน\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "พูลขุด Monero ติดตามด้วยที่อยู่รับเงิน"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR (อัตโนมัติ), 0.01 XMR เมื่อร้องขอ"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "เมื่อยอดคงเหลือเกินเกณฑ์ หรือเมื่อร้องขอ"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "SupportXMR จ่ายเงินเข้าที่อยู่เมื่อยอดคงเหลือถึงเกณฑ์ (ค่าเริ่มต้น 0.1 XMR) บนเว็บไซต์ยังขอจ่ายเงินทันทีได้ตั้งแต่ 0.01 XMR โดยมีค่าธรรมเนียม 0.001 XMR"
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "ยอดคงเหลือคือรายได้ที่ได้มาแล้วแต่ยังไม่ได้รับ จนกว่า SupportXMR จะจ่ายเข้าที่อยู่นี้ ยอดคงเหลือของ Monero อ่านบนเชนไม่ได้หากไม่มี private view key ซึ่ง CashPilot ไม่เคยขอ จึงต้องยืนยันการจ่ายเงินแต่ละครั้งเอง"
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "ที่อยู่รับเงิน Monero: ชื่อผู้ใช้ที่เครื่องขุดใช้บน SupportXMR โดยไม่มีส่วน <b>.workername</b> หรือ <b>+difficulty</b> ที่อยู่นี้เป็นสาธารณะและใช้เข้าถึงเงินไม่ได้"
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "ต้องมีเครื่องขุด Monero (XMRig) ที่ชี้ไปที่ pool.supportxmr.com"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "การประมวลผล"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "ไม่ เครื่องขุดส่งแฮชไปยังพูล ไม่มีใครส่งทราฟฟิกผ่านการเชื่อมต่อนี้"
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "ที่อยู่ Monero ชื่อเวิร์กเกอร์ที่เลือก อัตราแฮช และที่อยู่ IP ของเครื่องขุดตามที่พูลเห็น"
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "เครื่องขุดเปิดการเชื่อมต่อไปยังพูลไว้หนึ่งเส้นและใช้แบนด์วิดท์น้อย ต้นทุนที่ต้องระวังคือค่าไฟ ไม่ใช่ ISP"
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "ไม่มีบัญชี ที่อยู่คือข้อมูลระบุตัวตน และทุกคนอ่านสถิติได้ที่ supportxmr.com"
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "จ่ายเป็น Monero เท่านั้น ค่าธรรมเนียมพูล 0.6% และเกณฑ์ค่าเริ่มต้น 0.1 XMR ก่อนการจ่ายเงินอัตโนมัติ"
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "CashPilot ไม่ได้เรียกใช้เครื่องขุดสำหรับ SupportXMR ต้องชี้เครื่องขุดของตนเองไปที่พูล และ CashPilot ทำได้เพียงอ่านยอดคงเหลือ"
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Teneo Protocol ให้เอเจนต์ AI เข้าถึงเว็บแบบเรียลไทม์ผ่านเครือข่าย Beacon โดย Teneo Beacon เป็นแอปของ Teneo เองสำหรับ Android, iOS, macOS, Windows และ Linux พร้อมเวอร์ชันบรรทัดคำสั่งสำหรับเซิร์ฟเวอร์และ Raspberry Pi แอปจะแชร์แบนด์วิดท์ที่ไม่ได้ใช้หลังยอมรับหน้าจอขอความยินยอม และได้รับ Teneo Protocol Points และ Fragments ขณะออนไลน์ Fragments นับรวมในการจับรางวัลประจำฤดูกาลที่จ่ายเป็น USDC (Beacon Drop) Teneo ระบุว่า Beacon ได้คะแนนเป็นสองเท่าของส่วนขยายเบราว์เซอร์รุ่นเก่า มี Beacon เพียงตัวเดียวที่มีรายได้ต่อการเชื่อมต่ออินเทอร์เน็ตหนึ่งเส้น อุปกรณ์อื่นบนการเชื่อมต่อเดียวกันจะอยู่ในสถานะสแตนด์บาย สมัครที่ Expedition Hub ด้วยลิงก์หรือรหัสแนะนำ PSA3BHPJ แล้วเข้าสู่ระบบ Beacon\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "แอปแบนด์วิดท์ DePIN (Beacon) - Fragments สำหรับจับรางวัล USDC ประจำฤดูกาล +100 Fragments เมื่อใช้ลิงก์แนะนำ"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "ได้รับ Teneo Points และ Fragments โดย Fragments นับรวมในการจับรางวัล USDC ประจำฤดูกาล แต่ละฤดูกาลจึงจ่ายเป็นรางวัล ไม่ใช่อัตราคงที่ Teneo ระบุว่า Beacon ได้คะแนนเป็นสองเท่าของส่วนขยายเบราว์เซอร์ เคลมบูสต์ทุก 8 ชั่วโมงเพื่อรับ Fragments สูงสุด 3 เท่า หากพลาดรอบ ตัวคูณจะลดลง"
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "จับรางวัลประจำฤดูกาล (Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "รางวัล Beacon Drop จ่ายเป็น USDC เข้ากระเป๋าเงินที่ผูกไว้ใน Expedition Hub โดย Hub จะแสดงจำนวนวันที่เหลือสำหรับผูกกระเป๋าเงิน รางวัลที่ไม่ได้ผูกกระเป๋าเงินทันเวลาจะถูกริบ"
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "ผูกกระเป๋าเงินใน Expedition Hub ก่อนที่รางวัลของฤดูกาลจะจ่าย Hub จะริบรางวัลที่ไม่ได้ผูกกระเป๋าเงินทันเวลา"
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "8% ของ Fragments ของเพื่อนที่แนะนำแต่ละคน และ 2% ของ Fragments ของผู้ที่เพื่อนแนะนำต่อ เมื่อเพื่อนสมัครภายใน 7 วันและได้รับ 480 Fragments"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "+100 Fragments เมื่อสมัคร และเพิ่มอีก +150 เมื่อได้ถึง 480 Fragments"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "มี Beacon เพียงตัวเดียวที่มีรายได้ต่อการเชื่อมต่ออินเทอร์เน็ตหนึ่งเส้น เครื่องในศูนย์ข้อมูลมีรายได้เฉพาะบนผู้ให้บริการโฮสติ้งที่ Teneo เปิดให้ ได้ Fragments ครึ่งหนึ่ง และไม่มีคะแนนหรือโบนัสการแนะนำ การเชื่อมต่อผ่าน VPN จะไม่มีรายได้เลย"
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "Fragments ของ Beacon จ่าย USDC ในรูปรางวัลจากการจับรางวัลประจำฤดูกาลเท่านั้น การรันจึงไม่ได้รายได้ในจำนวนที่แน่นอน"
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Teneo ระบุว่าคะแนนจะถูกรวมเป็น $AGENTIC ซึ่งเป็นโทเค็นรางวัลที่โอนไม่ได้ ไม่ใช่โทเค็น $TENEO"
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "จนถึงเดือนพฤศจิกายน 2026 ยังไม่มีการยืนยันวันเปิดตัว การจัดสรร หรือขั้นตอนการเคลม $TENEO หลังจากเป้าหมายเดิมในไตรมาสที่สองของปี 2026 ผ่านไปแล้ว"
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Teneo ต้องติดตั้งแอป Beacon ของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Teneo ระบุว่าทราฟฟิกมาจากลูกค้าธุรกิจที่ผ่านการตรวจสอบ และบล็อกที่อยู่ส่วนตัวและพอร์ตที่เสี่ยงต่อการใช้งานในทางที่ผิด แต่ไม่ได้บอกว่าตรวจสอบลูกค้าเหล่านั้นอย่างไร"
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network เป็นเครือข่ายส่งวิดีโอและประมวลผล AI แบบกระจายศูนย์ที่มีมานาน (ตั้งแต่ปี 2018) ผู้ใช้เรียกใช้ Edge Node ที่แชร์แบนด์วิดท์ พื้นที่จัดเก็บ และพลังประมวลผล มีพันธมิตรด้านเนื้อหารายใหญ่ ได้รับโทเค็น TFUEL\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "CDN แบบกระจายศูนย์ + การประมวลผล AI - รางวัล TFUEL โครงการที่มีมานาน"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "แอปเดสก์ท็อปเท่านั้น รายได้ขึ้นอยู่กับทรัพยากรและตำแหน่งที่ตั้ง มีพันธมิตรรายใหญ่ และมีซื้อขายบนกระดานเทรดทุกแห่ง"
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "ต่อเนื่อง"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Theta Edge ต้องใช้แอปเดสก์ท็อปของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network เป็นแพลตฟอร์ม DePIN ที่แชร์ที่อยู่ IP พื้นที่จัดเก็บ และแบนด์วิดท์ เพื่อแลกกับรางวัลเป็นโทเค็น TNT มีให้ใช้บน Windows, Mac และ Android โหนดมีส่วนร่วมใน CDN และชั้นพื้นที่จัดเก็บแบบกระจายศูนย์ รายได้ทั่วไปอยู่ที่ $5-30/เดือน ขึ้นอยู่กับทรัพยากรที่แชร์และตำแหน่งทางภูมิศาสตร์\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "DePIN แชร์ IP พื้นที่จัดเก็บ แบนด์วิดท์ - $5-30/เดือน"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "แชร์ IP พื้นที่จัดเก็บ และแบนด์วิดท์ รายได้ขึ้นอยู่กับทรัพยากรที่ให้และภูมิภาค การจัดสรรพื้นที่จัดเก็บมากขึ้นจะได้รางวัลมากขึ้น"
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "ตามรอบ Epoch"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "ศูนย์ช่วยเหลือของ Titan เองระบุว่าโหนดที่ทำงานอยู่ไม่ได้รับประกันรายได้ หากไม่มีงานมอบหมายก็จะไม่มีรายได้ และรางวัลเป็นโทเค็น TNT"
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Titan ต้องใช้แอปหรือส่วนขยายของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Traffmonetizer สร้างรายได้จากทราฟฟิกอินเทอร์เน็ตโดยแชร์แบนด์วิดท์กับธุรกิจที่ผ่านการตรวจสอบ เป็นหนึ่งในบริการแชร์แบนด์วิดท์ไม่กี่รายที่ทำงานได้ดีบน IP ของ VPS และศูนย์ข้อมูล นอกเหนือจากการเชื่อมต่อแบบที่อยู่อาศัย ใช้การยืนยันตัวตนด้วยโทเค็นแบบง่ายที่ส่งผ่านอาร์กิวเมนต์บรรทัดคำสั่ง รองรับสถาปัตยกรรม ARM สำหรับ Raspberry Pi และอุปกรณ์ที่คล้ายกัน\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "แชร์แบนด์วิดท์ - ใช้บน VPS ได้ ยืนยันตัวตนด้วยโทเค็น"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "โทเค็น"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "ชื่ออุปกรณ์"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "เข้าสู่ระบบที่ <a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a> กด F12 → Application → Local Storage → คลิก <code>https://app.traffmonetizer.io</code> → คัดลอกค่า <code>authToken</code> (ประมาณ 54 อักขระ: ตัวเลข ตามด้วย <code>|</code> แล้วตามด้วยตัวอักษรและตัวเลข)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "ชื่อที่แสดงในแดชบอร์ดสำหรับจัดการอุปกรณ์"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "IP ของ VPS และศูนย์ข้อมูลได้น้อยกว่า IP ที่อยู่อาศัย ตำแหน่งในสหรัฐฯ/EU ได้มากกว่า รองรับหลาย IP ผ่านเครือข่าย Docker"
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "ขั้นต่ำ $10 ไม่มี PayPal อีกต่อไป ให้บันทึกช่องทางรับเงินหนึ่งช่องทางในโปรไฟล์ก่อน: USDT บน Solana หรือ TON (ค่าธรรมเนียมต่ำสุด), Arbitrum (ค่าธรรมเนียมต่ำ) หรือ Tron TRC20 (ค่าธรรมเนียมเครือข่ายสูง) หรือโอนผ่านธนาคารตั้งแต่ $1,000 ที่อยู่แรกที่บันทึกจะมีผลทันที การเปลี่ยนภายหลังต้องยืนยันทางอีเมล แดชบอร์ดอาจขอช่องทางติดต่อทางแอปแชต (WhatsApp, Telegram หรือ Skype) ก่อนการถอนครั้งแรก คำขอจะจ่ายเป็นจำนวนดอลลาร์เต็ม ส่วนเศษเซนต์จะคงอยู่ในยอดคงเหลือ"
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "USDT บนเชนที่บันทึกไว้ในการตั้งค่าการรับเงินของโปรไฟล์ (Solana, TON, Arbitrum หรือ Tron) หรือโอนผ่านธนาคาร ที่อยู่เก็บไว้ในการตั้งค่าของ Traffmonetizer ไม่ใช่ในคอนเทนเนอร์"
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "เข้าสู่ระบบที่ <a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a> กด F12 → Application → Local Storage → ค่า <b>authToken</b> (ประมาณ 54 อักขระ: ตัวเลข ตามด้วย <code>|</code> แล้วตามด้วยตัวอักษรและตัวเลข)"
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "10% ของการจ่ายเงินทุกครั้งที่ผู้ที่ได้รับการแนะนำขอ"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "ข้อกำหนดการให้บริการของ Traffmonetizer กำหนดให้ใช้ IP ที่อยู่อาศัย แต่ในทางปฏิบัติรับโหนดบน VPS"
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "Trustpilot ให้คะแนน 1.9 ผู้รีวิวตั้งแต่ปี 2023 ถึงพฤศจิกายน 2026 รายงานว่าการจ่ายเงินค้างอยู่หลายสัปดาห์ หรือถูกทำเครื่องหมายว่าเสร็จแล้วแต่ไม่มีธุรกรรมที่ตรงกัน"
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "ผู้รีวิวกลุ่มเดียวกันรายงานว่าแชตสดและฝ่ายสนับสนุนทางอีเมลไม่ตอบกลับ บางครั้งนานหลายสัปดาห์"
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "คริปโตหรือการโอนผ่านธนาคารตั้งแต่ $1,000 เท่านั้น ไม่มี PayPal แล้ว และคำขอจ่ายเป็นจำนวนดอลลาร์เต็มเท่านั้น"
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "ข้อกำหนดของ Traffmonetizer กำหนดให้ใช้ IP ที่อยู่อาศัย เซิร์ฟเวอร์บนการเชื่อมต่อแบบโฮสติ้งจึงอยู่นอกข้อกำหนด"
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "ผู้รีวิวบน Trustpilot สี่รายตั้งแต่ปี 2023 ถึง 2025 รายงานว่ารายได้ช้ามาก เช่น หนึ่งเซนต์ต่อวันจากสี่อุปกรณ์ หรือเกือบสองปีกว่าจะถึง $10"
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "การจ่ายเงินต้องการเพียงที่อยู่คริปโตที่บันทึกไว้และยืนยันทางอีเมล แดชบอร์ดอาจขอช่องทางติดต่อทางแอปแชต"
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Traffmonetizer เผยแพร่อิมเมจ Docker ของตนเอง คือ traffmonetizer/cli_v2"
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "ขุดด้วย CPU และรับเงินเป็นเหรียญที่เลือก เช่น SHIB, DOGE หรือ XMR CashPilot เรียกใช้ XMRig กับพูล RandomX ของ unMineable และ unMineable จะแปลง Monero ที่ CPU ขุดได้เป็นเหรียญที่เลือก แล้วจ่ายเข้าที่อยู่สาธารณะเมื่อยอดคงเหลือถึงเกณฑ์การจ่ายเงินของเหรียญนั้น เวิร์กเกอร์ทุกตัวที่ CashPilot ติดตั้งใช้งานจะมีรหัสแนะนำ unMineable ของ CashPilot ซึ่งลดค่าธรรมเนียมแพลตฟอร์มจาก 1% เหลือ 0.75% ค่าไฟอาจสูงกว่ารายได้ที่ได้"
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "ขุดด้วย CPU และรับเงินเป็นเหรียญที่เลือก"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "เหรียญที่รับเงิน"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "ที่อยู่รับเงิน"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "ชื่อเวิร์กเกอร์"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "เธรด CPU สูงสุด (%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "โหมด RandomX"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "สัญลักษณ์ของเหรียญที่ unMineable จ่าย เช่น SHIB, DOGE หรือ XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "ที่อยู่สาธารณะสำหรับเหรียญนั้น ไม่รองรับเหรียญที่ต้องใช้ memo หรือ tag"
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "ประมาณการรวมก่อนหักค่าไฟ จ่ายเป็นเหรียญที่เลือกตามอัตราแปลงของ unMineable เมื่อ 2026-11-25 RandomX 1 kH/s มีมูลค่าประมาณ $1 ต่อเดือน CPU เดสก์ท็อปที่ใช้เธรดครึ่งหนึ่งอาจใช้ไฟเพิ่ม 30 ถึง 50 W ตรวจสอบการใช้งานจริงและค่าไฟเพื่อดูว่าคุ้มหรือไม่"
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "unMineable กำหนดต่อเหรียญ (0.03 XMR เมื่อ 2026-11-26)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "เมื่อถึงเกณฑ์การจ่ายเงินของเหรียญ"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "unMineable จ่ายเงินเข้าที่อยู่เมื่อยอดคงเหลือถึงเกณฑ์การจ่ายเงินของเหรียญ เกณฑ์แตกต่างกันตามเหรียญและเครือข่าย CashPilot จะอ่านเกณฑ์ที่ unMineable รายงานสำหรับที่อยู่นี้"
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "ยอดคงเหลือคือรายได้ที่ได้มาแล้วแต่ยังไม่ได้รับ จนกว่า unMineable จะจ่ายเข้าที่อยู่นี้ เชนขึ้นอยู่กับเหรียญที่เลือก"
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "ที่อยู่รับเงินและสัญลักษณ์เหรียญเดียวกับที่ใช้ติดตั้งใช้งานเครื่องขุด เช่น <b>XMR</b> ป้อนเฉพาะที่อยู่ โดยไม่มีเหรียญ ชื่อเวิร์กเกอร์ หรือรหัสแนะนำ ที่อยู่นี้เป็นสาธารณะและใช้เข้าถึงเงินไม่ได้"
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "0.25% ของรางวัลการขุดของเครื่องขุดที่ได้รับการแนะนำแต่ละราย"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "ค่าธรรมเนียมแพลตฟอร์มลดจาก 1% เหลือ 0.75%"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "เครื่องนี้รายงานว่าใช้การเชื่อมต่อแบบโฮสติ้ง ตรวจสอบข้อกำหนดของผู้ให้บริการก่อนขุด ผู้ให้บริการบางราย รวมถึง Hetzner Cloud ห้ามการขุด ตรวจสอบค่าไฟจริงก่อนเชื่อถือประมาณการกำไร"
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "unMineable เก็บค่าธรรมเนียมแพลตฟอร์ม 1% CashPilot เติมรหัสแนะนำ (#awk6-j1z0) ต่อท้ายชื่อเวิร์กเกอร์ทุกตัว ซึ่งลดค่าธรรมเนียมเหลือ 0.75% จากนั้น unMineable จะจ่าย 0.25% ของรางวัลการขุดให้ผู้ดูแล CashPilot ส่วนผู้ขุดได้ 99.25% แต่ละเหรียญมีเกณฑ์การจ่ายเงินของตนเอง เช่น 0.03 XMR"
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "การประมวลผล"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "ไม่ เครื่องขุดส่งงานไปยังพูลของ unMineable"
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "ที่อยู่รับเงิน เหรียญ ชื่อเวิร์กเกอร์ อัตราแฮช และที่อยู่ IP จะส่งไปยัง unMineable"
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "เครือข่ายและตัวแปลง DNS บางแห่งบล็อกการเชื่อมต่อกับพูลขุด"
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "ไม่ต้องมีบัญชี ที่อยู่และเหรียญคือข้อมูลระบุตัวตน และทุกคนอ่านสถิติได้ที่ unmineable.com"
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "unMineable เก็บค่าธรรมเนียมแพลตฟอร์ม 0.75% เมื่อใช้รหัสแนะนำ และจ่ายเงินเฉพาะเมื่อถึงเกณฑ์ของแต่ละเหรียญ"
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "ผู้ให้บริการโฮสติ้งบางรายห้ามการขุดคริปโต"
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "ค่าไฟที่เพิ่มขึ้นอาจสูงกว่ามูลค่าเหรียญที่ได้"
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "สถิติของที่อยู่ รวมถึงยอดคงเหลือ เปิดเผยต่อทุกคนที่รู้ที่อยู่นั้น"
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "เครื่องขุดส่งแฮชไปยังพูลและไม่ได้ส่งต่อทราฟฟิกของผู้อื่น"
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "ขุดเข้าที่อยู่สาธารณะเป็นเหรียญที่เลือกได้โดยไม่ต้องสร้างบัญชี"
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock เป็นแพลตฟอร์ม DePIN (Decentralized Physical Infrastructure Network) ที่ให้รับคริปโตจากการแชร์การเชื่อมต่ออินเทอร์เน็ต เป็นส่วนหนึ่งของระบบนิเวศ Web3 ที่กว้างกว่า มีอิมเมจ Docker จากชุมชนแต่ไม่มีอิมเมจทางการ ส่วนขยายเบราว์เซอร์เป็นอินเทอร์เฟซหลัก\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "แชร์อินเทอร์เน็ต DePIN - จ่ายเป็นคริปโต ส่วนขยายเบราว์เซอร์เป็นหลัก"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "รายได้เป็นคริปโต/โทเค็น ไม่มีอิมเมจ Docker อย่างเป็นทางการ — ส่วนขยายเบราว์เซอร์เป็นไคลเอนต์หลัก"
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "โทเค็น UPT ถอนเข้ากระเป๋าเงิน Solana ได้ตั้งแต่ 250 UPT โดยต้องเปิดการยืนยันตัวตนสองขั้นตอน มีค่าธรรมเนียมการถอน"
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "ศูนย์ช่วยเหลือของ UpRock ระบุว่าการถอนเป็นโทเค็น UPT เข้ากระเป๋าเงิน Solana ขั้นต่ำ 250 UPT"
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "รางวัลเป็นโทเค็น UPT ผู้รีวิวและรีวิวจากบุคคลที่สามระบุว่ามีมูลค่าต่ำมาก"
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "CashPilot ไม่ได้เรียกใช้ UpRock ต้องใช้แอปหรือส่วนขยายของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork เป็นเครือข่าย VPN และแชร์แบนด์วิดท์แบบกระจายศูนย์ สร้างรายได้จากการให้แบนด์วิดท์ในฐานะผู้ให้บริการในชุมชน ไบนารีของผู้ให้บริการยืนยันตัวตนด้วยอีเมลและรหัสผ่านบัญชี (คำสั่งย่อย auth-provide) และเก็บ JWT ของเซสชันที่ได้ไว้ในวอลุ่มข้อมูล อิมเมจ Docker อย่างเป็นทางการจาก BringYour, Inc.\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "VPN/แบนด์วิดท์แบบกระจายศูนย์ - ยืนยันตัวตนด้วยอีเมล+รหัสผ่าน เซสชัน JWT ในวอลุ่ม"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "อีเมล"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "รหัสผ่าน"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "อีเมลบัญชี URnetwork (ที่ใช้เข้าสู่ระบบ <a href=\"https://ur.io\" target=\"_blank\">ur.io</a>) บัญชีที่สร้างด้วยการเข้าสู่ระบบผ่าน Google/Apple ต้องตั้งรหัสผ่านก่อน ยังไม่มีบัญชีใช่ไหม สมัครที่ <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a>"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "รหัสผ่านบัญชี URnetwork (ไม่มีช่องว่าง) ใช้สำหรับการเข้าสู่ระบบ auth-provide ของผู้ให้บริการ จากนั้นเซสชันจะเก็บไว้ในวอลุ่มข้อมูล"
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "ใช้ได้บน VPS และ IP ที่อยู่อาศัย จ่ายเป็น SN25α (Bittensor subnet 25) ต่อรอบ Epoch รายสัปดาห์ตั้งแต่ 2026-10-06 รองรับโหมดพร็อกซีสำหรับการตั้งค่าหลาย IP"
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "ตามรอบ Epoch"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "ตั้ง coldkey ของ Bittensor ที่ ur.io/app/account/earnings (ลงนามด้วย Talisman, TAO.com หรือกระเป๋าเงิน WalletConnect) แล้วเคลมแต่ละรอบ Epoch ที่สิ้นสุดแล้ว การเคลมจ่ายค่าแก๊สเป็น TAO จากคีย์แก๊ส EVM รอบ Epoch ที่ไม่ได้เคลมจะหมดอายุ และการจ่ายเงิน USDC แบบเดิมถูกยกเลิกเมื่อไม่ได้ผูกกระเป๋าเงินภายใน 30 วัน"
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "ข้อมูล UR ฟรี 3 GiB ต่อวันต่อเพื่อนหนึ่งคน สูงสุด 20 คน (เป็นข้อมูล ไม่ใช่เงิน)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "ข้อมูล UR ฟรี 3 GiB ต่อวัน เมื่อใช้งานผ่านแอปอย่างน้อย 10 MiB ใน 2 วัน ภายใน 90 วันหลังเข้าร่วม มิฉะนั้นการแนะนำจะสิ้นสุด"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "รอบ Epoch ที่ไม่ได้เคลมจะหมดอายุ และการจ่ายเงิน USDC แบบเดิมถูกยกเลิกสำหรับเครือข่ายที่ไม่ได้ผูกกระเป๋าเงินภายใน 30 วัน"
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "ตั้งแต่ตุลาคม 2026 รางวัลจ่ายเป็น SN25α ซึ่งเป็นโทเค็นของ subnet บน Bittensor และการเคลมแต่ละครั้งเสียค่าแก๊สเป็น TAO"
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "URnetwork เดิมชื่อ BringYour เอกสาร whitepaper ที่เก็บถาวรไว้ยังใช้ชื่อเดิม"
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "URnetwork เผยแพร่ซอร์สโค้ดของไคลเอนต์ผู้ให้บริการ"
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "URnetwork เผยแพร่อิมเมจ Docker ของตนเอง คือ bringyour/community-provider และใช้ได้บน VPS และการเชื่อมต่อแบบที่อยู่อาศัย"
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "การเคลมต้องการเพียงกระเป๋าเงิน Bittensor ที่ควบคุมเอง"
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai เป็นตลาด GPU บนคลาวด์ที่ปล่อยเช่า GPU NVIDIA ให้นักวิจัยและนักพัฒนาด้าน AI/ML เป็นแพลตฟอร์มที่ใช้ Docker เป็นหลักและตั้งราคารายชั่วโมงเองได้ RTX 3090 โดยทั่วไปได้ $0.20-0.40/ชม. เมื่อมีผู้เช่า ต้องใช้ GPU NVIDIA ที่มีไดรเวอร์รุ่นใหม่และการเชื่อมต่ออินเทอร์เน็ตที่เสถียร รายได้ขึ้นอยู่กับรุ่น GPU กลยุทธ์การตั้งราคา และความต้องการของตลาดเป็นอย่างมาก\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "ตลาด GPU - ตั้งราคาเอง, RTX 3090 ~$0.20-0.40/ชม."
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "คีย์ API"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "คีย์ API ของโฮสต์ Vast.ai จากแดชบอร์ด"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "RTX 3090 ~$0.20-0.40/ชม., RTX 4090 ~$0.40-0.80/ชม. เมื่อมีผู้เช่า อัตราการใช้งานแตกต่างกัน ต้องใช้ GPU NVIDIA โฮสต์ Linux, Docker และ nvidia-container-toolkit ตั้งราคาเองได้"
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "รายสัปดาห์ (วันศุกร์)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "รายได้สะสมในยอดคงเหลือ Vast.ai ถอนผ่าน Wise, PayPal หรือ Stripe"
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "3% ของยอดที่ผู้เช่าที่ได้รับการแนะนำใช้จ่าย ตลอดอายุบัญชีของเขา เป็นเครดิตการแนะนำ ถอนเป็นเงินได้สูงสุด 75% จากบัญชีการแนะนำโดยเฉพาะ"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "โฮสต์มีรายได้เฉพาะขณะมีผู้เช่า และตัวเลขของ Vast เองสำหรับ GPU ทั่วไปขึ้นอยู่กับประเภทการเช่าและคะแนนความน่าเชื่อถือ"
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Vast.ai ต้องติดตั้งซอฟต์แวร์โฮสต์ของ Vast บนเครื่อง GPU ของตนเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ Vast สร้างระบบโฮสต์โดยใช้ Docker บนโฮสต์ Linux"
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Vast ระบุว่าอัตราที่โฮสต์ตั้งไว้คืออัตราที่ได้รับจริง โดยไม่หักค่าธรรมเนียม"
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "จ่ายเงินผ่าน Wise, PayPal หรือ Stripe ตั้งแต่ขั้นต่ำ $20 ออกใบแจ้งหนี้รายสัปดาห์ ยอดที่น้อยกว่าจะยกไปสัปดาห์ถัดไป"
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter เป็นแพลตฟอร์มแชร์แบนด์วิดท์ที่มีให้ใช้บน Windows, Mac, Linux และ Android อ้างว่าจ่ายสูงสุด $1/GB ของแบนด์วิดท์ที่แชร์ โดยมีเกณฑ์จ่ายเงินขั้นต่ำ $20 แพลตฟอร์มทำงานคล้ายแอปแชร์แบนด์วิดท์ทั่วไป โดยส่งทราฟฟิกที่ถูกกฎหมายผ่านการเชื่อมต่อแบบที่อยู่อาศัย\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "แชร์แบนด์วิดท์ - อ้างว่าได้สูงสุด $1/GB จ่ายขั้นต่ำ $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "อ้างว่าได้สูงสุด $1/GB แต่รายได้จริงต่ำกว่านั้น จ่ายขั้นต่ำ $20 รายได้แตกต่างกันมากตามตำแหน่งที่ตั้งและความต้องการ"
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "เมื่อร้องขอ"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "Wipter ไม่มีแดชบอร์ดเว็บ เปิดแอป Wipter บนเดสก์ท็อปหรือโทรศัพท์ เข้าสู่ระบบ และขอจ่ายเงินในแอปเมื่อยอดคงเหลือถึง $20 Wipter จ่ายเป็น USDT บน BNB Smart Chain (BEP20) เท่านั้น เข้ากระเป๋าเงินที่ตั้งไว้ในส่วน Payments ของแอป ไม่มีตัวเลือก PayPal"
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "10% ของรายได้จากทราฟฟิกของผู้ที่ได้รับการแนะนำ เมื่อเขาถึงขั้นต่ำการจ่ายเงิน ไม่จำกัดจำนวนเพื่อนที่แนะนำ"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "โบนัสสมัคร $5"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "CashPilot ไม่ได้เรียกใช้ Wipter ต้องใช้แอปเดสก์ท็อปหรือแอปโทรศัพท์ของผู้ให้บริการเอง CashPilot จึงติดตั้งใช้งานหรืออัปเดตให้ไม่ได้ ยังไม่ได้ตรวจสอบข้อกำหนดเรื่องคอนเทนเนอร์"
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "ขุด Monero ด้วย CPU CashPilot เรียกใช้ XMRig และพูลที่เลือกจะจ่าย Monero เข้าที่อยู่รับเงินสาธารณะ XMRig ใช้ 1% ของเวลาแฮชเพื่อสนับสนุนผู้พัฒนา ค่าไฟอาจสูงกว่ามูลค่า XMR ที่ได้"
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "ขุด Monero ด้วย CPU และพูลที่เลือก"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "ที่อยู่ Monero"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "พูล"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "ชื่อเวิร์กเกอร์"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "เธรด CPU สูงสุด (%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "โหมด RandomX"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "ประมาณการรวมก่อนหักค่าไฟ เมื่อ 2026-11-25 1 kH/s มีมูลค่าประมาณ $1 ต่อเดือน ตามราคา XMR และความยากของเครือข่ายที่สังเกตได้ CPU เดสก์ท็อปที่ใช้เธรดครึ่งหนึ่งอาจใช้ไฟเพิ่ม 30 ถึง 50 W ตรวจสอบการใช้งานจริงและค่าไฟเพื่อดูว่าคุ้มหรือไม่"
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR (MoneroOcean หลังจากลดเกณฑ์แล้ว)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "เมื่อถึงเกณฑ์ของพูล"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "พูลจ่ายเงินเข้าที่อยู่ Monero เมื่อยอดคงเหลือถึงเกณฑ์ พูลจะเก็บยอดคงเหลือไว้จนกว่าจะจ่าย"
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "เครื่องนี้รายงานว่าใช้การเชื่อมต่อแบบโฮสติ้ง ตรวจสอบข้อกำหนดของผู้ให้บริการก่อนขุด ผู้ให้บริการบางราย รวมถึง Hetzner Cloud ห้ามการขุด ตรวจสอบค่าไฟจริงก่อนเชื่อถือประมาณการกำไร"
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "MoneroOcean ซึ่งเป็นพูลค่าเริ่มต้น เก็บค่าธรรมเนียมการขุด 0% เกณฑ์การจ่ายเงินค่าเริ่มต้นคือ 0.3 XMR และลดได้ถึง 0.003 XMR การจ่ายเงินที่ต่ำกว่า 4 XMR อาจมีค่าใช้จ่ายสูงสุด 0.0004 XMR พูลอื่นกำหนดอัตราและเกณฑ์ของตนเอง"
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "การประมวลผล"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "ไม่ เครื่องขุดส่งงานไปยังพูลขุด"
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "ที่อยู่ Monero ชื่อเวิร์กเกอร์ และที่อยู่ IP จะส่งไปยังพูล"
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "เครือข่ายและตัวแปลง DNS บางแห่งบล็อกการเชื่อมต่อกับพูลขุด"
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "พูล Monero ส่วนใหญ่ระบุตัวผู้ใช้จากที่อยู่รับเงินสาธารณะ"
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "การจ่ายเงินต้องมี XMR มากพอให้ถึงเกณฑ์ของพูล"
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "ผู้ให้บริการโฮสติ้งบางรายห้ามการขุดคริปโต"
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "ค่าไฟที่เพิ่มขึ้นอาจสูงกว่ามูลค่า XMR ที่ได้"
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "เครื่องขุดส่งแฮชไปยังพูลและไม่ได้ส่งต่อทราฟฟิกของผู้อื่น"
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "เครื่องขุดเป็นโอเพนซอร์ส และอิมเมจตรึงรุ่นต้นทางที่ลงนามแล้ว"
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "ขุดด้วยที่อยู่ Monero สาธารณะได้โดยไม่ต้องเปิดเผยชื่อตัวเอง"
+  source: "752cbb728aac"

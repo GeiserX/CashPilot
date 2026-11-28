@@ -30,9 +30,12 @@ A tag matches by language first, then region: ``es-MX`` gets ``es``,
 from __future__ import annotations
 
 import contextvars
+import functools
 import hashlib
 import json
+import math
 import re
+from collections.abc import Awaitable, Callable
 from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
@@ -213,12 +216,62 @@ def from_request(request: Any, saved: str | None = None) -> str:
     return resolve(saved, request.cookies.get(COOKIE), request.headers.get("accept-language"))
 
 
-_current: contextvars.ContextVar[str] = contextvars.ContextVar("cashpilot_locale", default=SOURCE)
+_current: contextvars.ContextVar[str | None] = contextvars.ContextVar("cashpilot_locale", default=None)
+#: The language of what CashPilot writes with no request behind it: alerts, the
+#: bell, and the ntfy, Telegram and webhook pushes. It follows the owner: the
+#: language of the owner's last page, kept under BACKGROUND_KEY in the config table.
+_background = SOURCE
+BACKGROUND_KEY = "_background_locale"
 
 
 def current() -> str:
-    """The locale of the request being served (English outside one)."""
-    return _current.get()
+    """The locale of the request being served; outside one, the background locale."""
+    return _current.get() or _background
+
+
+def background() -> str:
+    return _background
+
+
+def set_background(locale: str) -> bool:
+    """Make ``locale`` the language of text written outside a request. True when that changed it."""
+    global _background
+    chosen = locale if locale in NAMES else SOURCE
+    changed = chosen != _background
+    _background = chosen
+    return changed
+
+
+def detached() -> contextvars.Context:
+    """A copy of the current context with no request locale.
+
+    Work that a request starts but that outlives it (a collection, a push)
+    writes background text, so it must not keep the language of the request
+    that happened to start it.
+    """
+    ctx = contextvars.copy_context()
+    ctx.run(_current.set, None)
+    return ctx
+
+
+def owner_text[T](fn: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+    """Run an async function that writes alerts in the background language.
+
+    An alert is for the owner, whichever request raises it: a worker's
+    heartbeat, a deploy, a restore. The request keeps its own language for its
+    response, because API clients (the MCP server, Desktop's server join) send
+    no language and match on the English of an error.
+    """
+
+    @functools.wraps(fn)
+    async def run(*args: Any, **kwargs: Any) -> T:
+        token = _current.set(None)
+        try:
+            return await fn(*args, **kwargs)
+        finally:
+            _current.reset(token)
+
+    return run
 
 
 def use(locale: str) -> None:
@@ -432,6 +485,15 @@ class _Parser:
         return (kind, name, options)
 
 
+def _count(value: Any) -> float:
+    """A plural's value as a number, as the browser reads it: not a finite number counts as 0."""
+    try:
+        count = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return count if math.isfinite(count) else 0.0
+
+
 @lru_cache(maxsize=4096)
 def parse(text: str) -> tuple:
     """A message as a tree of literal strings and argument tuples. Raises ValueError."""
@@ -453,15 +515,13 @@ def _render(parts: tuple | list, params: dict[str, Any], locale: str, number: An
             value = params.get(name)
             chosen = None
             if kind == "plural":
-                try:
-                    count = float(value)
-                except (TypeError, ValueError):
-                    count = 0
-                exact = f"={int(count)}" if float(count).is_integer() else None
+                count = _count(value)
+                exact = f"={int(count)}" if count.is_integer() else None
                 chosen = options.get(exact) if exact else None
                 if chosen is None:
                     chosen = options.get(plural_category(locale, count))
-                inner_number = value
+                # The count as the browser writes it (String(Number(value))): 1.0 is "1".
+                inner_number = int(count) if count.is_integer() else count
             else:
                 chosen = options.get(str(value))
                 inner_number = number
@@ -474,6 +534,16 @@ def _render(parts: tuple | list, params: dict[str, Any], locale: str, number: An
 def format_message(text: str, params: dict[str, Any] | None = None, locale: str = SOURCE, *, html: bool = False) -> str:
     """Fill a message's arguments. With ``html``, the values are HTML-escaped."""
     return _render(parse(text), params or {}, locale, "", html)
+
+
+def join_and(items: list[str] | tuple[str, ...]) -> str:
+    """``items`` joined with the current locale's "and": "a and b", "a and b and c"."""
+    if not items:
+        return ""
+    text = str(items[0])
+    for item in items[1:]:
+        text = t("i18n.list_and", first=text, last=item)
+    return text
 
 
 def t(key: str, /, **params: Any) -> str:

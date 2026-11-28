@@ -181,8 +181,10 @@ def _m4b5_encrypted(content: str) -> str:
 
 
 M4B5_REFUSAL = (
-    "user-config.json is an encrypted money4band 5.0 file. Run `m4b config edit`, "
-    "copy the decrypted JSON it opens, and paste it here."
+    "user-config.json is an encrypted money4band 5.0 file. In your money4band folder, run "
+    "`config edit` with the release file for your system (for example "
+    "`./Money4Band-linux-amd64 config edit`), or `python run.py config edit` "
+    "from source. Copy the decrypted JSON it opens, and paste it here."
 )
 
 
@@ -208,7 +210,7 @@ class TestMoney4bandEncrypted:
     def test_an_encrypted_file_beside_a_plain_env_is_still_refused(self):
         content = _m4b5_encrypted((FIX / "money4band/user-config.json").read_text(encoding="utf-8"))
         files = [{"name": "user-config.json", "content": content + "\n"}, *_files("money4band/generated.env")]
-        with pytest.raises(parse.ImportRefused, match="m4b config edit"):
+        with pytest.raises(parse.ImportRefused, match="python run.py config edit"):
             _preview(files)
 
 

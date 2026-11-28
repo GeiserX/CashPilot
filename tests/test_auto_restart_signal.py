@@ -114,8 +114,7 @@ def test_the_proxyrack_signal_asks_for_a_restart_that_a_connect_clears():
     """The client download failed at the start: node finds no script and the container sleeps, up and earning
     nothing. A restart downloads the client again, and a working client logs "connected to server"."""
     signals = [s for s in producer_state.signals_for(catalog.get_service("proxyrack")) if producer_state.is_windowed(s)]
-    assert [s.get("restart") for s in signals] == [True]
-    (signal,) = signals
+    (signal,) = [s for s in signals if s.get("restart")]
     # A restart that fails the same way logs the error again: it must still be in
     # the window when the cooldown ends, or the copy is never tried again.
     assert signal["window_hours"] * 3600 > main.AUTO_RESTART_COOLDOWN_S

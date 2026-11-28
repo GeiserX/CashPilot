@@ -1,0 +1,2514 @@
+# Hindi translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/hi.yml --restamp '<key>'
+2miners-etc.description:
+  text: "2Miners आपके सार्वजनिक ETC भुगतान पते के लिए जो बिना भुगतान वाला Ethereum Classic बैलेंस रखता है, उसे ट्रैक करें। अपना खुद का माइनर चलाएँ और उसे पूल की ओर पॉइंट करें। CashPilot बैलेंस पढ़ता है और बैलेंस घटने पर आपसे भुगतान की पुष्टि करने को कहता है।\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "Ethereum Classic माइनिंग पूल, आपके भुगतान पते से ट्रैक किया जाता है"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC (बदला जा सकता है)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "पूल हर दो घंटे में आपकी भुगतान सीमा जाँचता है"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "आपकी चुनी हुई सीमा तक पहुँचते ही 2Miners आपके पते पर अपने-आप भुगतान करता है। ETC भुगतान की सबसे कम सीमा 0.1 ETC है।\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "बिना भुगतान वाला बैलेंस 2Miners पर जमा होता है। वॉलेट बैलेंस Ethereum Classic से अलग से पढ़ा जाता है। CashPilot में भुगतान की पुष्टि करने से पहले अपने वॉलेट में मिली राशि जाँच लें।\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "वह सार्वजनिक Ethereum Classic भुगतान पता डालें जो आपका माइनर 2Miners पर इस्तेमाल करता है, जो <b>0x</b> से शुरू होता है। कोई भी वर्कर नाम न जोड़ें।\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "2Miners की ओर पॉइंट किया गया ETCHash माइनर ज़रूरी है"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "कंप्यूट"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "नहीं। आपका माइनर माइनिंग का काम पूल को भेजता है।"
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "पूल आपके भुगतान पते, आपके चुने हुए वर्कर नामों और आपके माइनर के IP पते का इस्तेमाल करता है।"
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "कोई भी भुगतान पते से आँकड़े देख सकता है। सीमा बदलने के लिए पूल वर्कर IP की पुष्टि माँगता है।"
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "पूल 1% शुल्क लेता है और आपकी सीमा पूरी होने तक भुगतान रोक कर रखता है।"
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol (पहले ATOR) एक विकेंद्रीकृत ओनियन-रूटिंग प्राइवेसी नेटवर्क है। नोड ऑपरेटर रिले नोड चलाते हैं और दी गई बैंडविड्थ के बदले ANYONE टोकन कमाते हैं। इसे \"इनाम वाला Tor\" समझें। CashPilot इसे अपनी खुद की इमेज से चलाता है, जो प्रोजेक्ट के साइन किए गए Debian पैकेज से amd64 और arm64 के लिए बनाई जाती है। कॉन्फ़िगरेशन फ़ाइल से होता है, कंटेनर में माउंट की गई anonrc फ़ाइल के ज़रिए (Nickname, ContactInfo, ORPort आदि)। जब तक किसी रिले के लिए 100 ANYONE कम से कम 180 दिनों के लिए लॉक नहीं किए जाते, वह कुछ नहीं कमाता, और इनाम आपके वॉलेट में साइन करके क्लेम किए जाते हैं। रिले आपका सार्वजनिक IP नेटवर्क की रिले डायरेक्टरी में भी दर्ज करता है, जिससे उस IP की साख को नुकसान हो सकता है जिसके लिए आवासीय बैंडविड्थ ऐप भुगतान करते हैं।\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "विकेंद्रीकृत ओनियन रूटिंग - इनाम वाले Tor रिले नोड"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "रिले की ed25519 पहचान कुंजी। इसे मिटाने से रिले की साख खत्म हो जाती है और उसकी कमाई का इतिहास शून्य से फिर शुरू होता है।"
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "भुगतान तभी होता है जब प्रति रिले 100 ANYONE कम से कम 180 दिनों के लिए लॉक हों और आपके वॉलेट में साइन किया गया इनाम क्लेम हो। स्टेक के बिना रिले कुछ नहीं कमाता। स्टेक के साथ, कमाई दी गई बैंडविड्थ और अपटाइम पर निर्भर करती है।"
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "एपॉक के आधार पर"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "anonrc में ContactInfo के रूप में सेट करें, '@anon:0x...' उपसर्ग के साथ।"
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "कॉमा से अलग किए गए रिले फ़िंगरप्रिंट। कोई ऑनलाइन डैशबोर्ड इन्हें नहीं दिखाता। CashPilot जो रिले चलाता है, उसके लिए उसे चला रहे होस्ट पर <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> चलाएँ। हार्डवेयर रिले के लिए उसका Relay Control Panel <b>http://relayup.local</b> पर खोलें और Home पेज पर Fingerprint पढ़ें।\n"
+  source: "ffa5be0d4953"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "बैंडविड्थ, Anyone नेटवर्क (Tor का एक फ़ोर्क) में रिले के रूप में।"
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "हाँ। यह दूसरे लोगों का ट्रैफ़िक रिले करता है। आपका IP आखिरी हॉप होगा या नहीं, यह इस पर निर्भर है कि रिले को एग्ज़िट के रूप में कॉन्फ़िगर किया गया है या नहीं।"
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "रिले की सार्वजनिक पहचान कुंजी, आपका IP और पोर्ट, और अपटाइम के आँकड़े, सब डिज़ाइन के अनुसार नेटवर्क डायरेक्टरी में प्रकाशित होते हैं। अगर आप अपनी anonrc में ContactInfo सेट करते हैं, तो वह भी वहाँ प्रकाशित होती है और हमेशा के लिए सार्वजनिक रूप से इंडेक्स हो जाती है — यह आमतौर पर एक ईमेल पता होता है, इसलिए जब तक आप इसे सार्वजनिक न करना चाहें, इसे खाली छोड़ दें।"
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "वास्तविक। रिले ट्रैफ़िक आपके कनेक्शन के नाम दर्ज होता है। खास तौर पर एग्ज़िट रिले पर दुरुपयोग की शिकायतें आती हैं; कई घरेलू ISP इन्हें मना करते हैं।"
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "साइन अप करने के लिए कोई खाता नहीं है, इसलिए प्रति खाता सीमित करने के लिए कुछ नहीं है। कमाई के लिए फिर भी आपको एक Ethereum वॉलेट चाहिए जिसमें हर रिले के लिए 100 ANYONE कम से कम 180 दिनों के लिए लॉक हों, और इनाम पढ़ने के लिए CashPilot को रिले फ़िंगरप्रिंट चाहिए। प्रोजेक्ट प्रति-IP रिले सीमा प्रकाशित नहीं करता, और कैटलॉग भी कोई सीमा घोषित नहीं करता।"
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "जब तक किसी रिले के लिए 100 ANYONE कम से कम 180 दिनों के लिए लॉक न हों, वह कुछ नहीं कमाता, और हर इनाम क्लेम आपके वॉलेट में साइन किया जाता है।"
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "यह डिज़ाइन के अनुसार दूसरे लोगों का ट्रैफ़िक रिले करता है, बिना यह जाँचे कि वे कौन हैं; एग्ज़िट रिले पर दुरुपयोग की शिकायतें आती हैं।"
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "रिले की पहचान, IP और अपटाइम नेटवर्क डायरेक्टरी में प्रकाशित होते हैं, और आपकी सेट की गई कोई भी ContactInfo हमेशा के लिए सार्वजनिक रहती है।"
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "साइन अप करने के लिए कोई खाता नहीं है। रिले को बस एक वॉलेट चाहिए, कोई पहचान जाँच नहीं।"
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "रिले सॉफ़्टवेयर Tor का एक प्रकाशित फ़ोर्क है, Tor के लाइसेंस के तहत।"
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "CashPilot Anyone के प्रकाशित रिले सॉफ़्टवेयर से अपनी खुद की इमेज बनाता है, जिसके लिए किसी खाते की ज़रूरत नहीं होती।"
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping एक विकेंद्रीकृत नेटवर्क मॉनिटरिंग प्लेटफ़ॉर्म है जो नोड चलाने के लिए आपको भुगतान करता है। आपका नोड Bitping के ग्राहकों के लिए वेबसाइट मॉनिटरिंग, लेटेंसी टेस्टिंग और नेटवर्क गुणवत्ता जाँच करता है। आवासीय और VPS दोनों कनेक्शन पर काम करता है। Docker इमेज पहली बार शुरू होने पर BITPING_EMAIL और BITPING_PASSWORD environment variables से लॉग इन करती है (उसके अपने लॉग में \"Attempting login with environment variables\"), फिर सेशन को वॉल्यूम माउंट में सहेज लेती है ताकि रीस्टार्ट पर फिर से प्रमाणीकरण न करना पड़े।\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "बैंडविड्थ शेयरिंग - विकेंद्रीकृत नेटवर्क मॉनिटरिंग, VPS पर काम करता है"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "ईमेल"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "पासवर्ड"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "आपके Bitping खाते का ईमेल (<a href='https://app.bitping.com' target='_blank'>app.bitping.com</a> वाला ही लॉगिन)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "आपके Bitping खाते का पासवर्ड। नोड सेशन बनाने के लिए एक बार इस्तेमाल होता है, जो फिर डेटा वॉल्यूम में सहेजा रहता है।"
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "कमाई नेटवर्क की गुणवत्ता और आपकी लोकेशन से मॉनिटरिंग की माँग पर निर्भर करती है। VPS नोड स्वीकार किए जाते हैं।"
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "नोड की कमाई nodes.bitping.com पर रहती है; app.bitping.com API ग्राहकों का डैशबोर्ड है। निकासी सिर्फ़ SOL में होती है: बिना भुगतान वाला बैलेंस $0.05 से ज़्यादा होते ही अनुरोध में Solana पता टाइप करें, जिसे 24 घंटे के भीतर प्रोसेस किया जाता है। नए या खाली Solana वॉलेट में नेटवर्क के न्यूनतम रेंट के लिए पहले लगभग 0.001 SOL होना चाहिए।"
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "अब सिर्फ़ Solana, और पता सहेजा नहीं जाता बल्कि निकासी के समय टाइप किया जाता है।"
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "अपने Bitping खाते का ईमेल और पासवर्ड इस्तेमाल करें (<a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a> वाले ही)।"
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "अपना Bitping बैलेंस निकालें"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "12 महीने से ज़्यादा समय तक बिना क्लेम की गई कमाई Bitping ईमेल से 30 दिन का नोटिस देने के बाद ज़ब्त कर सकता है।"
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "nodes.bitping.com पर SOL निकासी का अनुरोध करें और अनुरोध में अपना Solana पता टाइप करें।"
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "निकासी Solana (SOL) में होती है, उस पते पर जिसे आप हर अनुरोध में टाइप करते हैं।"
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "Bitping की सहायता के अनुसार, नए और खाली Solana वॉलेट में निकासी तब तक विफल हो सकती है जब तक आप खुद उस वॉलेट में थोड़ा SOL न डाल दें।"
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "Bitping की सहायता के अनुसार सर्वर और Docker कंटेनर समर्थित हैं।"
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "निकासी के लिए बस अनुरोध में टाइप किया गया एक Solana पता चाहिए।"
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit एक बैंडविड्थ शेयरिंग सेवा है जो PayPal और Stripe से भुगतान करती है। कोई आधिकारिक Docker इमेज नहीं है; Windows डेस्कटॉप ऐप और Android ऐप ही क्लाइंट हैं। यह सेवा bytebenefit.io पर है -- पुराना bytebenefit.com डोमेन छोड़ दिया गया था और एक मार्केटप्लेस पर पार्क है, इसी वजह से इसे कभी यहाँ बंद के रूप में चिह्नित किया गया था।\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "बैंडविड्थ शेयरिंग - PayPal/Stripe भुगतान, डेस्कटॉप/Android ऐप"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "कोई Docker इमेज उपलब्ध नहीं। सिर्फ़ Windows डेस्कटॉप और Android ऐप।"
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "रेफ़रल ट्रैफ़िक की कमाई का 20%"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "$1 (10,000 Coins) स्वागत बोनस"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "ऐप की Google Play लिस्टिंग कहती है कि आपका ट्रैफ़िक Infatica के ग्राहकों के वेब-इंटेलिजेंस अनुरोधों के काम आता है, पर यह नहीं बताती कि वे कौन हैं या उनकी जाँच कैसे होती है।"
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "Android ऐप 17 महीने बाद अप्रैल 2026 में Google Play से हट गया।"
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "CashPilot ByteBenefit नहीं चलाता: आप प्रदाता का अपना ऐप इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Bytelixir आपकी इस्तेमाल न हुई इंटरनेट बैंडविड्थ शेयर करके निष्क्रिय आय कमाने देता है। सिर्फ़ Windows और Android समर्थित हैं — आधिकारिक FAQ कहता है कि कोई Linux या Docker क्लाइंट लाने की योजना नहीं है, iOS समर्थित नहीं है, और macOS उपलब्ध नहीं है। कमाई काफ़ी हद तक लोकेशन पर निर्भर करती है। ट्रैकिंग के लिए वेब डैशबोर्ड dash.bytelixir.com पर है। कोई Docker इमेज उपलब्ध नहीं।\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "बैंडविड्थ शेयरिंग - सिर्फ़ Windows + Android"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "सेशन कुकी"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "Remember Web कुकी"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "XSRF टोकन"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "<a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a> पर लॉग इन करें, F12 दबाएँ → Application → बाईं साइडबार में <b>Cookies</b> खोलें → उप-आइटम <code>https://dash.bytelixir.com</code> पर क्लिक करें → दाईं ओर की कुकी सूची में <code>bytelixir_session</code> ढूँढें → उसकी Value कॉपी करें (eyJ से शुरू होने वाला एक लंबा JWT)"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "उसी जगह (Cookies → <code>https://dash.bytelixir.com</code>) → <code>remember_web_...</code> नाम की कुकी ढूँढें → उसकी Value कॉपी करें (वैकल्पिक, सेशन की अवधि बढ़ाती है)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "उसी जगह → <code>XSRF-TOKEN</code> ढूँढें → उसकी Value कॉपी करें (वैकल्पिक)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "कमाई लोकेशन के अनुसार बदलती है ($2-50/माह)। कोई Docker इमेज नहीं। डेस्कटॉप ऐप या Android ऐप ज़रूरी है।"
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "सिर्फ़ क्रिप्टो। न्यूनतम राशि कॉइन पर निर्भर करती है: USDT $5, USDC $5, TON $8, LTC $10, ETH $40, BTC $250। हर अनुरोध में आप पता टाइप करते हैं। अनुरोध कामकाजी घंटों में, 24 घंटे के भीतर निपटाए जाते हैं।"
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "बैलेंस Bytelixir के पास रहता है; वॉलेट पता हर भुगतान अनुरोध में टाइप किया जाता है, कंटेनर पर कभी सहेजा नहीं जाता।"
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "<a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> पर <b>Remember Me पर टिक करके</b> लॉग इन करें, F12 दबाएँ → Application → बाईं साइडबार में <b>Cookies</b> खोलें → <code>https://dash.bytelixir.com</code> पर क्लिक करें, फिर तीन मान कॉपी करें: <b>bytelixir_session</b>, <b>remember_web_…</b> (इसी उपसर्ग से शुरू होने वाला लंबा वाला) और <b>XSRF-TOKEN</b>। अकेली सेशन कुकी कॉपी करने के लगभग दो घंटे बाद समाप्त हो जाती है, इसलिए उसी दोपहर डेटा संग्रह रुक जाता है; remember_web कुकी एक साल चलती है और वही इसे चालू रखती है।"
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "उनके मुनाफ़े का 50% जीवन भर"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "$1 स्वागत बोनस"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "सिर्फ़ क्रिप्टो, और न्यूनतम राशि कॉइन पर निर्भर करती है, USDT के लिए $5 से लेकर Bitcoin के लिए $250 तक।"
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "CashPilot Bytelixir नहीं चलाता: आप प्रदाता का अपना ऐप इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "Trustpilot पर 283 समीक्षाओं से इसकी रेटिंग 4.6 है, जिनमें ज़्यादातर क्रिप्टो भुगतान की तारीफ़ करती हैं; कुछ बताती हैं कि भुगतान नहीं पहुँचे।"
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "भुगतान के लिए बस अनुरोध में टाइप किया गया एक क्रिप्टो पता चाहिए।"
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai एक पीयर-टू-पीयर GPU मार्केटप्लेस है। आप NVIDIA GPU वाली एक Linux मशीन लिस्ट करते हैं, अपनी खुद की स्पॉट और ऑन-डिमांड कीमतें तय करते हैं, और किराएदार उस पर अपने खुद के Docker कंटेनर चलाते हैं। आपको सिर्फ़ उन मिनटों का भुगतान मिलता है जितने समय वह किराए पर रहती है, CLORE, BTC, USDT या USDC में। होस्टिंग के लिए Ubuntu 22.04 या नए (या HiveOS) पर एक x86_64 मशीन, चालू NVIDIA ड्राइवर और कम से कम 100 Mbps अपलोड और डाउनलोड चाहिए। AMD GPU समर्थित नहीं हैं।\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "GPU मार्केटप्लेस - NVIDIA GPU किराए पर दें, भुगतान CLORE, BTC या USD स्टेबलकॉइन में"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "भुगतान सिर्फ़ किराए वाले मिनटों का, आपकी तय की गई कीमत पर। रेंज का ऊपरी सिरा, $490, मिनट के हिसाब से लिस्ट किए गए एक RTX 4090 के लिए Clore की अपनी ऊपरी सीमा है ('up to ~$490/month'); छोटे कार्ड कम कमाते हैं और खाली पड़ा कार्ड कुछ नहीं कमाता। Clore हर किराए का 5% (ऑन-डिमांड) या 1.25% (स्पॉट) रखता है, और अगर किराएदार CLORE की जगह BTC, USDT या USDC में भुगतान करे तो 15% और।"
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "Account > Billing से अपने खुद के वॉलेट में निकालें: CLORE (ERC-20, न्यूनतम 200, शुल्क लगभग $0.50), BTC (न्यूनतम 0.0001, शुल्क 0.00005 BTC) या Ethereum या BNB Chain पर USDT/USDC (न्यूनतम $10, शुल्क $1)।"
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "आपके निकालने तक Clore बैलेंस अपने पास रखता है (CLORE, BTC और USDT/USDC के लिए एक USD बैलेंस)। चेन हर निकासी के लिए चुनी जाती है: CLORE के लिए Ethereum, BTC के लिए Bitcoin, USDT/USDC के लिए Ethereum या BNB Chain।"
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "आपके रेफ़र किए गए होस्ट और किराएदारों के चुकाए प्लेटफ़ॉर्म शुल्क का 15% (स्टैंडर्ड स्तर), हर किराए पर; कोड कभी समाप्त नहीं होता; भुगतान किराए की मुद्रा में (CLORE, BTC या USD)"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "100 Mbps अपलोड और डाउनलोड"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "आपकी मशीन पर GPU कंप्यूट समय।"
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "हाँ। किराएदार आपकी मशीन पर अपने खुद के Docker कंटेनर चलाते हैं, और उनका ट्रैफ़िक आपके कनेक्शन से निकलता है; SSH और एप्लिकेशन पोर्ट इंटरनेट पर फ़ॉरवर्ड किए जाते हैं।"
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "Clore की प्राइवेसी नीति में खाते का डेटा और आपका IP पता अनुमानित लोकेशन के साथ शामिल है; पहचान दस्तावेज़ सिर्फ़ तब, जब Clore KYC माँगे।"
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "इनबाउंड पोर्ट इंटरनेट से पहुँचने लायक होने चाहिए (डिफ़ॉल्ट रूप से 22, 8080 और 3000-4000) और अनजान लोगों के वर्कलोड आपकी लाइन पर चलते हैं। Clore की अपनी नेटवर्क गाइड कहती है कि कुछ ISP होस्टिंग को ब्लॉक करते हैं।"
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "18 या उससे ज़्यादा उम्र, किसी प्रतिबंधित देश में नहीं। Clore पूरी तरह अपने विवेक से खाता निलंबित या बंद कर सकता है, और प्रतिबंधित इस्तेमाल पर रकम गँवानी पड़ सकती है।"
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "न शर्तें और न प्राइवेसी नीति किसी कानूनी इकाई का नाम बताती हैं, और शर्तें लागू क्षेत्राधिकार को किसी बाद के संस्करण पर छोड़ देती हैं।"
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Clore पूरी तरह अपने विवेक से खाता निलंबित या बंद कर सकता है, और प्रतिबंधित इस्तेमाल पर रकम ज़ब्त हो सकती है।"
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "भुगतान सिर्फ़ क्रिप्टो में (CLORE, BTC, USDT या USDC), और अगर किराएदार BTC, USDT या USDC में भुगतान करे तो Clore किराए का अतिरिक्त 15% लेता है, जब तक होस्ट इसे कम करने के लिए CLORE लॉक न करे।"
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "होस्ट को सिर्फ़ किराए वाले मिनटों का भुगतान मिलता है, और RTX 4090 के लिए Clore का आँकड़ा एक कार्ड की ऊपरी सीमा है (\"up to ~$490/month\")।"
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "बुनियादी इस्तेमाल के लिए KYC नहीं चाहिए, लेकिन बड़ी निकासी या अनुपालन मामलों में Clore पहचान सत्यापन माँग सकता है।"
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "किराएदार आपकी मशीन पर कोई भी सार्वजनिक Docker इमेज चलाते हैं। शर्तों में मना किए गए इस्तेमाल लिखे हैं (मैलवेयर, DDoS, CSAM और अन्य), लेकिन हमें इसका कोई विवरण नहीं मिला कि किराएदारों की जाँच कैसे होती है।"
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "CashPilot Clore.ai नहीं चलाता: आप Clore का होस्टिंग एजेंट अपनी खुद की GPU मशीन पर इंस्टॉल करते हैं (Ubuntu 22.04 या नया, या HiveOS), इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता।"
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "जब किराएदार CLORE में भुगतान करता है, तो Clore ऑन-डिमांड किराए का 5% (स्पॉट पर 1.25%) रखता है, बिना किसी अतिरिक्त शुल्क के।"
+  source: "699adf0a2179"
+dawn.description:
+  text: "DAWN एक वैलिडेटर नेटवर्क चलाता है जो DAWN प्रोटोकॉल के ज़रिए फ़ंड किए गए AI इंफ्रास्ट्रक्चर के लिए बैंडविड्थ और कवरेज की जाँच करता है। DAWN Validator ब्राउज़र एक्सटेंशन इन proof-of-bandwidth और कवरेज जाँचों में हिस्सा लेता है और चलते समय DAWN इनाम कमाता है। इन इनामों का अभी कोई तय नकद मूल्य नहीं है। एक्सटेंशन में खाता बनाएँ और पूछे जाने पर रेफ़रल कोड 2QLQV97F डालें।\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "DePIN वैलिडेटर - ब्राउज़र एक्सटेंशन DAWN पॉइंट कमाता है"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "टोकन लॉन्च से पहले Dawn Points कमाता है। असली मूल्य भविष्य की टोकन कीमत पर निर्भर करता है। हार्डवेयर बॉक्स ब्राउज़र एक्सटेंशन से ज़्यादा कमाता है।"
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "टोकन एयरड्रॉप (घोषणा बाकी)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "एक्सटेंशन काम करता है पर अधूरा है। Black Box हार्डवेयर की घोषणा हुई है। आगे देखें।"
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "एक्सटेंशन पॉइंट कमाता है; अक्टूबर 2026 तक नोड ऑपरेटरों को टोकन वितरण की पुष्टि नहीं हुई थी।"
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "जब तक कोई टोकन लॉन्च न हो और उसके रूपांतरण की घोषणा न हो, पॉइंट का कोई तय मूल्य नहीं है।"
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "CashPilot Dawn नहीं चलाता: आप प्रदाता का अपना ब्राउज़र एक्सटेंशन इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network एक विकेंद्रीकृत VPN और web3 इंफ्रास्ट्रक्चर प्रोजेक्ट है। मुख्य रूप से इसके लिए मालिकाना Deeper Connect हार्डवेयर डिवाइस चाहिए। Moken इससे जुड़ा माइनिंग/स्टेकिंग प्लेटफ़ॉर्म है। सिर्फ़ सॉफ़्टवेयर से नहीं चलता।\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "विकेंद्रीकृत VPN - मालिकाना हार्डवेयर डिवाइस ज़रूरी"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "Deeper Connect हार्डवेयर ($200-500) ज़रूरी है। माइनिंग/स्टेकिंग के लिए Moken प्लेटफ़ॉर्म। सिर्फ़ सॉफ़्टवेयर से नहीं चलता।"
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "लगातार"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "डिवाइस की बिक्री पर कमीशन"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "कूपन SERGIO से Deeper Connect डिवाइस पर 5% छूट"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "माइनिंग इनाम DPR में मिलते हैं और एक क्रेडिट स्कोर पर निर्भर करते हैं जो धीरे-धीरे या DPR स्टेक करके बढ़ता है।"
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "CashPilot Deeper Network नहीं चलाता: आप प्रदाता का अपना राउटर हार्डवेयर इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "Bright Data का EarnApp आपको निष्क्रिय आय के लिए अपनी इस्तेमाल न हुई बैंडविड्थ बेचने देता है। Bright Data दुनिया का सबसे बड़ा प्रॉक्सी नेटवर्क है, जो Fortune 500 कंपनियों के लिए डेटा संग्रह चलाता है। CashPilot इसे अपनी खुद की इमेज से चलाता है, जो पहली बार शुरू होने पर Bright Data के CDN से पिन किया गया EarnApp बिल्ड डाउनलोड करती है, उसका sha256 जाँचती है और उसे सिर्फ़ एक UUID के साथ lite मोड में चलाती है।\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "बैंडविड्थ शेयरिंग - Bright Data समर्थित"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "नोड UUID"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "आपकी EarnApp नोड ID: sdk-node- के बाद 32 छोटे अक्षरों वाले hex वर्ण, जैसे 'earnapp showid' दिखाता है। डिप्लॉय करने के बाद, EarnApp में साइन इन रहते हुए https://earnapp.com/r/ के बाद यह UUID लगाकर बना पता खोलकर इसे एक बार लिंक करें; बिना लिंक वाला नोड कमाता है, पर आपके बैलेंस तक कुछ नहीं पहुँचता"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "EarnApp बार-बार अपने सर्वरों तक पहुँचने में विफल होकर रीस्टार्ट हो रहा है, इसलिए यह बहुत कम या कुछ नहीं कमाता। इस कॉपी को रीस्टार्ट करें; अगर ऐसा होता रहे, तो इस मशीन का इंटरनेट कनेक्शन जाँचें।"
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "नोड को अपने खाते में जोड़ने के लिए EarnApp में साइन इन रहते हुए यह लिंक खोलें। जब तक आप ऐसा नहीं करते, नोड कमाता है पर आपके बैलेंस तक कुछ नहीं पहुँचता।"
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "लोकेशन पर बहुत ज़्यादा निर्भर। US/EU IP सबसे ज़्यादा कमाते हैं। कमाई इस्तेमाल हुई बैंडविड्थ के साथ बढ़ती है।"
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "अनुरोध पर (ऑटो-रिडीम उपलब्ध: PayPal न्यूनतम $10, Wise न्यूनतम $10, Amazon न्यूनतम $50)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "एक बार ऑटो-रिडीम चालू करें और बैलेंस तरीके की न्यूनतम राशि तक पहुँचते ही EarnApp खुद भुगतान करता है: PayPal $10, Wise $10, Amazon $50। PayPal भुगतान Bright Data Ltd. की ओर से आते हैं। अक्टूबर 2026 में एक PayPal भुगतान रिडीम किए गए बैलेंस से लगभग 2% कम आया।"
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "बैलेंस EarnApp के पास रहता है; Amazon/Wise/PayPal में रिडीम होता है।"
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "<a href='https://earnapp.com' target='_blank'>earnapp.com</a> पर लॉग इन करें, F12 दबाएँ → Application → Cookies, <b>oauth-refresh-token</b> का मान कॉपी करें।"
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "उनकी कमाई का 10% जीवन भर, उनकी कमाई के ऊपर से दिया जाता है"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "EarnApp का सहायता केंद्र कहता है कि इसे Docker कंटेनर, वर्चुअल मशीन, होस्टिंग सेवाओं या होम सर्वर में इंस्टॉल करना सख्त मना है, और CashPilot इसे इसी तरह चलाता है।"
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "वही सहायता लेख कहता है कि इस तरह चलता पाया गया खाता बिना सूचना के बंद कर दिया जाता है और उसके बाकी भुगतान रद्द कर दिए जाते हैं।"
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "हमारा PayPal भुगतान अक्टूबर 2026 में आया, रिडीम किए गए बैलेंस से लगभग 2% कम।"
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "PayPal और Wise के लिए न्यूनतम $10, और ऑटो-रिडीम जो खुद भुगतान कर देता है।"
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "EarnApp, Bright Data का है, और इसके PayPal भुगतान एक नामित कंपनी Bright Data Ltd. की ओर से आते हैं।"
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Earn.fm आपकी इंटरनेट बैंडविड्थ शेयर करने के लिए आपको भुगतान करता है। कमाई कलेक्टर Supabase के ज़रिए ईमेल/पासवर्ड प्रमाणीकरण इस्तेमाल करता है। हल्की Docker इमेज, सीधा-सादा डिप्लॉयमेंट (Docker क्लाइंट एक अलग UUID टोकन इस्तेमाल करता है)।\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "बैंडविड्थ शेयरिंग - ईमेल/पासवर्ड प्रमाणीकरण, हल्का क्लाइंट"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "API कुंजी"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "<a href=\"https://app.earn.fm\">app.earn.fm</a> पर लॉग इन करें → अपने प्रोफ़ाइल आइकन पर क्लिक करें (ऊपर दाईं ओर) → Account Settings → API Key कॉपी करें (UUID फ़ॉर्मेट)"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "अपेक्षाकृत नया प्लेटफ़ॉर्म। कमाई लोकेशन और बैंडविड्थ उपलब्धता के अनुसार बदलती है।"
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "न्यूनतम $15। तरीके: BEP20 या Polygon पर USDT ($1 शुल्क) या TRC20 ($3 शुल्क), PayPal, $15 से Amazon या Starbucks गिफ़्ट कार्ड, या $1,000 से बैंक वायर, ट्रांसफ़र शुल्क काटकर। पहले भुगतान से पहले आप एक बिलिंग प्रोफ़ाइल (कानूनी नाम और पता) भरते हैं, जो भुगतान रसीदों के लिए इस्तेमाल होती है।"
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "बैलेंस Earn.fm के पास रहता है; अनुरोध पर निकाला जाता है।"
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "अपने Earn.fm खाते का ईमेल और पासवर्ड इस्तेमाल करें (<a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> लॉगिन वाले ही)।"
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "उनकी कमाई का 10% जीवन भर"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "$5 शुरुआती बैलेंस"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "न्यूनतम $15, USDT पर $1 से $3 शुल्क, और बैंक वायर सिर्फ़ $1,000 से।"
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "पहले भुगतान से पहले आप अपने कानूनी नाम और पते के साथ एक बिलिंग प्रोफ़ाइल भरते हैं।"
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "2025 में समीक्षकों ने बताया कि ईमेल और Discord पर सहायता जवाब नहीं देती; Trustpilot बताता है कि Earn.fm ने नकारात्मक समीक्षाओं का जवाब नहीं दिया है।"
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Earn.fm अपनी खुद की Docker इमेज earnfm/earnfm-client प्रकाशित करता है।"
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher एक ट्रैफ़िक एक्सचेंज प्लेटफ़ॉर्म है जहाँ आप एक स्वचालित सर्फ़बार के ज़रिए वेबसाइटें देखकर क्रेडिट कमाते हैं। ब्राउज़र एक्सटेंशन/ऐडऑन के रूप में चलता है। यह पारंपरिक बैंडविड्थ शेयरिंग सेवा नहीं है — यह अपने-आप वेबसाइटें ब्राउज़ करके ट्रैफ़िक पैदा करता है।\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "ट्रैफ़िक एक्सचेंज सर्फ़बार - ब्राउज़र एक्सटेंशन"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "कमाई BTP पॉइंट में, जो EUR में बदले जा सकते हैं। सिर्फ़ ब्राउज़र एक्सटेंशन।"
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "PayPal या बैंक ट्रांसफ़र से यूरो में भुगतान।"
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "CashPilot eBesucher नहीं चलाता: यह एक ब्राउज़र एक्सटेंशन है, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "PayPal या SEPA से 2 यूरो से भुगतान, कम से कम हर हफ़्ते, बिना शुल्क के।"
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "eBesucher 2002 से चल रहा है।"
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "इम्प्रिंट में ऑपरेटर का नाम TurboAd GmbH है, जो Berlin-Charlottenburg में पंजीकृत है (HRB 160730 B)।"
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux एक विश्व स्तर पर फैला हुआ कंप्यूट इंफ्रास्ट्रक्चर है। नोड ऑपरेटर FLUX टोकन स्टेक करते हैं और सर्वर संसाधन देते हैं। तीन स्तर: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX)। आधिकारिक Docker इमेज उपलब्ध हैं।\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "विकेंद्रीकृत कंप्यूट - FLUX टोकन स्टेक ज़रूरी"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "1,000+ FLUX स्टेक ज़रूरी (कीमत के अनुसार ~$50-500)। ऊँचे स्तरों के लिए ज़्यादा कोलैटरल चाहिए, पर कमाई भी ज़्यादा होती है।"
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "ब्लॉक इनाम"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "सबसे छोटे नोड स्तर के लिए 1,000 FLUX कोलैटरल के रूप में लॉक करने होते हैं।"
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "ब्लॉक इनाम हर साल 10% घटता है, और 2026 की एक गाइड ने पाया कि डॉलर के हिसाब से छोटे स्तर के इनाम कमज़ोर हैं।"
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "CashPilot Flux नहीं चलाता: आप प्रदाता का अपना नोड सॉफ़्टवेयर इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "Flux डेमन MIT लाइसेंस के तहत ओपन सोर्स है।"
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network एक विकेंद्रीकृत कंप्यूट मार्केटप्लेस है जहाँ आप GLM टोकन के बदले CPU और GPU संसाधन शेयर करते हैं। प्रदाता Yagna एजेंट चलाते हैं, जो सैंडबॉक्स वाले वातावरण में वर्कलोड चलाने का प्रबंधन करता है। सबसे पुराने विकेंद्रीकृत कंप्यूट प्रोजेक्ट में से एक (2016 में स्थापित)। CPU कार्य, GPU रेंडरिंग और सामान्य कंप्यूट समर्थित हैं। भुगतान Polygon L2 के ज़रिए।\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "विकेंद्रीकृत कंप्यूट मार्केटप्लेस - Yagna एजेंट से GLM टोकन"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "कमाई हार्डवेयर, कीमत और कार्यों की माँग पर निर्भर करती है। सिर्फ़ CPU वाले नोड कम कमाते हैं। GPU नोड ज़्यादा कमाते हैं पर उनके लिए NVIDIA ज़रूरी है। Yagna प्रदाता एजेंट चलाएँ (Docker इमेज नहीं)। भुगतान Polygon पर GLM टोकन में।"
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "हर कार्य पूरा होने पर"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "GLM टोकन कमाए जाते हैं। प्रदाता सेटअप में भुगतान वॉलेट कॉन्फ़िगर करें।"
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "CashPilot Golem नहीं चलाता: आप प्रदाता एजेंट खुद इंस्टॉल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। Golem प्रदाता को उसकी अपनी Docker इमेज में चलाने का तरीका बताता है।"
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "प्रदाता एजेंट yagna, GPL-3.0 के तहत ओपन सोर्स है।"
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "कोई खाता नहीं: आप प्रदाता सेटअप में भुगतान वॉलेट सेट करते हैं।"
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "नेटवर्क लगभग दस साल से चल रहा है।"
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "Golem की प्राइवेसी नीति में ऑपरेटर का नाम है: Golem Factory GmbH, Zug, स्विट्ज़रलैंड।"
+  source: "bae79b651923"
+grass.description:
+  text: "Grass एक विकेंद्रीकृत नेटवर्क है जो आपको AI ट्रेनिंग डेटा के लिए अपनी इस्तेमाल न हुई बैंडविड्थ बेचने देता है। यह ब्राउज़र एक्सटेंशन और डेस्कटॉप ऐप के रूप में चलता है, और संरचित डेटासेट बनाने के लिए वेब स्क्रैपिंग अनुरोधों को आपके कनेक्शन से भेजता है। 8.5M+ उपयोगकर्ताओं के साथ, यह सबसे बड़े DePIN बैंडविड्थ नेटवर्क में से एक है। Solana ब्लॉकचेन पर GRASS टोकन कमाता है।\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "AI डेटा के लिए DePIN बैंडविड्थ शेयरिंग - GRASS टोकन कमाता है"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "एक्सेस टोकन"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "<a href=\"https://app.grass.io\">app.grass.io</a> पर लॉग इन करें, F12 दबाएँ → Application → Local Storage → <code>https://app.grass.io</code> पर क्लिक करें → <code>token</code> का मान कॉपी करें"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "Grass Points कमाता है जो एयरड्रॉप से GRASS टोकन में बदले जा सकते हैं। असली USD मूल्य टोकन की कीमत पर निर्भर करता है। ब्राउज़र एक्सटेंशन या डेस्कटॉप ऐप ज़रूरी है।"
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "एपॉक-आधारित एयरड्रॉप"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "इनाम समय-समय पर होने वाले वितरण के रूप में आते हैं जिन्हें Grass डैशबोर्ड पर क्लेम किया जाता है। Stage 2 वितरण (अक्टूबर 2024 से जून 2026 तक की गतिविधि) का भुगतान USDC में होता है: इसे ज़्यादा से ज़्यादा 22 जनवरी 2027 तक app.grass.io/dashboard पर क्लेम करें, या उससे पहले, अगर सारे आवंटन पहले ही क्लेम हो जाएँ। बिना क्लेम किए इनाम Grass रख लेता है।"
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "POINTS जमा होते हैं; GRASS समय-समय पर होने वाले एयरड्रॉप के दौरान Grass डैशबोर्ड से क्लेम किया जाता है।"
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "<a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a> पर लॉग इन करें, F12 दबाएँ → Application → Local Storage, <b>accessToken</b> का मान कॉपी करें।"
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "सीधे रेफ़रल के अपटाइम पॉइंट का 20%, दूसरे स्तर पर 10%, तीसरे पर 5%"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "अपना Grass Stage 2 USDC क्लेम करें"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "ज़्यादा से ज़्यादा 22 जनवरी 2027 तक क्लेम न किया गया हर Stage 2 आवंटन Grass रख लेता है, और सारे आवंटन क्लेम हो जाने पर यह अवधि पहले भी बंद हो सकती है।"
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "Stage 2 में इस्तेमाल किए गए खाते से app.grass.io पर साइन इन करें, Grass Wallet सक्रिय करें, Allocation टैब खोलें और पुष्टि करें। सिर्फ़ app.grass.io पर ही क्लेम करें। कोई Stage 2 पॉइंट नहीं? मेरे लिए नहीं चुनें।"
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "इनाम सिर्फ़ एयरड्रॉप सीज़न के ज़रिए आते हैं। लंबे समय से नोड चला रहे ऑपरेटरों ने सीज़न 2 का अनुमान कुछ डॉलर से लेकर कम दहाई वाले डॉलर तक बताया।"
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "ज़्यादा से ज़्यादा 22 जनवरी 2027 तक क्लेम न किए गए सीज़न 2 इनाम हमेशा के लिए खो जाते हैं।"
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "पहले एयरड्रॉप पर प्रति पॉइंट छोटे इनाम को लेकर विरोध हुआ, जो बीस लाख से ज़्यादा उपयोगकर्ताओं में बँट गए।"
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "CashPilot Grass नहीं चलाता: आप प्रदाता का अपना ऐप या एक्सटेंशन इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "पहला एयरड्रॉप लगभग 15 लाख क्लेम करने वाले पतों तक पहुँचा।"
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium एक स्थापित विकेंद्रीकृत वायरलेस नेटवर्क है। शुरुआत में LoRaWAN हॉटस्पॉट, अब 5G तक फैला हुआ। समर्पित हार्डवेयर ($500+) ज़रूरी है। HNT/MOBILE टोकन कमाता है। ROI काफ़ी गिर गया है - आमतौर पर $4-8/माह।\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "विकेंद्रीकृत वायरलेस नेटवर्क - हार्डवेयर ज़रूरी, HNT टोकन"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "$500+ का हार्डवेयर खरीदना ज़रूरी। ROI काफ़ी गिर गया है। नए ऑपरेटरों के लिए मंज़ूरी प्रक्रिया।"
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "एपॉक के आधार पर"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "HIP 149 ने 6 जुलाई 2026 को Proof-of-Coverage इनाम बंद कर दिए; IoT हॉटस्पॉट अब सिर्फ़ अपने ले जाए गए डेटा के लिए कमाते हैं, और उनमें से 1,14,000 से ज़्यादा ने कोई डेटा नहीं ले जाया।"
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "Helium का इनाम मॉडल वोट से कई बार बदला है, इसके CEO ने पद छोड़ा, और HNT लगभग 96% गिरा।"
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "CashPilot Helium नहीं चलाता: आप प्रदाता का अपना हॉटस्पॉट हार्डवेयर इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "हॉटस्पॉट गेटवे सॉफ़्टवेयर Apache-2.0 लाइसेंस के तहत ओपन सोर्स है।"
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "HeroMiners आपके सार्वजनिक भुगतान पते के लिए जो बिना भुगतान वाला Kaspa बैलेंस रखता है, उसे ट्रैक करें। अपना खुद का Kaspa माइनर चलाएँ और उसे पूल की ओर पॉइंट करें। CashPilot पूल बैलेंस पढ़ता है और बैलेंस घटने पर आपसे भुगतान की पुष्टि करने को कहता है।\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "Kaspa माइनिंग पूल, आपके भुगतान पते से ट्रैक किया जाता है"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS (बदला जा सकता है)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "पूल हर घंटे आपकी भुगतान सीमा जाँचता है"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "आपकी चुनी हुई सीमा तक पहुँचते ही HeroMiners आपके पते पर अपने-आप भुगतान करता है। सबसे कम सीमा 1 KAS है।\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "बैलेंस HeroMiners पर जमा होता है। CashPilot में भुगतान की पुष्टि करने से पहले अपने वॉलेट में मिली राशि जाँच लें।\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "वह पूरा सार्वजनिक Kaspa भुगतान पता डालें जो आपका माइनर HeroMiners पर इस्तेमाल करता है। <b>kaspa:</b> उपसर्ग शामिल करें और वर्कर का नाम छोड़ दें।\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "HeroMiners की ओर पॉइंट किया गया Kaspa माइनर ज़रूरी है"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "कंप्यूट"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "नहीं। आपका माइनर माइनिंग का काम पूल को भेजता है।"
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "पूल के सार्वजनिक आँकड़े हर भुगतान पता और उसकी माइनिंग गतिविधि दिखाते हैं।"
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "पूल खाते की जगह आपके भुगतान पते का इस्तेमाल करता है।"
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "पूल 0.9% शुल्क लेता है और आपकी सीमा पूरी होने तक भुगतान रोक कर रखता है।"
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "अपनी इस्तेमाल न हुई इंटरनेट बैंडविड्थ शेयर करें और निष्क्रिय आय कमाएँ। Honeygain वेब इंटेलिजेंस, कंटेंट डिलीवरी और मार्केट रिसर्च ट्रैफ़िक को आपके कनेक्शन से भेजता है। 12M+ उपयोगकर्ताओं और 10 लाख से ज़्यादा पूरे हुए भुगतानों के साथ सबसे स्थापित बैंडविड्थ शेयरिंग प्लेटफ़ॉर्म में से एक।\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "बैंडविड्थ शेयरिंग - सबसे स्थापित प्लेटफ़ॉर्म"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "ईमेल"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "पासवर्ड"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "डिवाइस का नाम"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "आपके Honeygain खाते का ईमेल"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "आपके Honeygain खाते का पासवर्ड"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "आपके Honeygain डैशबोर्ड में दिखने वाला नाम"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "लोकेशन के अनुसार बदलती है। US/EU IP ज़्यादा कमाते हैं। प्रति खाता अधिकतम 10 डिवाइस।"
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "न्यूनतम $20 (20,000 क्रेडिट)। दो विकल्प: Tipalti के ज़रिए PayPal, लगभग 15% शुल्क, या बिना शुल्क JumpTask क्रेडिट, जो JumpTask वॉलेट में दिए जाते हैं। अनुरोध के लिए ईमेल से भेजा गया 6 अंकों का कोड चाहिए। पहला PayPal भुगतान तब तक \"waiting for details\" में रहता है जब तक आप उनके ईमेल किए लिंक से Tipalti पर पंजीकरण नहीं करते। वह लिंक सिर्फ़ एक बार काम करता है, इसलिए इसे तब खोलें जब आप एक ही बार में पूरा कर सकें और आपका फ़ोन पास हो: पासवर्ड सेट करने के बाद, Tipalti आपसे SMS से मोबाइल नंबर की पुष्टि करवाता है (कोड कुछ ही मिनटों में समाप्त हो जाते हैं), फिर आपका नाम, पता, देश और जन्म तिथि, और आपका PayPal पता माँगता है। Tipalti हर भुगतान पर $2.02 लेता है; उसके 1.9-3% मुद्रा रूपांतरण शुल्क से बचने के लिए USD चुनें। भुगतान 2 कार्यदिवसों के भीतर आता है। अनुरोध करते ही बैलेंस आपके खाते से निकल जाता है, भले ही भुगतान Tipalti का इंतज़ार कर रहा हो। बाद में हर Tipalti लॉगिन पर नया SMS कोड भेजा जाता है, जब तक आप डिवाइस को 30 दिनों तक याद रखने के विकल्प पर टिक न करें। अक्टूबर 2026 में Tipalti ने स्पेन के एक प्राप्तकर्ता से टैक्स फ़ॉर्म नहीं माँगा।"
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "बैलेंस Honeygain के पास रहता है; अनुरोध पर निकाला जाता है।"
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "अपने Honeygain खाते का ईमेल और पासवर्ड इस्तेमाल करें (<a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a> वाले ही)।"
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "Honeygain मोड में हर रेफ़र किए गए दोस्त की कमाई का 25% तक"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "इस लिंक से $3 साइन-अप बोनस"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "अपना Honeygain बैलेंस निकालें"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "एक Honeygain डिवाइस पर शेयरिंग चालू रखें, या भुगतान लें"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "कमाई $20 न्यूनतम तक पहुँचने के बाद 24 महीने तक मान्य रहती है। उसके बाद जो भुगतान नहीं हुआ, उसे Honeygain खारिज कर सकता है।"
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "अगर ऐप 6 महीने से ज़्यादा इस्तेमाल न हो, तो Honeygain बिना भुगतान वाले बैलेंस को समाप्त मान लेता है, भले ही वह $20 से कम हो।"
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "एक डिवाइस पर शेयरिंग चालू रखें, या भुगतान का अनुरोध करें। JumpTask मोड में बैलेंस का न बदलना सामान्य है, इसलिए मेरे लिए नहीं चुनें।"
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "शर्तें Honeygain को यह छूट देती हैं कि $20 की सीमा तक पहुँची और 24 महीनों में भुगतान न हुई कमाई को खारिज कर दे, और छह महीने इस्तेमाल न होने पर कमाई को समाप्त मान ले।"
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "न्यूनतम $20 है, और PayPal भुगतान Tipalti के ज़रिए होते हैं, जो हर भुगतान पर $2.02 लेता है।"
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "शर्तें Honeygain को खाता निलंबित करने और ऐसी कमाई रोकने या खारिज करने की छूट देती हैं जिसे वह झूठे बहाने से जमा की गई मानता है।"
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "पहले PayPal भुगतान से पहले, Tipalti आपसे SMS से मोबाइल नंबर की पुष्टि करवाता है और आपका नाम, पता और जन्म तिथि माँगता है।"
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "शर्तें कहती हैं कि व्यावसायिक ग्राहक ट्रैफ़िक का इस्तेमाल सार्वजनिक रूप से उपलब्ध वेब डेटा जुटाने के लिए करते हैं, पर किसी ग्राहक का नाम नहीं बतातीं, और आप नहीं जान सकते कि कौन सा ग्राहक आपका कनेक्शन इस्तेमाल करता है।"
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "कम कमाई वाली समीक्षाओं पर Honeygain के अपने जवाब कहते हैं कि कमाई नेटवर्क की माँग और लोकेशन पर निर्भर करती है; समीक्षक बताते हैं कि $20 न्यूनतम तक पहुँचने में बहुत लंबा समय लगा।"
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Honeygain अपनी खुद की Docker इमेज honeygain/honeygain प्रकाशित करता है।"
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "शर्तों में ऑपरेटर का नाम है: Honeygain UAB, जो Vilnius, लिथुआनिया में पंजीकृत है।"
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "Honeygain का प्रेस पेज कहता है कि इसकी स्थापना 2019 में हुई।"
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net AI/ML वर्कलोड के लिए एक विकेंद्रीकृत GPU नेटवर्क है। यह उपभोक्ताओं और डेटा सेंटरों के खाली पड़े GPU जोड़ता है। अच्छी कमाई के लिए 8GB+ VRAM वाला NVIDIA GPU ज़रूरी है। कंटेनर-आधारित डिप्लॉयमेंट समर्थित है।\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "AI के लिए विकेंद्रीकृत GPU नेटवर्क - NVIDIA GPU ज़रूरी"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "8GB+ VRAM वाला NVIDIA GPU ज़रूरी। RTX 4090 के लिए $500-1000/माह के दावे (व्यवहार में शायद कम)।"
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "एपॉक के आधार पर"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "सप्लायर इनाम भुगतान वाले कामों की परवाह किए बिना टोकन उत्सर्जन से दिए जाते थे, और GPU मालिक बताते हैं कि ज़्यादातर समय GPU खाली पड़े रहते हैं।"
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "इनाम IO टोकन में मिलते हैं और 2026 में भुगतान मॉडल डॉलर से जुड़े इंजन में बदल गया।"
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "अप्रैल 2024 में लगभग 18 लाख नकली GPU ने लीक हुए प्रमाणीकरण टोकन के ज़रिए जुड़ने की कोशिश की, और बाद में टोकन लॉन्च से पहले CEO ने पद छोड़ दिया।"
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "CashPilot io.net नहीं चलाता: आप प्रदाता का अपना वर्कर सॉफ़्टवेयर इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "IPRoyal Pawns आपको अपनी इस्तेमाल न हुई बैंडविड्थ शेयर करके कमाने देता है। IPRoyal एक जाना-माना प्रॉक्सी प्रदाता है, और Pawns उसका आवासीय बैंडविड्थ शेयरिंग वाला हिस्सा है। CLI Docker इमेज कमांड-लाइन फ़्लैग से क्रेडेंशियल लेती है। रेफ़रल लिंक से साइन अप करने वाले नए उपयोगकर्ता को उसके पहले तीन भुगतानों में से हर एक पर $1 मिलता है, अधिकतम $3। हर भुगतान एक से तीन हफ़्ते की समय-सीमा के भीतर होना चाहिए, जो लोकेशन से तय होती है। यह समय-सीमा साइन अप पर शुरू होती है और हर भुगतान के बाद फिर से शुरू होती है। अगर कोई समय-सीमा पहले बंद हो जाए, तो बाकी बोनस खो जाते हैं।\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "बैंडविड्थ शेयरिंग - आपके पहले भुगतानों पर $3 तक बोनस"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "ईमेल"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "पासवर्ड"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "डिवाइस का नाम"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "डिवाइस ID"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "आपके IPRoyal Pawns खाते का ईमेल (-email फ़्लैग के रूप में दिया जाता है)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "आपके IPRoyal Pawns खाते का पासवर्ड (-password फ़्लैग के रूप में दिया जाता है)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "आपके Pawns डैशबोर्ड में दिखने वाला नाम (-device-name फ़्लैग के रूप में दिया जाता है)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "डिवाइस की अनोखी पहचान (-device-id फ़्लैग के रूप में दी जाती है)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "IPRoyal Pawns ने यह खाता निष्क्रिय कर दिया है।"
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "Pawns को इस IP पते पर एक और चालू डिवाइस दिखता है और वह प्रति IP सिर्फ़ एक को भुगतान करता है, इसलिए यह कॉपी चलती तो है पर कुछ शेयर नहीं करती और कुछ नहीं कमाती। इस IP पर कोई दूसरा Pawns ऐप बंद करें, चाहे वह दूसरी मशीन, PC या फ़ोन पर हो। अगर कोई नहीं है, तो Pawns के पुराना डिवाइस हटाने का इंतज़ार करें, या Pawns सहायता से उसे हटाने को कहें।"
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "कमाई लोकेशन और बैंडविड्थ के इस्तेमाल पर निर्भर करती है। US/EU आवासीय IP ज़्यादा कमाते हैं।"
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "न्यूनतम $5। पहले अपना देश चुनें; तरीके उसी पर निर्भर करते हैं। स्पेन से (अक्टूबर 2026): PayPal 4%, न्यूनतम शुल्क $0.25, Tremendous के ज़रिए भुगतान, जो एक लिंक ईमेल करता है जहाँ आप अपना नाम और PayPal पता डालते हैं; USDT (BEP20, ERC20, TRC20) या USDC (BEP20, ERC20), $1 नेटवर्क शुल्क के साथ; Bitcoin, न्यूनतम शुल्क $2; गिफ़्ट कार्ड बिना शुल्क। पहले भुगतान के लिए आपके फ़ोन नंबर की एक बार SMS जाँच ज़रूरी है: Withdraw इसे खोलता है, और नंबर देश कोड के साथ डाला जाता है। इसके बाद हर भुगतान आपके खाते के ईमेल पर भेजा गया कोड माँगता है और भेजे जाने से पहले 72 घंटे तक उसकी समीक्षा होती है।"
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "बैलेंस IPRoyal Pawns के पास रहता है; अनुरोध पर निकाला जाता है।"
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "अपने IPRoyal Pawns खाते का ईमेल और पासवर्ड इस्तेमाल करें (<a href='https://pawns.app' target='_blank'>pawns.app</a> वाले ही)।"
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "उनके पहले तीन भुगतानों में से हर एक पर $1, अधिकतम $3, अगर हर भुगतान अपनी 1-3 हफ़्ते की समय-सीमा में हो"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "आपके पहले तीन भुगतानों में से हर एक पर $1, अधिकतम $3; कोई 1-3 हफ़्ते की समय-सीमा छूटी तो बाकी समाप्त हो जाते हैं"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "शर्तें कहती हैं कि निकासी की शर्तों के दुरुपयोग या कई खातों के लिए खाता बिना पूर्व सूचना के ब्लॉक किया जा सकता है, और तब उसकी कमाई का भुगतान शायद न हो।"
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "शर्तें कहती हैं कि Pawns ट्रैफ़िक शेयरिंग के लिए किसी सर्वर, VPN या प्रॉक्सी सेवा की अनुमति नहीं देता, और प्रति IP सिर्फ़ एक डिवाइस।"
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "Tremendous के ज़रिए PayPal का शुल्क 4% (कम से कम $0.25) है, और हर भुगतान की 72 घंटे तक समीक्षा होती है।"
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "पहले भुगतान के लिए आपके फ़ोन नंबर की SMS जाँच, और हर भुगतान के लिए ईमेल से भेजा गया कोड ज़रूरी है।"
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "प्राइवेसी नीति में ऑपरेटर का नाम Pawns.App Ltd है (इंग्लैंड और वेल्स में कंपनी 16043795), जो Companies House के अनुसार 28 अक्टूबर 2024 को निगमित हुई, यानी तीन साल से कम समय पहले।"
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "शर्तें कहती हैं कि Pawns और उसके व्यावसायिक ग्राहक आपके डिवाइस से ट्रैफ़िक भेजते हैं, और आप यह नहीं पहचान सकते कि कौन सा ग्राहक इसका इस्तेमाल करता है।"
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "न्यूनतम $5, गिफ़्ट कार्ड पर कोई शुल्क नहीं।"
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "एक NVIDIA GPU पर KRig से Pearl माइन करें। Kryptex इनाम को Bitcoin में बदलता है और आपके निकासी का अनुरोध करने तक बैलेंस आपके खाते में रखता है।"
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "NVIDIA GPU पर Pearl माइन करें और Bitcoin में खाता क्रेडिट पाएँ"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "Kryptex खाते का ईमेल"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "वर्कर का नाम"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "आपके Kryptex खाते का सत्यापित ईमेल।"
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "अपने Kryptex खाते में हर मशीन को एक अलग नाम दें।"
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "Lightning से 0.00001 BTC (दूसरे तरीकों में अलग-अलग)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kryptex Pearl इनाम को BTC में बदलता है और बैलेंस आपके खाते में रखता है। Kryptex पर निकासी का अनुरोध करें। हर तरीके की अपनी न्यूनतम राशि और शुल्क है। Bitcoin Lightning के लिए न्यूनतम 0.00001 BTC है।"
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "आपके निकालने तक Kryptex बदला हुआ Bitcoin आपके खाते में रखता है।"
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "रेफ़र किए गए उपयोगकर्ताओं से Kryptex की पूल आय का 20%"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64, Volta (sm_70) या नया NVIDIA GPU, और NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "यह मशीन होस्टिंग कनेक्शन बताती है। माइनिंग से पहले अपने प्रदाता की शर्तें जाँचें। कुछ प्रदाता, जिनमें Hetzner Cloud भी है, इसे मना करते हैं। मुनाफ़े के अनुमान पर भरोसा करने से पहले अपनी असली बिजली लागत जाँचें।"
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "Kryptex Pool पर KRig 0% माइनर शुल्क लेता है। Kryptex एक अलग 3% Pearl PPS+ पूल शुल्क बताता है। निकासी शुल्क तरीके के अनुसार बदलता है।"
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "कंप्यूट"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "नहीं। KRig माइनिंग का काम Kryptex Pool को भेजता है।"
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Kryptex आपके खाते का ईमेल, वर्कर का नाम, हैशरेट और IP पता देखता है।"
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "कुछ नेटवर्क और DNS रिज़ॉल्वर माइनिंग पूल कनेक्शन ब्लॉक करते हैं।"
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "अपने Kryptex खाते में माइन करने से पहले उसका ईमेल सत्यापित करें।"
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Kryptex निष्क्रिय खातों को छह महीने पर निलंबित और एक साल पर हटा सकता है।"
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "निकासी की न्यूनतम राशि और शुल्क तरीके के अनुसार बदलते हैं।"
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "KRig का लाइसेंस रिलीज़ डाउनलोड करने और उसे माइनिंग सॉफ़्टवेयर से चलाने की अनुमति देता है।"
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "KRig, Kryptex Pool को Pearl शेयर भेजने के लिए एक प्रकाशित TLS एंडपॉइंट इस्तेमाल करता है।"
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes (Mysterium Network) ब्लॉकचेन तकनीक पर बना एक विकेंद्रीकृत VPN और प्रॉक्सी नेटवर्क है। आप एक नोड चलाकर MYST टोकन कमाते हैं जो उपयोगकर्ताओं को VPN, प्रॉक्सी और डेटा स्क्रैपिंग सेवाएँ देता है। इसके लिए NET_ADMIN, SETUID और SETGID क्षमताएँ और एक TUN डिवाइस ज़रूरी है, जिसे यह सुरक्षा घेरे वाले कमाई ऐप ब्रिज पर अपने खुद के नेटवर्क नेमस्पेस के अंदर इस्तेमाल करता है। नोड प्रबंधन के लिए इसमें एक बिल्ट-इन वेब UI है। आवासीय और VPS दोनों कनेक्शन पर काम करता है, लेकिन रेफ़रल बोनस सिर्फ़ आवासीय IP वाले नोड के लिए मिलता है।\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "विकेंद्रीकृत VPN नोड - ब्लॉकचेन-आधारित, VPS पर काम करता है"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "WebUI पता"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "UDP पोर्ट रेंज"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "होस्ट के वे पते जिन पर नोड का WebUI (पोर्ट 4449) प्रकाशित होता है। 127.0.0.1 इसे इसी मशीन तक सीमित रखता है। रिवर्स प्रॉक्सी से पहुँचने के लिए, वह पता जोड़ें जिससे प्रॉक्सी जुड़ता है, कॉमा से अलग और बिना स्पेस के: 127.0.0.1,172.18.0.1।"
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "VPN सेशन के लिए नोड जो UDP पोर्ट इस्तेमाल करता है, start:end के रूप में। अपने राउटर पर यही रेंज फ़ॉरवर्ड करें। हर सेशन लगभग दो पोर्ट लेता है, इसलिए डिफ़ॉल्ट 30 पोर्ट एक साथ लगभग 15 सेशन संभालते हैं, जो किसी घरेलू नोड को मिलने वाले सेशन से ज़्यादा है। चौड़ी रेंज कुछ ठीक नहीं करती और ज़्यादा खर्चीली है: हर प्रकाशित पोर्ट नोड के शुरू होने और हटने को धीमा करता है (300 पोर्ट शुरू होने में लगभग 12 s लेते हैं), CashPilot अधिकतम 300 स्वीकार करता है, और Docker के डिफ़ॉल्ट userland proxy के साथ हर पोर्ट लगभग 2.5 MB मेमोरी भी लेता है। अगर सारे सेशन विफल हों, तो यह राउटर की समस्या है, कम पोर्ट की नहीं: Mysterium गाइड में \"Routers that rewrite UDP source ports\" देखें। इसे 32768 से नीचे रखें: पोर्ट 32768-60999 Linux की ephemeral रेंज हैं, जहाँ होस्ट का कोई भी प्रोग्राम एक पल के लिए कोई पोर्ट पकड़ सकता है, और एक भी पोर्ट व्यस्त होने पर नोड शुरू नहीं होता। जिस नोड की पहले से कोई रेंज है, वह उसे बनाए रखता है।"
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "नोड की पहचान का कीस्टोर। इसे मिटाने से एक बिल्कुल नई पहचान बनती है: नोड अपनी साख खो देता है और पुरानी पहचान पर अब भी रुकी हुई कोई भी कमाई भी।"
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "नोड अपने कंटेनर के अंदर sudo नहीं चला सकता, इसलिए वह अपना VPN इंटरफ़ेस या फ़ायरवॉल कॉन्फ़िगर नहीं कर सकता और हर सेशन सेटअप पर ही विफल होता है: यह ऑनलाइन दिखता है और कुछ नहीं कमाता। कंटेनर SETUID और SETGID क्षमताओं के बिना बनाया गया था। CashPilot और इस नोड को चलाने वाले वर्कर को अपडेट करें, फिर डैशबोर्ड से Mysterium को फिर से डिप्लॉय करें; नोड की पहचान उसके डेटा वॉल्यूम में रहती है और बनी रहती है।"
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "पिछले 6 घंटों में कोई भी VPN सेशन इस नोड तक सीधे नहीं पहुँचा। हर सेशन hole punching पर लौट गया, और कई खरीदार उस तरीके से नहीं जुड़ पाते, इसलिए नोड कम कमाता है। इसके UDP पोर्ट इंटरनेट से पहुँचने लायक नहीं हैं। अपने राउटर पर UDP पोर्ट रेंज ${UDP_PORTS} (start:end, दोनों तरफ़ एक ही रेंज) को ${HOST_ADDRESS} पर फ़ॉरवर्ड करें। कोई सेशन सीधे जुड़ते ही यह अपने-आप हट जाता है।"
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "Mysterium की मॉनिटरिंग ${WORKER_NAME} पर चल रहे नोड को विफल चिह्नित करती है, इसलिए वह उस नोड सूची से बाहर रहता है जिससे ज़्यादातर खरीदार चुनते हैं, भले ही उसकी अपनी जाँच कहे कि हर पोर्ट पहुँचने लायक है। पहले पक्का करें कि नोड के पास /dev/net/tun और SETUID/SETGID हैं, जिनके न होने पर भी यह इसी तरह विफल होता है: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 ये ठीक होने पर, एक आम कारण ${WORKER_NAME} के आगे का राउटर है, जो बाहर से कोई पैकेट उस पोर्ट तक पहुँचते ही नोड के जवाबों का UDP सोर्स पोर्ट बदल देता है। गाइड में जाँच देखें: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "${WORKER_NAME} पर चल रहे नोड के पिछले पाँच VPN सेशन लगभग एक मिनट बाद बिना कोई डेटा भेजे खत्म हो गए, इसलिए ऑनलाइन दिखते हुए भी यह कुछ नहीं कमाता। संभावित कारण ${WORKER_NAME} के आगे का राउटर है: बाहर से कोई पैकेट किसी पोर्ट तक पहुँचते ही, वह उस पोर्ट से नोड के बाद के जवाबों का सोर्स पोर्ट बदल देता है, और हर सेशन ऐसे ही एक पैकेट से शुरू होता है (नोड की अपनी पोर्ट जाँच), इसलिए खरीदार नोड के जवाब छोड़ देते हैं। चौड़ी पोर्ट रेंज से मदद नहीं मिलती। गाइड में जाँच और समाधान देखें: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports कोई सेशन डेटा ले जाते ही यह हट जाता है।"
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "कमाई MYST टोकन में। आवासीय IP काफ़ी ज़्यादा कमाते हैं। प्रबंधन के लिए नोड WebUI पोर्ट 4449 पर है, जो डिफ़ॉल्ट रूप से सिर्फ़ उसी मशीन (127.0.0.1) पर प्रकाशित होता है जिस पर नोड चलता है; दूसरी मशीन से पहले एक SSH टनल खोलें (ssh -L 14449:127.0.0.1:4449 और उसके बाद नोड की मशीन का पता, फिर http://127.0.0.1:14449 ब्राउज़ करें; लोकल पोर्ट 14449 ताकि यह आपकी अपनी मशीन के किसी नोड से न टकराए), या UI_ADDRESS में एक पता जोड़ें (Mysterium गाइड में WebUI पता देखें)। VPS स्वीकार। UDP 23000-23029 (UDP_PORTS डिफ़ॉल्ट) का पोर्ट फ़ॉरवर्डिंग ज़ोरदार तरीके से सुझाया जाता है -- इसके बिना नोड को Strict NAT स्थिति मिलती है और कई VPN सेशन विफल होते हैं, जिससे आय बहुत घट जाती है। ज़रूरी: पहली बार चलाने के बाद, नोड WebUI या CLI से अपना beneficiary (settlement) वॉलेट अपने mystnodes.com खाते से मेल खाता सेट करें -- इससे ऑन-चेन कमाई आपके क्लाउड डैशबोर्ड से जुड़ती है।"
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "हर बार जब किसी नोड के पास 5 MYST बिना सेटल किए हों, तब अपने-आप ऑन-चेन सेटलमेंट"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "दबाने के लिए कोई बटन नहीं। हर नोड के पास 5 MYST बिना सेटल किए होते ही वह Polygon पर खुद सेटल करता है, और लगभग 21% शुल्क में जाता है (20% Hermes शुल्क और थोड़ा ट्रांज़ैक्शन शुल्क), इसलिए हर सेटलमेंट पर लगभग 3.9 MYST beneficiary वॉलेट तक पहुँचते हैं। हर नोड का TequilAPI अपने सेटलमेंट /transactor/settle/history पर दिखाता है। MystNodes पर \"total earnings\" का आँकड़ा सिर्फ़ पिछले 30 दिनों का है; यह न बैलेंस है और न जीवन भर का कुल। MystNodes इनाम कार्यक्रम से मिले बोनस MYST अपने-आप सेटल नहीं होते: इन्हें Rewards पेज पर क्लेम करें, MystNodes सहायता केंद्र के अनुसार वितरण के 30 दिनों के भीतर।"
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "beneficiary वॉलेट डिप्लॉय के बाद TequilAPI या नोड WebUI से सेट किया जाता है -- किसी env var से नहीं, इसलिए इसे कंटेनर स्पेसिफ़िकेशन से नहीं पढ़ा जा सकता।"
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "अपने MystNodes खाते का ईमेल और पासवर्ड इस्तेमाल करें (<a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a> वाले ही)।"
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "हर उस दोस्त पर 5 MYST जिसका नोड 5 MYST कमाए (सिर्फ़ आवासीय IP)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "आपके नोड के पहले 5 MYST कमाते ही 5 MYST (आवासीय IP, mystnodes.com पर क्लेम किया गया नोड)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "पिछले महीने के MystNodes इनाम क्लेम करें"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "मासिक वितरण के 30 दिनों के भीतर क्लेम न किए गए इनाम ज़ब्त हो जाते हैं और अगले महीने के पूल में वापस चले जाते हैं।"
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "Rewards पेज खोलें और अपने पॉइंट MYST से बदलें।"
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "बैंडविड्थ। आपका कनेक्शन Mysterium नेटवर्क के लिए एग्ज़िट नोड के रूप में इस्तेमाल होता है, जो VPN, प्रॉक्सी और डेटा-स्क्रैपिंग सेवाएँ बेचता है। आवासीय IP से निकलने वाला स्क्रैपिंग ट्रैफ़िक वह इस्तेमाल है जिस पर शिकायतें आने की सबसे ज़्यादा संभावना है, और आप नहीं चुन सकते कि आपका नोड इन तीनों में से कौन सा ले जाए।"
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "हाँ। अनजान लोग अपना ट्रैफ़िक आपके IP पते से भेजते हैं — यही प्रोडक्ट है।"
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "नोड की पहचान (एक ब्लॉकचेन पता), आपका IP, और मोटी लोकेशन (देश/शहर/ISP), जिसे नोड नेटवर्क पर प्रकाशित करता है ताकि खरीदार उसे चुन सकें।"
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "वास्तविक और समझने लायक। दूसरे लोगों का ट्रैफ़िक आपके नाम से आपके कनेक्शन से निकलता है, इसलिए वे जो भी करें वह आपकी लाइन से आया दिखता है। कई घरेलू ISP अनुबंध इसे मना करते हैं। इसे चलाने से पहले अपना अनुबंध जाँचें।"
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "प्रति खाता और प्रति IP असीमित डिवाइस।"
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "हर सेटलमेंट का लगभग 21% शुल्क में जाता है, 20% Hermes शुल्क और एक ट्रांज़ैक्शन शुल्क, और कमाई MYST टोकन में दी जाती है।"
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "आपका नोड Mysterium के VPN, प्रॉक्सी और डेटा-स्क्रैपिंग ग्राहकों के लिए एग्ज़िट है, और आप नहीं चुन सकते कि वह इनमें से किसका ट्रैफ़िक ले जाए।"
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "नोड सॉफ़्टवेयर GPL-3.0 के तहत ओपन सोर्स है।"
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Mysterium अपनी खुद की Docker इमेज mysteriumnetwork/myst प्रकाशित करता है।"
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "सेटलमेंट आपके अपने वॉलेट में जाता है; कोई फ़ोन नंबर या पहचान पत्र नहीं चाहिए।"
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "नोड प्रोजेक्ट 2017 से चल रहा है।"
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "Mysterium की साइट कहती है कि नेटवर्क Blockdev AG, Zug, स्विट्ज़रलैंड विकसित करता है।"
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay एक DePIN नेटवर्क है जो ब्राउज़र एक्सटेंशन से बैंडविड्थ शेयर करने पर उपयोगकर्ताओं को इनाम देता है। प्लेटफ़ॉर्म Cloudflare सुरक्षा के पीछे है, जिससे स्वचालित एक्सेस मुश्किल हो सकता है। उपयोगकर्ता एक्सटेंशन को सक्रिय रखकर Nodepay Points कमाते हैं। नेटवर्क का ध्यान AI ट्रेनिंग डेटा इंफ्रास्ट्रक्चर देने पर है।\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "AI के लिए DePIN बैंडविड्थ शेयरिंग - ब्राउज़र एक्सटेंशन"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "Nodepay Points कमाता है; जो उपयोगकर्ता Nodepay की पात्रता जाँच पास करते हैं, उनके पॉइंट NC टोकन में बदलते हैं। Cloudflare सुरक्षा स्वचालित डेटा संग्रह को ब्लॉक कर सकती है। ब्राउज़र एक्सटेंशन ज़रूरी।"
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "NC टोकन एयरड्रॉप (समय की पुष्टि नहीं)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "पॉइंट-आधारित सिस्टम। जो उपयोगकर्ता Nodepay की पात्रता जाँच पास करते हैं, उनके पॉइंट NC टोकन में बदलते हैं, जो जनवरी 2025 में लॉन्च हुआ।"
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "अपने पहले सीज़न की समीक्षा में Nodepay ने 3,00,000 से ज़्यादा खाते हटा दिए जिन्हें उसने बॉट माना, और 17 अरब पॉइंट रद्द कर दिए।"
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "इनाम NC टोकन में बदले जाने वाले पॉइंट हैं, इसलिए उनका मूल्य टोकन पर टिका है।"
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "CashPilot Nodepay नहीं चलाता: आप प्रदाता का अपना ब्राउज़र एक्सटेंशन इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes, Noderr Protocol का मुफ़्त शुरुआती स्तर है, जो Base L2 पर एक DeFi प्रोजेक्ट है। माइक्रोनोड एक छोटा एजेंट है जो किसी फ़ालतू Android फ़ोन, Windows PC, Mac या Chromium ब्राउज़र पर चलता है। Android पर यह फ़ोन का मोबाइल कनेक्शन शेयर करता है: दूसरा Noderr ट्रैफ़िक फ़ोन के कैरियर IP से निकलता है, इसलिए इसके लिए मोबाइल डेटा वाला SIM चाहिए। PC पर या ब्राउज़र में यह फ़ालतू कंप्यूट से प्रोटोकॉल के लिए ऑटोमेशन कार्य चलाता है। इनाम NODR में देने के लिए बनाए गए हैं, एक ऑन-चेन अपटाइम और विश्वसनीयता स्कोर के अनुसार, लेकिन बीटा के दौरान नेटवर्क Base Sepolia टेस्टनेट पर है: नोड इनाम के लिए फ़ंड नहीं है और अब तक कोई इनाम नहीं दिया गया।\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "मुफ़्त माइक्रोनोड (Android कनेक्शन शेयरिंग, Windows, Mac, ब्राउज़र) - टेस्टनेट, अब तक इनाम के लिए फ़ंड नहीं"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "टेस्टनेट बीटा: नोड इनाम के लिए फ़ंड नहीं है और अब तक कोई इनाम नहीं दिया गया। साइट पर 5-10% APY एक डिज़ाइन लक्ष्य है। नेटवर्क के Base Sepolia छोड़ने पर फिर देखें।"
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "इनाम नोड के अपने वॉलेट में जमा होते हैं और ऐप या dApp से क्लेम किए जाते हैं। बीटा के दौरान ये Base Sepolia टेस्टनेट टोकन हैं जिनका कोई बाज़ार मूल्य नहीं।"
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "ऐप पहली बार खुलने पर नोड वॉलेट बनाता है और उसमें एक मुफ़्त soulbound Utility NFT मिंट करता है। ऐप से वॉलेट का बैकअप लें: डिवाइस खोने पर नोड की पहचान भी खो जाती है। बीटा के दौरान इनाम Base Sepolia (टेस्टनेट) पर हैं।"
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Android के लिए मोबाइल डेटा वाला SIM चाहिए; डेस्कटॉप और ब्राउज़र क्लाइंट कोई IP आवश्यकता नहीं बताते।"
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "डिवाइस पर निर्भर करता है। Android फ़ोन अपना मोबाइल कनेक्शन बेचता है: दूसरा Noderr ट्रैफ़िक फ़ोन के कैरियर IP पते से निकलता है और उसके डेटा प्लान में गिना जाता है। Windows PC, Mac या ब्राउज़र फ़ालतू कंप्यूट बेचता है, उन कामों के लिए जिन्हें प्रदाता सोशल मीडिया और कंटेंट ऑटोमेशन कार्य कहता है।"
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "हाँ। Android पर, दूसरा Noderr ट्रैफ़िक आपके फ़ोन के मोबाइल IP पते से निकलता है; शुरू करने से पहले ऐप एक दर्ज की गई सहमति माँगता है और आप उसी स्क्रीन से शेयरिंग बंद कर सकते हैं। Windows, Mac और ब्राउज़र क्लाइंट के लिए प्रदाता ऑटोमेशन कार्य बताता है और यह नहीं बताता कि उनमें दूसरे लोगों का ट्रैफ़िक जाता है या नहीं।"
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "नोड का वॉलेट पता और उसके अपटाइम और कार्य पूरा होने के आँकड़े एक साख स्कोर (TrustFingerprint) के रूप में ऑन-चेन जाते हैं। प्रदाता कहता है कि कार्य गुमनाम किए जाते हैं, सैंडबॉक्स में चलते हैं और वॉलेट कुंजियाँ कभी डिवाइस से बाहर नहीं जातीं। इससे ज़्यादा विस्तार से कुछ प्रकाशित नहीं है।"
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "Android पर शेयर किया गया कनेक्शन एक कैरियर मोबाइल प्लान है: प्रदाता के अपने दस्तावेज़ चेतावनी देते हैं कि कुछ कैरियर की स्वीकार्य-उपयोग नीतियों में शेयरिंग की अनुमति शायद न हो, और शेयर किया गया ट्रैफ़िक प्लान का डेटा खर्च करता है। डेस्कटॉप और ब्राउज़र क्लाइंट के लिए प्रदाता ISP शर्तों के बारे में कुछ नहीं कहता।"
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "प्रति डिवाइस एक नोड, हर एक का अपना soulbound Utility NFT; कई डिवाइस चलाने की अनुमति है और इसे बढ़ावा दिया जाता है। कोई प्रति-IP सीमा प्रकाशित नहीं है। सामान्य अर्थ में कोई खाता नहीं है: पहचान एक वॉलेट है जिसे ऐप पहली बार खुलने पर बनाता है।"
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "नोड इनाम बिना फ़ंड वाले टेस्टनेट टोकन हैं जिनका कोई बाज़ार मूल्य नहीं, और अब तक कोई नहीं दिया गया; इसकी साइट पर 5 से 10% APY एक डिज़ाइन लक्ष्य है।"
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "डेस्कटॉप और ब्राउज़र क्लाइंट के लिए Noderr ऑटोमेशन कार्य बताता है और यह नहीं बताता कि उनमें दूसरे लोगों का ट्रैफ़िक जाता है या नहीं।"
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "प्रदाता कहता है कि कार्य गुमनाम और सैंडबॉक्स में होते हैं, पर इससे ज़्यादा विस्तार से कुछ प्रकाशित नहीं करता।"
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "अभी भी Base Sepolia पर टेस्टनेट बीटा है।"
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "CashPilot Noderr नहीं चलाता: आप प्रदाता का अपना ऐप या एक्सटेंशन इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "कोई खाता नहीं: ऐप पहली बार खुलने पर एक वॉलेट बनाता है।"
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Nodle IoT इंफ्रास्ट्रक्चर बनाने के लिए स्मार्टफ़ोन का Bluetooth इस्तेमाल करता है। ऐप चुपचाप आसपास के IoT डिवाइस का पता लगाता है और उनका डेटा आगे भेजता है, जिससे NODL टोकन मिलते हैं। Forbes में चर्चा, Vivendi और Hayden AI के साथ एंटरप्राइज़ साझेदारी। सिर्फ़ मोबाइल (iOS और Android)।\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "Bluetooth IoT रिले - मोबाइल ऐप, NODL टोकन इनाम"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "बहुत कम कमाई। Bluetooth इस्तेमाल करने वाला बैकग्राउंड फ़ोन ऐप। वॉलेट कनेक्ट अस्थिर हो सकता है।"
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "लगातार"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "NODL, ZKsync Era पर ऐप के अपने वॉलेट में रहता है; इसे ऐप में या ZKsync Era ब्लॉक एक्सप्लोरर पर जाँचें। Nodle ने अपना Polkadot पैराचेन छोड़ दिया, और Polkadot-से-ZKsync ब्रिज 31 दिसंबर 2025 को बंद हो गया, इसलिए जो NODL अब भी Polkadot की तरफ़ है, वह अब ZKsync पर नहीं जा सकता।"
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "आपके NODL, Nodle ऐप के अपने वॉलेट में ZKsync Era पर रहते हैं। CashPilot उस वॉलेट का पता नहीं देख सकता।"
+  source: "796d67192f5f"
+nodle.referral.bonus.referrer:
+  text: "आमंत्रण से जुड़ने वाले हर नए सक्रिय उपयोगकर्ता पर एक NODL इनाम (Nodle राशि प्रकाशित नहीं करता)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "एक समीक्षक बताता है कि तीन से चार साल में लगभग $3 कमाए; दूसरे बताते हैं कि रोज़ की कमाई तेज़ी से घटी।"
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "CashPilot Nodle नहीं चलाता: आप प्रदाता का अपना फ़ोन ऐप इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana, Solana पर बना एक विकेंद्रीकृत GPU कंप्यूट मार्केटप्लेस है। यह GPU मालिकों को AI वर्कलोड की माँग से जोड़ता है और NOS टोकन में भुगतान करता है। एक RTX 3060 लगभग $0.048/घंटा कमाता है। प्लेटफ़ॉर्म का ध्यान AI इनफ़रेंस वर्कलोड पर है और यह जॉब शेड्यूलिंग और भुगतान सेटलमेंट के लिए Solana ब्लॉकचेन इस्तेमाल करता है। नोड Nosana CLI के ज़रिए कंटेनर वाले वर्कलोड चलाते हैं।\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "Solana पर GPU कंप्यूट - NOS टोकन, RTX 3060 ~$0.048/घंटा"
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 ~$0.048/घंटा, ऊँचे दर्जे के GPU ज़्यादा कमाते हैं। कमाई जॉब की उपलब्धता और GPU मॉडल पर निर्भर करती है। NVIDIA GPU, Linux, Docker और Nosana CLI ज़रूरी। भुगतान Solana पर NOS टोकन में।"
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "हर जॉब पूरा होने पर"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "Solana पर NOS टोकन कमाए जाते हैं। भुगतान कॉन्फ़िगर किए गए वॉलेट में।"
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "Nosana डिफ़ॉल्ट रूप से एक Solana वॉलेट बनाता है, इसलिए ज़्यादातर उपयोगकर्ताओं ने उसका पता कभी देखा नहीं होता।"
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "हर होस्ट को अपने GPU की प्रति घंटा कीमत के हिसाब से NOS स्टेक लॉक करना होता है।"
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "होस्ट को NOS में भुगतान मिलता है, इसलिए डॉलर में कमाई टोकन और उनके कार्ड की माँग के साथ ऊपर-नीचे होती है।"
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "CashPilot Nosana नहीं चलाता: आप प्रदाता का अपना होस्ट सॉफ़्टवेयर इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN बिना खाते वाला एक Bitcoin माइनिंग पूल है: आपका माइनर आपके Bitcoin पते को यूज़रनेम बनाकर लॉग इन करता है, और पूल उसी पते पर भुगतान करता है। CashPilot यहाँ कोई माइनर नहीं चलाता। यह वह बिना भुगतान वाला बैलेंस पढ़ता है जो OCEAN आपके पते के लिए रखता है, ताकि आप अपनी दूसरी आय के साथ देख सकें कि आपके ASIC (Bitaxe, Antminer) ने कितना कमाया। बिना भुगतान वाला बैलेंस कमाया गया है पर मिला नहीं है: भुगतान सीमा पार होते ही OCEAN इसे ऑन-चेन भेजता है।\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "Bitcoin माइनिंग पूल, आपके भुगतान पते से ट्रैक किया जाता है"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "जब कोई ब्लॉक आपके बैलेंस को सीमा से आगे ले जाए"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "आपका बिना भुगतान वाला बैलेंस सीमा तक पहुँचते ही OCEAN आपके पते पर ऑन-चेन भुगतान करता है। Lightning भुगतान (वैकल्पिक, BOLT12) CashPilot नहीं पहचानता।"
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "बिना भुगतान वाली राशि कमाई गई है पर तब तक मिली नहीं है जब तक OCEAN इसे इस पते पर ऑन-चेन न भेजे, बशर्ते आपने Lightning भुगतान चालू न किए हों।"
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "आपका BTC भुगतान पता: वह यूज़रनेम जो आपका माइनर OCEAN पर इस्तेमाल करता है, <b>.workername</b> वाले हिस्से के बिना। यह सार्वजनिक है और इससे कोई रकम नहीं खुलती।"
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "mine.ocean.xyz:3334 की ओर पॉइंट किया गया Bitcoin ASIC माइनर (Bitaxe, Antminer) ज़रूरी है"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "कंप्यूट"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "नहीं। आपका माइनर पूल को हैश भेजता है; कोई भी आपके कनेक्शन से ट्रैफ़िक नहीं भेजता।"
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "आपका Bitcoin पता, आपके चुने हुए वर्कर नाम, आपका हैशरेट और आपके माइनर का IP पता जैसा पूल उसे देखता है।"
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "माइनर पूल से एक कनेक्शन खुला रखता है और बहुत कम बैंडविड्थ इस्तेमाल करता है। ध्यान रखने वाली लागत बिजली है, आपका ISP नहीं।"
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "कोई खाता नहीं है। पता ही पहचान है, और कोई भी ocean.xyz पर उसके आँकड़े पढ़ सकता है।"
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "भुगतान सिर्फ़ Bitcoin में, और जब तक आपका बैलेंस 0.01048576 BTC तक न पहुँचे, ऑन-चेन कुछ नहीं दिया जाता।"
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "2% पूल शुल्क, या 1% जब आप DATUM से अपने खुद के ब्लॉक टेम्पलेट बनाते हैं।"
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "CashPilot OCEAN के लिए माइनर नहीं चलाता: आप अपना खुद का हार्डवेयर पूल की ओर पॉइंट करते हैं, और CashPilot सिर्फ़ बैलेंस पढ़ता है।"
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "कोई खाता और कोई पहचान जाँच नहीं। OCEAN सिर्फ़ वह Bitcoin पता माँगता है जिस पर वह भुगतान करता है।"
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream एक पीयर-टू-पीयर बैंडविड्थ मार्केटप्लेस है जहाँ आप अपनी इस्तेमाल न हुई बैंडविड्थ बेच सकते हैं। यह एक आवासीय प्रॉक्सी नेटवर्क चलाता है जो मार्केट रिसर्च, SEO मॉनिटरिंग और विज्ञापन सत्यापन के लिए इस्तेमाल होता है। सरल Docker सेटअप, जिसमें सिर्फ़ एक CID (Client ID) चाहिए। ध्यान दें कि CAPTCHA से सुरक्षित लॉगिन की वजह से स्वचालित कमाई संग्रह मुश्किल हो सकता है।\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "बैंडविड्थ शेयरिंग - सरल CID-आधारित सेटअप"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "Client ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "<a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> पर लॉग इन करें → साइडबार में Setup पर क्लिक करें → आपका CID Docker कमांड में दिखता है"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "PacketStream इस कॉपी के IP पते को आवासीय न मानकर अस्वीकार करता है, इसलिए यह कुछ नहीं कमाती। इसे ऐसी मशीन पर चलाएँ जिसका इंटरनेट कनेक्शन घरेलू लाइन हो, या इस कॉपी को हटा दें।"
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "PacketStream के पास इस IP पते पर पहले से एक और क्लाइंट है, और वह प्रति IP सिर्फ़ एक को भुगतान करता है। इस कॉपी को हटा दें, या उस दूसरी को जो यही IP शेयर करती है।"
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "शेयर की गई बैंडविड्थ के लिए $0.10/GB देता है। कमाई काफ़ी हद तक आपके IP की लोकेशन की माँग पर निर्भर करती है।"
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "सिर्फ़ PayPal, न्यूनतम $5, 3% शुल्क पुष्टि से पहले दिखाया जाता है। पहली निकासी आपका PayPal ईमेल सहेज लेती है; बाद में इसे बदलने के लिए ईमेल पुष्टि और 7 दिन का इंतज़ार ज़रूरी है, इसलिए पुष्टि से पहले पता जाँच लें। अनुरोधों की समीक्षा होती है और 7 दिनों के भीतर भेजे जाते हैं; इंतज़ार के दौरान आप अनुरोध रद्द कर सकते हैं, और नया अनुरोध पिछले का भुगतान होने के बाद ही किया जा सकता है।"
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "बैलेंस PacketStream के पास रहता है; अनुरोध पर निकाला जाता है।"
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "<a href='https://packetstream.io' target='_blank'>packetstream.io</a> पर लॉग इन करें, F12 दबाएँ → Application → Cookies, <b>auth</b> कुकी का मान कॉपी करें (यह एक JWT है)।"
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "उनकी बैंडविड्थ कमाई का 20% (सीमित समय का Packeter बोनस)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "आपके पहले कार्ड या PayPal डिपॉज़िट पर 10% बोनस क्रेडिट (प्रॉक्सी ग्राहकों के लिए)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "2025 और 2026 में Trustpilot समीक्षक बताते हैं कि भुगतान देर से आए या आए ही नहीं, और एक पुराने उपयोगकर्ता का कहना है कि भुगतान धीमे हुए और फिर बंद हो गए; 2026 में कुछ दूसरे बताते हैं कि उन्हें भुगतान मिला।"
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "सिर्फ़ PayPal, 3% निकासी शुल्क के साथ; जिन देशों में PayPal सेवा नहीं देता, वहाँ के उपयोगकर्ताओं के पास कोई दूसरा तरीका नहीं।"
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "शर्तें PacketStream को ऐसी कमाई रोकने, वापस लेने या अमान्य करने की छूट देती हैं जिसे वह धोखाधड़ी, हेरफेर या प्रतिबंधित गतिविधि से जोड़ता है।"
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "शर्तें कहती हैं कि प्रॉक्सी ग्राहक और खुद PacketStream आपके कनेक्शन से ट्रैफ़िक भेजते हैं; उनमें आम खरीदारों की किसी जाँच का ज़िक्र नहीं है।"
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "Trustpilot बताता है कि PacketStream ने नकारात्मक समीक्षाओं का जवाब नहीं दिया है; समीक्षक बताते हैं कि ईमेल का जवाब नहीं मिला।"
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "PacketStream अपनी खुद की Docker इमेज packetstream/psclient प्रकाशित करता है।"
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "शर्तें सिर्फ़ इतना माँगती हैं कि डिवाइस और कनेक्शन आपका हो या आप उसे इस्तेमाल कर सकें।"
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "शर्तों में किसी पहचान जाँच का ज़िक्र नहीं है; भुगतान के लिए एक PayPal पता चाहिए।"
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "शर्तों में कैलिफ़ोर्निया कानून के तहत PacketStream Inc. का नाम है।"
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "PacketStream 2018 से चल रहा है।"
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp एक DePIN प्लेटफ़ॉर्म है जो आपको इस्तेमाल न हुई बैंडविड्थ और कंप्यूटिंग संसाधन शेयर करके क्रिप्टो और PayPal इनाम कमाने देता है। व्यवहार में सिर्फ़ Windows: विक्रेता के अपने डाउनलोड पेज पर Android, iOS और Linux कम से कम फ़रवरी 2025 से बिना बदले \"coming soon\" लिखे हैं, और कोई macOS संस्करण नहीं है — जबकि उसी साइट की मार्केटिंग सामग्री ज़्यादा प्लेटफ़ॉर्म समर्थन का दावा करती है। कोई Docker इमेज नहीं।\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "DePIN बैंडविड्थ/कंप्यूट - सिर्फ़ Windows, क्रिप्टो और PayPal भुगतान"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "सिर्फ़ Windows डेस्कटॉप ऐप (v1.0.x); Android/iOS/Linux की विक्रेता ने 2025 की शुरुआत से 'coming soon' के रूप में घोषणा की है और वे कभी जारी नहीं हुए। कोई आधिकारिक Docker इमेज नहीं।"
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "उनकी कमाई का 10% जीवन भर"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "CashPilot PassiveApp नहीं चलाता: आप प्रदाता का अपना डेस्कटॉप ऐप इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "PassiveApp की साइट $3 न्यूनतम से PayPal, क्रिप्टो और गिफ़्ट कार्ड बताती है।"
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase एक बैंडविड्थ शेयरिंग प्लेटफ़ॉर्म है जो उपयोगकर्ताओं को उनका इस्तेमाल न हुआ इंटरनेट कनेक्शन शेयर करने के लिए क्रिप्टोकरेंसी में भुगतान करता है। आप पीयर क्लाइंट को अपने डैशबोर्ड के Access Token से प्रमाणित करते हैं। आवासीय IP सबसे ज़्यादा कमाते हैं, लेकिन डेटासेंटर IP भी समर्थित हैं। आधिकारिक मल्टी-आर्क Docker इमेज (amd64/arm64/armv7)।\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - बैंडविड्थ शेयरिंग, क्रिप्टो भुगतान, Access Token प्रमाणीकरण। कोई वॉलेट नहीं बनाया जाता"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Access Token"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "डिवाइस का नाम"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "<a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> पर लॉग इन करें → अपना Access Token कॉपी करें (सेटअप पेज पर Docker कमांड में दिखता है)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "अपने ProxyBase डैशबोर्ड में इस डिवाइस को पहचानने के लिए कोई भी नाम (बिना स्पेस)"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "ProxyBase कम से कम आधे घंटे से अपने रिले तक नहीं पहुँचा है, इसलिए यह कुछ नहीं कमाता। रीस्टार्ट से यह ठीक हो जाता है; अगर रीस्टार्ट के बाद भी बना रहे, तो जाँचें कि यह मशीन इंटरनेट तक पहुँच सकती है।"
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "क्रिप्टो भुगतान। कमाई लोकेशन और बैंडविड्थ के इस्तेमाल पर निर्भर करती है।"
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "साइट $0.20 न्यूनतम बताती है, और अक्टूबर 2026 में $1 से कम का एक अनुरोध सफल रहा। हर अनुरोध पूरा बैलेंस निकालता है, Polygon पर USDC, POL या Litecoin के रूप में, उस पते पर जो आप टाइप करते हैं। नेटवर्क शुल्क ProxyBase देता है।"
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "कमाई उस ProxyBase खाते में जमा होती है जिसका Access Token है, और अनुरोध पर डैशबोर्ड से निकाली जाती है। पीयर क्लाइंट कोई वॉलेट नहीं रखता और कंटेनर कोई स्थिति नहीं रखता -- docker.volumes खाली है। इसे proxybase-xyz (ProxyBase Markets, वही संगठन) से न मिलाएँ, जो सच में एक लोकल वॉलेट बनाता है और उसे एक ज़रूरी वॉल्यूम घोषित करता है।"
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "खुद ProxyBase ने अगस्त 2025 में लिखा कि यह नया है और अभी अधिकतम कमाई की जगह नहीं है।"
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "ProxyBase ने 2026 में पीयर क्लाइंट बदला और पुराना बैकएंड बंद कर दिया, इसलिए पुरानी इमेज वाले कंटेनर चलते रहे पर कमाई बंद हो गई।"
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "सिर्फ़ क्रिप्टो, Polygon पर USDC, POL या Litecoin के रूप में, कोई फ़िएट तरीका नहीं। न्यूनतम $0.20 है और नेटवर्क शुल्क ProxyBase देता है।"
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "अक्टूबर 2026 में हमारी $1 से कम की निकासी सफल रही।"
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "निकासी के लिए बस अनुरोध में टाइप किया गया एक पता चाहिए।"
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "ProxyBase अपनी खुद की पीयर क्लाइंट इमेज प्रकाशित करता है और डेटासेंटर IP का समर्थन करता है।"
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets, AI एजेंटों के लिए बना एक SOCKS5 प्रॉक्सी मार्केटप्लेस है। विक्रेता एक हल्का Rust CLI डेमन चलाते हैं जो WebSocket से जुड़कर खरीदारों का ट्रैफ़िक अपने इंटरनेट कनेक्शन से रिले करता है, और बेचे गए हर GB पर Tempo Chain पर USDC कमाता है। ऑटो-रीकनेक्ट के साथ डायरेक्ट (अपनी बैंडविड्थ) और अपस्ट्रीम (बाहरी प्रॉक्सी दोबारा बेचना) दोनों मोड समर्थित हैं। खरीदार देश, ISP और बैंडविड्थ के अनुसार प्रॉक्सी सेशन खरीदते हैं। भुगतान Tempo Chain पर Machine Payments Protocol (MPP) से होते हैं। रेफ़रल लिंक खरीदारों के लिए है: जो खरीदार इसके ज़रिए कंसोल खोलता है, उसे पहले डिपॉज़िट पर 10% अतिरिक्त मिलता है।\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - AI एजेंटों के लिए SOCKS5 मार्केटप्लेस, USDC भुगतान। एक वॉलेट बनाता है जिसकी कुंजी की इकलौती कॉपी उसके वॉल्यूम में रहती है"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "बैकएंड API URL"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "बैकएंड API URL बदलें (डिफ़ॉल्ट https://api.proxybase.xyz है)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "कंटेनर पहली बार शुरू होने पर अपने-आप सेटअप करता है: एक secp256k1 वॉलेट (BIP-39) बनाता है, ECDSA challenge-response से प्रमाणीकरण करता है, और सिर्फ़ डायरेक्ट मोड में बैंडविड्थ बेचना शुरू करता है। सारी स्थिति (वॉलेट, सेशन टोकन, विक्रेता कॉन्फ़िग) <code>proxybase-data</code> वॉल्यूम में सहेजी जाती है। वॉलेट पते के लिए पहली बार चलाने पर कंटेनर लॉग देखें। बाहरी प्रॉक्सी दोबारा बेचने के रास्ते जोड़ने के लिए <code>--upstream</code> इस्तेमाल करें।\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "बनाई गई वॉलेट कीफ़ाइल। यह वॉल्यूम ही पैसा है: सर्वर पर कोई कॉपी नहीं है, इसलिए इसे मिटाने से रकम भी उसके साथ नष्ट हो जाती है।"
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "कमाई बाज़ार दरों पर बेचे गए GB के आधार पर। VPS/डेटासेंटर IP आवासीय से कम कमाते हैं। मल्टी-अपस्ट्रीम मोड आपकी अपनी बैंडविड्थ को बाहरी प्रॉक्सी के साथ जोड़ सकता है।"
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "<code>proxybase-cli seller payout create</code> से कमाई लॉक करें, जो Tempo Chain (Tempo MPP) पर USDC के रूप में मिलती है। भुगतान किसी भी ऐसे EVM पते पर होता है जिसकी कुंजी आपके पास हो (Tempo एक EVM चेन है), कुछ साइन नहीं करना पड़ता; USDC देखने के लिए वॉलेट में Tempo नेटवर्क जोड़ें। अगर वॉलेट फिर भी इसे न दिखाए, तो Tempo USDC टोकन हाथ से जोड़ना होगा: Proxybase का दिया कॉन्ट्रैक्ट पता डालकर उसे इम्पोर्ट करें, और बैलेंस पर भरोसा करने से पहले वह पता जाँच लें।"
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "क्लाइंट पहली बार चलने पर अपना खुद का वॉलेट बनाता है।"
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "रेफ़र किए गए खरीदार के हर डिपॉज़िट का 15%, आपके अपने प्रॉक्सी सेशन के लिए क्रेडिट के रूप में"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "खरीदार के पहले डिपॉज़िट पर +10%"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "बैंडविड्थ, ProxyBase मार्केटप्लेस पर खरीदारों को बेची जाने वाली SOCKS5 प्रॉक्सी के रूप में।"
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "हाँ। खरीदार अपना ट्रैफ़िक आपके कनेक्शन से भेजते हैं — ठीक यही बेचा जा रहा है।"
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "आपकी मशीन पर बना एक वॉलेट पता, और आपके रिले किए गए ट्रैफ़िक की मात्रा।"
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "वास्तविक, और यह सीधे घरेलू कनेक्शन पर लागू होता है। अनजान खरीदारों का प्रॉक्सी ट्रैफ़िक आपके IP से निकलता है, इसलिए दुरुपयोग की शिकायतें आपके पास आती हैं। इस कैटलॉग में कुछ भी इस सेवा को डेटासेंटर पतों तक सीमित नहीं करता, और आवासीय IP ज़्यादा कमाते हैं, इसलिए यहाँ लालच गलत दिशा में ले जाता है: इसे घर पर चलाने से पहले अपने ISP की शर्तें पढ़ें।"
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "अज्ञात - प्रदाता प्रति खाता या प्रति IP डिवाइस सीमा प्रकाशित नहीं करता, और कैटलॉग भी कोई सीमा घोषित नहीं करता।"
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "भुगतान Tempo Chain पर USDC में, किसी भी ऐसे EVM पते पर जिसकी कुंजी आपके पास हो।"
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "आपका कनेक्शन मार्केटप्लेस खरीदारों को SOCKS5 प्रॉक्सी के रूप में बेचा जाता है; हमें इसका कोई विवरण नहीं मिला कि खरीदारों की जाँच कैसे होती है।"
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "इसके अपने कमाई पेज के शीर्षक में लिखा है कि KYC की ज़रूरत नहीं, और भुगतान $1 से।"
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "ProxyBase अपनी खुद की क्लाइंट इमेज प्रकाशित करता है और डेटासेंटर कनेक्शन स्वीकार करता है।"
+  source: "ae81d006093f"
+proxylite.description:
+  text: "ProxyLite सत्यापित संगठनों के साथ बैंडविड्थ शेयर करके आपके इंटरनेट ट्रैफ़िक से कमाई कराता है। आवासीय और VPS/डेटासेंटर दोनों कनेक्शन पर काम करता है। सरल सेटअप, जिसमें डैशबोर्ड से सिर्फ़ एक यूज़र ID चाहिए। जीवन भर 15% का अच्छा रेफ़रल कमीशन देता है।\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "बैंडविड्थ शेयरिंग - जीवन भर 15% रेफ़रल, VPS पर काम करता है"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "यूज़र ID"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "<a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> पर लॉग इन करें → आपकी यूज़र ID मुख्य डैशबोर्ड पेज पर आपके ईमेल के बगल में दिखती है। खाता चाहिए? <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a> से साइन अप करें"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "आवासीय IP ज़्यादा कमाते हैं। VPS/डेटासेंटर कनेक्शन कम दरों पर स्वीकार।"
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "उनकी कमाई का 15% जीवन भर"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "साइट का मालिक उसके डोमेन रिकॉर्ड में छिपा है, और हमें इसके पीछे कोई नामित कंपनी नहीं मिली।"
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "न्यूनतम $5, क्रिप्टो या PayPal से।"
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "ProxyLite एक Docker इमेज proxylite/proxyservice प्रकाशित करता है, और डेटासेंटर कनेक्शन कम दर पर स्वीकार करता है।"
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "ProxyRack का Peer कार्यक्रम आपको उनके प्रॉक्सी नेटवर्क के हिस्से के रूप में अपनी बैंडविड्थ शेयर करके कमाने देता है। हर डिवाइस के लिए एक अनोखा 64-वर्ण का hex UUID चाहिए, और डिवाइस को अपने-आप पंजीकृत करने के लिए वैकल्पिक रूप से एक API कुंजी। आवासीय और VPS/डेटासेंटर दोनों कनेक्शन पर काम करता है। डैशबोर्ड Cloudflare के पीछे है, जिसकी वजह से API कुंजी ब्राउज़र से हाथ से निकालनी पड़ सकती है।\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "बैंडविड्थ शेयरिंग - हर डिवाइस का UUID, VPS पर काम करता है"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "डिवाइस UUID"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "API कुंजी"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "डिवाइस का नाम"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "हर डिवाइस के लिए अनोखी 64-वर्ण की hex ID। इससे बनाएँ: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "<a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> पर लॉग इन करें → API Key मुख्य डैशबोर्ड पेज पर दिखती है (दी गई हो तो डिवाइस अपने-आप पंजीकृत होता है)। खाता चाहिए? <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a> से साइन अप करें"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "डैशबोर्ड में डिवाइस का पहचानने लायक नाम"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "ProxyRack का क्लाइंट इस कॉपी पर नहीं चल सकता, इसलिए यह कुछ नहीं कमाती। आम तौर पर वजह यह होती है कि ProxyRack का अपडेट सर्वर जवाब नहीं दे रहा, और उसके बिना क्लाइंट शुरू नहीं हो सकता। कॉपी हर 5 मिनट में फिर से कोशिश करती है और सर्वर के जवाब देते ही अपने आप शुरू हो जाती है। आपकी तरफ़ से कुछ ठीक करने की ज़रूरत नहीं है।"
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "यह कॉपी शुरू होते समय ProxyRack का क्लाइंट डाउनलोड नहीं हुआ, क्योंकि ProxyRack के अपडेट सर्वर तक पहुँचा नहीं जा सका, इसलिए कॉपी चलती है पर कुछ नहीं कमाती। CashPilot फिर से कोशिश करने के लिए इसे हर 6 घंटे में रीस्टार्ट करता है। इसे फिर से डिप्लॉय करें ताकि इसे CashPilot का अपना स्टार्ट मिले, जो क्लाइंट को रखता है और हर 5 मिनट में अपने आप फिर से कोशिश करता है।"
+  source: "0a2ee4b478b2"
+proxyrack.device_link.steps:
+  text: "ProxyRack में साइन इन करें, Devices खोलें, Add device चुनें और यह UUID पेस्ट करें। जब तक डिवाइस आपके खाते में नहीं है, वह किसी के लिए नहीं कमाता। अगर आपने API कुंजी डाली है, तो कंटेनर खुद को पंजीकृत कर लेता है: जाँचें कि डिवाइस वहाँ सूची में है।"
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "आवासीय IP डेटासेंटर से ज़्यादा कमाते हैं। Cloudflare के पीछे डैशबोर्ड की वजह से स्वचालित एक्सेस मुश्किल हो सकता है।"
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "डैशबोर्ड पर भुगतान का अनुरोध करें। ProxyRack 72 घंटों के भीतर इसकी समीक्षा करता है, फिर Tremendous आपको एक इनाम ईमेल करता है जिसे PayPal, गिफ़्ट कार्ड या वायर ट्रांसफ़र के रूप में रिडीम किया जा सकता है। कोई क्रिप्टो विकल्प नहीं है।"
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "बैलेंस ProxyRack के पास रहता है; अनुरोध पर निकाला जाता है।"
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "<a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a> पर लॉग इन करें, F12 दबाएँ → Network, कोई भी API अनुरोध ढूँढें और <b>Api-Key</b> हेडर का मान कॉपी करें। खाता चाहिए? <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a> से साइन अप करें।"
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Proxyrack प्रति खाता 500 डिवाइस की सीमा बताता है और कोई प्रति-IP सीमा नहीं। डेटासेंटर IP स्वीकार किए जाते हैं पर उन्हें कम दर वाली श्रेणी में रखा जाता है।"
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "ProxyRack का सहायता केंद्र कहता है कि किसी डिवाइस को हटाने से उस डिवाइस की कमाई आपके खाते से हट जाती है, और वह तभी वापस आती है जब वही डिवाइस फिर से जोड़ा जाए।"
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "ProxyRack अपनी खुद की Docker इमेज proxyrack/pop प्रकाशित करता है, और डेटासेंटर IP कम दर पर स्वीकार करता है।"
+  source: "278541f81053"
+repocket.description:
+  text: "Repocket आपकी इस्तेमाल न हुई इंटरनेट बैंडविड्थ शेयर करके निष्क्रिय आय कमाने देता है। आवासीय IP सबसे ज़्यादा कमाते हैं; VPS/डेटासेंटर IP कम दरों पर स्वीकार किए जाते हैं। प्रति खाता अधिकतम 5 डिवाइस और 5 सक्रिय सेशन। Docker कंटेनर आपके खाते के ईमेल और Repocket डैशबोर्ड की एक API कुंजी से प्रमाणीकरण करता है (आपके पासवर्ड से नहीं)।\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "बैंडविड्थ शेयरिंग - अधिकतम 5 डिवाइस, API कुंजी प्रमाणीकरण"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "ईमेल"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "API कुंजी (UUIDv4, पासवर्ड नहीं)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "आपके Repocket खाते का ईमेल"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "आपकी Repocket API कुंजी — <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> पर लॉग इन करें और bandwidth-earnings पेज पर दिखने वाली API कुंजी कॉपी करें (यह आपके खाते का पासवर्ड नहीं है)। खाता चाहिए? <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a> से साइन अप करें"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "आवासीय IP ज़्यादा कमाते हैं। VPS/डेटासेंटर IP स्वीकार, पर कम दरों पर।"
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4 (पहले भुगतान के बाद $2)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Repocket हर खाते के लिए न्यूनतम राशि तय करता है: अक्टूबर 2026 में पहले भुगतान से पहले $4 और उसके बाद $2, जो पहले विज्ञापित $20 से काफ़ी कम है। तरीके: Tremendous (आपके ईमेल पर) या Polygon पर USDT। हर अनुरोध की पुष्टि 2 घंटे के भीतर ईमेल किए गए लिंक से होती है, और एक समय में सिर्फ़ एक अनुरोध लंबित रह सकता है। अक्टूबर 2026 में Repocket ने एक Tremendous अनुरोध \"Please, message support\" कहकर अस्वीकार कर दिया, जबकि Polygon पर USDT सफल रहा।"
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "बैलेंस Repocket के पास रहता है; अनुरोध पर निकाला जाता है।"
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "अपने Repocket खाते का ईमेल और पासवर्ड इस्तेमाल करें (<a href='https://app.repocket.com' target='_blank'>app.repocket.com</a> वाले ही)। खाता चाहिए? <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a> से साइन अप करें।"
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "रेफ़र किए गए व्यक्ति के $7 कमाने पर $2, फिर उनकी कमाई का 5% जीवन भर"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "साइन अप पर $2 वॉलेट बोनस"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Repocket प्रति खाता पाँच डिवाइस की सीमा बताता है, पर कोई प्रति-IP डिवाइस सीमा प्रकाशित नहीं करता। समीक्षा साइटों पर दोहराए गए '2 devices per IP' आँकड़े का प्रदाता का कोई स्रोत नहीं है, इसलिए CashPilot इसका दावा नहीं करता।"
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "एक Repocket डिवाइस पर शेयरिंग चालू रखें, या अपना बैलेंस निकालें"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "12 महीने तक कोई लॉगिन, भुगतान या बैंडविड्थ शेयरिंग न होने पर Repocket बिना भुगतान वाला बैलेंस ज़ब्त कर सकता है।"
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "एक डिवाइस पर शेयरिंग चालू रखें, साइन इन करें, या निकासी करें। अगर आप Repocket का इस्तेमाल बंद करते हैं, तो पहले निकासी करें।"
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "कई Trustpilot समीक्षक बताते हैं कि भुगतान रद्द हुए और बैलेंस शून्य कर दिए गए; एक का कहना है कि सहायता ने अनियमित बैंडविड्थ कमाई का हवाला दिया। पेज Repocket को 2.7 रेटिंग देता है और बताता है कि इसने नकारात्मक समीक्षाओं का जवाब नहीं दिया है।"
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "समीक्षक बताते हैं कि निकासी अस्वीकार हुई और भुगतान के लिए पीछे पड़ना पड़ा।"
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "Repocket की भुगतान नीति उसे जब भी कमाई के अमान्य होने का शक हो, उसे वापस लेने, रद्द करने या हमेशा के लिए ज़ब्त करने की छूट देती है, और निष्क्रिय खाते की बिना भुगतान वाली कमाई ज़ब्त करने की भी।"
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "वही नीति Repocket को बिना सूचना के कभी भी भुगतान के तरीके जोड़ने, हटाने या बदलने की छूट देती है; PayPal हटा दिया गया।"
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "शर्तें कहती हैं कि Repocket कभी भी पहचान या खाता सत्यापन माँग सकता है, और भुगतान की पात्रता उसी पर निर्भर करती है।"
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "शर्तें कहती हैं कि Repocket और उसके साझेदार नेटवर्क क्षमता का इस्तेमाल करते हैं, पर यह नहीं बतातीं कि साझेदार कौन हैं या उनकी जाँच कैसे होती है।"
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "Trustpilot बताता है कि Repocket ने नकारात्मक समीक्षाओं का जवाब नहीं दिया है, और समीक्षक कहते हैं कि संदेशों को अनदेखा किया जाता है।"
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "मौजूदा शर्तों में सिंगापुर की Repocket Pte. Ltd. का नाम है; पुरानी शर्तों में किसी कंपनी का नाम नहीं था।"
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Repocket अपनी खुद की Docker इमेज repocket/repocket प्रकाशित करता है, और इसकी शर्तें आपके अपने कंटेनरों की अनुमति देती हैं।"
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "न्यूनतम राशि कम है: पहले भुगतान से पहले $4 और उसके बाद $2।"
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Salad.io आपको वितरित AI वर्कलोड के लिए अपना GPU शेयर करने और Salad बैलेंस कमाने देता है, जिसे गिफ़्ट कार्ड, गेम या नकद में रिडीम किया जा सकता है। सिर्फ़ Windows, नेटिव डेस्कटॉप एप्लिकेशन के साथ। एक अलग GPU (NVIDIA या AMD) ज़रूरी है। मशीन खाली होने पर प्लेटफ़ॉर्म AI इनफ़रेंस, रेंडरिंग और दूसरे कंप्यूट कार्य आपकी मशीन पर भेजता है। ज़्यादा आसान GPU शेयरिंग प्लेटफ़ॉर्म में से एक।\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "AI के लिए GPU शेयरिंग - सिर्फ़ Windows, गिफ़्ट कार्ड या नकद भुगतान"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "कमाई GPU मॉडल और काम की उपलब्धता पर निर्भर करती है। RTX 3060 ~$1-3/दिन। सिर्फ़ Windows। नेटिव ऐप, कोई Docker समर्थन नहीं। गिफ़्ट कार्ड, गेम या PayPal में रिडीम किया जा सकता है।"
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "Salad स्टोरफ़्रंट से PayPal या गिफ़्ट कार्ड।"
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "सिर्फ़ PayPal और गिफ़्ट कार्ड, क्रिप्टो कभी नहीं। कोई वॉलेट पता नहीं होता, इसलिए CashPilot के पास दिखाने के लिए कोई ऑन-चेन बैलेंस नहीं है।"
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "<a href='https://app.salad.io' target='_blank'>app.salad.io</a> पर लॉग इन करें, F12 दबाएँ → Application → Cookies, <b>auth</b> कुकी का मान कॉपी करें।"
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "कुछ Salad Reward Points कमाएँ, या अपना बैलेंस खर्च करें"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "अगर कोई खाता लगातार 12 महीने तक कोई Reward Points न कमाए, तो उसका बिना रिडीम किया बैलेंस समाप्त हो सकता है।"
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "Salad ऐप को तब तक चलाएँ जब तक वह कुछ कमा न ले, या पूरा बैलेंस Salad Storefront में खर्च करें। सिर्फ़ कुछ हिस्सा खर्च करने से 12 महीने फिर से शुरू नहीं होते।"
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "CashPilot Salad नहीं चलाता: आप प्रदाता का अपना डेस्कटॉप ऐप इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "अक्टूबर और नवंबर 2026 में कई Trustpilot समीक्षक बताते हैं कि PayPal निकासी जल्दी पहुँची, कुछ को एक से ज़्यादा बार; उसी दौरान एक समीक्षक कहता है कि बार-बार निकासी की कोशिशें विफल रहीं।"
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel विकेंद्रीकृत VPN के लिए एक Layer 1 Cosmos ब्लॉकचेन है। नोड ऑपरेटर लचीली कीमत (प्रति-GB या प्रति घंटा) पर VPN उपयोगकर्ताओं को बैंडविड्थ बेचते हैं। आधिकारिक Docker डिप्लॉयमेंट गाइड उपलब्ध है। सक्रिय समुदाय वाला लंबे समय से चल रहा प्रोजेक्ट।\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "Cosmos पर विकेंद्रीकृत VPN - नोड ऑपरेटर बैंडविड्थ बेचते हैं"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "ऑपरेटर प्रति-GB या प्रति घंटा अपनी कीमत खुद तय करते हैं। कमाई आपके क्षेत्र में VPN उपयोगकर्ताओं की माँग पर निर्भर करती है।"
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "हर सेशन पर"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "भुगतान P2P टोकन में होते हैं, और हर बैंडविड्थ भुगतान का 20% नोड होस्ट के बजाय स्टेकर्स को जाता है।"
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "टोकन का नाम 2021 में SENT से DVPN और 2025 में DVPN से P2P किया गया।"
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "CashPilot Sentinel नहीं चलाता: आप प्रदाता का अपना नोड सॉफ़्टवेयर इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Sentinel अपने नोड का सोर्स कोड अपने खुद के ओपन सोर्स लाइसेंस के तहत प्रकाशित करता है।"
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia एक विकेंद्रीकृत स्टोरेज मार्केटप्लेस है जिसे Sia Foundation (एक स्विस गैर-लाभकारी संस्था) चलाती है और जो 2015 से चल रहा है। फ़ालतू डिस्क स्पेस किराए पर देने और स्टोरेज और बैंडविड्थ अनुबंधों से Siacoin कमाने के लिए Foundation का आधिकारिक hostd नोड चलाएँ। नोड के कमाने से पहले आपको कुछ Siacoin खरीदने होंगे: होस्ट हर अनुबंध के बदले कोलैटरल लॉक करते हैं और हर स्टोरेज प्रूफ़ के लिए शुल्क देते हैं। अनुबंध पूरा होने पर कोलैटरल वापस आता है और अगर नोड ऑफ़लाइन हो जाए या डेटा खो दे तो वह जला दिया जाता है, इसलिए हमेशा चालू रहने वाली मशीन चाहिए (Sia कम से कम 95% अपटाइम बताता है)। कमाई इस पर निर्भर करती है कि किराएदार असल में कितना डेटा रखते हैं; Sia स्टोरेज की कीमत $1 प्रति TB प्रति माह रखने का सुझाव देता है, इसलिए यह छोटे VPS हिस्सों के बजाय बड़ी फ़ालतू डिस्क वाली मशीनों के लिए ठीक है।\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "Sia Foundation स्टोरेज नोड - आधिकारिक Docker इमेज, Siacoin कमाएँ"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "वॉलेट सीड फ़्रेज़"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "डैशबोर्ड पासवर्ड"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "स्टोरेज डायरेक्टरी"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "BIP-39 सीड फ़्रेज़ जो होस्ट के Siacoin वॉलेट को नियंत्रित करता है। `docker run --rm ghcr.io/siafoundation/hostd seed` से एक बनाएँ और उसका बैकअप रखें -- कमाई तक पहुँचने का यही इकलौता तरीका है"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "hostd वेब UI और लोकल API (BasicAuth) का पासवर्ड। कोई भी लंबा पासफ़्रेज़"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "आपकी सबसे बड़ी डिस्क पर होस्ट का वह पाथ जहाँ किराएदारों का डेटा रखा जाता है (जैसे /srv/sia)। कम से कम 256GB खाली जगह चाहिए"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "डिप्लॉय करने पर, CashPilot नोड चलाने वाली मशीन पर एक नया वॉलेट बनाता है और उसका सीड फ़्रेज़ एक बार दिखाता है: इसे लिख लें। पहले से मौजूद वॉलेट इस्तेमाल करने के लिए, उसकी जगह उसका सीड फ़्रेज़ पेस्ट करें। डिप्लॉय के बाद, कोलैटरल और शुल्क के लिए नोड के वॉलेट में कुछ Siacoin भेजें, फिर डैशबोर्ड में स्टोरेज फ़ोल्डर (/storage) जोड़ें, कीमतें तय करें और होस्ट की घोषणा करें।\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "वॉलेट सीड फ़्रेज़ (hostd.yml), वॉलेट डेटाबेस, होस्ट सेटिंग्स और अनुबंधों की स्थिति। इसे खोने पर नोड की पहचान और अनुबंध आय की ट्रैकिंग खो जाती है; तब रकम वापस पाने का इकलौता रास्ता वह सीड फ़्रेज़ है जो आपने लिखा था।"
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "रखा गया किराएदारों का डेटा। इसे खोने पर स्टोरेज प्रूफ़ विफल होते हैं और उन अनुबंधों के बदले लॉक किया गया कोलैटरल ज़ब्त हो जाता है।"
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "होस्ट अपनी कीमतें खुद तय करते हैं। Sia हर महीने रखे गए हर TB के लिए $1 और डाउनलोड किए गए हर TB के लिए $5 से ज़्यादा का सुझाव देता है, और हर अनुबंध भुगतान का 3.9% Siafund धारकों को जाता है। आय इस पर निर्भर करती है कि नोड पर किराएदारों का कितना डेटा आता है, जो शून्य से शुरू होता है और अपटाइम और कीमत के साथ बढ़ता है। कोलैटरल (Sia स्टोरेज कीमत का 2x सुझाता है) हर अनुबंध के लिए लॉक होता है और सफलतापूर्वक पूरा होने पर लौटाया जाता है।\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "कमाई होस्ट के अपने Siacoin वॉलेट (सीड से नियंत्रित) में जमा होती है। किसी एक्सचेंज पर SC बदलें और वहीं से बैंक/कार्ड में निकालें; प्रदाता की तरफ़ से कोई भुगतान अनुरोध नहीं होता।\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "रकम नोड के अंदर सीड से नियंत्रित Sia वॉलेट में रहती है। सीड फ़्रेज़ सिर्फ़ उस मशीन पर hostd के डेटा वॉल्यूम में रहता है जो इसे चलाती है; CashPilot इसे कभी नहीं सहेजता। वॉलेट बनते समय आप जो फ़्रेज़ लिखते हैं, वही रकम वापस पाने का इकलौता रास्ता है।\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "एक स्थिर सार्वजनिक पता, जिस पर पोर्ट 9981 (TCP, consensus) और 9984 (TCP और UDP, किराएदार अनुबंध) फ़ॉरवर्ड हों। Sia पर डेटासेंटर/VPS होस्टिंग आम है। नोड के अनुबंध लेने से पहले वॉलेट में Siacoin होने चाहिए।"
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "डिस्क स्पेस और उसे देने के लिए बैंडविड्थ।"
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "नहीं। किराएदार आपकी डिस्क पर एन्क्रिप्ट की गई फ़ाइलों के टुकड़े रखते हैं और उन्हें वापस लेते हैं। दूसरे लोग आपके IP से मनमाना ट्रैफ़िक नहीं भेजते।"
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "आपका Sia वॉलेट पता, होस्ट की सार्वजनिक कुंजी, और वह सार्वजनिक IP:port जिसकी नोड घोषणा करता है ताकि किराएदार उस तक पहुँच सकें।"
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "लाइन पर लगातार अपलोड/डाउनलोड ट्रैफ़िक, किसी भी स्टोरेज सर्वर को चलाने जैसा; कोई गुमनाम तीसरे पक्ष का वेब ट्रैफ़िक आपके नाम दर्ज नहीं होता।"
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "बिना अनुमति के: कोई साइन अप या खाता नहीं। अगर नोड ऑफ़लाइन होकर या डेटा खोकर स्टोरेज प्रूफ़ चूक जाए, तो कोलैटरल जला दिया जाता है।"
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "कमाई आपके अपने वॉलेट में Siacoin है: बैंक में कोई भुगतान नहीं होता, इसलिए आपको खुद किसी एक्सचेंज पर बेचना होता है।"
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "कोलैटरल हर अनुबंध के लिए लॉक होता है और अगर होस्ट ऑफ़लाइन होकर या डेटा खोकर स्टोरेज प्रूफ़ चूक जाए तो जला दिया जाता है।"
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "नेटवर्क पर दी गई स्टोरेज का सिर्फ़ लगभग 30% इस्तेमाल में है, इसलिए नए होस्ट को कम माँग के लिए मुकाबला करना पड़ता है।"
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "किराएदार एन्क्रिप्ट की गई फ़ाइलों के टुकड़े रखते हैं और कोई आपके IP से ट्रैफ़िक नहीं भेजता, लेकिन हमें यह नहीं मिला कि Sia कहाँ बताता है कि किराएदार कौन हैं या उनकी जाँच कैसे होती है।"
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "hostd को Sia Foundation 2022 से खुले तौर पर विकसित करती है।"
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd MIT लाइसेंस के तहत ओपन सोर्स है।"
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "Sia Foundation hostd को कंटेनर इमेज के रूप में प्रकाशित करती है।"
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "बिना अनुमति के: कोई साइन अप या खाता नहीं।"
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide एक बैंडविड्थ शेयरिंग सेवा है जो आपको इस्तेमाल न हुई इंटरनेट बैंडविड्थ से कमाई करने देती है। डिवाइस ट्रैकिंग के लिए एक वैकल्पिक मशीन ID इस्तेमाल करती है। income-generator प्रोजेक्ट की कम्युनिटी Docker इमेज के ज़रिए उपलब्ध।\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "बैंडविड्थ शेयरिंग - मशीन ID आधारित"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "मशीन ID"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "पहले से पंजीकृत मौजूदा डिवाइस की मशीन ID (खाली हो तो अपने-आप बनती है)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "सीमित जानकारी उपलब्ध। कमाई लोकेशन पर निर्भर करती है।"
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "उनकी कमाई का 10%"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "$5 साइन-अप बोनस"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "एक सार्वजनिक IP से जाने वाला ट्रैफ़िक उसे शेयर करने वाले डिवाइस में बँट जाता है, इसलिए उसी कनेक्शन पर दूसरा डिवाइस कुछ नहीं जोड़ता।"
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "CashPilot Spide नहीं चलाता: आप प्रदाता का अपना ऐप इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "एक NVIDIA GPU से Pearl, Zano या Ravencoin माइन करें। CashPilot पहली बार शुरू होने पर आधिकारिक SRBMiner-Multi रिलीज़ डाउनलोड करता है और उसका SHA-256 जाँचता है। आपका चुना हुआ पूल आपके सार्वजनिक भुगतान पते पर भुगतान करता है। SRBMiner-Multi, Pearl पर हैशिंग समय का 2% और बाकी दो पर 0.85% अपने पास रखता है। बिजली की लागत आपके कमाए कॉइन से ज़्यादा हो सकती है।"
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "NVIDIA GPU पर Pearl और दूसरे GPU कॉइन माइन करें"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "भुगतान पता"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "वर्कर का नाम"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "एल्गोरिदम"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "पूल (host:port)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "पूल कनेक्शन एन्क्रिप्ट करें (TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "आपका सार्वजनिक Pearl पता (prl1...)। Zano या Ravencoin के लिए, उस कॉइन का पता और उसके लिए एक पूल डालें।"
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "Pearl के लिए pearlhash, Zano के लिए progpow_zano, Ravencoin के लिए kawpow।"
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "बिजली से पहले का कुल अनुमान। 2026-11-25 को hashrate.no ने लगभग 142 W खींचने वाले RTX 4070 के लिए Pearl पर लगभग $2.45 प्रति दिन का अनुमान लगाया। हमने इसे मापा नहीं है। Pearl एक नया कॉइन है, और इसकी कीमत और कठिनाई तेज़ी से बदलती है। यह फ़ायदेमंद है या नहीं, यह देखने के लिए अपने GPU की बिजली खपत और अपनी बिजली की कीमत जाँचें।"
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL (HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "पूल की सीमा पूरी होने पर"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "आपका बैलेंस आपकी सीमा तक पहुँचने पर पूल आपके पते पर भुगतान करता है। भुगतान होने तक बैलेंस पूल के पास रहता है।"
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64, एक NVIDIA GPU और NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "यह मशीन होस्टिंग कनेक्शन बताती है। माइनिंग से पहले अपने प्रदाता की शर्तें जाँचें। कुछ प्रदाता, जिनमें Hetzner Cloud भी है, इसे मना करते हैं। मुनाफ़े के अनुमान पर भरोसा करने से पहले अपनी असली बिजली लागत जाँचें।"
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "2% माइनर शुल्क pearlhash के लिए है। SRBMiner-Multi, progpow_zano और kawpow पर 0.85% रखता है। डिफ़ॉल्ट Pearl पूल HeroMiners 1% पूल शुल्क लेता है। यह हर घंटे भुगतान जाँचता है और 1 PRL से भुगतान करता है। दूसरे पूल अपनी दरें और सीमाएँ खुद तय करते हैं।"
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "कंप्यूट"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "नहीं। माइनर आपके चुने पूल को काम भेजता है।"
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "आपका भुगतान पता, वर्कर का नाम और IP पता पूल को जाता है। पहली बार शुरू होने पर माइनर GitHub से डाउनलोड होता है।"
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "कुछ नेटवर्क और DNS रिज़ॉल्वर माइनिंग पूल कनेक्शन ब्लॉक करते हैं।"
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "ज़्यादातर पूल आपको आपके सार्वजनिक भुगतान पते से पहचानते हैं।"
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "माइनर Pearl पर हैशिंग समय का 2% और Zano और Ravencoin पर 0.85% रखता है।"
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "कुछ होस्टिंग प्रदाता क्रिप्टोकरेंसी माइनिंग मना करते हैं।"
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "माइनर क्लोज़्ड सोर्स है, इसलिए इसके डेवलपर के अलावा कोई ऑडिट नहीं कर सकता कि यह क्या चलाता है।"
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "GPU की बिजली की लागत कमाए गए कॉइन से ज़्यादा हो सकती है, और Pearl की कीमत तेज़ी से बदलती है।"
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "माइनर पूल को काम भेजता है और किसी और का ट्रैफ़िक रिले नहीं करता।"
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "आप HeroMiners पर सार्वजनिक पते से, बिना खाते के, Pearl माइन कर सकते हैं।"
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj एक विकेंद्रीकृत क्लाउड स्टोरेज नेटवर्क है जहाँ आप अपनी इस्तेमाल न हुई डिस्क स्पेस किराए पर देकर कमाते हैं। Docker से स्टोरेज नोड चलाएँ और हर महीने रखे गए हर TB के लिए $1.35 और egress के हर TB के लिए $1 पाएँ (1 सितंबर 2026 से दरें)। भुगतान हर महीने USDC में होता है, जो एक US-डॉलर स्टेबलकॉइन है, Ethereum mainnet पर आपके नियंत्रण वाले वॉलेट में, जब बैलेंस शुल्क-आधारित न्यूनतम राशि पार कर ले (सितंबर 2026 के भुगतान तक STORJ टोकन में)। कम से कम 550GB उपलब्ध डिस्क स्पेस और स्थिर इंटरनेट कनेक्शन ज़रूरी। कोई खाता या साइन अप नहीं चाहिए -- 2025 के मध्य से नोड बिना अनुमति के चलते हैं। सावधानी (अक्टूबर 2026): पुराने कर्ज़ के पुनर्गठन के लिए Storj Labs ने 26 जुलाई 2026 को Chapter 11 के लिए आवेदन किया (US Bankruptcy Court, Northern District of West Virginia, case 5:26-bk-00512)। नेटवर्क चल रहा है और Storj सक्रिय नोड को भुगतान करता रहता है, लेकिन आवेदन से पहले की नोड कमाई अदालत के फ़ैसले तक रुकी हुई है। STORJ टोकन अपने 2021 के शिखर से लगभग 98% नीचे है। Binance ने 3 सितंबर 2026 को इसे डीलिस्ट किया, और Coinbase ने 28 सितंबर 2026 को इसमें ट्रेडिंग निलंबित की। नया नोड अपने पहले नौ महीनों में अपनी कमाई का एक हिस्सा रोक कर रखता है और सिर्फ़ उतना भरता है जितनी ग्राहकों की माँग हो, इसलिए अभी नोड शुरू करने का मतलब है एक लंबी वसूली अवधि को पुनर्गठन से गुज़र रही ऐसी कंपनी से बाँधना जो अब भी बंद हो सकती है।\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "विकेंद्रीकृत स्टोरेज नोड - $1.35/TB स्टोरेज + $1/TB egress"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "वॉलेट पता"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "ईमेल"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "बाहरी पता"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "स्टोरेज आवंटन"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "पहचान डायरेक्टरी"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "स्टोरेज डायरेक्टरी"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "USDC भुगतान के लिए Ethereum वॉलेट पता (जैसे 0x1234...abcd)। यह सेल्फ़-कस्टडी वाला होना चाहिए (MetaMask, Ledger आदि) -- कभी किसी एक्सचेंज का पता इस्तेमाल न करें"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "ऑपरेटर सूचनाओं के लिए ईमेल पता"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "पोर्ट के साथ DDNS होस्टनेम (जैसे mynode.ddns.net:28967) -- सीधे IP के बजाय यही ज़ोरदार तरीके से बेहतर है, क्योंकि जिस दिन आपका ISP चुपचाप IP बदल देगा, सीधा IP नोड को अटका देगा। पोर्ट 28967 फ़ॉरवर्ड होना चाहिए (TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "आवंटित करने के लिए अधिकतम डिस्क स्पेस (जैसे 2TB)। घूमने वाली डिस्क (HDD) इस्तेमाल करें, SSD नहीं"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "होस्ट का वह पाथ जहाँ पहचान फ़ाइलें रखी जाती हैं (इसमें ca.cert, ca.key, identity.cert, identity.key होनी चाहिए)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "Storj डेटा स्टोरेज के लिए घूमने वाली डिस्क (HDD) पर होस्ट का पाथ। कम से कम 550GB खाली जगह चाहिए"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "पहली बार चलाने से पहले, स्टोरेज नोड कॉन्फ़िग शुरू करें: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "नोड की पहचान। इसकी ID proof-of-work से बँधी है और दोबारा बनाने में घंटों लगते हैं, और इसे किसी और चीज़ के बैकअप से फिर से नहीं बनाया जा सकता। इसे खोने पर रोका गया भुगतान बैलेंस ज़ब्त हो जाता है।"
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "रखा गया ग्राहक डेटा और नोड की रोकी गई राशि। इसे खोने पर नोड अयोग्य हो जाता है और रोका गया बैलेंस ज़ब्त हो जाता है।"
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "Storj नेटवर्क आपके नोड से उसके बताए गए ADDRESS पर वापस संपर्क नहीं कर पा रहा, इसलिए सैटेलाइट उसे ऑफ़लाइन मानते हैं: नया डेटा आना बंद हो जाता है, egress आय रुक जाती है, और लंबे समय तक ऑफ़लाइन रहने पर निलंबन होता है। जाँचें कि ADDRESS आपके मौजूदा सार्वजनिक IP से मेल खाता है (DDNS होस्टनेम इस्तेमाल करें, सीधा IP नहीं, ताकि ISP के IP बदलने पर नोड अटके नहीं) और पोर्ट 28967 TCP+UDP इस मशीन पर फ़ॉरवर्ड है।"
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "1 सितंबर 2026 से $1.35/TB स्टोरेज + $1/TB egress + $1/TB audit/repair। कमाई रखे गए डेटा और नोड की उम्र के साथ बढ़ती है। पहले 9 महीनों में कमाई का 75%, फिर 50%, फिर 25% रोका जाता है; रोकी गई राशि का आधा 16वें महीने में और बाकी ग्रेसफ़ुल एग्ज़िट पर लौटता है। पोर्ट 28967 फ़ॉरवर्ड होना चाहिए।"
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "Ethereum ट्रांज़ैक्शन शुल्क का 4 गुना, छोटे बैलेंस आगे ले जाए जाते हैं"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "मासिक"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "Ethereum mainnet पर USDC में हर महीने भुगतान, जब वॉलेट बैलेंस मौजूदा ट्रांज़ैक्शन शुल्क का कम से कम चार गुना हो; छोटे बैलेंस अगले महीने में जुड़ जाते हैं। सितंबर 2026 के भुगतान तक STORJ टोकन में। डैशबोर्ड पोर्ट 14002 पर।"
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "बैलेंस शुल्क-आधारित न्यूनतम पार करते ही WALLET वाले पते पर Ethereum mainnet पर USDC में हर महीने भुगतान। सितंबर 2026 के भुगतान तक STORJ टोकन में; zkSync Era भुगतान 1 सितंबर 2026 को बंद हुए।"
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "पोर्ट 14002 पर नोड डैशबोर्ड का URL, localhost के बजाय सर्वर के LAN IP के साथ, जैसे <b>http://192.168.1.10:14002</b>। कई नोड के लिए, उनके URL कॉमा से अलग करके लिखें: CashPilot उन्हें जोड़ देता है।"
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "एक ही /24 सबनेट पर Storj नोड डेटा आवंटन शेयर करते हैं, जिससे प्रति नोड कमाई घटती है।"
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "5 Mbps अपलोड"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "डिस्क स्पेस और उसे देने के लिए बैंडविड्थ।"
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "नहीं। आप ग्राहक डेटा के एन्क्रिप्ट किए गए, erasure-coded टुकड़े रखते हैं। दूसरे लोग अपना ट्रैफ़िक आपके IP से नहीं भेजते।"
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "नोड की पहचान, आपका वॉलेट पता, वह ईमेल पता जो नोड को ऑपरेटर सूचनाओं के लिए चाहिए, और आपका IP और पोर्ट, जिन तक पहुँचना ज़रूरी है ताकि नोड डेटा दे सके।"
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "मुख्य रूप से कानूनी जोखिम के बजाय डेटा सीमा का सवाल: नोड लगातार ग्राहक डेटा भेजता और लेता है, जो आपकी लाइन पर असली लगातार ट्रैफ़िक है। लेकिन प्रॉक्सी या रिले के उलट, यह गुमनाम तीसरे पक्ष का ऐसा ट्रैफ़िक नहीं है जो आपसे शुरू हुआ माना जाए, इसलिए उन पर आने वाली दुरुपयोग की शिकायतें इस पर नहीं आतीं।"
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "असीमित नोड, लेकिन एक ही /24 सबनेट वाले नोड आवंटन शेयर करते हैं, इसलिए एक कनेक्शन पर कई नोड हों तो हर एक कम कमाता है।"
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "CoinDesk ने 27 जुलाई 2026 को बताया कि Storj Labs ने Chapter 11 दिवालियापन सुरक्षा के लिए आवेदन किया है।"
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "आवेदन से पहले के नोड ऑपरेटरों के भुगतान दिवालियापन दावों की प्रक्रिया में चले गए।"
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "नए नोड की कमाई का पहले नौ महीनों में 75%, फिर 50%, फिर 25% रोका जाता है; आधा 16वें महीने में लौटता है और बाकी सिर्फ़ ग्रेसफ़ुल एग्ज़िट पर।"
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "ग्राहक एन्क्रिप्ट की गई फ़ाइलों के टुकड़े रखते हैं और कोई आपके IP से ट्रैफ़िक नहीं भेजता, लेकिन हमें यह नहीं मिला कि Storj कहाँ बताता है कि ग्राहक कौन हैं या उनकी जाँच कैसे होती है।"
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "स्टोरेज नोड सॉफ़्टवेयर AGPL-3.0 के तहत ओपन सोर्स है।"
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Storj अपनी खुद की Docker इमेज storjlabs/storagenode प्रकाशित करता है।"
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "कोई खाता नहीं: एक वॉलेट पता और ऑपरेटर सूचनाओं के लिए एक ईमेल।"
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "आवेदन के बाद भी सक्रिय नोड को भुगतान मिलता रहा।"
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR बिना खाते वाला एक Monero माइनिंग पूल है: आपका माइनर आपके Monero पते को यूज़रनेम बनाकर लॉग इन करता है, और पूल उसी पते पर भुगतान करता है। CashPilot यहाँ कोई माइनर नहीं चलाता। यह वह बैलेंस पढ़ता है जो SupportXMR आपके पते के लिए रखता है, ताकि आप अपनी दूसरी आय के साथ देख सकें कि आपके CPU माइनर ने कितना कमाया। बैलेंस कमाया गया है पर मिला नहीं है: आपकी भुगतान सीमा पार होते ही पूल इसका भुगतान करता है।\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "Monero माइनिंग पूल, आपके भुगतान पते से ट्रैक किया जाता है"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR (अपने-आप), अनुरोध पर 0.01 XMR"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "जब आपका बैलेंस आपकी सीमा पार करे, या अनुरोध पर"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "बैलेंस आपकी सीमा (डिफ़ॉल्ट रूप से 0.1 XMR) तक पहुँचते ही SupportXMR आपके पते पर भुगतान करता है। इसकी साइट पर आप 0.01 XMR से तुरंत भुगतान का अनुरोध भी कर सकते हैं, 0.001 XMR शुल्क पर।"
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "बैलेंस कमाया गया है पर तब तक मिला नहीं है जब तक SupportXMR इसे इस पते पर न भेजे। Monero बैलेंस निजी view key के बिना ऑन-चेन नहीं पढ़े जा सकते, जो CashPilot कभी नहीं माँगता, इसलिए हर भुगतान की पुष्टि आप खुद करते हैं।"
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "आपका Monero भुगतान पता: वह यूज़रनेम जो आपका माइनर SupportXMR पर इस्तेमाल करता है, किसी भी <b>.workername</b> या <b>+difficulty</b> हिस्से के बिना। यह सार्वजनिक है और इससे कोई रकम नहीं खुलती।"
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "pool.supportxmr.com की ओर पॉइंट किया गया Monero माइनर (XMRig) ज़रूरी है"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "कंप्यूट"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "नहीं। आपका माइनर पूल को हैश भेजता है; कोई भी आपके कनेक्शन से ट्रैफ़िक नहीं भेजता।"
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "आपका Monero पता, आपके चुने हुए वर्कर नाम, आपका हैशरेट और आपके माइनर का IP पता जैसा पूल उसे देखता है।"
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "माइनर पूल से एक कनेक्शन खुला रखता है और बहुत कम बैंडविड्थ इस्तेमाल करता है। ध्यान रखने वाली लागत बिजली है, आपका ISP नहीं।"
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "कोई खाता नहीं है। पता ही पहचान है, और कोई भी supportxmr.com पर उसके आँकड़े पढ़ सकता है।"
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "भुगतान सिर्फ़ Monero में, 0.6% पूल शुल्क के साथ, और अपने-आप भुगतान से पहले 0.1 XMR की डिफ़ॉल्ट सीमा।"
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "CashPilot SupportXMR के लिए माइनर नहीं चलाता: आप अपना खुद का माइनर पूल की ओर पॉइंट करते हैं, और CashPilot सिर्फ़ बैलेंस पढ़ता है।"
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Teneo Protocol, Beacons के एक नेटवर्क के ज़रिए AI एजेंटों को लाइव वेब तक पहुँच देता है। Teneo Beacon, Android, iOS, macOS, Windows और Linux के लिए Teneo का अपना ऐप है, जिसका सर्वर और Raspberry Pi के लिए कमांड-लाइन संस्करण भी है। इसकी सहमति स्क्रीन स्वीकार करने के बाद यह आपकी इस्तेमाल न हुई बैंडविड्थ शेयर करता है, और ऑनलाइन रहते हुए Teneo Protocol Points और Fragments कमाता है। Fragments, USDC में दिए जाने वाले सीज़नल ड्रॉ (Beacon Drop) में गिने जाते हैं। Teneo कहता है कि Beacon उसके पुराने ब्राउज़र एक्सटेंशन से दोगुने पॉइंट कमाता है। प्रति इंटरनेट कनेक्शन एक Beacon कमाता है। उसी कनेक्शन पर दूसरे डिवाइस स्टैंडबाय पर रहते हैं। रेफ़रल लिंक या कोड PSA3BHPJ से Expedition Hub में साइन अप करें, फिर Beacon में साइन इन करें।\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "DePIN बैंडविड्थ ऐप (Beacon) - सीज़नल USDC ड्रॉ के लिए Fragments, रेफ़रल लिंक से +100 Fragments"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "Teneo Points और Fragments कमाता है। Fragments सीज़नल USDC ड्रॉ में गिने जाते हैं, इसलिए एक सीज़न इनाम देता है, कोई तय दर नहीं। Teneo कहता है कि Beacon ब्राउज़र एक्सटेंशन से दोगुने पॉइंट कमाता है। 3x तक Fragments के लिए हर 8 घंटे में बूस्ट क्लेम करें; कोई अवधि छूटने पर मल्टीप्लायर घट जाता है।"
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "सीज़नल ड्रॉ (Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "Beacon Drop इनाम USDC में उस वॉलेट में दिए जाते हैं जिसे आप Expedition Hub में बाइंड करते हैं। Hub दिखाता है कि वॉलेट बाइंड करने के लिए आपके पास कितने दिन हैं; अगर समय पर कोई वॉलेट बाइंड न हो, तो इनाम ज़ब्त हो जाता है।"
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "किसी सीज़न के इनाम दिए जाने से पहले Expedition Hub में एक वॉलेट बाइंड करें; जिस इनाम का वॉलेट समय पर बाइंड न हो, Hub उसे ज़ब्त कर लेता है।"
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "हर रेफ़र किए गए दोस्त के Fragments का 8% और उनके रेफ़रल के Fragments का 2%, जब दोस्त 7 दिनों के भीतर साइन अप करे और 480 Fragments कमाए"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "साइन अप पर +100 Fragments, और 480 Fragments तक पहुँचने पर +150 और"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "प्रति इंटरनेट कनेक्शन एक Beacon कमाता है। डेटासेंटर मशीनें सिर्फ़ उन होस्टिंग प्रदाताओं पर कमाती हैं जिन्हें Teneo ने चालू किया है, आधे Fragments के साथ और बिना पॉइंट या रेफ़रल बोनस के। VPN कनेक्शन कभी नहीं कमाते।"
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "Beacon के Fragments सिर्फ़ सीज़नल ड्रॉ में इनाम के रूप में USDC देते हैं, इसलिए इसे चलाने से कोई तय राशि नहीं मिलती।"
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Teneo कहता है कि पॉइंट $AGENTIC में मिलाए जाएँगे, जो एक ट्रांसफ़र न होने वाला इनाम टोकन है, $TENEO टोकन नहीं।"
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "2026 की दूसरी तिमाही का पहले का लक्ष्य बीत जाने के बाद, नवंबर 2026 तक $TENEO की लॉन्च तारीख, आवंटन या क्लेम प्रक्रिया की पुष्टि नहीं हुई थी।"
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "CashPilot Teneo नहीं चलाता: आप प्रदाता का अपना Beacon ऐप इंस्टॉल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Teneo कहता है कि ट्रैफ़िक जाँचे गए व्यावसायिक ग्राहकों से आता है और वह निजी पते और दुरुपयोग वाले पोर्ट ब्लॉक करता है, पर यह नहीं बताता कि वह उन ग्राहकों की जाँच कैसे करता है।"
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network एक स्थापित विकेंद्रीकृत वीडियो डिलीवरी और AI कंप्यूट नेटवर्क है (2018 से)। उपयोगकर्ता Edge Nodes चलाते हैं जो बैंडविड्थ, स्टोरेज और कंप्यूट शक्ति शेयर करते हैं। बड़ी कंटेंट साझेदारियाँ। TFUEL टोकन कमाता है।\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "विकेंद्रीकृत CDN + AI कंप्यूट - TFUEL इनाम, स्थापित प्रोजेक्ट"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "सिर्फ़ डेस्कटॉप ऐप। कमाई संसाधनों और लोकेशन पर निर्भर करती है। बड़ी साझेदारियाँ, सभी एक्सचेंजों पर लिस्टेड।"
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "लगातार"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "CashPilot Theta Edge नहीं चलाता: आप प्रदाता का अपना डेस्कटॉप ऐप इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network एक DePIN प्लेटफ़ॉर्म है जो TNT टोकन इनाम के बदले आपका IP पता, स्टोरेज और बैंडविड्थ शेयर करता है। Windows, Mac और Android पर उपलब्ध। नोड एक विकेंद्रीकृत CDN और स्टोरेज लेयर में योगदान देते हैं। शेयर किए गए संसाधनों और भौगोलिक लोकेशन के अनुसार आम कमाई $5-30/माह होती है।\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "DePIN, IP, स्टोरेज, बैंडविड्थ शेयरिंग - $5-30/माह"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "IP, स्टोरेज और बैंडविड्थ शेयर करता है। कमाई दिए गए संसाधनों और क्षेत्र पर निर्भर करती है। ज़्यादा स्टोरेज आवंटन से ज़्यादा इनाम मिलते हैं।"
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "एपॉक के आधार पर"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "Titan की अपनी सहायता कहती है कि चालू नोड कमाई की गारंटी नहीं देता: कोई कार्य न मिले तो वह कुछ नहीं कमाता, और इनाम TNT टोकन में मिलते हैं।"
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "CashPilot Titan नहीं चलाता: आप प्रदाता का अपना ऐप या एक्सटेंशन इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Traffmonetizer सत्यापित व्यवसायों के साथ बैंडविड्थ शेयर करके आपके इंटरनेट ट्रैफ़िक से कमाई कराता है। उन कुछ बैंडविड्थ शेयरिंग सेवाओं में से एक जो आवासीय कनेक्शन के अलावा VPS और डेटासेंटर IP पर भी अच्छी तरह काम करती है। कमांड-लाइन आर्ग्युमेंट से दिया जाने वाला सरल टोकन-आधारित प्रमाणीकरण इस्तेमाल करता है। Raspberry Pi और इसी तरह के डिवाइस के लिए ARM आर्किटेक्चर समर्थित हैं।\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "बैंडविड्थ शेयरिंग - VPS पर काम करता है, टोकन-आधारित प्रमाणीकरण"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "टोकन"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "डिवाइस का नाम"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "<a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a> पर लॉग इन करें, F12 दबाएँ → Application → Local Storage → <code>https://app.traffmonetizer.io</code> पर क्लिक करें → <code>authToken</code> का मान कॉपी करें (लगभग 54 वर्ण: अंक, एक <code>|</code>, फिर अक्षर और अंक)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "डिवाइस प्रबंधन के लिए डैशबोर्ड में दिखने वाला नाम"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "VPS और डेटासेंटर IP आवासीय से कम कमाते हैं। US/EU लोकेशन ज़्यादा कमाती हैं। Docker नेटवर्क के ज़रिए कई IP समर्थित हैं।"
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "न्यूनतम $10। PayPal अब उपलब्ध नहीं है। पहले प्रोफ़ाइल में एक भुगतान तरीका सहेजें: Solana या TON पर USDT (सबसे कम शुल्क), Arbitrum (कम शुल्क) या Tron TRC20 (ज़्यादा नेटवर्क शुल्क), या $1,000 से बैंक ट्रांसफ़र। आपका सहेजा पहला पता तुरंत लागू होता है; बाद में इसे बदलने के लिए ईमेल पुष्टि ज़रूरी है। पहली निकासी से पहले डैशबोर्ड किसी मैसेंजर संपर्क (WhatsApp, Telegram या Skype) की माँग कर सकता है। अनुरोध पूरे डॉलर में भुगतान करता है और सेंट बैलेंस में रह जाते हैं।"
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "प्रोफ़ाइल की भुगतान सेटिंग्स में सहेजी गई चेन (Solana, TON, Arbitrum या Tron) पर USDT, या बैंक ट्रांसफ़र। पता Traffmonetizer की सेटिंग्स में रहता है, कंटेनर पर नहीं।"
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "<a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a> पर लॉग इन करें, F12 दबाएँ → Application → Local Storage → <b>authToken</b> का मान (लगभग 54 वर्ण: अंक, एक <code>|</code>, फिर अक्षर और अंक)।"
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "उनके हर भुगतान अनुरोध का 10%"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "Traffmonetizer की ToS आवासीय IP माँगती है, लेकिन व्यवहार में VPS नोड स्वीकार किए जाते हैं।"
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "Trustpilot इसे 1.9 रेटिंग देता है; 2023 से नवंबर 2026 तक के समीक्षक बताते हैं कि भुगतान हफ़्तों तक लंबित रहे, या पूरे चिह्नित किए गए पर कोई मेल खाता ट्रांज़ैक्शन नहीं था।"
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "वही समीक्षक बताते हैं कि लाइव चैट और ईमेल सहायता जवाब नहीं देती, कभी-कभी हफ़्तों तक।"
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "सिर्फ़ क्रिप्टो या $1,000 से बैंक वायर; PayPal बंद हो गया, और अनुरोध सिर्फ़ पूरे डॉलर में भुगतान करता है।"
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "Traffmonetizer की शर्तें आवासीय IP माँगती हैं, इसलिए होस्टिंग कनेक्शन पर सर्वर उनके दायरे से बाहर है।"
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "2023 से 2025 तक के चार Trustpilot समीक्षक बहुत धीमी कमाई बताते हैं, जैसे चार डिवाइस पर एक सेंट प्रति दिन, या $10 तक पहुँचने में लगभग दो साल।"
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "भुगतान के लिए बस ईमेल से पुष्टि किया गया एक सहेजा क्रिप्टो पता चाहिए; डैशबोर्ड किसी मैसेंजर संपर्क की माँग कर सकता है।"
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Traffmonetizer अपनी खुद की Docker इमेज traffmonetizer/cli_v2 प्रकाशित करता है।"
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "अपने CPU से माइन करें और अपनी पसंद के कॉइन में भुगतान पाएँ, जैसे SHIB, DOGE या XMR। CashPilot, unMineable के RandomX पूल पर XMRig चलाता है, और unMineable आपके CPU से माइन किए गए Monero को आपके कॉइन में बदलता है। आपका बैलेंस कॉइन की भुगतान सीमा तक पहुँचते ही यह आपके सार्वजनिक पते पर भुगतान करता है। CashPilot जो भी वर्कर डिप्लॉय करता है, उसमें CashPilot का unMineable रेफ़रल कोड होता है, जो आपका प्लेटफ़ॉर्म शुल्क 1% से घटाकर 0.75% कर देता है। बिजली की लागत आपकी कमाई से ज़्यादा हो सकती है।"
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "अपने CPU से माइन करें और अपनी पसंद के कॉइन में भुगतान पाएँ"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "भुगतान कॉइन"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "भुगतान पता"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "वर्कर का नाम"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "अधिकतम CPU थ्रेड (%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "RandomX मोड"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "unMineable जिस कॉइन में भुगतान करता है उसका टिकर, जैसे SHIB, DOGE या XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "उस कॉइन के लिए आपका सार्वजनिक पता। जिन कॉइन के लिए memo या tag चाहिए, वे समर्थित नहीं हैं।"
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "बिजली से पहले का कुल अनुमान, unMineable की रूपांतरण दर पर आपके कॉइन में दिया जाता है। 2026-11-25 को RandomX का 1 kH/s लगभग $1 प्रति माह का था। आधे थ्रेड पर चलता डेस्कटॉप CPU 30 से 50 W अतिरिक्त खींच सकता है। यह फ़ायदेमंद है या नहीं, यह देखने के लिए अपनी असली खपत और बिजली की कीमत जाँचें।"
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "unMineable हर कॉइन के लिए तय करता है (2026-11-26 को 0.03 XMR)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "कॉइन की भुगतान सीमा पूरी होने पर"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "आपका बैलेंस कॉइन की भुगतान सीमा तक पहुँचते ही unMineable आपके पते पर भुगतान करता है। सीमाएँ कॉइन और नेटवर्क के अनुसार अलग हैं; CashPilot वही सीमा पढ़ता है जो unMineable आपके पते के लिए बताता है।"
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "बैलेंस कमाया गया है पर तब तक मिला नहीं है जब तक unMineable इसे इस पते पर न भेजे। चेन आपके चुने कॉइन पर निर्भर करती है।"
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "वही भुगतान पता और कॉइन टिकर जिनसे आपने माइनर डिप्लॉय किया, जैसे <b>XMR</b>। सिर्फ़ पता डालें, कॉइन, वर्कर नाम या रेफ़रल कोड के बिना। यह सार्वजनिक है और इससे कोई रकम नहीं खुलती।"
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "हर रेफ़र किए गए माइनर के माइनिंग इनाम का 0.25%"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "प्लेटफ़ॉर्म शुल्क 1% से घटकर 0.75%"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "यह मशीन होस्टिंग कनेक्शन बताती है। माइनिंग से पहले अपने प्रदाता की शर्तें जाँचें। कुछ प्रदाता, जिनमें Hetzner Cloud भी है, इसे मना करते हैं। मुनाफ़े के अनुमान पर भरोसा करने से पहले अपनी असली बिजली लागत जाँचें।"
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "unMineable 1% प्लेटफ़ॉर्म शुल्क लेता है। CashPilot हर वर्कर नाम के बाद अपना रेफ़रल कोड (#awk6-j1z0) जोड़ता है, जिससे आपका शुल्क 0.75% हो जाता है। इसके बाद unMineable आपके माइनिंग इनाम का 0.25% CashPilot के मेंटेनर को देता है; आप 99.25% रखते हैं। हर कॉइन की अपनी भुगतान सीमा है, जैसे 0.03 XMR।"
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "कंप्यूट"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "नहीं। माइनर unMineable के पूल को काम भेजता है।"
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "आपका भुगतान पता, कॉइन, वर्कर का नाम, हैशरेट और IP पता unMineable को जाते हैं।"
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "कुछ नेटवर्क और DNS रिज़ॉल्वर माइनिंग पूल कनेक्शन ब्लॉक करते हैं।"
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "कोई खाता नहीं चाहिए। पता और कॉइन ही पहचान हैं, और कोई भी unmineable.com पर उनके आँकड़े पढ़ सकता है।"
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "रेफ़रल कोड के साथ unMineable 0.75% प्लेटफ़ॉर्म शुल्क रखता है और सिर्फ़ हर कॉइन की सीमा से भुगतान करता है।"
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "कुछ होस्टिंग प्रदाता क्रिप्टोकरेंसी माइनिंग मना करते हैं।"
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "अतिरिक्त बिजली की लागत कमाए गए कॉइन से ज़्यादा हो सकती है।"
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "पते के आँकड़े, बैलेंस समेत, हर उस व्यक्ति के लिए सार्वजनिक हैं जो पता जानता है।"
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "माइनर पूल को हैश भेजता है और किसी और का ट्रैफ़िक रिले नहीं करता।"
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "आप खाता बनाए बिना अपनी पसंद के कॉइन में किसी सार्वजनिक पते पर माइन कर सकते हैं।"
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock एक DePIN (Decentralized Physical Infrastructure Network) प्लेटफ़ॉर्म है जो आपको अपना इंटरनेट कनेक्शन शेयर करके क्रिप्टोकरेंसी कमाने देता है। बड़े Web3 इकोसिस्टम का हिस्सा। कम्युनिटी Docker इमेज उपलब्ध हैं पर कोई आधिकारिक इमेज नहीं। ब्राउज़र एक्सटेंशन मुख्य इंटरफ़ेस है।\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "DePIN इंटरनेट शेयरिंग - क्रिप्टो भुगतान, मुख्य रूप से ब्राउज़र एक्सटेंशन"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "क्रिप्टो/टोकन-आधारित कमाई। कोई आधिकारिक Docker इमेज नहीं — ब्राउज़र एक्सटेंशन मुख्य क्लाइंट है।"
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "UPT टोकन, 250 UPT से Solana वॉलेट में निकाले जाते हैं, टू-फ़ैक्टर प्रमाणीकरण चालू होने पर। निकासी शुल्क लगता है।"
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "UpRock का सहायता केंद्र कहता है कि निकासी UPT टोकन में Solana वॉलेट में होती है, न्यूनतम 250 UPT।"
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "इनाम UPT टोकन हैं; समीक्षक और एक तीसरे पक्ष की समीक्षा कहते हैं कि उनका मूल्य बहुत कम है।"
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "CashPilot UpRock नहीं चलाता: आप प्रदाता का अपना ऐप या एक्सटेंशन इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork एक विकेंद्रीकृत VPN और बैंडविड्थ शेयरिंग नेटवर्क है। आप कम्युनिटी प्रदाता के रूप में बैंडविड्थ देकर कमाते हैं। प्रदाता बाइनरी आपके खाते के ईमेल और पासवर्ड से खुद प्रमाणीकरण करती है (इसका auth-provide सबकमांड) और मिलने वाला सेशन JWT डेटा वॉल्यूम में सहेजती है। BringYour, Inc. की आधिकारिक Docker इमेज।\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "विकेंद्रीकृत VPN/बैंडविड्थ - ईमेल+पासवर्ड प्रमाणीकरण, वॉल्यूम में JWT सेशन"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "ईमेल"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "पासवर्ड"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "आपके URnetwork खाते का ईमेल (वह लॉगिन जो आप <a href=\"https://ur.io\" target=\"_blank\">ur.io</a> पर इस्तेमाल करते हैं)। Google/Apple साइन-इन से बने खातों के लिए पहले पासवर्ड सेट करना होगा। खाता चाहिए? <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a> से साइन अप करें"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "आपके URnetwork खाते का पासवर्ड (बिना स्पेस)। प्रदाता के auth-provide लॉगिन में इस्तेमाल होता है; इसके बाद सेशन डेटा वॉल्यूम में सहेजा रहता है।"
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "VPS और आवासीय दोनों पर काम करता है। 2026-10-06 से हर साप्ताहिक एपॉक पर SN25α (Bittensor subnet 25) में भुगतान। मल्टी-IP सेटअप के लिए प्रॉक्सी मोड समर्थित है।"
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "एपॉक के आधार पर"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "ur.io/app/account/earnings पर एक Bittensor coldkey सेट करें (Talisman, TAO.com या किसी WalletConnect वॉलेट से साइन करके), फिर हर अंतिम रूप लिए एपॉक को क्लेम करें। क्लेम का गैस शुल्क एक EVM गैस कुंजी से TAO में दिया जाता है। बिना क्लेम किए एपॉक समाप्त हो जाते हैं, और 30 दिनों के भीतर कोई वॉलेट लिंक न होने पर पुराने USDC भुगतान रद्द कर दिए गए थे।"
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "हर दोस्त पर रोज़ 3 GiB मुफ़्त UR डेटा, अधिकतम 20 दोस्त (डेटा, पैसा नहीं)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "रोज़ 3 GiB मुफ़्त UR डेटा, जब आप जुड़ने के 90 दिनों के भीतर 2 दिन ऐप से कम से कम 10 MiB इस्तेमाल करें; वरना रेफ़रल खत्म हो जाता है"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "बिना क्लेम किए एपॉक समाप्त हो जाते हैं, और जिन नेटवर्क में 30 दिनों के भीतर कोई वॉलेट लिंक नहीं हुआ, उनके पुराने USDC भुगतान रद्द कर दिए गए।"
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "अक्टूबर 2026 से इनाम SN25α में दिए जाते हैं, जो एक Bittensor subnet टोकन है, और हर क्लेम पर TAO में गैस खर्च होती है।"
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "URnetwork पहले BringYour था; इसके संग्रहित व्हाइटपेपर में पुराना नाम है।"
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "URnetwork अपने प्रदाता क्लाइंट का सोर्स कोड प्रकाशित करता है।"
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "URnetwork अपनी खुद की Docker इमेज bringyour/community-provider प्रकाशित करता है, और VPS और आवासीय दोनों कनेक्शन पर काम करता है।"
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "क्लेम के लिए बस आपके नियंत्रण वाला एक Bittensor वॉलेट चाहिए।"
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai एक GPU क्लाउड मार्केटप्लेस है जहाँ आप अपना NVIDIA GPU AI/ML शोधकर्ताओं और डेवलपर्स को किराए पर देते हैं। Docker पर आधारित प्लेटफ़ॉर्म जहाँ आप अपनी प्रति घंटा कीमत खुद तय करते हैं। किराए पर होने पर एक RTX 3090 आमतौर पर $0.20-0.40/घंटा कमाता है। हाल के ड्राइवर वाला NVIDIA GPU और स्थिर इंटरनेट कनेक्शन ज़रूरी है। आय काफ़ी हद तक GPU मॉडल, कीमत की रणनीति और बाज़ार की माँग पर निर्भर करती है।\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "GPU मार्केटप्लेस - अपनी कीमत खुद तय करें, RTX 3090 ~$0.20-0.40/घंटा"
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "API कुंजी"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "डैशबोर्ड से Vast.ai होस्ट API कुंजी"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "किराए पर होने पर RTX 3090 ~$0.20-0.40/घंटा, RTX 4090 ~$0.40-0.80/घंटा। इस्तेमाल कितना होगा, यह बदलता रहता है। NVIDIA GPU, Linux होस्ट, Docker और nvidia-container-toolkit ज़रूरी। अपनी कीमत खुद तय करें।"
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "साप्ताहिक (शुक्रवार)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "कमाई Vast.ai बैलेंस में जमा होती है। Wise, PayPal या Stripe से निकालें।"
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "रेफ़र किए गए किराएदारों के खर्च का 3%, उनके खाते के पूरे जीवनकाल तक, रेफ़रल क्रेडिट के रूप में; एक अलग रेफ़रल खाते से 75% तक नकद निकाला जा सकता है"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "होस्ट सिर्फ़ किराए पर रहने के दौरान कमाता है, और किसी उपभोक्ता GPU के लिए Vast के अपने आँकड़े किराए के प्रकार और विश्वसनीयता स्कोर पर निर्भर करते हैं।"
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "CashPilot Vast.ai नहीं चलाता: आप Vast का होस्ट सॉफ़्टवेयर अपनी खुद की GPU मशीन पर इंस्टॉल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। Vast होस्टिंग को Linux होस्ट पर Docker के आसपास बनाता है।"
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Vast कहता है कि होस्ट जो दर तय करता है, वही उसे मिलती है, बिना किसी शुल्क की कटौती के।"
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "भुगतान Wise, PayPal या Stripe से $20 न्यूनतम से होते हैं, हर हफ़्ते इनवॉइस किए जाते हैं; छोटा बैलेंस अगले हफ़्ते में चला जाता है।"
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter एक बैंडविड्थ शेयरिंग प्लेटफ़ॉर्म है जो Windows, Mac, Linux और Android पर उपलब्ध है। यह शेयर की गई बैंडविड्थ के लिए $1/GB तक देने का दावा करता है, न्यूनतम भुगतान सीमा $20 के साथ। प्लेटफ़ॉर्म पारंपरिक बैंडविड्थ शेयरिंग ऐप की तरह काम करता है, जो वैध ट्रैफ़िक को आवासीय कनेक्शन से भेजता है।\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "बैंडविड्थ शेयरिंग - $1/GB तक का दावा, न्यूनतम भुगतान $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "$1/GB तक का दावा करता है, पर असली कमाई कम होती है। न्यूनतम भुगतान $20। कमाई लोकेशन और माँग के अनुसार बहुत बदलती है।"
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "अनुरोध पर"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "Wipter का कोई वेब डैशबोर्ड नहीं है। Wipter का डेस्कटॉप या फ़ोन ऐप खोलें, साइन इन करें, और बैलेंस $20 तक पहुँचने पर वहीं भुगतान का अनुरोध करें। Wipter सिर्फ़ BNB Smart Chain (BEP20) पर USDT में भुगतान करता है, उस वॉलेट में जो आप ऐप के Payments सेक्शन में सेट करते हैं; कोई PayPal विकल्प नहीं है।"
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "अभी तय नहीं: CashPilot ने अभी तक यह नहीं जाँचा है कि यह सेवा आपकी कमाई कहाँ रखती है।"
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "उनके भुगतान की न्यूनतम राशि तक पहुँचने पर उनकी ट्रैफ़िक कमाई का 10%, जितने भी दोस्त आप रेफ़र करें"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "$5 साइन-अप बोनस"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "CashPilot Wipter नहीं चलाता: आप प्रदाता का अपना डेस्कटॉप या फ़ोन ऐप इस्तेमाल करते हैं, इसलिए CashPilot इसे आपके लिए डिप्लॉय या अपडेट नहीं कर सकता। कंटेनरों के लिए इसकी शर्तें जाँची नहीं गईं।"
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "अपने CPU से Monero माइन करें। CashPilot, XMRig चलाता है, और आपका चुना हुआ पूल आपके सार्वजनिक भुगतान पते पर Monero भेजता है। XMRig अपने डेवलपर्स की मदद के लिए हैशिंग समय का 1% इस्तेमाल करता है। बिजली की लागत आपके कमाए XMR से ज़्यादा हो सकती है।"
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "अपने CPU और अपनी पसंद के पूल से Monero माइन करें"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "Monero पता"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "पूल"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "वर्कर का नाम"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "अधिकतम CPU थ्रेड (%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "RandomX मोड"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "बिजली से पहले का कुल अनुमान। 2026-11-25 को, देखी गई XMR कीमत और नेटवर्क कठिनाई पर, 1 kH/s लगभग $1 प्रति माह का था। आधे थ्रेड पर चलता डेस्कटॉप CPU 30 से 50 W अतिरिक्त खींच सकता है। यह फ़ायदेमंद है या नहीं, यह देखने के लिए अपनी असली खपत और बिजली की कीमत जाँचें।"
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR (MoneroOcean, आपके घटाने के बाद)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "पूल की सीमा पूरी होने पर"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "आपका बैलेंस आपकी सीमा तक पहुँचने पर पूल आपके Monero पते पर भुगतान करता है। भुगतान होने तक बैलेंस पूल के पास रहता है।"
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "यह मशीन होस्टिंग कनेक्शन बताती है। माइनिंग से पहले अपने प्रदाता की शर्तें जाँचें। कुछ प्रदाता, जिनमें Hetzner Cloud भी है, इसे मना करते हैं। मुनाफ़े के अनुमान पर भरोसा करने से पहले अपनी असली बिजली लागत जाँचें।"
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "डिफ़ॉल्ट पूल MoneroOcean 0% माइनिंग शुल्क लेता है। डिफ़ॉल्ट भुगतान सीमा 0.3 XMR है, और आप इसे 0.003 XMR तक घटा सकते हैं। 4 XMR से कम के भुगतान पर 0.0004 XMR तक खर्च हो सकता है। दूसरे पूल अपनी दरें और सीमाएँ खुद तय करते हैं।"
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "कंप्यूट"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "नहीं। माइनर माइनिंग पूल को काम भेजता है।"
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "आपका Monero पता, वर्कर का नाम और IP पता पूल को जाते हैं।"
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "कुछ नेटवर्क और DNS रिज़ॉल्वर माइनिंग पूल कनेक्शन ब्लॉक करते हैं।"
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "ज़्यादातर Monero पूल आपको आपके सार्वजनिक भुगतान पते से पहचानते हैं।"
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "भुगतान के लिए इतना XMR चाहिए कि आपकी पूल सीमा पूरी हो।"
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "कुछ होस्टिंग प्रदाता क्रिप्टोकरेंसी माइनिंग मना करते हैं।"
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "अतिरिक्त बिजली की लागत कमाए गए XMR से ज़्यादा हो सकती है।"
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "माइनर पूल को हैश भेजता है और किसी और का ट्रैफ़िक रिले नहीं करता।"
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "माइनर ओपन सोर्स है और इमेज एक साइन की गई अपस्ट्रीम रिलीज़ पिन करती है।"
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "आप अपने नाम से पहचान बताए बिना एक सार्वजनिक Monero पते से माइन कर सकते हैं।"
+  source: "752cbb728aac"

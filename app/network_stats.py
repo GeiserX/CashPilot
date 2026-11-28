@@ -24,6 +24,7 @@ from typing import Any
 import httpx
 
 from app import onchain
+from app.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +74,10 @@ async def _get_json(client: httpx.AsyncClient, url: str) -> dict[str, Any]:
     response = await client.get(url, follow_redirects=False)
     response.raise_for_status()
     if response.status_code != 200:
-        raise ValueError("unexpected status")
+        raise ValueError(t("err.network_stats.unexpected_status"))
     payload = response.json()
     if not isinstance(payload, dict):
-        raise ValueError("expected a JSON object")
+        raise ValueError(t("err.network_stats.expected_json_object"))
     return payload
 
 
@@ -87,9 +88,9 @@ async def _read(base: str, client: httpx.AsyncClient) -> tuple[float, float]:
     total_sats = _positive(rewards.get("totalReward"))
     start, end = rewards.get("startBlock"), rewards.get("endBlock")
     if type(start) is not int or type(end) is not int or end < start:
-        raise ValueError("reward stats carry no block range")
+        raise ValueError(t("err.network_stats.reward_stats_carry_no_block"))
     if difficulty is None or total_sats is None:
-        raise ValueError("no difficulty or reward in the answer")
+        raise ValueError(t("err.network_stats.no_difficulty_reward_answer"))
     return difficulty, total_sats / (end - start + 1) / 1e8
 
 
@@ -103,7 +104,7 @@ async def bitcoin(*, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
     if hit and hit[0] > _now():
         return dict(hit[1])
     if _backoff_until.get(base, 0) > _now():
-        return {"state": UNREACHABLE, "detail": "Backing off after a recent failure from this endpoint."}
+        return {"state": UNREACHABLE, "detail": t("network_stats.backing_off_after_recent_failure")}
     owns_client = client is None
     client = client or httpx.AsyncClient(timeout=TIMEOUT)
     try:
@@ -112,7 +113,7 @@ async def bitcoin(*, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
         _backoff_until[base] = _now() + BACKOFF
         # The type only: the text of an httpx error carries the URL.
         logger.warning("Could not read Bitcoin network stats: %s", type(exc).__name__)
-        return {"state": UNREACHABLE, "detail": f"{type(exc).__name__} while reading the network stats."}
+        return {"state": UNREACHABLE, "detail": t("network_stats.while_reading_network_stats", name=type(exc).__name__)}
     finally:
         if owns_client:
             await client.aclose()

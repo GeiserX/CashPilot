@@ -36,7 +36,9 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVICE_FILES = sorted(p for p in (ROOT / "services").glob("*/*.yml") if not p.name.startswith("_"))
+SERVICE_FILES = sorted(
+    p for p in (ROOT / "services").glob("*/*.yml") if not p.name.startswith("_") and not p.parent.name.startswith("_")
+)
 MODELS = {"external", "internal", "minted", "unknown"}
 
 

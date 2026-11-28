@@ -1,0 +1,2514 @@
+# Japanese translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/ja.yml --restamp '<key>'
+2miners-etc.description:
+  text: "公開 ETC 支払いアドレスに対して 2Miners が保有している未払いの Ethereum Classic 残高を追跡します。ご自身のマイナーを動かし、このプールに接続してください。CashPilot は残高を読み取り、残高が減ったときに支払いの確認をお願いします。\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "Ethereum Classic マイニングプール、支払いアドレスで追跡"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC(変更可能)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "プールは 2 時間ごとに支払いしきい値を確認します"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "選んだしきい値に達すると、2Miners が自動的にアドレスへ支払います。ETC の支払いしきい値の最低値は 0.1 ETC です。\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "未払い残高は 2Miners に蓄積されます。ウォレット残高は Ethereum Classic から別途読み取ります。CashPilot で支払いを確認する前に、受け取った金額をウォレットで確認してください。\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "マイナーが 2Miners で使っている公開 Ethereum Classic 支払いアドレスを入力してください。アドレスは <b>0x</b> で始まります。ワーカー名は含めないでください。\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "2Miners に接続した ETCHash マイナーが必要です"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "コンピュート"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "いいえ。マイナーはマイニング作業をプールに送信します。"
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "プールは支払いアドレス、選んだワーカー名、マイナーの IP アドレスを使用します。"
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "支払いアドレスがわかれば誰でも統計を閲覧できます。しきい値を変更するには、プールがワーカーの IP の確認を求めます。"
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "プールは 1% の手数料を取り、しきい値に達するまで支払いを保留します。"
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol(旧 ATOR)は、オニオンルーティングによる分散型のプライバシーネットワークです。ノード運営者はリレーノードを動かし、提供した帯域に応じて ANYONE トークンを獲得します。「報酬付きの Tor」と考えてください。CashPilot は、プロジェクトの署名付き Debian パッケージからビルドした独自のイメージで、amd64 と arm64 向けに実行します。設定は、コンテナにマウントする anonrc ファイルで行います(Nickname、ContactInfo、ORPort など)。リレーは、100 ANYONE を 180 日以上ロックするまで何も獲得せず、報酬はウォレットで署名して受け取ります。また、リレーはあなたの公開 IP をネットワークのリレーディレクトリに掲載します。これにより、住宅用 IP の帯域アプリが対価を払う IP の評判が下がるおそれがあります。\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "分散型オニオンルーティング - 報酬付き Tor リレーノード"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "リレーの ed25519 識別キーです。削除するとリレーの評判は失われ、収益の履歴はゼロからやり直しになります。"
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "リレーごとに 100 ANYONE を 180 日以上ロックし、ウォレットで報酬の受け取りに署名した場合にのみ支払われます。ステークがなければリレーは何も獲得しません。ステークがある場合、収益は提供した帯域と稼働時間によって決まります。"
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "エポックごと"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "anonrc の ContactInfo に、先頭に '@anon:0x...' を付けて設定します。"
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "カンマ区切りのリレーフィンガープリントです。オンラインのダッシュボードには表示されません。CashPilot が動かすリレーの場合は、それを動かしているホストで <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> を実行してください。ハードウェアリレーの場合は、<b>http://relayup.local</b> で Relay Control Panel を開き、Home ページの Fingerprint を確認してください。\n"
+  source: "ffa5be0d4953"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "帯域です。Anyone ネットワーク(Tor のフォーク)のリレーとして提供します。"
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "はい。他人のトラフィックを中継します。あなたの IP が最後のホップになるかどうかは、リレーが出口として設定されているかどうかによります。"
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "リレーの公開識別キー、あなたの IP とポート、稼働時間の統計です。これらは仕組み上すべてネットワークディレクトリに公開されます。anonrc に ContactInfo を設定すると、それもディレクトリに公開され、永久に公開状態でインデックスされます。通常はメールアドレスなので、公開したい場合以外は空欄のままにしてください。"
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "現実的なリスクがあります。リレーのトラフィックはあなたの回線によるものと見なされます。特に出口リレーは不正利用の苦情を招きやすく、多くの一般向け ISP は出口リレーを禁止しています。"
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "登録するアカウントがないため、アカウントごとの制限もありません。それでも収益を得るには、リレーごとに 100 ANYONE を 180 日以上ロックした Ethereum ウォレットが必要で、CashPilot が報酬を読み取るにはリレーフィンガープリントが必要です。プロジェクトは IP ごとのリレー数の上限を公表しておらず、カタログにも記載はありません。"
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "100 ANYONE を 180 日以上ロックしない限りリレーは何も獲得せず、報酬の受け取りのたびにウォレットで署名が必要です。"
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "仕組み上、相手が誰かを確認せずに他人のトラフィックを中継します。出口リレーは不正利用の苦情を招きやすいです。"
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "リレーの識別情報、IP、稼働時間はネットワークディレクトリに公開され、設定した ContactInfo は永久に公開されます。"
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "登録するアカウントはありません。リレーに必要なのはウォレットだけで、本人確認はありません。"
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "リレーソフトウェアは公開された Tor のフォークで、Tor のライセンスに従います。"
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "CashPilot は、アカウント不要で公開されている Anyone のリレーソフトウェアから独自のイメージをビルドします。"
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping は、ノードを動かすと報酬が支払われる分散型のネットワーク監視プラットフォームです。あなたのノードは、Bitping の顧客のためにウェブサイトの監視、レイテンシのテスト、ネットワーク品質のチェックを行います。家庭用回線でも VPS でも動作します。Docker イメージは初回起動時に BITPING_EMAIL と BITPING_PASSWORD の環境変数でログインし(自身のログに \"Attempting login with environment variables\" と表示されます)、その後はセッションをマウントしたボリュームに保存するため、再起動しても再認証は不要です。\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "帯域共有 - 分散型ネットワーク監視、VPS で動作"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "メールアドレス"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "パスワード"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "Bitping アカウントのメールアドレス(<a href='https://app.bitping.com' target='_blank'>app.bitping.com</a> と同じログイン)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "Bitping アカウントのパスワードです。ノードのセッションを作成するために一度だけ使われ、その後セッションはデータボリュームに保存されます。"
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "収益は、ネットワーク品質と、あなたの所在地からの監視の需要によって決まります。VPS のノードも利用できます。"
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "ノードの収益は nodes.bitping.com にあります。app.bitping.com は API 顧客向けのダッシュボードです。出金は SOL のみです。未払い残高が $0.05 を超えたら、申請に Solana アドレスを入力します。申請は 24 時間以内に処理されます。新規または空の Solana ウォレットには、ネットワークのレント最低額として、先に約 0.001 SOL を入れておく必要があります。"
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "現在は Solana のみで、アドレスは保存されず、出金のたびに入力します。"
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "Bitping アカウントのメールアドレスとパスワードを使用してください(<a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a> と同じです)。"
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "Bitping の残高を出金してください"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "12 か月を超えて受け取られていない収益は、メールで 30 日前に通知されたうえで、Bitping によって没収されることがあります。"
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "nodes.bitping.com で SOL の出金を申請し、申請に Solana アドレスを入力してください。"
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "出金は Solana(SOL)で、申請のたびに入力するアドレスに支払われます。"
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "Bitping のヘルプによると、新しい空の Solana ウォレットへの出金は、そのウォレットにご自身で少額の SOL を入れるまで失敗することがあります。"
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "Bitping のヘルプによると、サーバーと Docker コンテナがサポートされています。"
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "出金に必要なのは、申請に入力する Solana アドレスだけです。"
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit は、PayPal と Stripe で支払う帯域共有サービスです。公式の Docker イメージはなく、クライアントは Windows のデスクトップアプリと Android アプリです。サービスは bytebenefit.io で運営されています。旧ドメインの bytebenefit.com は手放され、マーケットプレイスでパーキングされています。そのため、以前ここでは終了扱いになっていました。\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "帯域共有 - PayPal/Stripe で支払い、デスクトップ/Android アプリ"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "Docker イメージはありません。Windows のデスクトップアプリと Android アプリのみです。"
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "紹介した人のトラフィック収益の 20%"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "$1(10,000 Coins)のウェルカムボーナス"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "アプリの Google Play の掲載情報によると、あなたのトラフィックは Infatica の顧客によるウェブインテリジェンスのリクエストに使われますが、顧客が誰で、どう審査されているかは書かれていません。"
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "Android アプリは、17 か月後の 2026 年 4 月に Google Play から姿を消しました。"
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "CashPilot は ByteBenefit を実行しません。プロバイダー独自のアプリを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Bytelixir では、使っていないインターネット帯域を共有して不労所得を得られます。対応は Windows と Android のみです。公式 FAQ によると、Linux や Docker のクライアントは予定されておらず、iOS は非対応で、macOS 版も提供されていません。収益は所在地に大きく左右されます。収益の確認には dash.bytelixir.com のウェブダッシュボードを使います。Docker イメージはありません。\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "帯域共有 - Windows + Android のみ"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "セッション Cookie"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "Remember Web Cookie"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "XSRF トークン"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "<a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a> にログインし、F12 → Application → 左のサイドバーで <b>Cookies</b> を展開 → サブ項目 <code>https://dash.bytelixir.com</code> をクリック → 右側の Cookie 一覧で <code>bytelixir_session</code> を探す → その Value(eyJ で始まる長い JWT)をコピーします"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "同じ場所(Cookies → <code>https://dash.bytelixir.com</code>)→ <code>remember_web_...</code> という名前の Cookie を探す → その Value をコピーします(任意。セッションの有効期間が延びます)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "同じ場所 → <code>XSRF-TOKEN</code> を探す → その Value をコピーします(任意)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "収益は所在地によって異なります($2-50/月)。Docker イメージはありません。デスクトップアプリまたは Android アプリが必要です。"
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "暗号資産のみです。最低額はコインによって異なります: USDT $5、USDC $5、TON $8、LTC $10、ETH $40、BTC $250。申請のたびにアドレスを入力します。申請は営業時間内に、24 時間以内に処理されます。"
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "残高は Bytelixir が保有します。ウォレットアドレスは支払い申請のたびに入力し、コンテナには一切保存されません。"
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "<a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> に <b>Remember Me にチェックを入れて</b>ログインし、F12 → Application → 左のサイドバーで <b>Cookies</b> を展開 → <code>https://dash.bytelixir.com</code> をクリックし、次の 3 つの値をコピーします: <b>bytelixir_session</b>、<b>remember_web_…</b>(その接頭辞で始まる長いもの)、<b>XSRF-TOKEN</b>。セッション Cookie だけだとコピーしてから約 2 時間で期限が切れ、その日の午後には収集が止まります。remember_web Cookie は 1 年間有効で、これがあれば動作し続けます。"
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "紹介した人の利益の 50% を生涯にわたって"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "$1 の歓迎ボーナス"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "暗号資産のみで、最低額はコインによって異なり、USDT の $5 から Bitcoin の $250 までです。"
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "CashPilot は Bytelixir を実行しません。プロバイダー独自のアプリを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "Trustpilot では 283 件のレビューで 4.6 と評価され、その多くが暗号資産での支払いを評価しています。支払いが届かないという報告も少数あります。"
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "支払いに必要なのは、申請に入力する暗号資産アドレスだけです。"
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai は P2P の GPU マーケットプレイスです。NVIDIA GPU を搭載した Linux マシンを出品し、スポット価格とオンデマンド価格を自分で設定すると、借り手がその上で自分の Docker コンテナを実行します。支払いは貸し出された分数に対してのみで、CLORE、BTC、USDT、USDC のいずれかで受け取ります。ホスティングには、Ubuntu 22.04 以降(または HiveOS)の x86_64 マシン、正常に動作する NVIDIA ドライバー、上り下りとも 100 Mbps 以上の回線が必要です。AMD GPU には対応していません。\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "GPU マーケットプレイス - NVIDIA GPU を貸し出し、CLORE、BTC、USD ステーブルコインで支払い"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "支払いは貸し出された分数に対してのみで、価格は自分で設定します。範囲の上限である $490 は、分単位で出品した RTX 4090 1 枚について Clore 自身が示す上限です('up to ~$490/month')。それより小さいカードは収益が少なく、使われていないカードは何も稼ぎません。Clore は各レンタルの 5%(オンデマンド)または 1.25%(スポット)を取り、借り手が CLORE ではなく BTC、USDT、USDC で支払う場合はさらに 15% を取ります。"
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "Account > Billing から自分のウォレットに出金します: CLORE(ERC-20、最低 200、手数料は約 $0.50)、BTC(最低 0.0001、手数料 0.00005 BTC)、または Ethereum か BNB Chain 上の USDT/USDC(最低 $10、手数料 $1)。"
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "出金するまで、Clore が残高(CLORE、BTC、USDT/USDC 用の USD 残高 1 つ)を保有します。チェーンは出金のたびに選びます: CLORE は Ethereum、BTC は Bitcoin、USDT/USDC は Ethereum または BNB Chain です。"
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "紹介したホストと借り手が支払うプラットフォーム手数料の 15%(標準ティア)を、すべてのレンタルで受け取れます。コードの有効期限はありません。支払いはレンタルの通貨(CLORE、BTC、USD)で行われます"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "上り下りとも 100 Mbps"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "あなたのマシンの GPU 計算時間です。"
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "はい。借り手はあなたのマシンで自分の Docker コンテナを実行し、そのトラフィックはあなたの回線から出ていきます。SSH とアプリケーションのポートはインターネットに転送されます。"
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "Clore のプライバシーポリシーの対象は、アカウントデータと、おおよその位置情報を含む IP アドレスです。身分証明書は、Clore が KYC を求めた場合にのみ対象になります。"
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "受信ポートがインターネットから到達できる必要があり(既定では 22、8080、3000-4000)、見知らぬ人のワークロードがあなたの回線で動きます。Clore 自身のネットワークガイドには、一部の ISP がホスティングをブロックすると書かれています。"
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "18 歳以上で、制裁対象国にいないことが条件です。Clore は独自の判断でアカウントを停止または閉鎖でき、禁止された用途に使うと資金を失うことがあります。"
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "利用規約にもプライバシーポリシーにも法人名の記載がなく、利用規約は準拠法を将来の版に委ねています。"
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Clore は独自の判断でアカウントを停止または閉鎖でき、禁止された用途に使うと資金を没収されることがあります。"
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "支払いは暗号資産のみ(CLORE、BTC、USDT、USDC)です。借り手が BTC、USDT、USDC で支払ったレンタルについて、Clore はさらに 15% を取ります。ホストが CLORE をロックすればこれを減らせます。"
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "ホストに支払われるのは貸し出された分数だけで、RTX 4090 について Clore が示す金額は、カード 1 枚あたりの上限(\"up to ~$490/month\")です。"
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "通常の利用に KYC は不要ですが、高額の出金やコンプライアンス上の理由で、Clore が本人確認を求めることがあります。"
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "借り手は任意の公開 Docker イメージをあなたのマシンで実行します。利用規約には禁止用途(マルウェア、DDoS、CSAM など)が挙げられていますが、借り手の審査方法の説明は見つかりませんでした。"
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "CashPilot は Clore.ai を実行しません。ご自身の GPU マシン(Ubuntu 22.04 以降、または HiveOS)に Clore のホスティングエージェントをインストールするため、CashPilot がデプロイや更新を代わりに行うことはできません。"
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "借り手が CLORE で支払う場合、Clore が取るのはオンデマンドのレンタルの 5%(スポットは 1.25%)だけで、追加の手数料はありません。"
+  source: "699adf0a2179"
+dawn.description:
+  text: "DAWN は、DAWN プロトコルで資金調達された AI インフラ向けに、帯域とカバレッジを確認するバリデーターネットワークを運営しています。DAWN Validator ブラウザ拡張機能は、こうした帯域証明とカバレッジのチェックに参加し、動作中に DAWN 報酬を獲得します。報酬の換金価値はまだ確定していません。拡張機能でアカウントを作成し、求められたら紹介コード 2QLQV97F を入力してください。\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "DePIN バリデーター - ブラウザ拡張機能で DAWN ポイントを獲得"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "トークンのローンチ前に Dawn Points を獲得します。実際の価値は将来のトークン価格によって決まります。ハードウェア機器のほうがブラウザ拡張機能より多く稼ぎます。"
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "トークンのエアドロップ(未定)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "拡張機能は動作しますが、完成度は低いです。Black Box ハードウェアが発表されています。今後の状況を確認してください。"
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "拡張機能が獲得するのはポイントです。2026 年 10 月の時点で、ノード運営者へのトークン配布は確認されていませんでした。"
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "トークンがローンチされ、換算方法が発表されるまで、ポイントの価値は確定しません。"
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "CashPilot は Dawn を実行しません。プロバイダー独自のブラウザ拡張機能を使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network は、分散型 VPN と Web3 インフラのプロジェクトです。主に独自の Deeper Connect ハードウェア機器が必要です。Moken は関連するマイニング/ステーキングのプラットフォームです。ソフトウェアだけでは利用できません。\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "分散型 VPN - 独自のハードウェア機器が必要"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "Deeper Connect ハードウェア($200-500)が必要です。マイニング/ステーキングには Moken プラットフォームを使います。ソフトウェアだけでは利用できません。"
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "継続的"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "機器の販売に対するコミッション"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "クーポン SERGIO で Deeper Connect 機器が 5% オフ"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "マイニング報酬は DPR で、ゆっくり、または DPR のステーキングによって上がるクレジットスコアに左右されます。"
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "CashPilot は Deeper Network を実行しません。プロバイダー独自のルーターハードウェアを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "Bright Data の EarnApp では、使っていない帯域を売って不労所得を得られます。Bright Data は世界最大のプロキシネットワークで、Fortune 500 企業のデータ収集を支えています。CashPilot は独自のイメージで実行します。このイメージは初回起動時に、固定された EarnApp のビルドを Bright Data の CDN からダウンロードし、sha256 を確認したうえで、UUID だけを使うライトモードで実行します。\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "帯域共有 - Bright Data が運営"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "ノード UUID"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "EarnApp のノード ID です。'earnapp showid' が表示するとおり、sdk-node- の後に小文字の 16 進数 32 文字が続きます。デプロイ後、EarnApp にサインインした状態で https://earnapp.com/r/ の後にこの UUID を付けたアドレスを開いて一度リンクしてください。リンクされていないノードも収益を得ますが、残高には何も反映されません"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "EarnApp がサーバーへの接続に何度も失敗して再起動しているため、収益はほとんど、またはまったくありません。このコピーを再起動してください。繰り返し起きる場合は、このマシンのインターネット接続を確認してください。"
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "EarnApp にサインインした状態でこのリンクを開き、ノードをアカウントに追加してください。追加するまで、ノードは収益を得ますが残高には何も反映されません。"
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "所在地による差が非常に大きいです。米国/EU の IP が最も稼ぎます。収益は使用された帯域に比例します。"
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "申請時(自動交換あり: PayPal 最低 $10、Wise 最低 $10、Amazon 最低 $50)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "自動交換を一度オンにすると、残高が各方法の最低額に達するたびに EarnApp が自動で支払います: PayPal $10、Wise $10、Amazon $50。PayPal の支払いは Bright Data Ltd. から届きます。2026 年 10 月には、PayPal の支払いが交換した残高より約 2% 少なく届きました。"
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "残高は EarnApp が保有し、Amazon/Wise/PayPal に交換されます。"
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "<a href='https://earnapp.com' target='_blank'>earnapp.com</a> にログインし、F12 → Application → Cookies を開いて、<b>oauth-refresh-token</b> の値をコピーしてください。"
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "紹介した人の収益の 10% を生涯にわたって、その人の収益とは別に支払い"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "EarnApp のヘルプセンターでは、Docker コンテナ、仮想マシン、ホスティングサービス、ホームサーバーへのインストールは固く禁じられていると書かれています。CashPilot はまさにその方法で実行します。"
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "同じヘルプ記事では、その方法で実行していると判明したアカウントは予告なく解約され、保留中の支払いは取り消されると書かれています。"
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "私たちの PayPal の支払いは 2026 年 10 月に届き、交換した残高より約 2% 少ない額でした。"
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "PayPal と Wise は最低 $10 で、自動で支払われる自動交換があります。"
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "EarnApp は Bright Data の傘下で、PayPal の支払いは社名のわかる企業である Bright Data Ltd. から届きます。"
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Earn.fm は、インターネット帯域の共有に対して支払います。収益コレクターは Supabase 経由でメールアドレス/パスワードで認証します。軽量な Docker イメージで、デプロイも簡単です(Docker クライアントは別の UUID トークンを使います)。\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "帯域共有 - メールアドレス/パスワード認証、軽量クライアント"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "API キー"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "<a href=\"https://app.earn.fm\">app.earn.fm</a> にログイン → プロフィールアイコン(右上)をクリック → Account Settings → API Key(UUID 形式)をコピーします"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "比較的新しいプラットフォームです。収益は所在地と利用可能な帯域によって異なります。"
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "最低 $15 です。方法: BEP20 または Polygon 上の USDT(手数料 $1)、TRC20(手数料 $3)、PayPal、$15 からの Amazon または Starbucks ギフトカード、または振込手数料を差し引いた $1,000 からの銀行送金。初回の支払い前に請求先プロフィール(法的氏名と住所)を入力します。これは支払いの領収書に使われます。"
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "残高は Earn.fm が保有し、申請時に出金されます。"
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "Earn.fm アカウントのメールアドレスとパスワードを使用してください(<a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> のログインと同じです)。"
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "紹介した人の収益の 10% を生涯にわたって"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "$5 の初期残高"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "最低額は $15、USDT には $1 から $3 の手数料がかかり、銀行送金は $1,000 からです。"
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "初回の支払い前に、法的氏名と住所を含む請求先プロフィールを入力します。"
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "2025 年のレビューでは、メールと Discord のサポートが応答しないと報告されています。Trustpilot は、Earn.fm が否定的なレビューに返信していないと記載しています。"
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Earn.fm は独自の Docker イメージ earnfm/earnfm-client を公開しています。"
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher は、自動のサーフバーでウェブサイトを訪問してクレジットを獲得するトラフィック交換プラットフォームです。ブラウザ拡張機能/アドオンとして動作します。一般的な帯域共有サービスではなく、ウェブサイトを自動で閲覧してトラフィックを生み出します。\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "トラフィック交換サーフバー - ブラウザ拡張機能"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "収益は EUR に換算できる BTP ポイントです。ブラウザ拡張機能のみです。"
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "PayPal または銀行振込でユーロで支払われます。"
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "CashPilot は eBesucher を実行しません。ブラウザ拡張機能のため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "支払いは 2 ユーロから、PayPal または SEPA で、少なくとも毎週、手数料なしで行われます。"
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "eBesucher は 2002 年から運営されています。"
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "インプリント(運営者情報)には、ベルリン・シャルロッテンブルクで登記された運営者 TurboAd GmbH(HRB 160730 B)の名前があります。"
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux は、世界中に分散したコンピュートインフラです。ノード運営者は FLUX トークンをステークし、サーバーリソースを提供します。3 つのティアがあります: Cumulus(1,000 FLUX)、Nimbus(12,500 FLUX)、Stratus(40,000 FLUX)。公式の Docker イメージがあります。\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "分散型コンピュート - FLUX トークンのステークが必要"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "1,000+ FLUX のステーク(価格に応じて ~$50-500)が必要です。上位のティアほど多くの担保が必要ですが、収益も多くなります。"
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "ブロック報酬"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "最小のノードティアでも、担保として 1,000 FLUX をロックする必要があります。"
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "ブロック報酬は毎年 10% 減少し、2026 年のガイドでは、小さいティアの報酬はドル換算で少ないとされています。"
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "CashPilot は Flux を実行しません。プロバイダー独自のノードソフトウェアを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "Flux デーモンは MIT ライセンスのオープンソースです。"
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network は分散型のコンピュートマーケットプレイスで、CPU と GPU のリソースを共有して GLM トークンを受け取ります。プロバイダーは Yagna エージェントを動かし、エージェントがサンドボックス環境でワークロードの実行を管理します。最も歴史のある分散型コンピュートプロジェクトの 1 つです(2016 年設立)。CPU タスク、GPU レンダリング、汎用コンピュートに対応しています。支払いは Polygon L2 経由です。\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "分散型コンピュートマーケットプレイス - Yagna エージェントで GLM トークン"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "収益はハードウェア、価格設定、タスクの需要によって決まります。CPU のみのノードは収益が少なめです。GPU ノードは収益が多いですが、NVIDIA が必要です。Yagna プロバイダーエージェントを動かします(Docker イメージではありません)。支払いは Polygon 上の GLM トークンです。"
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "タスク完了ごと"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "GLM トークンを獲得します。支払い先のウォレットはプロバイダーのセットアップで設定します。"
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "CashPilot は Golem を実行しません。プロバイダーエージェントをご自身でインストールするため、CashPilot がデプロイや更新を代わりに行うことはできません。Golem は、独自の Docker イメージでプロバイダーを実行する方法を文書化しています。"
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "プロバイダーエージェントの yagna は GPL-3.0 のオープンソースです。"
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "アカウントは不要です。支払い先のウォレットはプロバイダーのセットアップで設定します。"
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "ネットワークは約 10 年間運営されています。"
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "Golem のプライバシーポリシーには、運営者としてスイス・ツークの Golem Factory GmbH の名前があります。"
+  source: "bae79b651923"
+grass.description:
+  text: "Grass は、使っていない帯域を AI の学習データ用に売れる分散型ネットワークです。ブラウザ拡張機能とデスクトップアプリとして動作し、ウェブスクレイピングのリクエストをあなたの回線経由で送り、構造化データセットを構築します。8.5M+ のユーザーを抱え、最大級の DePIN 帯域ネットワークの 1 つです。Solana ブロックチェーン上の GRASS トークンを獲得します。\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "AI データ向けの DePIN 帯域共有 - GRASS トークンを獲得"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "アクセストークン"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "<a href=\"https://app.grass.io\">app.grass.io</a> にログインし、F12 → Application → Local Storage → <code>https://app.grass.io</code> をクリック → <code>token</code> の値をコピーします"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "エアドロップで GRASS トークンに換えられる Grass Points を獲得します。実際の USD 価値はトークン価格によって決まります。ブラウザ拡張機能またはデスクトップアプリが必要です。"
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "エポックごとのエアドロップ"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "報酬は定期的な配布として届き、Grass のダッシュボードで受け取ります。Stage 2 の配布(2024 年 10 月から 2026 年 6 月までの活動分)は USDC で支払われます。app.grass.io/dashboard で 2027 年 1 月 22 日までに受け取ってください。すべての割り当てが先に受け取られた場合は、それより早く締め切られます。受け取られなかった報酬は Grass のものになります。"
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "ポイントが貯まります。GRASS は定期的なエアドロップの際に Grass のダッシュボードから受け取ります。"
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "<a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a> にログインし、F12 → Application → Local Storage を開いて、<b>accessToken</b> の値をコピーしてください。"
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "直接紹介した人の稼働ポイントの 20%、2 段目は 10%、3 段目は 5%"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "Grass の Stage 2 の USDC を受け取ってください"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "2027 年 1 月 22 日までに受け取られなかった Stage 2 の割り当てはすべて Grass のものになります。すべての割り当てが受け取られると、期間はそれより早く終わることがあります。"
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "Stage 2 で使ったアカウントで app.grass.io にサインインし、Grass Wallet を有効にして、Allocation タブを開いて確定します。受け取りは app.grass.io でのみ行ってください。Stage 2 のポイントがない場合は、対象外 を選んでください。"
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "報酬はエアドロップのシーズンでしか届きません。長期のノード運営者は、シーズン 2 の見込み額を 1 桁から 2 桁前半のドルと報告しています。"
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "2027 年 1 月 22 日までに受け取らなかったシーズン 2 の報酬は永久に失われます。"
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "最初のエアドロップは、200 万人を超えるユーザーに分散されたことでポイントあたりの報酬が少なく、反発を招きました。"
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "CashPilot は Grass を実行しません。プロバイダー独自のアプリまたは拡張機能を使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "最初のエアドロップでは、受け取りを行ったアドレスが 150 万近くに達しました。"
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium は定評のある分散型ワイヤレスネットワークです。当初は LoRaWAN ホットスポットでしたが、現在は 5G にも広がっています。専用のハードウェア($500+)が必要です。HNT/MOBILE トークンを獲得します。ROI は大きく下がっており、一般的には $4-8/月です。\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "分散型ワイヤレスネットワーク - ハードウェアが必要、HNT トークン"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "$500+ のハードウェアの購入が必要です。ROI は大きく下がっています。新しい運営者には承認手続きがあります。"
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "エポックごと"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "HIP 149 により、2026 年 7 月 6 日に Proof-of-Coverage の報酬は廃止されました。IoT ホットスポットは現在、運んだデータに対してのみ収益を得ており、114,000 台を超えるホットスポットは何も運んでいませんでした。"
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "Helium の報酬モデルは投票で何度も変更され、CEO は退任し、HNT は約 96% 下落しました。"
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "CashPilot は Helium を実行しません。プロバイダー独自のホットスポットのハードウェアを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "ホットスポットのゲートウェイソフトウェアは Apache-2.0 ライセンスのオープンソースです。"
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "公開支払いアドレスに対して HeroMiners が保有している未払いの Kaspa 残高を追跡します。ご自身の Kaspa マイナーを動かし、このプールに接続してください。CashPilot はプールの残高を読み取り、残高が減ったときに支払いの確認をお願いします。\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "Kaspa マイニングプール、支払いアドレスで追跡"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS(変更可能)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "プールは 1 時間ごとに支払いしきい値を確認します"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "選んだしきい値に達すると、HeroMiners が自動的にアドレスへ支払います。しきい値の最低値は 1 KAS です。\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "残高は HeroMiners に蓄積されます。CashPilot で支払いを確認する前に、受け取った金額をウォレットで確認してください。\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "マイナーが HeroMiners で使っている公開 Kaspa 支払いアドレスを完全な形で入力してください。<b>kaspa:</b> の接頭辞を含め、ワーカー名は省いてください。\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "HeroMiners に接続した Kaspa マイナーが必要です"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "コンピュート"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "いいえ。マイナーはマイニング作業をプールに送信します。"
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "プールの公開統計には、各支払いアドレスとそのマイニング活動が表示されます。"
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "プールはアカウントの代わりに支払いアドレスを使います。"
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "プールは 0.9% の手数料を取り、しきい値に達するまで支払いを保留します。"
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "使っていないインターネット帯域を共有して不労所得を得られます。Honeygain は、ウェブインテリジェンス、コンテンツ配信、市場調査のトラフィックをあなたの回線経由で送ります。12M+ のユーザーと 1M を超える支払い実績を持つ、最も定評のある帯域共有プラットフォームの 1 つです。\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "帯域共有 - 最も定評のあるプラットフォーム"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "メールアドレス"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "パスワード"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "デバイス名"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "Honeygain アカウントのメールアドレス"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "Honeygain アカウントのパスワード"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "Honeygain のダッシュボードに表示される名前"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "所在地によって異なります。米国/EU の IP のほうが多く稼ぎます。1 アカウントあたり最大 10 デバイスです。"
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "最低 $20(20,000 クレジット)です。選択肢は 2 つあります: Tipalti 経由の PayPal(手数料約 15%)、または手数料なしの JumpTask クレジット(JumpTask ウォレットに支払い)。申請には、メールで送られる 6 桁のコードが必要です。初回の PayPal の支払いは、メールで届くリンクから Tipalti に登録するまで \"waiting for details\" のままです。このリンクは一度しか使えないので、一度に最後まで済ませられ、スマートフォンが手元にあるときに開いてください。パスワードを設定すると、Tipalti は SMS で携帯電話番号の確認を求め(コードは数分で期限切れになります)、続いて氏名、住所、国、生年月日、PayPal のアドレスを尋ねます。Tipalti は支払い 1 回につき $2.02 を請求します。1.9-3% の通貨換算手数料を避けるには USD を選んでください。支払いは 2 営業日以内に行われます。残高は、支払いが Tipalti を待っている間でも、申請した時点でアカウントから引かれます。以降の Tipalti へのログインでは毎回新しい SMS コードが送られますが、デバイスを 30 日間記憶するオプションにチェックを入れれば省略できます。2026 年 10 月には、Tipalti はスペインの受取人に税務フォームを求めませんでした。"
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "残高は Honeygain が保有し、申請時に出金されます。"
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "Honeygain アカウントのメールアドレスとパスワードを使用してください(<a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a> と同じです)。"
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "Honeygain モードで、紹介した友だちそれぞれの収益の最大 25%"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "このリンクで $3 の登録ボーナス"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "Honeygain の残高を出金してください"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "Honeygain のデバイスで共有を続けるか、支払いを受けてください"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "収益は、最低額の $20 に達してから 24 か月間有効です。その後、支払われていない分は Honeygain によって帳消しにされることがあります。"
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "アプリを 6 か月を超えて使わないと、$20 未満であっても、Honeygain は未払い残高を失効したものとして扱います。"
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "デバイスで共有を続けるか、支払いを申請してください。JumpTask モードでは残高が変わらないのは正常なので、対象外 を選んでください。"
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "利用規約では、$20 のしきい値に達してから 24 か月以内に支払われなかった収益を Honeygain が帳消しにでき、6 か月使われなかった収益を失効扱いにできるとされています。"
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "最低額は $20 で、PayPal の支払いは Tipalti 経由となり、支払い 1 回につき $2.02 がかかります。"
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "利用規約では、虚偽の口実で貯めたと Honeygain が判断した収益について、アカウントを停止し、収益を保留または帳消しにできるとされています。"
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "初回の PayPal の支払い前に、Tipalti で SMS による携帯電話番号の確認と、氏名、住所、生年月日の入力が必要です。"
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "利用規約によると、法人顧客がトラフィックを使って公開されているウェブデータを収集しますが、顧客の名前は挙げられておらず、どの顧客があなたの回線を使っているかを知ることはできません。"
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "収益が少ないというレビューに対する Honeygain 自身の返信では、収益はネットワークの需要と所在地によって決まるとされています。レビューでは、最低額の $20 に達するまで非常に長くかかったと報告されています。"
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Honeygain は独自の Docker イメージ honeygain/honeygain を公開しています。"
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "利用規約には、リトアニア・ビリニュスで登記された運営者 Honeygain UAB の名前があります。"
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "Honeygain のプレスページによると、2019 年に設立されました。"
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net は、AI/ML ワークロード向けの分散型 GPU ネットワークです。個人とデータセンターの遊休 GPU を集約します。意味のある収益を得るには、8GB+ VRAM の NVIDIA GPU が必要です。コンテナベースのデプロイに対応しています。\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "AI 向け分散型 GPU ネットワーク - NVIDIA GPU が必要"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "8GB+ VRAM の NVIDIA GPU が必要です。RTX 4090 で $500-1000/月とされています(実際にはおそらくもっと少ないです)。"
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "エポックごと"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "供給者への報酬は、有料のジョブとは関係なくトークンの発行から支払われており、GPU の所有者はほとんどの時間アイドル状態だと報告しています。"
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "報酬は IO トークンで、2026 年に支払いモデルがドルに連動する仕組みに変わりました。"
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "2024 年 4 月には、漏洩した認証トークンを使って約 180 万の偽の GPU が参加しようとし、その後 CEO はトークンのローンチ前に退任しました。"
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "CashPilot は io.net を実行しません。プロバイダー独自のワーカーソフトウェアを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "IPRoyal Pawns では、使っていない帯域を共有して収益を得られます。IPRoyal は定評のあるプロキシプロバイダーで、Pawns はその住宅用帯域の共有部門です。CLI の Docker イメージは、認証情報をコマンドラインフラグで受け取ります。紹介リンクから登録した新しいユーザーは、最初の 3 回の支払いでそれぞれ $1、最大 $3 を受け取ります。各支払いは、所在地によって決まる 1 週間から 3 週間の期間内に行う必要があります。期間は登録時に始まり、支払いのたびに改めて始まります。先に期間が終わると、残りのボーナスは失われます。\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "帯域共有 - 最初の支払いで最大 $3 のボーナス"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "メールアドレス"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "パスワード"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "デバイス名"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "デバイス ID"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "IPRoyal Pawns アカウントのメールアドレス(-email フラグとして渡されます)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "IPRoyal Pawns アカウントのパスワード(-password フラグとして渡されます)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "Pawns のダッシュボードに表示される名前(-device-name フラグとして渡されます)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "一意のデバイス識別子(-device-id フラグとして渡されます)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "IPRoyal Pawns がこのアカウントを無効にしました。"
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "Pawns はこの IP アドレスで稼働中の別のデバイスを検出しており、IP ごとに 1 台にしか支払いません。そのため、このコピーは動作していますが、何も共有せず、何も稼いでいません。この IP にある他の Pawns アプリ(別のマシン、PC、スマートフォン上のもの)を停止してください。見当たらない場合は、Pawns が古いデバイスを外すのを待つか、Pawns のサポートに解除を依頼してください。"
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "収益は所在地と帯域の使用量によって決まります。米国/EU の住宅用 IP のほうが多く稼ぎます。"
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "最低 $5 です。まず国を選んでください。利用できる方法は国によって異なります。スペインからの場合(2026 年 10 月): PayPal は 4%(最低手数料 $0.25)で、Tremendous 経由で支払われ、氏名と PayPal のアドレスを入力するリンクがメールで届きます。USDT(BEP20、ERC20、TRC20)または USDC(BEP20、ERC20)はネットワーク手数料 $1、Bitcoin は最低手数料 $2、ギフトカードは手数料なしです。初回の支払いには、電話番号の SMS による一度限りの確認が必要です。Withdraw を押すと確認が始まり、番号は国番号付きで入力します。以降の支払いでは毎回、アカウントのメールアドレスに送られるコードを求められ、送金前に最大 72 時間の審査があります。"
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "残高は IPRoyal Pawns が保有し、申請時に出金されます。"
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "IPRoyal Pawns アカウントのメールアドレスとパスワードを使用してください(<a href='https://pawns.app' target='_blank'>pawns.app</a> と同じです)。"
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "紹介した人の最初の 3 回の支払いでそれぞれ $1、最大 $3。各支払いがそれぞれの 1-3 週間の期間内に行われた場合"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "最初の 3 回の支払いでそれぞれ $1、最大 $3。1-3 週間の期間を逃すと残りは失効します"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "利用規約によると、出金条件の悪用や複数アカウントがあった場合、アカウントは予告なくブロックされることがあり、その場合は収益が支払われないことがあります。"
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "利用規約によると、Pawns はトラフィック共有にサーバー、VPN、プロキシサービスを一切認めておらず、IP ごとに 1 デバイスまでです。"
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "PayPal は Tremendous 経由で 4%(最低 $0.25)かかり、すべての支払いに最大 72 時間の審査があります。"
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "初回の支払いには電話番号の SMS による確認が、すべての支払いにはメールで送られるコードが必要です。"
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "プライバシーポリシーには運営者として Pawns.App Ltd(イングランドおよびウェールズの会社番号 16043795)の名前があり、Companies House によると 2024 年 10 月 28 日に設立されたばかりで、設立から 3 年未満です。"
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "利用規約によると、Pawns とその法人顧客はあなたのデバイス経由でトラフィックを送り、どの顧客が使っているかをあなたが特定することはできません。"
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "最低額は $5 で、ギフトカードは手数料なしです。"
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "NVIDIA GPU 1 枚で、KRig を使って Pearl をマイニングします。Kryptex は報酬を Bitcoin に換え、出金を申請するまで残高をあなたのアカウントで保有します。"
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "NVIDIA GPU で Pearl をマイニングし、Bitcoin でアカウント残高を受け取る"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "Kryptex アカウントのメールアドレス"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "ワーカー名"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "Kryptex アカウントの確認済みメールアドレスです。"
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "Kryptex アカウント内で、マシンごとに別の名前を付けてください。"
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "Lightning で 0.00001 BTC(他の方法は異なります)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kryptex は Pearl の報酬を BTC に換え、残高をあなたのアカウントで保有します。出金は Kryptex で申請してください。方法ごとに最低額と手数料が異なります。Bitcoin Lightning の最低額は 0.00001 BTC です。"
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "出金するまで、Kryptex が換算後の Bitcoin をあなたのアカウントで保有します。"
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "紹介したユーザーから Kryptex が得るプール収入の 20%"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64、Volta(sm_70)以降の NVIDIA GPU、NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "このマシンはホスティング回線と報告されています。マイニングを始める前に、プロバイダーの利用規約を確認してください。Hetzner Cloud など、マイニングを禁止しているプロバイダーもあります。利益の見積もりを当てにする前に、実際の電気代を確認してください。"
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "Kryptex Pool では、KRig のマイナー手数料は 0% です。Kryptex は、これとは別に Pearl PPS+ のプール手数料 3% を掲げています。出金手数料は方法によって異なります。"
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "コンピュート"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "いいえ。KRig はマイニング作業を Kryptex Pool に送信します。"
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Kryptex には、アカウントのメールアドレス、ワーカー名、ハッシュレート、IP アドレスが見えます。"
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "一部のネットワークや DNS リゾルバーは、マイニングプールへの接続をブロックします。"
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "マイニングを始める前に、Kryptex アカウントのメールアドレスを確認してください。"
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Kryptex は、非アクティブなアカウントを 6 か月で停止し、1 年で削除することがあります。"
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "出金の最低額と手数料は方法によって異なります。"
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "KRig のライセンスでは、リリースをダウンロードしてマイニングソフトウェアから実行することが認められています。"
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "KRig は、公開されている TLS エンドポイントを使って Pearl のシェアを Kryptex Pool に送信します。"
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes(Mysterium Network)は、ブロックチェーン技術で構築された分散型の VPN およびプロキシネットワークです。ユーザーに VPN、プロキシ、データスクレイピングのサービスを提供するノードを動かして、MYST トークンを獲得します。NET_ADMIN、SETUID、SETGID のケーパビリティと TUN デバイスが必要で、TUN デバイスは、フェンスで囲まれた収益アプリ用ブリッジ上の、ノード自身のネットワーク名前空間の中で使われます。ノード管理用のウェブ UI が組み込まれています。家庭用回線でも VPS でも動作しますが、紹介ボーナスは住宅用 IP のノードにのみ支払われます。\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "分散型 VPN ノード - ブロックチェーンベース、VPS で動作"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "WebUI アドレス"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "UDP ポート範囲"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "ノードの WebUI(ポート 4449)を公開するホストアドレスです。127.0.0.1 にすると、このマシン内だけになります。リバースプロキシ経由でアクセスするには、プロキシが接続するアドレスを、スペースなしのカンマ区切りで追加します: 127.0.0.1,172.18.0.1。"
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "ノードが VPN セッションに使う UDP ポートで、start:end の形式です。ルーターでもまったく同じ範囲を転送してください。1 セッションで約 2 ポートを使うので、既定の 30 ポートで同時に約 15 セッションを扱えます。これは家庭のノードに来るセッション数より多い数です。範囲を広げても何も解決せず、コストが増えるだけです。公開するポートが増えるほどノードの起動と削除が遅くなり(300 ポートでは起動に約 12 秒)、CashPilot が受け付けるのは最大 300 ポートです。さらに Docker 既定のユーザーランドプロキシでは、1 ポートごとに約 2.5 MB のメモリを使います。セッションがすべて失敗するのはルーターの問題で、ポート不足ではありません。Mysterium ガイドの \"Routers that rewrite UDP source ports\" を参照してください。32768 未満にしてください。ポート 32768-60999 は Linux のエフェメラル範囲で、ホスト上のどのプログラムも一時的にポートを使うことがあり、1 つでも使われているとノードの起動が失敗します。すでに範囲が設定されているノードは、その範囲を維持します。"
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "ノードの識別情報のキーストアです。削除するとまったく新しい識別情報が作られ、ノードは評判と、古い識別情報に対して保留中の収益をすべて失います。"
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "ノードがコンテナ内で sudo を実行できないため、VPN インターフェースやファイアウォールを設定できず、すべてのセッションがセットアップで失敗しています。オンラインに見えても何も稼いでいません。コンテナが SETUID と SETGID のケーパビリティなしで作成されています。CashPilot とこのノードを動かしているワーカーを更新し、ダッシュボードから Mysterium を再デプロイしてください。ノードの識別情報はデータボリュームにあり、保持されます。"
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "過去 6 時間、このノードに直接到達した VPN セッションはありません。すべてホールパンチングに切り替わっており、多くの購入者はこの方法では接続できないため、ノードの収益が減っています。ノードの UDP ポートがインターネットから到達できません。ルーターで、UDP ポート範囲 ${UDP_PORTS}(start:end、両側で同じ範囲)を ${HOST_ADDRESS} に転送してください。セッションが直接接続すると、この表示は自動的に消えます。"
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "Mysterium のモニタリングが ${WORKER_NAME} 上のノードを失敗と判定しているため、ノード自身のチェックではすべてのポートに到達できると出ていても、多くの購入者が選ぶノード一覧から外されています。まず、ノードに /dev/net/tun と SETUID/SETGID があることを確認してください。これらがないと同じように失敗します: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 これらが揃っている場合、よくある原因は、${WORKER_NAME} の前にあるルーターが、外部からのパケットがそのポートに届いた後、ノードの応答の UDP 送信元ポートを書き換えることです。ガイドのテストを参照してください: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "${WORKER_NAME} 上のノードの直近 5 回の VPN セッションは、いずれもデータを送らないまま約 1 分で終了しました。そのため、オンラインに見えても何も稼いでいません。考えられる原因は ${WORKER_NAME} の前にあるルーターです。外部からのパケットがあるポートに届くと、ルーターはそのポートからのノードの以降の応答の送信元ポートを書き換えます。どのセッションもそうしたパケット(ノード自身のポートチェック)から始まるため、購入者はノードの応答を破棄してしまいます。ポート範囲を広げても効果はありません。ガイドのテストと対処法を参照してください: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports セッションがデータを運ぶと、この表示は消えます。"
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "収益は MYST トークンです。住宅用 IP のほうがかなり多く稼ぎます。管理用のノード WebUI はポート 4449 で、既定では動作しているマシン内(127.0.0.1)にのみ公開されます。別のマシンからは、先に SSH トンネルを開いてください(ssh -L 14449:127.0.0.1:4449 の後にノードのマシンのアドレスを付けて実行し、ブラウザで http://127.0.0.1:14449 を開きます。ローカルポートを 14449 にすると、自分のマシン上のノードと競合しません)。または UI_ADDRESS にアドレスを追加してください(Mysterium ガイドの WebUI address を参照)。VPS も利用できます。UDP 23000-23029(UDP_PORTS の既定値)のポート転送を強くお勧めします -- これがないとノードは Strict NAT の状態になり、多くの VPN セッションが失敗して、収入が大きく減ります。重要: 初回起動後、ノードの WebUI または CLI で、mystnodes.com アカウントと一致する受取人(精算)ウォレットを設定してください -- これにより、オンチェーンの収益がクラウドのダッシュボードと結び付きます。"
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "ノードが未精算の 5 MYST を保有するたびに、オンチェーンで自動精算"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "押すボタンはありません。各ノードは未精算の 5 MYST を保有すると、Polygon 上で自動的に精算します。約 21% は手数料(Hermes の手数料 20% と少額のトランザクション手数料)に消えるため、精算 1 回あたり受取人ウォレットに届くのは約 3.9 MYST です。各ノードの TequilAPI では、精算の一覧を /transactor/settle/history で確認できます。MystNodes の \"total earnings\" の数値は過去 30 日間だけを対象としたもので、残高でも累計でもありません。MystNodes の報酬プログラムによるボーナス MYST は自動では精算されません。MystNodes のヘルプセンターによると、配布から 30 日以内に Rewards ページで受け取る必要があります。"
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "受取人ウォレットはデプロイの後に、TequilAPI またはノードの WebUI で設定します -- 環境変数ではないため、コンテナの仕様からは読み取れません。"
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "MystNodes アカウントのメールアドレスとパスワードを使用してください(<a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a> と同じです)。"
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "ノードが 5 MYST を稼いだ友だち 1 人につき 5 MYST(住宅用 IP のみ)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "あなたのノードが最初の 5 MYST を稼いだ時点で 5 MYST(住宅用 IP、mystnodes.com でノードを登録済み)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "先月の MystNodes 報酬を受け取ってください"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "毎月の配布から 30 日以内に受け取られなかった報酬は没収され、翌月のプールに戻されます。"
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "Rewards ページを開き、ポイントを MYST に交換してください。"
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "帯域です。あなたの回線は Mysterium ネットワークの出口ノードとして使われ、このネットワークは VPN、プロキシ、そしてデータスクレイピングのサービスを販売しています。住宅用 IP から出ていくスクレイピングのトラフィックは最も苦情を招きやすい用途で、ノードがこの 3 つのどれを運ぶかは選べません。"
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "はい。見知らぬ人があなたの IP アドレス経由でトラフィックを送ります — それが商品そのものです。"
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "ノードの識別情報(ブロックチェーンアドレス)、あなたの IP、おおよその所在地(国/都市/ISP)です。購入者がノードを選べるよう、ノードがネットワークに公開します。"
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "現実的なリスクで、理解しておく価値があります。他人のトラフィックがあなたによるものとしてあなたの回線から出ていくため、その人たちの行為はすべてあなたの回線から発信されたように見えます。一般向け ISP の契約の多くはこれを禁止しています。実行する前に、ご自身の契約を確認してください。"
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "アカウントごと、IP ごとのデバイス数に制限はありません。"
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "毎回の精算の約 21% が手数料(Hermes の手数料 20% とトランザクション手数料)に消え、収益は MYST トークンで支払われます。"
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "あなたのノードは Mysterium の VPN、プロキシ、データスクレイピングの顧客の出口になり、そのうちどれを運ぶかは選べません。"
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "ノードソフトウェアは GPL-3.0 のオープンソースです。"
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Mysterium は独自の Docker イメージ mysteriumnetwork/myst を公開しています。"
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "精算はご自身が所有するウォレットに行われ、電話番号や身分証は不要です。"
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "ノードのプロジェクトは 2017 年から運営されています。"
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "Mysterium のサイトによると、ネットワークはスイス・ツークの Blockdev AG が開発しています。"
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay は、ブラウザ拡張機能で帯域を共有したユーザーに報酬を与える DePIN ネットワークです。プラットフォームは Cloudflare の保護の背後にあり、自動アクセスが難しくなることがあります。ユーザーは拡張機能を有効にしておくことで Nodepay Points を獲得します。このネットワークは AI の学習データのインフラを提供することに注力しています。\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "AI 向け DePIN 帯域共有 - ブラウザ拡張機能"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "Nodepay Points を獲得します。Nodepay の資格審査に通ったユーザーのポイントは NC トークンに換算されます。Cloudflare の保護により自動収集がブロックされることがあります。ブラウザ拡張機能が必要です。"
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "NC トークンのエアドロップ(時期は未確認)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "ポイント制です。Nodepay の資格審査に通ったユーザーのポイントは、2025 年 1 月にローンチされた NC トークンに換算されます。"
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "最初のシーズンの審査で、Nodepay はボットと判断した 300,000 を超えるアカウントを削除し、170 億ポイントを無効にしました。"
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "報酬は NC トークンに換算されるポイントなので、その価値はトークン次第です。"
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "CashPilot は Nodepay を実行しません。プロバイダー独自のブラウザ拡張機能を使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes は、Base L2 上の DeFi プロジェクト Noderr Protocol の無料の入門ティアです。マイクロノードは、使っていない Android スマートフォン、Windows PC、Mac、または Chromium ブラウザ上で動く小さなエージェントです。Android ではスマートフォンのモバイル回線を共有します。Noderr の他のトラフィックがスマートフォンの通信事業者の IP から出ていくため、モバイルデータ付きの SIM が必要です。PC やブラウザでは、余っている計算資源でプロトコルの自動化タスクを実行します。報酬は、オンチェーンの稼働時間と信頼性のスコアに応じて NODR で支払われる設計ですが、ネットワークはベータ期間中 Base Sepolia テストネット上にあります。ノードの報酬には資金が用意されておらず、まだ何も支払われていません。\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "無料のマイクロノード(Android の回線共有、Windows、Mac、ブラウザ) - テストネット、報酬の資金はこれまで未用意"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "テストネットのベータです: ノードの報酬には資金が用意されておらず、まだ何も支払われていません。サイトに書かれた 5-10% APY は設計上の目標です。ネットワークが Base Sepolia を離れたら、改めて確認してください。"
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "報酬はノード自身のウォレットに貯まり、アプリまたは dApp から受け取ります。ベータ期間中は、市場価値のない Base Sepolia テストネットのトークンです。"
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "アプリは初回起動時にノードのウォレットを作成し、そこに譲渡できない(soulbound)無料の Utility NFT をミントします。アプリからウォレットをバックアップしてください。デバイスを失うと、ノードの識別情報も失われます。ベータ期間中、報酬は Base Sepolia(テストネット)上にあります。"
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Android にはモバイルデータ付きの SIM が必要です。デスクトップとブラウザのクライアントについては、IP の要件は公開されていません。"
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "デバイスによって異なります。Android スマートフォンはモバイル回線を販売します: Noderr の他のトラフィックがスマートフォンの通信事業者の IP アドレスから出ていき、データプランの容量を消費します。Windows PC、Mac、ブラウザは、プロバイダーがソーシャルメディアやコンテンツの自動化タスクと呼ぶものに、余っている計算資源を販売します。"
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "はい。Android では、Noderr の他のトラフィックがスマートフォンのモバイル IP アドレスから出ていきます。アプリは開始前に記録される同意を求め、同じ画面から共有を止められます。Windows、Mac、ブラウザのクライアントについて、プロバイダーは自動化タスクと説明しており、それが他人のトラフィックを運ぶかどうかは書かれていません。"
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "ノードのウォレットアドレスと、稼働時間およびタスク完了の数値が、評判スコア(TrustFingerprint)としてオンチェーンに記録されます。プロバイダーによると、タスクは匿名化され、サンドボックスで実行され、ウォレットのキーがデバイスの外に出ることはありません。これ以上具体的な情報は公開されていません。"
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "Android で共有する回線は通信事業者のモバイルプランです。プロバイダー自身のドキュメントでも、一部の通信事業者の利用規定では共有が認められていない場合があると警告しており、共有したトラフィックはプランの容量を消費します。デスクトップとブラウザのクライアントについて、プロバイダーは ISP の規約に何も触れていません。"
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "1 デバイスにつき 1 ノードで、それぞれに専用の soulbound Utility NFT があります。複数のデバイスを動かすことは認められており、推奨もされています。IP ごとの上限は公開されていません。通常の意味でのアカウントはなく、識別情報はアプリが初回起動時に生成するウォレットです。"
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "ノードの報酬は、資金が用意されていない市場価値のないテストネットのトークンで、何も支払われていません。サイトの 5 から 10% APY は設計上の目標です。"
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "デスクトップとブラウザのクライアントについて、Noderr は自動化タスクと説明しており、それが他人のトラフィックを運ぶかどうかは書かれていません。"
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "プロバイダーはタスクが匿名化され、サンドボックス化されていると述べていますが、それ以上具体的なことは公開していません。"
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "まだ Base Sepolia 上のテストネットのベータです。"
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "CashPilot は Noderr を実行しません。プロバイダー独自のアプリまたは拡張機能を使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "アカウントは不要です。アプリが初回起動時にウォレットを生成します。"
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Nodle はスマートフォンの Bluetooth を使って IoT インフラを構築します。アプリは近くの IoT デバイスを受動的に検出してそのデータを中継し、NODL トークンを獲得します。Forbes で紹介され、Vivendi や Hayden AI と企業提携しています。モバイルのみです(iOS と Android)。\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "Bluetooth IoT 中継 - モバイルアプリ、NODL トークンの報酬"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "収益は非常に少ないです。Bluetooth を使うバックグラウンドのスマートフォンアプリです。ウォレットの接続が不安定なことがあります。"
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "継続的"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "NODL は ZKsync Era 上のアプリ自身のウォレットにあります。アプリ内、または ZKsync Era のブロックエクスプローラーで確認してください。Nodle は Polkadot のパラチェーンを離れ、Polkadot から ZKsync へのブリッジは 2025 年 12 月 31 日に閉鎖されました。そのため、Polkadot 側に残っている NODL は ZKsync に移せなくなっています。"
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "NODL は ZKsync Era 上の Nodle アプリ独自のウォレットにあります。CashPilot はそのウォレットのアドレスを確認できません。"
+  source: "796d67192f5f"
+nodle.referral.bonus.referrer:
+  text: "招待から参加した新しいアクティブユーザー 1 人ごとに NODL の報酬(Nodle は金額を公表していません)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "あるレビューでは、3 年から 4 年で約 $3 の収益だったと報告されています。日々の収益が大きく減ったという報告もあります。"
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "CashPilot は Nodle を実行しません。プロバイダー独自のスマートフォンアプリを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana は Solana 上に構築された分散型の GPU コンピュートマーケットプレイスです。GPU の所有者と AI ワークロードの需要を結び付け、NOS トークンで支払います。RTX 3060 の収益は約 $0.048/時間です。このプラットフォームは AI 推論のワークロードに注力しており、ジョブのスケジューリングと支払いの精算に Solana ブロックチェーンを使います。ノードは Nosana CLI でコンテナ化されたワークロードを実行します。\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "Solana 上の GPU コンピュート - NOS トークン、RTX 3060 ~$0.048/時間"
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 ~$0.048/時間で、上位の GPU ほど多く稼ぎます。収益はジョブの有無と GPU のモデルによって決まります。NVIDIA GPU、Linux、Docker、Nosana CLI が必要です。支払いは Solana 上の NOS トークンです。"
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "ジョブ完了ごと"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "Solana 上で NOS トークンを獲得します。設定したウォレットに支払われます。"
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "Nosana は既定で Solana ウォレットを生成するため、ほとんどのユーザーはそのアドレスを一度も見たことがありません。"
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "各ホストは、GPU の時間単価に見合った額の NOS をステークとしてロックする必要があります。"
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "ホストへの支払いは NOS なので、ドル換算の収益はトークンとカードの需要に応じて変動します。"
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "CashPilot は Nosana を実行しません。プロバイダー独自のホストソフトウェアを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN はアカウント不要の Bitcoin マイニングプールです。マイナーは Bitcoin アドレスをユーザー名としてログインし、プールはそのアドレスに支払います。ここでは CashPilot はマイナーを実行しません。OCEAN があなたのアドレスに対して保有している未払い残高を読み取り、ASIC(Bitaxe、Antminer など)が稼いだ額を他の収入と並べて表示します。未払い残高は獲得済みですが、まだ受け取っていません。支払いしきい値を超えると、OCEAN がオンチェーンで支払います。\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "Bitcoin マイニングプール、支払いアドレスで追跡"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "ブロックによって残高がしきい値を超えたとき"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "未払い残高がしきい値に達すると、OCEAN がオンチェーンであなたのアドレスに支払います。Lightning での支払い(オプトイン、BOLT12)は CashPilot では検出されません。"
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "未払い分は獲得済みですが、OCEAN がこのアドレスにオンチェーンで支払うまでは受け取っていません。Lightning での支払いをオンにした場合は除きます。"
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "BTC の支払いアドレスです。マイナーが OCEAN で使っているユーザー名から、<b>.workername</b> の部分を除いたものです。公開情報であり、これで資金を動かすことはできません。"
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "mine.ocean.xyz:3334 に接続した Bitcoin ASIC マイナー(Bitaxe、Antminer など)が必要です"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "コンピュート"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "いいえ。マイナーはハッシュをプールに送信するだけで、誰もあなたの回線経由でトラフィックを送りません。"
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "Bitcoin アドレス、選んだワーカー名、ハッシュレート、プールから見たマイナーの IP アドレスです。"
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "マイナーはプールへの接続を 1 本開いたままにするだけで、帯域はほとんど使いません。気をつけるべきコストは ISP ではなく電気代です。"
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "アカウントはありません。アドレスが識別情報で、誰でも ocean.xyz でその統計を見られます。"
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "支払いは Bitcoin のみで、残高が 0.01048576 BTC に達するまでオンチェーンでは何も支払われません。"
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "プール手数料は 2% で、DATUM で自分のブロックテンプレートを作る場合は 1% です。"
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "CashPilot は OCEAN 用のマイナーを実行しません。ご自身のハードウェアをプールに接続し、CashPilot は残高を読み取るだけです。"
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "アカウントも本人確認もありません。OCEAN が求めるのは支払い先の Bitcoin アドレスだけです。"
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream は、使っていない帯域を販売できる P2P の帯域マーケットプレイスです。市場調査、SEO 監視、広告検証に使われる住宅用プロキシネットワークを支えています。Docker のセットアップは簡単で、必要なのは CID(Client ID)だけです。なお、ログインが CAPTCHA で保護されているため、収益の自動収集が難しくなることがあります。\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "帯域共有 - CID だけの簡単なセットアップ"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "クライアント ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "<a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> にログイン → サイドバーの Setup をクリック → Docker コマンドの中に CID が表示されます"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "PacketStream はこのコピーの IP アドレスを住宅用ではないとして拒否しているため、何も稼いでいません。家庭用回線につながったマシンで実行するか、このコピーを削除してください。"
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "PacketStream にはこの IP アドレスで別のクライアントがすでにあり、IP ごとに 1 つにしか支払いません。このコピーか、同じ IP を共有しているもう一方を削除してください。"
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "共有した帯域に対して $0.10/GB を支払います。収益は、あなたの IP の所在地に対する需要に大きく左右されます。"
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "PayPal のみで、最低 $5、確定前に 3% の手数料が表示されます。初回の出金で PayPal のメールアドレスが保存され、後で変更するにはメールでの確認と 7 日間の待機が必要なので、確定前にアドレスを確認してください。申請は審査を経て 7 日以内に送金されます。待機中の申請は取り消せますが、新しい申請はその申請の支払いが終わってからでないと出せません。"
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "残高は PacketStream が保有し、申請時に出金されます。"
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "<a href='https://packetstream.io' target='_blank'>packetstream.io</a> にログインし、F12 → Application → Cookies を開いて、<b>auth</b> Cookie の値(JWT です)をコピーしてください。"
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "紹介した人の帯域収益の 20%(期間限定の Packeter ボーナス)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "初回のカードまたは PayPal での入金に 10% のボーナスクレジット(プロキシの顧客向け)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "2025 年と 2026 年の Trustpilot のレビューでは、支払いが遅れる、またはまったく届かないと報告されており、長年のユーザーの 1 人は支払いが遅くなり、やがて止まったと述べています。一方、2026 年に支払いを受けたという報告もあります。"
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "PayPal のみで、出金手数料は 3% です。PayPal が対応していない国のユーザーには他の方法がありません。"
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "利用規約では、不正、操作、禁止行為と結び付けた収益について、PacketStream が保留、取り消し、無効化できるとされています。"
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "利用規約によると、プロキシの顧客と PacketStream 自身があなたの回線経由でトラフィックを送ります。一般の購入者の審査については何も書かれていません。"
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "Trustpilot は、PacketStream が否定的なレビューに返信していないと記載しています。レビューでは、メールに返信がないと報告されています。"
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "PacketStream は独自の Docker イメージ packetstream/psclient を公開しています。"
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "利用規約が求めるのは、ご自身が所有する、または使用を許されたデバイスと回線だけです。"
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "利用規約には本人確認の記載がなく、支払いに必要なのは PayPal のアドレスです。"
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "利用規約には、カリフォルニア州法に基づく PacketStream Inc. の名前があります。"
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "PacketStream は 2018 年から運営されています。"
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp は、使っていない帯域と計算資源を共有して、暗号資産や PayPal の報酬を得られる DePIN プラットフォームです。実際には Windows のみです。ベンダー自身のダウンロードページでは、少なくとも 2025 年 2 月から Android、iOS、Linux が \"coming soon\" のまま変わっておらず、macOS 版は存在しません。同じサイトの宣伝文では、より幅広い対応をうたっています。Docker イメージはありません。\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "DePIN 帯域/コンピュート - Windows のみ、暗号資産と PayPal で支払い"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "Windows のデスクトップアプリのみです(v1.0.x)。Android/iOS/Linux は 2025 年初めからベンダーが 'coming soon' と告知していますが、一度もリリースされていません。公式の Docker イメージはありません。"
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "紹介した人の収益の 10% を生涯にわたって"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "CashPilot は PassiveApp を実行しません。プロバイダー独自のデスクトップアプリを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "PassiveApp のサイトには、最低 $3 からの PayPal、暗号資産、ギフトカードが掲載されています。"
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase は、使っていないインターネット回線を共有したユーザーに暗号資産で支払う帯域共有プラットフォームです。ピアクライアントは、ダッシュボードの Access Token で認証します。住宅用 IP が最も稼ぎますが、データセンターの IP にも対応しています。公式のマルチアーキテクチャ Docker イメージがあります(amd64/arm64/armv7)。\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - 帯域共有、暗号資産で支払い、Access Token で認証。ウォレットは生成されません"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Access Token"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "デバイス名"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "<a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> にログイン → Access Token をコピーします(セットアップページの Docker コマンドに表示されています)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "ProxyBase のダッシュボードでこのデバイスを識別するための任意の名前(スペースなし)"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "ProxyBase が少なくとも 30 分間リレーに到達できていないため、何も稼いでいません。再起動すると解消します。再起動後も続く場合は、このマシンがインターネットに接続できるか確認してください。"
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "暗号資産で支払われます。収益は所在地と帯域の使用量によって決まります。"
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "サイトには最低 $0.20 と書かれており、2026 年 10 月には $1 未満の申請も通りました。申請では常に残高の全額が、Polygon 上の USDC、POL、または Litecoin として、入力したアドレスに出金されます。ネットワーク手数料は ProxyBase が負担します。"
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "収益は Access Token が属する ProxyBase のアカウントに貯まり、申請に応じてダッシュボードから出金されます。ピアクライアントはウォレットを持たず、コンテナは状態を保存しません -- docker.volumes は空です。proxybase-xyz(ProxyBase Markets、同じ組織)と混同しないでください。こちらは実際にローカルのウォレットを生成し、それを重要なボリュームとして宣言しています。"
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "ProxyBase 自身が 2025 年 8 月に、まだ新しく、収益を最大化する場ではないと書いています。"
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "ProxyBase は 2026 年にピアクライアントを切り替えて古いバックエンドを停止したため、古いイメージのコンテナは動き続けたまま収益が止まりました。"
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "暗号資産のみ(Polygon 上の USDC、POL、Litecoin)で、法定通貨の方法はありません。最低額は $0.20 で、ネットワーク手数料は ProxyBase が支払います。"
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "私たちの $1 未満の出金は 2026 年 10 月に通りました。"
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "出金に必要なのは、申請に入力するアドレスだけです。"
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "ProxyBase は独自のピアクライアントのイメージを公開しており、データセンターの IP にも対応しています。"
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets は、AI エージェント向けに作られた SOCKS5 プロキシのマーケットプレイスです。販売者は軽量な Rust 製 CLI デーモンを動かし、デーモンが WebSocket で接続して購入者のトラフィックを自分のインターネット回線経由で中継し、販売した GB ごとに Tempo Chain 上の USDC を獲得します。direct(自分の帯域)と upstream(外部プロキシの再販)の両方のモードに対応し、自動再接続もあります。購入者は国、ISP、帯域を指定してプロキシセッションを購入します。支払いは Tempo Chain 上の Machine Payments Protocol(MPP)で行われます。紹介リンクは購入者向けです。リンクからコンソールを開いた購入者は、初回入金に 10% が上乗せされます。\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - AI エージェント向け SOCKS5 マーケットプレイス、USDC で支払い。ウォレットを生成し、そのボリュームにキーの唯一のコピーが保存されます"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "バックエンド API URL"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "バックエンド API の URL を上書きします(既定は https://api.proxybase.xyz)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "コンテナは初回起動時に自動でセットアップされます。secp256k1 ウォレット(BIP-39)を生成し、ECDSA のチャレンジ・レスポンスで認証して、direct のみのモードで帯域の販売を始めます。すべての状態(ウォレット、セッショントークン、販売者の設定)は <code>proxybase-data</code> ボリュームに保存されます。初回起動時にコンテナのログでウォレットアドレスを確認してください。外部プロキシの再販経路を追加するには <code>--upstream</code> を使います。\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "生成されたウォレットのキーファイルです。このボリュームこそがお金です。サーバー側にコピーはないため、削除すると資金も一緒に失われます。"
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "収益は、市場価格で販売した GB に基づきます。VPS/データセンターの IP は住宅用 IP より収益が少なくなります。マルチ upstream モードでは、自分の帯域と外部プロキシを組み合わせられます。"
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "<code>proxybase-cli seller payout create</code> で収益を確定させると、Tempo Chain 上の USDC(Tempo MPP)として受け取れます。キーを保有している任意の EVM アドレスに支払われ(Tempo は EVM チェーンです)、署名は不要です。USDC を表示するには、ウォレットに Tempo ネットワークを追加してください。それでも表示されないウォレットでは、Tempo の USDC トークンを手動で追加する必要があります。Proxybase が示すコントラクトアドレスでインポートし、残高を信用する前にそのアドレスを確認してください。"
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "クライアントは初回起動時に自分のウォレットを生成します。"
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "紹介した購入者の入金ごとに 15% を、ご自身のプロキシセッション用のクレジットとして"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "購入者の初回入金に +10%"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "帯域です。ProxyBase マーケットプレイスの購入者に SOCKS5 プロキシとして販売されます。"
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "はい。購入者があなたの回線経由でトラフィックを送ります — それがまさに販売されているものです。"
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "あなたのマシンで生成されたウォレットアドレスと、中継したトラフィックの量です。"
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "現実的なリスクで、家庭用回線に直接当てはまります。見知らぬ購入者のプロキシトラフィックがあなたの IP から出ていくため、不正利用の苦情はあなたのもとに届きます。このカタログにはサービスをデータセンターのアドレスに限定する仕組みがなく、住宅用 IP のほうが多く稼ぐため、ここでは誘因が逆方向に働きます。自宅で実行する前に ISP の規約を読んでください。"
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "不明 - プロバイダーはアカウントごとや IP ごとのデバイス数の上限を公表しておらず、カタログにも記載はありません。"
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "支払いは Tempo Chain 上の USDC で、キーを保有している任意の EVM アドレスに行われます。"
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "あなたの回線はマーケットプレイスの購入者に SOCKS5 プロキシとして販売されます。購入者の審査方法の説明は見つかりませんでした。"
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "自身の収益ページのタイトルで、KYC 不要、$1 から支払いとうたっています。"
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "ProxyBase は独自のクライアントイメージを公開しており、データセンターの回線も受け付けています。"
+  source: "ae81d006093f"
+proxylite.description:
+  text: "ProxyLite は、審査済みの組織と帯域を共有することで、あなたのインターネットトラフィックを収益化します。家庭用回線でも VPS/データセンターの回線でも動作します。セットアップは簡単で、必要なのはダッシュボードのユーザー ID だけです。生涯 15% という手厚い紹介コミッションがあります。\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "帯域共有 - 生涯 15% の紹介報酬、VPS で動作"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "ユーザー ID"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "<a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> にログイン → ダッシュボードのメインページで、メールアドレスの横にユーザー ID が表示されます。アカウントをお持ちでない場合は、<a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a> から登録してください"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "住宅用 IP のほうが多く稼ぎます。VPS/データセンターの回線は低い料率で受け付けられます。"
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "紹介した人の収益の 15% を生涯にわたって"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "サイトの所有者はドメインの登録情報で伏せられており、背後にある会社名は見つかりませんでした。"
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "最低額は $5 で、暗号資産または PayPal で受け取れます。"
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "ProxyLite は Docker イメージ proxylite/proxyservice を公開しており、データセンターの回線も低い料率で受け付けています。"
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "ProxyRack の Peer プログラムでは、帯域をそのプロキシネットワークの一部として共有して収益を得られます。各デバイスには一意の 64 文字の 16 進数 UUID が必要で、任意で API キーを使うとデバイスが自動登録されます。家庭用回線でも VPS/データセンターの回線でも動作します。ダッシュボードは Cloudflare の背後にあるため、API キーをブラウザで手動で取得する必要がある場合があります。\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "帯域共有 - デバイスごとに UUID、VPS で動作"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "デバイス UUID"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "API キー"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "デバイス名"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "デバイスごとに一意の 64 文字の 16 進数 ID です。生成コマンド: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "<a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> にログイン → ダッシュボードのメインページに API Key が表示されます(入力するとデバイスが自動登録されます)。アカウントをお持ちでない場合は、<a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a> から登録してください"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "ダッシュボードに表示するデバイスのわかりやすい名前"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "ProxyRack のクライアントがこのコピーで動作できないため、収益はありません。よくある原因は ProxyRack の更新サーバーが応答していないことで、クライアントはこのサーバーなしでは起動できません。コピーは 5 分ごとに再試行し、サーバーが応答するとすぐに自動で起動します。修正の必要はありません。"
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "このコピーの起動時に、ProxyRack の更新サーバーに接続できなかったため、ProxyRack のクライアントがダウンロードされませんでした。そのため、コピーは動作していますが収益はありません。CashPilot は再試行のため 6 時間ごとにこのコピーを再起動します。再デプロイすると CashPilot 独自の起動方式になり、クライアントを保持したまま 5 分ごとに自動で再試行します。"
+  source: "0a2ee4b478b2"
+proxyrack.device_link.steps:
+  text: "ProxyRack にサインインし、Devices を開いて Add device を選び、この UUID を貼り付けてください。デバイスがアカウントに追加されるまで、誰の収益にもなりません。API キーを入力した場合はコンテナが自分で登録するので、デバイスが一覧に表示されているか確認してください。"
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "住宅用 IP はデータセンターより多く稼ぎます。ダッシュボードが Cloudflare の背後にあるため、自動アクセスが難しくなることがあります。"
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "ダッシュボードで支払いを申請します。ProxyRack が 72 時間以内に審査し、その後 Tremendous から、PayPal、ギフトカード、銀行送金として交換できる報酬がメールで届きます。暗号資産の選択肢はありません。"
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "残高は ProxyRack が保有し、申請時に出金されます。"
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "<a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a> にログインし、F12 → Network を開いて、任意の API リクエストの <b>Api-Key</b> ヘッダーの値をコピーしてください。アカウントをお持ちでない場合は、<a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a> から登録してください。"
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Proxyrack は、アカウントごとに 500 デバイスの上限があり、IP ごとの上限はないと文書化しています。データセンターの IP も受け付けられますが、低い料率に再分類されます。"
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "ProxyRack のヘルプセンターによると、デバイスを削除するとそのデバイスの収益がアカウントから差し引かれ、同じデバイスを再び追加した場合にのみ戻ります。"
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "ProxyRack は独自の Docker イメージ proxyrack/pop を公開しており、データセンターの IP も低い料率で受け付けています。"
+  source: "278541f81053"
+repocket.description:
+  text: "Repocket では、使っていないインターネット帯域を共有して不労所得を得られます。住宅用 IP が最も稼ぎ、VPS/データセンターの IP は低い料率で受け付けられます。1 アカウントあたり最大 5 デバイス、同時に 5 セッションまでです。Docker コンテナは、アカウントのメールアドレスと Repocket のダッシュボードの API キー(パスワードではありません)で認証します。\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "帯域共有 - 最大 5 デバイス、API キーで認証"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "メールアドレス"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "API キー(UUIDv4、パスワードではありません)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "Repocket アカウントのメールアドレス"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "Repocket の API キーです — <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> にログインし、bandwidth-earnings ページに表示される API キーをコピーしてください(これはアカウントのパスワードではありません)。アカウントをお持ちでない場合は、<a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a> から登録してください"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "住宅用 IP のほうが多く稼ぎます。VPS/データセンターの IP も受け付けられますが、料率は低くなります。"
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4(初回の支払い後は $2)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Repocket は最低額をアカウントごとに設定しています。2026 年 10 月には、初回の支払い前は $4、その後は $2 で、以前うたっていた $20 よりずっと低くなっています。方法: Tremendous(メールアドレス宛て)または Polygon 上の USDT。申請はそれぞれ、メールで届くリンクから 2 時間以内に確認する必要があり、保留中にできる申請は一度に 1 件だけです。2026 年 10 月には、Repocket は Tremendous の申請を \"Please, message support\" として拒否しましたが、Polygon 上の USDT は通りました。"
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "残高は Repocket が保有し、申請時に出金されます。"
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "Repocket アカウントのメールアドレスとパスワードを使用してください(<a href='https://app.repocket.com' target='_blank'>app.repocket.com</a> と同じです)。アカウントをお持ちでない場合は、<a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a> から登録してください。"
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "紹介された人が $7 稼いだ時点で $2、その後はその人の収益の 5% を生涯にわたって"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "登録時に $2 のウォレットボーナス"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Repocket はアカウントごとに 5 デバイスの上限を文書化していますが、IP ごとのデバイス数の上限は公表していません。レビューサイトで繰り返される「IP ごとに 2 デバイス」という数字にはプロバイダー側の出典がないため、CashPilot はこれを主張しません。"
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "Repocket のデバイスで共有を続けるか、残高を出金してください"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "ログイン、支払い、帯域の共有のいずれもないまま 12 か月が経つと、Repocket が未払い残高を没収することがあります。"
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "デバイスで共有を続けるか、サインインするか、出金してください。Repocket の利用をやめる場合は、先に出金してください。"
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "Trustpilot の複数のレビューで、支払いが取り消され、残高がゼロにリセットされたと報告されています。あるレビューでは、サポートが帯域収益の異常を理由に挙げたと書かれています。このページは Repocket を 2.7 と評価し、否定的なレビューに返信していないと記載しています。"
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "レビューでは、出金を拒否された、支払いを催促しなければならなかったと報告されています。"
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "Repocket の支払いポリシーでは、収益が無効だと疑われる場合はいつでも取り消し、キャンセル、永久没収ができ、休眠アカウントの未払い収益も没収できるとされています。"
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "同じポリシーでは、Repocket が予告なくいつでも支払い方法を追加、削除、変更できるとされています。PayPal は削除されました。"
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "利用規約によると、Repocket はいつでも本人確認またはアカウント確認を求めることができ、支払いを受けられるかどうかはその確認次第です。"
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "利用規約によると、Repocket とそのパートナーがネットワークの容量を使いますが、パートナーが誰で、どう審査されているかは書かれていません。"
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "Trustpilot は Repocket が否定的なレビューに返信していないと記載しており、レビューではメッセージが無視されると書かれています。"
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "現在の利用規約にはシンガポールの Repocket Pte. Ltd. の名前がありますが、以前の規約には会社名がありませんでした。"
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Repocket は独自の Docker イメージ repocket/repocket を公開しており、利用規約ではご自身が所有するコンテナが認められています。"
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "最低額は低く、初回の支払い前は $4、その後は $2 です。"
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Salad.io では、分散型の AI ワークロードに GPU を共有して、ギフトカード、ゲーム、現金に交換できる Salad 残高を獲得できます。Windows のみで、ネイティブのデスクトップアプリケーションを使います。専用の GPU(NVIDIA または AMD)が必要です。プラットフォームは、マシンがアイドル状態のときに AI 推論、レンダリング、その他の計算タスクを送ります。比較的使いやすい GPU 共有プラットフォームの 1 つです。\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "AI 向け GPU 共有 - Windows のみ、ギフトカードまたは現金で支払い"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "収益は GPU のモデルと仕事の有無によって決まります。RTX 3060 で ~$1-3/日です。Windows のみです。ネイティブアプリで、Docker には対応していません。ギフトカード、ゲーム、PayPal に交換できます。"
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "Salad ストアから PayPal またはギフトカードで受け取ります。"
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "PayPal とギフトカードのみで、暗号資産は一切ありません。ウォレットアドレスが存在しないため、CashPilot が表示できるオンチェーンの残高はありません。"
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "<a href='https://app.salad.io' target='_blank'>app.salad.io</a> にログインし、F12 → Application → Cookies を開いて、<b>auth</b> Cookie の値をコピーしてください。"
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "Salad Reward Points を獲得するか、残高を使ってください"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "アカウントが 12 か月続けて Reward Points を獲得しないと、交換されていない残高が失効することがあります。"
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "収益が出るまで Salad アプリを動かすか、Salad Storefront で残高を全額使ってください。一部だけ使っても 12 か月の期間はリセットされません。"
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "CashPilot は Salad を実行しません。プロバイダー独自のデスクトップアプリを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "2026 年 10 月と 11 月の Trustpilot の複数のレビューで、PayPal への出金がすぐに届いたと報告されており、複数回届いた人もいます。同じ時期に、出金を何度試しても失敗したというレビューも 1 件あります。"
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel は、分散型 VPN のための Cosmos のレイヤー 1 ブロックチェーンです。ノード運営者は柔軟な価格設定(GB ごとまたは時間ごと)で VPN ユーザーに帯域を販売します。Docker でのデプロイについて公式ガイドがあります。長く続いているプロジェクトで、コミュニティも活発です。\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "Cosmos 上の分散型 VPN - ノード運営者が帯域を販売"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "運営者は GB ごとまたは時間ごとに自分で価格を設定します。収益は、あなたの地域での VPN ユーザーの需要によって決まります。"
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "セッションごと"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "支払いは P2P トークンで、帯域の支払いごとに 20% がノードのホストではなくステーカーに渡ります。"
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "トークンは 2021 年に SENT から DVPN へ、2025 年に DVPN から P2P へ名前が変わりました。"
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "CashPilot は Sentinel を実行しません。プロバイダー独自のノードソフトウェアを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Sentinel は、ノードのソースコードを独自のオープンソースライセンスで公開しています。"
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia は、Sia Foundation(スイスの非営利団体)が運営する分散型ストレージのマーケットプレイスで、2015 年から稼働しています。Foundation 公式の hostd ノードを動かして空きディスク容量を貸し出し、ストレージと帯域の契約から Siacoin を獲得します。ノードが収益を得る前に、Siacoin を購入する必要があります。ホストは契約ごとに担保をロックし、ストレージ証明ごとに手数料を支払うためです。担保は契約が完了すると戻りますが、ノードがオフラインになったりデータを失ったりすると焼却されます。そのため、常時稼働のマシンが必要です(Sia によると稼働率 95% 以上)。収益は借り手が実際に保存するデータ量によって決まります。Sia はストレージの価格を 1 TB あたり月 $1 にすることを推奨しているため、小さな VPS よりも、大きな空きディスクを持つマシンに向いています。\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "Sia Foundation のストレージノード - 公式 Docker イメージ、Siacoin を獲得"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "ウォレットのシードフレーズ"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "ダッシュボードのパスワード"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "ストレージディレクトリ"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "ホストの Siacoin ウォレットを管理する BIP-39 のシードフレーズです。`docker run --rm ghcr.io/siafoundation/hostd seed` で生成し、バックアップしてください -- 収益にアクセスする唯一の手段です"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "hostd のウェブ UI とローカル API(BasicAuth)のパスワードです。長いパスフレーズなら何でもかまいません"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "借り手のデータを保存する、最も大きいディスク上のホストパス(例: /srv/sia)です。256GB 以上の空きが必要です"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "デプロイ時に、CashPilot はノードを動かすマシン上に新しいウォレットを作成し、そのシードフレーズを一度だけ表示します。必ず書き留めてください。すでにお持ちのウォレットを使う場合は、代わりにそのシードフレーズを貼り付けてください。デプロイ後、担保と手数料のためにノードのウォレットに Siacoin を送り、ダッシュボードでストレージフォルダ(/storage)を追加し、価格を設定して、ホストを告知してください。\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "ウォレットのシードフレーズ(hostd.yml)、ウォレットのデータベース、ホストの設定、契約の状態です。失うと、ノードの識別情報と契約収益の追跡が失われます。その場合、資金を復元する唯一の手段は、書き留めたシードフレーズです。"
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "保存されている借り手のデータです。失うとストレージ証明が失敗し、その契約に対してロックした担保が没収されます。"
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "ホストは自分で価格を設定します。Sia は、保存 1 TB あたり月 $1、ダウンロード 1 TB あたり $5 超を推奨しており、契約の支払いごとに 3.9% が Siafund の保有者に渡ります。収入は、ノードに保存される借り手のデータ量に比例します。データ量はゼロから始まり、稼働時間と価格に応じて増えていきます。担保(Sia はストレージ価格の 2x を推奨)は契約ごとにロックされ、契約が正常に完了すると返却されます。\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "収益は、ホスト自身の Siacoin ウォレット(シードで管理)に貯まります。取引所で SC を換金し、そこから銀行口座やカードに出金してください。プロバイダー側への支払い申請はありません。\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "資金は、ノード内のシードで管理される Sia ウォレットにあります。シードフレーズは、ノードを動かすマシン上の hostd のデータボリュームにのみ存在し、CashPilot が保存することはありません。ウォレットの作成時に書き留めたフレーズが、唯一の復元手段です。\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "ポート 9981(TCP、コンセンサス)と 9984(TCP と UDP、借り手との契約)を転送した、安定した公開アドレスが必要です。Sia ではデータセンター/VPS でのホスティングが一般的です。ノードが契約を受けるには、ウォレットに Siacoin が必要です。"
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "ディスク容量と、それを提供するための帯域です。"
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "いいえ。借り手は暗号化されたファイルの断片をあなたのディスクに保存し、取り出します。他人が任意のトラフィックをあなたの IP 経由で送ることはありません。"
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "Sia のウォレットアドレス、ホストの公開鍵、そして借り手が接続できるようにノードが告知する公開 IP:ポートです。"
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "一般的なストレージサーバーと同様に、回線に継続的なアップロード/ダウンロードのトラフィックが発生します。匿名化された第三者のウェブトラフィックがあなたによるものと見なされることはありません。"
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "パーミッションレスです: 登録もアカウントも不要です。オフラインになったりデータを失ったりしてノードがストレージ証明に失敗すると、担保は焼却されます。"
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "収益はご自身のウォレットの Siacoin です。銀行への支払いはないため、ご自身で取引所で売却します。"
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "担保は契約ごとにロックされ、オフラインになったりデータを失ったりしてホストがストレージ証明に失敗すると焼却されます。"
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "ネットワークで提供されているストレージのうち、使われているのは約 30% だけなので、新しいホストは少ない需要を奪い合うことになります。"
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "借り手は暗号化されたファイルの断片を保存し、誰もあなたの IP 経由でトラフィックを送りませんが、借り手が誰で、どう審査されているかについての Sia の説明は見つかりませんでした。"
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "hostd は 2022 年から Sia Foundation によって公開開発されています。"
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd は MIT ライセンスのオープンソースです。"
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "Sia Foundation は hostd をコンテナイメージとして公開しています。"
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "パーミッションレスです: 登録もアカウントも不要です。"
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide は、使っていないインターネット帯域を収益化できる帯域共有サービスです。デバイスの追跡には任意のマシン ID を使います。income-generator プロジェクトのコミュニティ製 Docker イメージで利用できます。\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "帯域共有 - マシン ID ベース"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "マシン ID"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "すでに登録済みのデバイスのマシン ID(空欄の場合は自動生成されます)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "得られる情報は限られています。収益は所在地によって決まります。"
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "紹介した人の収益の 10%"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "$5 の登録ボーナス"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "1 つの公開 IP を通るトラフィックは、それを共有するデバイスの間で分けられるため、同じ回線に 2 台目のデバイスを置いても何も増えません。"
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "CashPilot は Spide を実行しません。プロバイダー独自のアプリを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "NVIDIA GPU 1 枚で Pearl、Zano、Ravencoin をマイニングします。CashPilot は初回起動時に公式の SRBMiner-Multi のリリースをダウンロードし、SHA-256 を確認します。選んだプールが、あなたの公開支払いアドレスに支払います。SRBMiner-Multi はハッシュ時間のうち、Pearl では 2%、他の 2 つでは 0.85% を手数料として使います。電気代が獲得したコインを上回ることがあります。"
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "NVIDIA GPU で Pearl などの GPU コインをマイニング"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "支払いアドレス"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "ワーカー名"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "アルゴリズム"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "プール(host:port)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "プール接続を暗号化(TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "公開 Pearl アドレス(prl1...)です。Zano または Ravencoin の場合は、そのコインのアドレスと、そのコイン用のプールを入力してください。"
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "Pearl は pearlhash、Zano は progpow_zano、Ravencoin は kawpow です。"
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "電気代を引く前の総額の見積もりです。2026-11-25 に hashrate.no は、消費電力約 142 W の RTX 4070 で、Pearl なら 1 日約 $2.45 と見積もっていました。私たちは測定していません。Pearl は新しいコインで、価格と難易度は急速に変わります。採算が取れるか判断するには、GPU の消費電力と電気料金を確認してください。"
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL(HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "プールのしきい値に達したとき"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "残高がしきい値に達すると、プールがあなたのアドレスに支払います。支払いまでは、プールが残高を保有します。"
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64、NVIDIA GPU、NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "このマシンはホスティング回線と報告されています。マイニングを始める前に、プロバイダーの利用規約を確認してください。Hetzner Cloud など、マイニングを禁止しているプロバイダーもあります。利益の見積もりを当てにする前に、実際の電気代を確認してください。"
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "2% のマイナー手数料は pearlhash のものです。progpow_zano と kawpow では、SRBMiner-Multi の取り分は 0.85% です。既定の Pearl プールである HeroMiners は 1% のプール手数料を取ります。支払いは 1 時間ごとに確認され、1 PRL から支払われます。他のプールは独自の料率としきい値を設定しています。"
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "コンピュート"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "いいえ。マイナーは選んだプールに作業を送信します。"
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "支払いアドレス、ワーカー名、IP アドレスがプールに送られます。初回起動時に、マイナーが GitHub からダウンロードされます。"
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "一部のネットワークや DNS リゾルバーは、マイニングプールへの接続をブロックします。"
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "ほとんどのプールは、公開支払いアドレスであなたを識別します。"
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "マイナーはハッシュ時間のうち、Pearl では 2%、Zano と Ravencoin では 0.85% を取ります。"
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "一部のホスティングプロバイダーは、暗号資産のマイニングを禁止しています。"
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "マイナーはクローズドソースのため、開発者以外は誰も、何を実行しているかを監査できません。"
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "GPU の電気代が獲得したコインを上回ることがあり、Pearl の価格は急速に変動します。"
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "マイナーはプールに作業を送るだけで、他人のトラフィックを中継しません。"
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "公開アドレスだけで、アカウントなしで HeroMiners で Pearl をマイニングできます。"
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj は、使っていないディスク容量を貸し出して収益を得る分散型のクラウドストレージネットワークです。Docker でストレージノードを動かすと、保存 1 TB あたり月 $1.35、さらにエグレス 1 TB あたり $1 が支払われます(2026 年 9 月 1 日からの料率)。支払いは毎月、米ドル連動のステーブルコインである USDC で、Ethereum メインネット上のご自身が管理するウォレットに行われます。残高が手数料に基づく最低額を超えた場合に支払われます(2026 年 9 月の支払いまでは STORJ トークン)。550GB 以上の空きディスク容量と安定したインターネット接続が必要です。アカウントや登録は不要です -- 2025 年半ばからノードはパーミッションレスです。注意(2026 年 10 月): Storj Labs は、過去の債務を再編するため、2026 年 7 月 26 日に Chapter 11 を申請しました(米国破産裁判所、ウェストバージニア州北部地区、事件番号 5:26-bk-00512)。ネットワークは稼働を続けており、Storj はアクティブなノードへの支払いを続けていますが、申請前のノードの収益は、裁判所が判断を下すまで凍結されています。STORJ トークンは 2021 年の最高値から約 98% 下落しています。Binance は 2026 年 9 月 3 日に上場を廃止し、Coinbase は 2026 年 9 月 28 日に取引を停止しました。新しいノードは最初の 9 か月間、収益の一部が保留され、顧客の需要に応じてしか容量が埋まりません。そのため、今ノードを始めると、長い回収期間を、まだ清算される可能性のある再建中の企業に預けることになります。\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "分散型ストレージノード - 保存 $1.35/TB + エグレス $1/TB"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "ウォレットアドレス"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "メールアドレス"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "外部アドレス"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "割り当て容量"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "識別情報ディレクトリ"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "ストレージディレクトリ"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "USDC の支払いを受け取る Ethereum のウォレットアドレス(例: 0x1234...abcd)です。セルフカストディのウォレット(MetaMask、Ledger など)である必要があります -- 取引所のアドレスは絶対に使わないでください"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "運営者への通知を受け取るメールアドレス"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "ポート付きの DDNS ホスト名(例: mynode.ddns.net:28967)です -- IP をそのまま書くより強くお勧めします。IP だと、ISP が知らないうちに IP を割り当て直した日にノードに到達できなくなります。ポート 28967 を転送する必要があります(TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "割り当てるディスク容量の上限(例: 2TB)です。SSD ではなく、回転ディスク(HDD)を使ってください"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "識別情報ファイルを保存するホストパスです(ca.cert、ca.key、identity.cert、identity.key を含む必要があります)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "Storj のデータを保存する、回転ディスク(HDD)上のホストパスです。550GB 以上の空きが必要です"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "初回起動の前に、ストレージノードの設定を初期化してください: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "ノードの識別情報です。その ID はプルーフ・オブ・ワークに結び付いており、再生成には何時間もかかります。また、他の何かのバックアップから作り直すことはできません。失うと、保留中の支払い残高が没収されます。"
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "保存されている顧客データと、ノードの保留額です。失うとノードは失格となり、保留中の残高は没収されます。"
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "Storj ネットワークが、告知された ADDRESS でノードに接続し返せないため、サテライトはノードをオフラインとして数えています。新しいデータが届かなくなり、エグレスの収入が止まり、オフラインが続くと停止処分になります。ADDRESS が現在の公開 IP と一致しているか(ISP による割り当て直しでノードに到達できなくならないよう、IP ではなく DDNS ホスト名を使ってください)、そしてポート 28967 の TCP+UDP がこのマシンに転送されているかを確認してください。"
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "2026 年 9 月 1 日から、保存 $1.35/TB + エグレス $1/TB + 監査/修復 $1/TB です。収益は保存データ量とノードの稼働期間に応じて増えます。最初の 9 か月間は、収益の 75%、次に 50%、次に 25% が保留されます。保留額の半分は 16 か月目に戻り、残りはグレースフルイグジット(正常な退出)時に戻ります。ポート 28967 を転送する必要があります。"
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "Ethereum のトランザクション手数料の 4x。それ未満の残高は繰り越されます"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "毎月"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "ウォレットの残高が現在のトランザクション手数料の 4 倍以上になると、毎月 Ethereum メインネット上の USDC で支払われます。それ未満の残高は翌月に繰り越されます。2026 年 9 月の支払いまでは STORJ トークンでした。ダッシュボードはポート 14002 です。"
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "残高が手数料に基づく最低額を超えると、毎月 Ethereum メインネット上の USDC で、WALLET のアドレスに支払われます。2026 年 9 月の支払いまでは STORJ トークンでした。zkSync Era での支払いは 2026 年 9 月 1 日に終了しました。"
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "ポート 14002 のノードダッシュボードの URL です。localhost ではなくサーバーの LAN IP を使ってください。例: <b>http://192.168.1.10:14002</b>。複数のノードがある場合は、URL をカンマ区切りで並べてください。CashPilot が合計します。"
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "同じ /24 サブネット上の Storj ノードはデータの割り当てを共有するため、ノードごとの収益が減ります。"
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "アップロード 5 Mbps"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "ディスク容量と、それを提供するための帯域です。"
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "いいえ。暗号化され、イレイジャーコーディングされた顧客データの断片を保存します。他人が自分のトラフィックをあなたの IP 経由で送ることはありません。"
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "ノードの識別情報、ウォレットアドレス、運営者への通知のためにノードが必要とするメールアドレス、そしてノードがデータを提供するために到達可能でなければならない IP とポートです。"
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "法的責任よりも、主にデータ通信量の上限の問題です。ノードは顧客データを常に送受信するため、回線に継続的な実トラフィックが発生します。ただし、プロキシやリレーと違い、あなたが発信元と見なされる匿名化された第三者のトラフィックではないため、それらのような不正利用の苦情は招きません。"
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "ノード数に制限はありませんが、同じ /24 サブネット上のノードは割り当てを共有するため、1 つの回線に複数置くと、それぞれの収益は少なくなります。"
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "CoinDesk は 2026 年 7 月 27 日、Storj Labs が Chapter 11 による破産保護を申請したと報じました。"
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "申請前のノード運営者への支払いは、破産債権の手続きに組み込まれました。"
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "新しいノードは最初の 9 か月間、収益の 75%、次に 50%、次に 25% が保留されます。半分は 16 か月目に戻り、残りはグレースフルイグジット(正常な退出)時にのみ戻ります。"
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "顧客は暗号化されたファイルの断片を保存し、誰もあなたの IP 経由でトラフィックを送りませんが、顧客が誰で、どう審査されているかについての Storj の説明は見つかりませんでした。"
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "ストレージノードのソフトウェアは AGPL-3.0 のオープンソースです。"
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Storj は独自の Docker イメージ storjlabs/storagenode を公開しています。"
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "アカウントは不要です。必要なのはウォレットアドレスと、運営者への通知用のメールアドレスだけです。"
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "申請後も、アクティブなノードへの支払いは続きました。"
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR はアカウント不要の Monero マイニングプールです。マイナーは Monero アドレスをユーザー名としてログインし、プールはそのアドレスに支払います。ここでは CashPilot はマイナーを実行しません。SupportXMR があなたのアドレスに対して保有している残高を読み取り、CPU マイナーが稼いだ額を他の収入と並べて表示します。残高は獲得済みですが、まだ受け取っていません。支払いしきい値を超えると、プールが支払います。\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "Monero マイニングプール、支払いアドレスで追跡"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR(自動)、申請時は 0.01 XMR"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "残高がしきい値を超えたとき、または申請時"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "残高がしきい値(既定は 0.1 XMR)に達すると、SupportXMR があなたのアドレスに支払います。サイトでは、0.01 XMR から即時の支払いを申請することもでき、手数料は 0.001 XMR です。"
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "残高は獲得済みですが、SupportXMR がこのアドレスに支払うまでは受け取っていません。Monero の残高はプライベートビューキーなしではオンチェーンで読み取れず、CashPilot がそれを求めることはないため、支払いはご自身で確認していただきます。"
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "Monero の支払いアドレスです。マイナーが SupportXMR で使っているユーザー名から、<b>.workername</b> や <b>+difficulty</b> の部分を除いたものです。公開情報であり、これで資金を動かすことはできません。"
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "pool.supportxmr.com に接続した Monero マイナー(XMRig)が必要です"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "コンピュート"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "いいえ。マイナーはハッシュをプールに送信するだけで、誰もあなたの回線経由でトラフィックを送りません。"
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "Monero アドレス、選んだワーカー名、ハッシュレート、プールから見たマイナーの IP アドレスです。"
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "マイナーはプールへの接続を 1 本開いたままにするだけで、帯域はほとんど使いません。気をつけるべきコストは ISP ではなく電気代です。"
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "アカウントはありません。アドレスが識別情報で、誰でも supportxmr.com でその統計を見られます。"
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "支払いは Monero のみで、プール手数料は 0.6%、自動支払いの既定のしきい値は 0.1 XMR です。"
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "CashPilot は SupportXMR 用のマイナーを実行しません。ご自身のマイナーをプールに接続し、CashPilot は残高を読み取るだけです。"
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Teneo Protocol は、Beacon のネットワークを通じて AI エージェントにライブのウェブへのアクセスを提供します。Teneo Beacon は Teneo 独自のアプリで、Android、iOS、macOS、Windows、Linux に対応し、サーバーや Raspberry Pi 向けのコマンドライン版もあります。同意画面で承諾すると使っていない帯域を共有し、オンラインの間 Teneo Protocol Points と Fragments を獲得します。Fragments は、USDC で賞金が支払われるシーズンごとの抽選(Beacon Drop)の対象になります。Teneo によると、Beacon は以前のブラウザ拡張機能の 2 倍のポイントを獲得します。収益を得られる Beacon は、インターネット回線 1 つにつき 1 台です。同じ回線の他のデバイスは待機状態になります。紹介リンクまたはコード PSA3BHPJ で Expedition Hub に登録し、それから Beacon にサインインしてください。\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "DePIN 帯域アプリ(Beacon) - シーズンごとの USDC 抽選に向けて Fragments を獲得、紹介リンクで +100 Fragments"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "Teneo Points と Fragments を獲得します。Fragments はシーズンごとの USDC 抽選の対象になるため、シーズンで支払われるのは決まった料率ではなく賞金です。Teneo によると、Beacon はブラウザ拡張機能の 2 倍のポイントを獲得します。8 時間ごとにブーストを受け取ると、最大 3x の Fragments になります。受け取りの時間枠を逃すと倍率が下がります。"
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "シーズンごとの抽選(Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "Beacon Drop の賞金は、Expedition Hub で連携したウォレットに USDC で支払われます。Hub には、ウォレットを連携するまでの残り日数が表示されます。期限内にウォレットが連携されなかった賞金は没収されます。"
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "シーズンの賞金が支払われる前に、Expedition Hub でウォレットを連携してください。期限内にウォレットが連携されていない賞金は、Hub によって没収されます。"
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "紹介した友だちそれぞれの Fragments の 8% と、その人が紹介した人の Fragments の 2%。友だちが 7 日以内に登録し、480 Fragments を獲得した場合"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "登録時に +100 Fragments、480 Fragments に達するとさらに +150"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "収益を得られる Beacon は、インターネット回線 1 つにつき 1 台です。データセンターのマシンは、Teneo が有効にしたホスティングプロバイダーでのみ収益を得られ、Fragments は半分で、ポイントや紹介ボーナスはありません。VPN 接続では一切収益を得られません。"
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "Beacon の Fragments が USDC になるのはシーズンごとの抽選の賞金としてだけなので、動かしていても決まった額は得られません。"
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Teneo によると、ポイントは $TENEO トークンではなく、譲渡できない報酬トークン $AGENTIC に統合されます。"
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "以前の目標だった 2026 年第 2 四半期が過ぎた後も、2026 年 11 月の時点で、$TENEO のローンチ日、割り当て、受け取り手続きはいずれも確認されていませんでした。"
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "CashPilot は Teneo を実行しません。プロバイダー独自の Beacon アプリをインストールするため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Teneo は、トラフィックは審査済みの法人顧客からのもので、プライベートアドレスと不正利用されやすいポートはブロックしていると述べていますが、それらの顧客をどう審査しているかは述べていません。"
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network は、定評のある分散型の動画配信および AI コンピュートネットワークです(2018 年から)。ユーザーは Edge Node を動かし、帯域、ストレージ、計算能力を共有します。大手コンテンツ企業と提携しています。TFUEL トークンを獲得します。\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "分散型 CDN + AI コンピュート - TFUEL の報酬、定評のあるプロジェクト"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "デスクトップアプリのみです。収益はリソースと所在地によって決まります。大手と提携しており、すべての取引所に上場しています。"
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "継続的"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "CashPilot は Theta Edge を実行しません。プロバイダー独自のデスクトップアプリを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network は、IP アドレス、ストレージ、帯域を共有して TNT トークンの報酬を得る DePIN プラットフォームです。Windows、Mac、Android で利用できます。ノードは分散型の CDN とストレージ層に貢献します。一般的な収益は、共有するリソースと地理的な所在地に応じて $5-30/月です。\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "IP、ストレージ、帯域を共有する DePIN - $5-30/月"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "IP、ストレージ、帯域を共有します。収益は提供したリソースと地域によって決まります。割り当てるストレージが多いほど報酬も多くなります。"
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "エポックごと"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "Titan 自身のヘルプによると、ノードが動いていても収益は保証されません。タスクが割り当てられなければ何も稼がず、報酬は TNT トークンです。"
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "CashPilot は Titan を実行しません。プロバイダー独自のアプリまたは拡張機能を使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Traffmonetizer では、審査済みの企業と帯域を共有して、インターネットトラフィックを収益化できます。家庭用回線に加えて、VPS やデータセンターの IP でもうまく動作する数少ない帯域共有サービスの 1 つです。コマンドライン引数で渡すシンプルなトークン認証を使います。Raspberry Pi などのデバイス向けに ARM アーキテクチャに対応しています。\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "帯域共有 - VPS で動作、トークンで認証"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "トークン"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "デバイス名"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "<a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a> にログインし、F12 → Application → Local Storage → <code>https://app.traffmonetizer.io</code> をクリック → <code>authToken</code> の値をコピーします(約 54 文字で、数字、<code>|</code>、その後に英字と数字が続きます)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "デバイス管理のためにダッシュボードに表示される名前"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "VPS やデータセンターの IP は住宅用 IP より収益が少なくなります。米国/EU の所在地のほうが多く稼ぎます。Docker ネットワークで複数の IP に対応しています。"
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "最低 $10 です。PayPal は提供されなくなりました。まずプロフィールに支払い方法を 1 つ保存してください: Solana または TON 上の USDT(手数料が最も低い)、Arbitrum(手数料が低い)、Tron TRC20(ネットワーク手数料が高い)、または $1,000 からの銀行送金。最初に保存したアドレスはすぐに有効になりますが、後で変更するにはメールでの確認が必要です。初回の出金前に、ダッシュボードがメッセンジャーの連絡先(WhatsApp、Telegram、Skype)を求めることがあります。申請ではドル単位でのみ支払われ、セントは残高に残ります。"
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "プロフィールの支払い設定に保存したチェーン(Solana、TON、Arbitrum、Tron)上の USDT、または銀行送金です。アドレスはコンテナではなく、Traffmonetizer の設定に保存されます。"
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "<a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a> にログインし、F12 → Application → Local Storage → <b>authToken</b> の値です(約 54 文字で、数字、<code>|</code>、その後に英字と数字が続きます)。"
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "紹介した人が申請するすべての支払いの 10%"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "Traffmonetizer の利用規約では住宅用 IP が必要とされていますが、実際には VPS のノードも受け付けられています。"
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "Trustpilot の評価は 1.9 です。2023 年から 2026 年 11 月までのレビューで、支払いが何週間も保留される、または完了と表示されても該当するトランザクションがないと報告されています。"
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "同じレビューで、ライブチャットとメールのサポートが、ときには何週間も応答しないと報告されています。"
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "暗号資産か、$1,000 からの銀行送金のみです。PayPal はなくなり、申請ではドル単位でしか支払われません。"
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "Traffmonetizer の利用規約では住宅用 IP が必要とされているため、ホスティング回線上のサーバーは規約の対象外です。"
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "2023 年から 2025 年の Trustpilot のレビュー 4 件で、4 台のデバイスで 1 日 1 セント、$10 に達するまで 2 年近くといった、非常に遅い収益が報告されています。"
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "支払いに必要なのは、メールで確認した保存済みの暗号資産アドレスだけです。ダッシュボードがメッセンジャーの連絡先を求めることがあります。"
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Traffmonetizer は独自の Docker イメージ traffmonetizer/cli_v2 を公開しています。"
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "CPU でマイニングし、SHIB、DOGE、XMR など、選んだコインで支払いを受けられます。CashPilot は unMineable の RandomX プールに向けて XMRig を実行し、unMineable は CPU がマイニングした Monero を選んだコインに換えます。残高がそのコインの支払いしきい値に達すると、あなたの公開アドレスに支払われます。CashPilot がデプロイするすべてのワーカーには CashPilot の unMineable 紹介コードが付いており、プラットフォーム手数料が 1% から 0.75% に下がります。電気代が収益を上回ることがあります。"
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "CPU でマイニングし、選んだコインで支払いを受ける"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "支払いコイン"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "支払いアドレス"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "ワーカー名"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "最大 CPU スレッド(%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "RandomX モード"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "unMineable が支払うコインのティッカー(SHIB、DOGE、XMR など)"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "そのコインの公開アドレスです。メモやタグが必要なコインには対応していません。"
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "電気代を引く前の総額の見積もりで、unMineable の換算レートで選んだコインで支払われます。2026-11-25 時点で、RandomX の 1 kH/s は月約 $1 相当でした。デスクトップ CPU でスレッドの半分を使うと、消費電力が 30 から 50 W 増えることがあります。採算が取れるか判断するには、実際の使用量と電気料金を確認してください。"
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "unMineable がコインごとに設定(2026-11-26 時点で 0.03 XMR)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "コインの支払いしきい値に達したとき"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "残高がそのコインの支払いしきい値に達すると、unMineable があなたのアドレスに支払います。しきい値はコインとネットワークによって異なります。CashPilot は、unMineable があなたのアドレスについて報告するしきい値を読み取ります。"
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "残高は獲得済みですが、unMineable がこのアドレスに支払うまでは受け取っていません。チェーンは選んだコインによって決まります。"
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "マイナーをデプロイしたときと同じ支払いアドレスとコインのティッカーです(例: <b>XMR</b>)。アドレスだけを入力し、コイン、ワーカー名、紹介コードは含めないでください。公開情報であり、これで資金を動かすことはできません。"
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "紹介したマイナーそれぞれのマイニング報酬の 0.25%"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "プラットフォーム手数料が 1% から 0.75% に下がります"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "このマシンはホスティング回線と報告されています。マイニングを始める前に、プロバイダーの利用規約を確認してください。Hetzner Cloud など、マイニングを禁止しているプロバイダーもあります。利益の見積もりを当てにする前に、実際の電気代を確認してください。"
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "unMineable は 1% のプラットフォーム手数料を取ります。CashPilot はすべてのワーカー名の後ろに紹介コード(#awk6-j1z0)を付けるため、手数料は 0.75% に下がります。その後、unMineable はあなたのマイニング報酬の 0.25% を CashPilot のメンテナーに支払い、あなたは 99.25% を受け取ります。コインごとに支払いしきい値があり、たとえば 0.03 XMR です。"
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "コンピュート"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "いいえ。マイナーは unMineable のプールに作業を送信します。"
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "支払いアドレス、コイン、ワーカー名、ハッシュレート、IP アドレスが unMineable に送られます。"
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "一部のネットワークや DNS リゾルバーは、マイニングプールへの接続をブロックします。"
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "アカウントは不要です。アドレスとコインが識別情報で、誰でも unmineable.com でその統計を見られます。"
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "紹介コードを使っても unMineable は 0.75% のプラットフォーム手数料を取り、各コインのしきい値からしか支払いません。"
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "一部のホスティングプロバイダーは、暗号資産のマイニングを禁止しています。"
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "増えた電気代が、獲得したコインを上回ることがあります。"
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "残高を含むアドレスの統計は、アドレスを知っている人なら誰でも見られます。"
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "マイナーはハッシュをプールに送るだけで、他人のトラフィックを中継しません。"
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "アカウントを作らずに、選んだコインの公開アドレス宛てにマイニングできます。"
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock は、インターネット回線を共有して暗号資産を獲得できる DePIN(Decentralized Physical Infrastructure Network)プラットフォームです。より広い Web3 エコシステムの一部です。コミュニティ製の Docker イメージはありますが、公式のイメージはありません。主なインターフェースはブラウザ拡張機能です。\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "DePIN インターネット共有 - 暗号資産で支払い、主にブラウザ拡張機能"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "収益は暗号資産/トークンベースです。公式の Docker イメージはありません — 主なクライアントはブラウザ拡張機能です。"
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "UPT トークンを、2 要素認証をオンにしたうえで、250 UPT から Solana ウォレットに出金します。出金手数料がかかります。"
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "UpRock のヘルプセンターによると、出金は Solana ウォレットへの UPT トークンで、最低額は 250 UPT です。"
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "報酬は UPT トークンで、レビューや第三者によるレビュー記事では、その価値は非常に低いとされています。"
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "CashPilot は UpRock を実行しません。プロバイダー独自のアプリまたは拡張機能を使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork は、分散型の VPN および帯域共有ネットワークです。コミュニティプロバイダーとして帯域を提供して収益を得ます。プロバイダーのバイナリは、アカウントのメールアドレスとパスワードで自分自身を認証し(auth-provide サブコマンド)、得られたセッション JWT をデータボリュームに保存します。BringYour, Inc. による公式の Docker イメージです。\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "分散型 VPN/帯域 - メールアドレス+パスワードで認証、JWT セッションをボリュームに保存"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "メールアドレス"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "パスワード"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "URnetwork アカウントのメールアドレス(<a href=\"https://ur.io\" target=\"_blank\">ur.io</a> で使うログイン)です。Google/Apple のサインインで作成したアカウントは、先にパスワードを設定する必要があります。アカウントをお持ちでない場合は、<a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a> から登録してください"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "URnetwork アカウントのパスワード(スペースなし)です。プロバイダーの auth-provide ログインで使われ、その後セッションはデータボリュームに保存されます。"
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "VPS でも住宅用回線でも動作します。2026-10-06 からは、週ごとのエポックごとに SN25α(Bittensor サブネット 25)で支払われます。複数 IP の構成向けにプロキシモードに対応しています。"
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "エポックごと"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "ur.io/app/account/earnings で Bittensor のコールドキーを設定し(Talisman、TAO.com、または WalletConnect のウォレットで署名)、確定したエポックごとに受け取ります。受け取りには、EVM のガスキーから TAO でガス代を支払います。受け取られなかったエポックは失効します。また、以前の USDC の支払いは、30 日以内にウォレットが連携されなかった場合に取り消されました。"
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "友だち 1 人につき 1 日 3 GiB の無料 UR データ、最大 20 人まで(お金ではなくデータ)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "参加から 90 日以内に、2 日間アプリで 10 MiB 以上使うと、1 日 3 GiB の無料 UR データ。そうでない場合、紹介は終了します"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "受け取られなかったエポックは失効し、以前の USDC の支払いは、30 日以内にウォレットが連携されなかったネットワークについて取り消されました。"
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "2026 年 10 月から、報酬は Bittensor サブネットのトークンである SN25α で支払われ、受け取りのたびに TAO でガス代がかかります。"
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "URnetwork の旧名は BringYour で、アーカイブされたホワイトペーパーには旧名が記載されています。"
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "URnetwork は、プロバイダークライアントのソースコードを公開しています。"
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "URnetwork は独自の Docker イメージ bringyour/community-provider を公開しており、VPS でも住宅用回線でも動作します。"
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "受け取りに必要なのは、ご自身が管理する Bittensor ウォレットだけです。"
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai は、NVIDIA GPU を AI/ML の研究者や開発者に貸し出す GPU クラウドのマーケットプレイスです。Docker ネイティブのプラットフォームで、時間単価は自分で設定します。RTX 3090 は貸し出されたとき、通常 $0.20-0.40/時間を稼ぎます。最新ドライバーを入れた NVIDIA GPU と、安定したインターネット接続が必要です。収益は GPU のモデル、価格戦略、市場の需要に大きく左右されます。\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "GPU マーケットプレイス - 価格は自分で設定、RTX 3090 ~$0.20-0.40/時間"
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "API キー"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "ダッシュボードで取得する Vast.ai のホスト API キー"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "貸し出されたとき、RTX 3090 は ~$0.20-0.40/時間、RTX 4090 は ~$0.40-0.80/時間です。稼働率は変動します。NVIDIA GPU、Linux ホスト、Docker、nvidia-container-toolkit が必要です。価格は自分で設定します。"
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "毎週(金曜日)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "収益は Vast.ai の残高に貯まります。Wise、PayPal、Stripe で出金します。"
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "紹介した借り手の支出の 3% を、そのアカウントが続く限り紹介クレジットとして受け取れます。専用の紹介アカウントから最大 75% を出金できます"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "ホストが稼ぐのは貸し出されている間だけで、一般向け GPU についての Vast 自身の数値は、レンタルの種類と信頼性スコアによって変わります。"
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "CashPilot は Vast.ai を実行しません。ご自身の GPU マシンに Vast のホストソフトウェアをインストールするため、CashPilot がデプロイや更新を代わりに行うことはできません。Vast のホスティングは、Linux ホスト上の Docker を基盤にしています。"
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Vast によると、ホストが設定した料率がそのまま受け取る料率で、手数料は差し引かれません。"
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "支払いは Wise、PayPal、Stripe で最低 $20 から、毎週請求されます。それ未満の残高は翌週に繰り越されます。"
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter は、Windows、Mac、Linux、Android で利用できる帯域共有プラットフォームです。共有した帯域に対して最大 $1/GB を支払うとしており、最低支払額は $20 です。従来の帯域共有アプリと同様に、正当なトラフィックを家庭用回線経由で送ります。\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "帯域共有 - 最大 $1/GB とうたう、最低支払額 $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "最大 $1/GB とうたっていますが、実際の収益はそれより少ないです。最低支払額は $20 です。収益は所在地と需要によって大きく変わります。"
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "申請時"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "Wipter にはウェブのダッシュボードがありません。Wipter のデスクトップアプリまたはスマートフォンアプリを開いてサインインし、残高が $20 に達したらそこで支払いを申請してください。Wipter は BNB Smart Chain(BEP20)上の USDT でのみ、アプリの Payments セクションで設定したウォレットに支払います。PayPal の選択肢はありません。"
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "紹介した人が最低支払額に達した後、その人のトラフィック収益の 10%。紹介できる友だちの人数に制限はありません"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "$5 の登録ボーナス"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "CashPilot は Wipter を実行しません。プロバイダー独自のデスクトップアプリまたはスマートフォンアプリを使うため、CashPilot がデプロイや更新を代わりに行うことはできません。利用規約はコンテナについて確認していません。"
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "CPU で Monero をマイニングします。CashPilot が XMRig を実行し、選んだプールがあなたの公開支払いアドレスに Monero を支払います。XMRig は、開発者を支援するためにハッシュ時間の 1% を使います。電気代が獲得した XMR を上回ることがあります。"
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "CPU と好きなプールで Monero をマイニング"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "Monero アドレス"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "プール"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "ワーカー名"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "最大 CPU スレッド(%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "RandomX モード"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "電気代を引く前の総額の見積もりです。2026-11-25 時点で、観測された XMR の価格とネットワークの難易度では、1 kH/s は月約 $1 相当でした。デスクトップ CPU でスレッドの半分を使うと、消費電力が 30 から 50 W 増えることがあります。採算が取れるか判断するには、実際の使用量と電気料金を確認してください。"
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR(MoneroOcean、しきい値を下げた後)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "プールのしきい値に達したとき"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "残高がしきい値に達すると、プールがあなたの Monero アドレスに支払います。支払いまでは、プールが残高を保有します。"
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "このマシンはホスティング回線と報告されています。マイニングを始める前に、プロバイダーの利用規約を確認してください。Hetzner Cloud など、マイニングを禁止しているプロバイダーもあります。利益の見積もりを当てにする前に、実際の電気代を確認してください。"
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "既定のプールである MoneroOcean のマイニング手数料は 0% です。既定の支払いしきい値は 0.3 XMR で、0.003 XMR まで下げられます。4 XMR 未満の支払いには、最大 0.0004 XMR かかることがあります。他のプールは独自の料率としきい値を設定しています。"
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "コンピュート"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "いいえ。マイナーはマイニングプールに作業を送信します。"
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "Monero アドレス、ワーカー名、IP アドレスがプールに送られます。"
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "一部のネットワークや DNS リゾルバーは、マイニングプールへの接続をブロックします。"
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "ほとんどの Monero プールは、公開支払いアドレスであなたを識別します。"
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "支払いを受けるには、プールのしきい値に届くだけの XMR が必要です。"
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "一部のホスティングプロバイダーは、暗号資産のマイニングを禁止しています。"
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "増えた電気代が、獲得した XMR を上回ることがあります。"
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "マイナーはハッシュをプールに送るだけで、他人のトラフィックを中継しません。"
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "マイナーはオープンソースで、イメージは署名付きのアップストリームのリリースに固定されています。"
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "名前で身元を明かさずに、公開 Monero アドレスでマイニングできます。"
+  source: "752cbb728aac"

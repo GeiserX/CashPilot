@@ -31,7 +31,11 @@ SERVICES = ROOT / "services"
 
 
 def catalogued_slugs() -> set[str]:
-    return {p.stem for p in SERVICES.rglob("*.yml") if not p.name.startswith("_")}
+    return {
+        p.stem
+        for p in SERVICES.rglob("*.yml")
+        if not any(part.startswith("_") for part in p.relative_to(SERVICES).parts)
+    }
 
 
 #: Literals that match a slug but are not one. Each needs a reason, because an
@@ -114,7 +118,7 @@ class TestCredentialHintsLiveInTheCatalog:
         with_hint = [
             p.stem
             for p in SERVICES.rglob("*.yml")
-            if not p.name.startswith("_")
+            if not any(part.startswith("_") for part in p.relative_to(SERVICES).parts)
             and ((yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("collector") or {}).get("credential_hint")
         ]
         # A FLOOR at the current count, not equality. Equality made ADDING a
@@ -178,7 +182,7 @@ class TestPerNodeEarningsIsDeclaredNotBranchedOn:
         claiming = [
             p.stem
             for p in SERVICES.rglob("*.yml")
-            if not p.name.startswith("_")
+            if not any(part.startswith("_") for part in p.relative_to(SERVICES).parts)
             and ((yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("collector") or {}).get("per_node_earnings")
         ]
         assert claiming == ["mysterium"], claiming
@@ -444,7 +448,8 @@ class TestCredentialHintLinksCannotBeUsedForTabnabbing:
         hints = [
             p
             for p in SERVICES.rglob("*.yml")
-            if not p.name.startswith("_") and "credential_hint" in p.read_text(encoding="utf-8")
+            if not any(part.startswith("_") for part in p.relative_to(SERVICES).parts)
+            and "credential_hint" in p.read_text(encoding="utf-8")
         ]
         # Floor at the current count. The rule this class protects is enforced
         # per-file by test_every_hint_anchor_is_covered_by_that_rule, which
@@ -456,7 +461,7 @@ class TestCredentialHintLinksCannotBeUsedForTabnabbing:
         import re
 
         for path in SERVICES.rglob("*.yml"):
-            if path.name.startswith("_"):
+            if any(part.startswith("_") for part in path.relative_to(SERVICES).parts):
                 continue
             text = path.read_text(encoding="utf-8")
             for hint in re.findall(r"credential_hint: \"(.*)\"", text):

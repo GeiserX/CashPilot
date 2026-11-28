@@ -50,7 +50,7 @@ earnings:
   monthly_high: 490
   currency: USD
   per: "GPU"
-  notes: "Paid only for rented minutes, at the price you set. 490 is Clore's own ceiling for one RTX 4090 listed by the minute ('up to ~$490/month'); smaller cards earn less and an idle card earns nothing. Clore keeps 5% (on-demand) or 1.25% (spot) of each rental, plus 15% when the renter pays in BTC, USDT or USDC instead of CLORE."
+  notes: "Paid only for rented minutes, at the price you set. The top of the range, $490, is Clore's own ceiling for one RTX 4090 listed by the minute ('up to ~$490/month'); smaller cards earn less and an idle card earns nothing. Clore keeps 5% (on-demand) or 1.25% (spot) of each rental, plus 15% when the renter pays in BTC, USDT or USDC instead of CLORE."
 
 cashout:
   method: redirect

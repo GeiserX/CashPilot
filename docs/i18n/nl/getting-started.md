@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # Aan de slag { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   dat met `docker compose version`. Oudere versies kunnen de inline configuratie
   in het compose-bestand niet lezen. Docker Desktop bevat de plugin. Op een kale Docker
   Engine op Linux installeer je hem uit de pakketrepository van Docker
-  (https://docs.docker.com/compose/install/linux/). Op macOS met Colima
+  (<https://docs.docker.com/compose/install/linux/>). Op macOS met Colima
   installeer je hem met Homebrew en koppel je hem als Docker-plugin:
 
     ```sh
