@@ -21,6 +21,7 @@ To translate a page, or to fix a translation:
 1. Write the page at `docs/i18n/<lang>/<path>.md`, for example `docs/i18n/es/faq.md` for `docs/faq.md`. The language codes are the `lang` values of `extra.alternate` in `zensical.toml`. Use the words in `i18n/glossary.yml`.
 2. Put the English page's hash in the front matter: `source_hash: <hash>`. `check` prints the hash it expects when a page has none. When the English page changes later, the translation shows a note that links the newer English page until someone updates it.
 3. Never translate code blocks, inline code, commands, environment variables, file paths or link targets. Referral links stay exactly as they are, and their disclosure lines are translated in full.
+   Copy each count marker such as `<!-- n:docker -->21<!-- /n -->` as it is: the build fills in the number from the catalog, and `check` fails on a count typed without its marker.
 4. Keep each heading's English id, so links into the page still work: `## Preguntas frecuentes { #frequently-asked-questions }`. After an English build, `python .github/scripts/docs-i18n.py anchors faq.md` lists them.
 5. Translate the navigation labels and the notes in `docs/i18n/<lang>/locale.toml`.
 6. Run the same checks as CI:

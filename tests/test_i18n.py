@@ -448,3 +448,74 @@ def test_a_preference_read_that_fails_still_renders_the_page_and_says_so(real_db
         page = c.get("/")
     assert page.status_code == 200
     assert "Could not read the saved preferences" in caplog.text and "db gone" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Server messages: API errors, and the worker's answers through the dashboard
+# ---------------------------------------------------------------------------
+
+
+def test_an_api_error_comes_in_the_language_of_the_page(locales, real_db):
+    locales({"es": {"api.role_must_viewer_writer_owner": "El rol debe ser viewer, writer u owner"}})
+    patched, c = _signed_in(real_db, "owner")
+    with patched, c:
+        body = {"role": "boss"}
+        c.cookies.set(i18n.COOKIE, "es")
+        spanish = c.patch(f"/api/users/{real_db}", json=body)
+        assert spanish.status_code == 400, spanish.text
+        assert spanish.json()["detail"] == "El rol debe ser viewer, writer u owner"
+        c.cookies.delete(i18n.COOKIE)
+        assert (
+            c.patch(f"/api/users/{real_db}", json=body).json()["detail"] == SOURCE["api.role_must_viewer_writer_owner"]
+        )
+
+
+def test_the_worker_answers_in_the_language_it_is_asked_in(locales, monkeypatch):
+    from app import worker_api
+
+    locales({"es": {"worker.invalid_api_key": "Clave de API no válida"}})
+    monkeypatch.setattr(worker_api, "_active_key", lambda: "right-key")
+    c = TestClient(worker_api.app, raise_server_exceptions=False)
+    wrong = {"Authorization": "Bearer wrong-key"}
+    spanish = c.get("/api/containers", headers={**wrong, "Accept-Language": "es"})
+    assert spanish.status_code == 401 and spanish.json()["detail"] == "Clave de API no válida"
+    assert c.get("/api/containers", headers=wrong).json()["detail"] == SOURCE["worker.invalid_api_key"]
+
+
+def test_the_dashboard_asks_the_worker_in_the_language_of_the_page(monkeypatch):
+    import contextvars
+    from unittest.mock import AsyncMock
+
+    import httpx
+
+    import app.main as main
+
+    sent: list[dict[str, str]] = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, params=None, headers=None, **kwargs):
+            sent.append(dict(headers))
+            return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", Client)
+    monkeypatch.setattr(main.database, "get_worker", AsyncMock(return_value={"id": 1, "status": "online"}))
+    verified = AsyncMock(return_value=("http://192.168.1.5:8081", {"Authorization": "Bearer k"}))
+    monkeypatch.setattr(main, "_get_verified_worker_url", verified)
+
+    def call(locale: str) -> None:
+        i18n.use(locale)
+        asyncio.run(main._proxy_to_worker(1, "GET", "/api/containers"))
+
+    contextvars.copy_context().run(call, "es")
+    contextvars.copy_context().run(call, "en")
+    assert [h["Accept-Language"] for h in sent] == ["es", "en"]
+    assert all(h["Authorization"] == "Bearer k" for h in sent)

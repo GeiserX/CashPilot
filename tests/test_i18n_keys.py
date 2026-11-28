@@ -16,6 +16,7 @@ throw instead of showing text.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -41,7 +42,7 @@ SHADOW = re.compile(
 def _sources() -> list[Path]:
     files = sorted((ROOT / "app/templates").rglob("*.html"))
     files += sorted((ROOT / "app/static/js").glob("*.js"))
-    files += sorted(p for p in (ROOT / "app").rglob("*.py") if p.parent.name != "i18n")
+    files += sorted((ROOT / "app").rglob("*.py"))
     return files
 
 
@@ -50,17 +51,24 @@ def _scan() -> tuple[set[str], list[str]]:
     dynamic: list[str] = []
     for path in _sources():
         rel = path.relative_to(ROOT)
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            used.update(m.group(2) for m in CALL.finditer(line))
+        text = path.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        # The whole file, not line by line: a formatter can put the key on the line after t(.
+        used.update(m.group(2) for m in CALL.finditer(text))
+        listed_lines = set()
+        for number, line in enumerate(lines, 1):
             listed = LISTED.search(line)
             if listed:
                 used.update(k.strip() for k in listed.group(1).split(","))
-            elif (
-                path.name != "i18n.js"  # the implementation: t(key, params) is its own signature
-                and ANY_CALL.search(line)
-                and not line.lstrip().startswith(("#", "//", "*", "{#"))
-            ):
-                dynamic.append(f"{rel}:{number}: {line.strip()[:120]}")
+                listed_lines.add(number)
+        if path.name == "i18n.js" or rel.as_posix() == "app/i18n/__init__.py":
+            continue  # the implementation: t(key, params) is its own signature
+        for m in ANY_CALL.finditer(text):
+            number = text.count("\n", 0, m.start()) + 1
+            line = lines[number - 1]
+            if number in listed_lines or line.lstrip().startswith(("#", "//", "*", "{#")):
+                continue
+            dynamic.append(f"{rel}:{number}: {line.strip()[:120]}")
     return used, dynamic
 
 
@@ -113,6 +121,31 @@ def test_the_fleet_key_never_holds_a_translated_word():
     assert not [a for a in assigned if re.search(r"(?<![\w$])t\(", a)], assigned
 
 
+def _python_shadows(source: str) -> list[int]:
+    """Lines where a module binds a local t: an argument, an assignment or a loop name."""
+    tree = ast.parse(source)
+    return sorted(
+        {
+            n.lineno
+            for n in ast.walk(tree)
+            if (isinstance(n, ast.Name) and n.id == "t" and isinstance(n.ctx, ast.Store))
+            or (isinstance(n, ast.arg) and n.arg == "t")
+        }
+    )
+
+
+def test_nothing_in_the_server_code_hides_t():
+    """A module that imports t must not also bind t: a message there would call the local."""
+    found = []
+    for path in sorted(p for p in (ROOT / "app").rglob("*.py") if p.parent.name != "i18n"):
+        source = path.read_text(encoding="utf-8")
+        if re.search(r"^from app\.i18n import .*\bt\b", source, re.M):
+            found += [f"{path.relative_to(ROOT)}:{n}" for n in _python_shadows(source)]
+    assert not found, "a local named t hides app.i18n.t:\n" + "\n".join(found)
+    assert _python_shadows("x = [t for t in y]") == [1] and _python_shadows("def f(t): pass") == [1]
+    assert _python_shadows("x = t('a')") == []
+
+
 def test_en_json_is_sorted_so_parallel_edits_merge():
     """Fix with: python3 -c "import json,sys;p='app/i18n/en.json';d=json.load(open(p));json.dump(dict(sorted(d.items())),open(p,'w'),ensure_ascii=False,indent=2);open(p,'a').write('\\n')" """
     keys = list(EN)
@@ -130,7 +163,62 @@ def test_the_scan_sees_a_call_a_built_key_and_a_shadow():
     assert not CALL.search("const at('x'); format('y')")
     assert ANY_CALL.search("t(`status.${x}`)") and ANY_CALL.search("t(key)")
     assert not ANY_CALL.search("t('a')") and not ANY_CALL.search("calls t() first")
+    wrapped = 't(\n    "a.b",\n    name=x,\n)'
+    assert [m.group(2) for m in CALL.finditer(wrapped)] == ["a.b"] and not ANY_CALL.search(wrapped)
     for bad in ["const t = 1", "items.map(t => t.id)", "(t) => x", "function f(a, t) {", "for (const t of xs)"]:
         assert SHADOW.search(bad), bad
     for good in ["const tab = 1", "x.t => 1", "function f(text) {", "t('a')", "const total = t('a')"]:
         assert not SHADOW.search(good), good
+
+
+#: Files whose source runs where no app package exists: the activity probe runs
+#: procnet.py with ``python -c`` inside an earner's namespace, and an operator
+#: runs state_backup.py with ``python -I`` to read a backup.
+STANDALONE = ["app/procnet.py", "app/state_backup.py"]
+
+
+def _app_imports(source: str) -> list[str]:
+    """The app modules that a source imports, at any depth."""
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names = [node.module]
+        elif isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        else:
+            continue
+        found += [n for n in names if n == "app" or n.startswith("app.")]
+    return found
+
+
+def test_code_that_runs_outside_the_app_imports_nothing_from_it():
+    """A t() in these files would fail where they run, so their words stay English."""
+    sources = {rel: (ROOT / rel).read_text(encoding="utf-8") for rel in STANDALONE}
+    found = {rel: _app_imports(src) for rel, src in sources.items() if _app_imports(src)}
+    assert not found, f"standalone code imports the app: {found}"
+    assert _app_imports("from app.i18n import t") == ["app.i18n"]
+    assert _app_imports("def f():\n    import app.x") == ["app.x"] and _app_imports("from . import x") == []
+
+
+def test_a_server_message_is_a_sentence_and_never_a_code():
+    """A one-word value is a code that some caller compares (a reason, a route state), not words to translate."""
+    server = ("api.", "worker.", "err.", "preflight.")
+    codes = {k: v for k, v in EN.items() if k.startswith(server) and not re.search(r"\s", v)}
+    assert not codes, f"these server messages look like codes: {codes}"
+
+
+def test_a_count_is_a_plural_and_never_an_s_in_parentheses():
+    """ "{n} service(s)" reads wrong in English and cannot be translated: a count takes a plural."""
+    found = sorted(k for k, v in EN.items() if re.search(r"\w\((?:s|es)\)", v))
+    assert not found, f"use {{n, plural, one {{...}} other {{...}}}} instead of (s): {found}"
+
+
+def test_the_page_holds_an_unconfirmed_id_as_long_as_the_server():
+    """The forget hint names the hours; the page's constant mirrors database.PENDING_IDENTITY_SECONDS."""
+    from app import database
+
+    found = re.search(
+        r"const PENDING_IDENTITY_HOURS = (\d+);", (ROOT / "app/static/js/app.js").read_text(encoding="utf-8")
+    )
+    assert found, "app.js no longer defines PENDING_IDENTITY_HOURS"
+    assert int(found.group(1)) * 3600 == database.PENDING_IDENTITY_SECONDS

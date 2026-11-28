@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # 快速入门 { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   `docker compose version` 检查。旧版本无法读取 compose 文件中的内联配置。
   Docker Desktop 已包含该插件。在 Linux 上只装了 Docker Engine 时，请从 Docker
   的软件包仓库安装它
-  (https://docs.docker.com/compose/install/linux/)。在使用 Colima 的 macOS 上，
+  (<https://docs.docker.com/compose/install/linux/>)。在使用 Colima 的 macOS 上，
   用 Homebrew 安装它，并把它链接为 Docker 插件：
 
     ```sh

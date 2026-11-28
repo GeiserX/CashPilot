@@ -1,9 +1,9 @@
 ---
-source_hash: 1a93abea95d7
+source_hash: 4b8d25fab777
 ---
 # CashPilot とほかのツールの比較 { #how-cashpilot-compares }
 
-このページでは、複数の不労所得アプリを Docker で動かすほかのオープンなプロジェクトと CashPilot を比較します。どのプロジェクトも 2026-11-04 に確認しました。ほかのプロジェクトについての各セルは、その根拠となるファイルに固定のコミットでリンクしているので、自分で確かめられます。セルが間違っているか古くなっている場合は、[issue を作成](https://github.com/GeiserX/CashPilot/issues)してください。
+このページでは、複数の不労所得アプリを Docker で動かすほかのオープンなプロジェクトと CashPilot を比較します。どのプロジェクトも 2026-11-04 に確認し、CashPilot は 2026-11-28 にもう一度確認しました。ほかのプロジェクトについての各セルは、その根拠となるファイルに固定のコミットでリンクしているので、自分で確かめられます。セルが間違っているか古くなっている場合は、[issue を作成](https://github.com/GeiserX/CashPilot/issues)してください。
 
 ## 比較したプロジェクト { #projects-compared }
 
@@ -14,7 +14,7 @@ source_hash: 1a93abea95d7
 | [InternetIncome][ii-tree] | `db9338a` 時点の `main`(2026-11-03) | 257 | LICENSE ファイルなし。[README][ii-license] は元のものの複製を認め、改変した複製の配布を禁じています |
 | [CashFactory][cf-tree] | `0ff4bd0` 時点の `main`(2025-04-08) | 410 | [LICENSE][cf-license-file] ファイルは GPL-3.0 ですが、[README][cf-license] は改変した複製の配布を禁じています |
 | [home-assistant-passive-income][ha-tree] (HA アドオン) | リリース 2.0.6、`bf4b9f4`(2026-11-03) | 105 | Unlicense |
-| CashPilot | リリース v1.64.0、`c7a12bd` 時点の `main`(2026-11-04) | 77 | GPL-3.0 |
+| CashPilot | リリース v3.0.1、`47a07fb`(2026-11-27) | 77 | GPL-3.0 |
 
 money4band には 2 つのコードラインがあります。既定のブランチ `main`(`3bfafb1`)には今も 4.x のコードがあり、そこでの最後のコード変更は 2026-03-03 でした。リリース 5.0.0 は別の履歴からビルドされています。最新のリリースで配布されているのがそれなので、5.0.0 と比較しています。
 
@@ -25,7 +25,7 @@ IGM の Web UI、フリート管理、インストーラーのバイナリはク
 ## 要点 { #short-version }
 
 - **InternetIncome、money4band、IGM、そして v1.69.0 以降の CashPilot は、プロキシを通じて多くの IP で稼げます。** 最初の 3 つは各アプリをプロキシごとに 1 つ動かし、プロキシは InternetIncome の主要な機能です。CashPilot は、ワーカーにすでにデプロイしたサービスの追加のコピーを、それぞれ SOCKS5、HTTP CONNECT、または Tailscale の出口ノードのプロキシを通じて動かします([プロキシ経由のコピー](proxies.md))。
-- **InternetIncome(23)は CashPilot のワーカー(<!-- n:docker -->21<!-- /n -->)より多くのアプリを起動します。IGM は 20 を起動します。** CashPilot が全体で追跡するサービスはより多く(<!-- n:live -->50<!-- /n -->)、自分では動かさないブラウザー拡張、デスクトップ、GPU のサービスも追跡しています。v1.64.0 以降は、指定した任意のイメージを[カスタムサービス](custom-services.md)として動かすこともできます。
+- **InternetIncome は 23、IGM は 20、CashPilot のワーカーは <!-- n:docker -->21<!-- /n --> のアプリを起動します。** CashPilot が全体で追跡するサービスはより多く(<!-- n:live -->50<!-- /n -->)、自分では動かさないブラウザー拡張、デスクトップ、GPU のサービスも追跡しています。v1.64.0 以降は、指定した任意のイメージを[カスタムサービス](custom-services.md)として動かすこともできます。
 - **money4band と IGM は毎日の報酬をあなたの代わりに受け取り、Watchtower でアプリのイメージを最新に保ちます。** CashPilot はどちらもしません。イメージを取得し直すのは、デプロイまたは再デプロイしたときだけです。
 - **プロバイダーのアカウントから残高を読み取り、履歴を残すのは、ここでは CashPilot だけです。** money4band 5.0.0 が表示するのは、あなたのアカウントではなく、自身のカタログに基づく見積もりです。ほかのものは各プロバイダーのダッシュボードにリンクしています。
 - **多くのサーバーに 1 つの UI を持つオープンソースのものは、ここでは CashPilot だけです。** IGM の README はフリート管理をうたっていますが、そのコードはクローズドなバイナリの中にあります。
@@ -33,28 +33,45 @@ IGM の Web UI、フリート管理、インストーラーのバイナリはク
 
 ## 横並びの比較 { #side-by-side }
 
-CashPilot の列は v1.64.0 を説明しています。ただし、プロキシ、Docker ソケット、LAN の分離の行は v1.71.1(`0170dee`、2026-11-06)を、コンテナの設定と LAN の分離の行にある Mysterium のネットワークは 2.0.6 の次のリリース(`01e7310`)を説明しています。外部への通信の行には、[現在のオンチェーンのガイド](onchain.md)にあるエクスプローラーへの通信も含みます。ほかの列は、上の表のコミットを説明しています。
+CashPilot の列は v3.0.1 を説明しています。この列の各セルは短く、詳細とコードへのリンクは[表の下の注記](#cashpilot-notes)にあります。ほかの列は、上の表のコミットを説明しています。
 
 | | CashPilot | money4band 5.0.0 | IGM | InternetIncome | CashFactory | HA アドオン |
 |---|---|---|---|---|---|---|
 | 起動できるアプリ([数え方](#how-we-counted)を参照) | ワーカーが動かすものが <!-- n:docker -->21<!-- /n -->、加えて[カスタムイメージ](custom-services.md)。全体で追跡するのは <!-- n:live -->50<!-- /n --> | 15([カタログ][m4b-catalog])。README は 35 としていますが、これはコミュニティのアプリと廃止したアプリを[含みます][m4b-readme-35] | 20([apps.json][igm-apps]) | 23([スクリプト][ii-script]) | 11([compose ファイル][cf-compose]) | 10([アドオンのフォルダー][ha-tree]) |
-| インストール方法 | Docker Compose: UI が 1 つと、各サーバーにワーカー。ワーカーが Docker API で収益アプリを起動します([フリート](fleet.md)) | Python の CLI、または compose ファイルを書き出すビルド済みバイナリ([リリース][m4b-tree]) | `curl \| sh` のインストーラー([README][igm-install])がクローズドなバイナリをダウンロードし、同じリリースの SHA256SUMS ファイルとだけ照合します([インストーラー][igm-installer-sums]) | `sudo docker run` を呼ぶ 1,608 行の bash スクリプト 1 つ([スクリプト][ii-script]) | 静的な compose ファイルと、sudo で実行する `setup.sh`([セットアップ][cf-setup]) | Home Assistant のアドオンリポジトリ。Home Assistant OS または Supervised が必要 |
+| インストール方法 | Docker Compose: UI が 1 つと、各サーバーにワーカー([フリート](fleet.md)) | Python の CLI、または compose ファイルを書き出すビルド済みバイナリ([リリース][m4b-tree]) | `curl \| sh` のインストーラー([README][igm-install])がクローズドなバイナリをダウンロードし、同じリリースの SHA256SUMS ファイルとだけ照合します([インストーラー][igm-installer-sums]) | `sudo docker run` を呼ぶ 1,608 行の bash スクリプト 1 つ([スクリプト][ii-script]) | 静的な compose ファイルと、sudo で実行する `setup.sh`([セットアップ][cf-setup]) | Home Assistant のアドオンリポジトリ。Home Assistant OS または Supervised が必要 |
 | 多くのサーバーを 1 つの画面で | あり([フリート](fleet.md)) | なし、デバイスごとに 1 つのスタック | README ではありとしているが、クローズドなバイナリの中([README][igm-features]) | なし | なし | なし |
-| 多くのプロキシや IP | あり、v1.69.0 以降: デプロイしたサービスの追加のコピーを、それぞれ SOCKS5、HTTP CONNECT、または Tailscale の出口ノードのプロキシ経由で動かします。SOCKS5 と HTTP CONNECT が運ぶのは TCP だけです(トンネルはプロキシのポートへの TCP しか外に出さないので、SOCKS5 の UDP リレーは捨てられます)。Tailscale の出口ノードは UDP も運びます。収益アプリはトンネルのコンテナのネットワーク名前空間を共有し、そのファイアウォールはループバック、トンネル、トンネル自身のプロキシへの接続(そのアドレスとポートへの TCP、または tailscaled のマーク付きパケット)しか外に出さないので、プロキシが落ちると漏れずに止まります([プロキシ経由のコピー](proxies.md#how-it-works)、[コード][cp-proxy-deploy]、[トンネルのファイアウォール][cp-tunnel-fw])。ホストネットワーク、公開ポート、ボリューム、デバイス、または `NET_ADMIN`、`NET_RAW`、`SYS_ADMIN` が必要なサービスは、プロキシ経由では動かせません([プロキシ経由のコピー](proxies.md#what-cannot-run-through-a-proxy)) | あり([README][m4b-features]、[コード][m4b-multiproxy]) | あり([README][igm-features]、[compose][igm-proxy]) | あり、主要な機能([README][ii-readme-top]) | なし | なし |
-| 収益 | <!-- n:collectors -->20<!-- /n --> のコレクターがプロバイダーのアカウントから残高を読み取り、履歴を残します。ブラウザーからコピーした Cookie やトークンが必要なものもあり、その一部は期限切れになります(各サービスのガイドを参照) | アカウントのデータではなく、カタログの範囲からの見積もり([コード][m4b-earnings]) | スクリプトには見当たらない | なし | なし | なし |
+| 多くのプロキシや IP | あり、SOCKS5、HTTP CONNECT、または Tailscale の出口ノードのプロキシ経由([プロキシ経由のコピー](proxies.md)、[注記](#cashpilot-notes)) | あり([README][m4b-features]、[コード][m4b-multiproxy]) | あり([README][igm-features]、[compose][igm-proxy]) | あり、主要な機能([README][ii-readme-top]) | なし | なし |
+| 収益 | <!-- n:collectors -->20<!-- /n --> のコレクターがあなたのプロバイダーのアカウントから残高を読み取り、履歴を残します | アカウントのデータではなく、カタログの範囲からの見積もり([コード][m4b-earnings]) | スクリプトには見当たらない | なし | なし | なし |
 | 支払い | 残高が減ったときに支払いを提案し、確認すると記録します([スキーマ][cp-payouts]) | なし | なし | なし | なし | なし |
 | 毎日の報酬の受け取り | なし | あり、サイドカー([README][m4b-features]) | あり([README][igm-features]、[compose][igm-sidecars]) | なし | なし | なし |
-| 保存時の認証情報 | UI のデータベースに暗号化(Fernet)して保存。鍵ファイルは同じデータボリュームにあります([コード][cp-fernet])。収益アプリの認証情報はコンテナの環境変数として各ワーカーに届くので、そのワーカーの Docker の設定(`docker inspect`)では平文です | 暗号化(Fernet)。鍵ファイルはデータディレクトリにあります([コード][m4b-crypto]) | 暗号化(openssl による AES-256)。鍵ファイルは保管庫の隣にあります([コード][igm-encryptor]) | `properties.conf` に平文。一部のパスワードは `docker run` の引数として渡されます([スクリプト][ii-password-arg]) | `.env` に平文([ファイル][cf-env]) | アドオンのオプション。Supervisor が `/data/options.json` に保存します([HA のドキュメント][ha-options]) |
-| 収益アプリのコンテナの設定 | すべてのケーパビリティを外し、サービスが必要とするものをカタログが戻します。`no-new-privileges`、pids の上限、特権は拒否([コード][cp-hardening]、[コード][cp-privileged])。Mysterium は、フェンスで囲まれたブリッジ上の専用のネットワーク名前空間で、`NET_ADMIN`、`SETUID`、`SETGID` 付きで、ダイジェストで固定したイメージで動きます([カタログ][cp-myst]) | 特権でないすべてのサービスに `no-new-privileges`([コード][m4b-nnp])。プロキシのコンテナは `NET_ADMIN` 付きの特権コンテナ([テンプレート][m4b-tun]) | アプリのサービスには何も設定なし。Mysterium には `NET_ADMIN`([compose][igm-hosting-myst])。プロキシのコンテナには `NET_ADMIN` と、`no-new-privileges` と pids の上限([compose][igm-proxy]) | Ebesucher は `seccomp=unconfined` で動きます([スクリプト][ii-seccomp])。プロキシのコンテナと Mysterium には `NET_ADMIN` | 設定なし | 特権、ホストネットワーク、Docker API へのアクセスを求めるアドオンはなし([設定の例][ha-config]) |
-| Docker ソケットのマウント先 | v1.71.0 以降、ソケットプロキシ(sockguard 2.4.5、ダイジェストで固定)に読み取り専用で。ワーカーはフィルターをかけたコピーを受け取り、これは特権コンテナ、`/` やソケットのバインド、カタログにないケーパビリティやデバイスを拒否します([compose][cp-sock]、[詳細](security-defaults.md))。収益アプリには決してマウントしません([コード][cp-mounts]) | Watchtower([テンプレート][m4b-watchtower]) | Watchtower。読み取り専用で `no-new-privileges` 付き([compose][igm-watchtower]) | 再起動用のヘルパーコンテナ 5 つ([スクリプト][ii-sock-helper])と Watchtower([スクリプト][ii-watchtower]) | Portainer(すべてのインターフェースでポート 8000、9000、9443 に公開、[compose][cf-portainer])と、2 つの Watchtower([compose][cf-watchtower-ps]、[compose][cf-watchtower-efm]) | なし |
-| イメージのタグ | <!-- n:docker -->21<!-- /n --> の収益アプリのイメージのうち 9 つはバージョンかダイジェストに固定。残りは追従 | 15 のアプリのイメージはすべて `:latest`([例][m4b-image])。プロキシのコンテナは v2.6.0、Watchtower は `:1` に固定 | タグなしなので、Docker は `latest` を使います([compose][igm-hosting])。タグを設定しているのは一部の ARM 向けビルドだけ | ほとんどが `:latest`([例][ii-seccomp])。EarnApp は `:lite`、Honeygain は amd64 でプロキシ経由のとき 0.6.6 に固定([スクリプト][ii-honeygain])、Traffmonetizer は ARM でアーキテクチャごとのタグ。Watchtower は `:nightly` | `:latest` またはタグなし。EarnApp だけ `:lite`([compose][cf-compose]) | アドオンごとに 1 つのバージョン。毎日の CI ジョブで更新([ワークフロー][ha-bump]、[例][ha-dockerfile]) |
+| 保存時の認証情報 | UI のデータベースに暗号化(Fernet)して保存([注記](#cashpilot-notes)) | 暗号化(Fernet)。鍵ファイルはデータディレクトリにあります([コード][m4b-crypto]) | 暗号化(openssl による AES-256)。鍵ファイルは保管庫の隣にあります([コード][igm-encryptor]) | `properties.conf` に平文。一部のパスワードは `docker run` の引数として渡されます([スクリプト][ii-password-arg]) | `.env` に平文([ファイル][cf-env]) | アドオンのオプション。Supervisor が `/data/options.json` に保存します([HA のドキュメント][ha-options]) |
+| 収益アプリのコンテナの設定 | カタログが付与するもの以外のケーパビリティを外す。`no-new-privileges`、pids の上限。特権は拒否([注記](#cashpilot-notes)) | 特権でないすべてのサービスに `no-new-privileges`([コード][m4b-nnp])。プロキシのコンテナは `NET_ADMIN` 付きの特権コンテナ([テンプレート][m4b-tun]) | アプリのサービスには何も設定なし。Mysterium には `NET_ADMIN`([compose][igm-hosting-myst])。プロキシのコンテナには `NET_ADMIN` と、`no-new-privileges` と pids の上限([compose][igm-proxy]) | Ebesucher は `seccomp=unconfined` で動きます([スクリプト][ii-seccomp])。プロキシのコンテナと Mysterium には `NET_ADMIN` | 設定なし | 特権、ホストネットワーク、Docker API へのアクセスを求めるアドオンはなし([設定の例][ha-config]) |
+| Docker ソケットのマウント先 | ソケットプロキシ(読み取り専用)と、1 回だけ動く移行用のコンテナ([注記](#cashpilot-notes)) | Watchtower([テンプレート][m4b-watchtower]) | Watchtower。読み取り専用で `no-new-privileges` 付き([compose][igm-watchtower]) | 再起動用のヘルパーコンテナ 5 つ([スクリプト][ii-sock-helper])と Watchtower([スクリプト][ii-watchtower]) | Portainer(すべてのインターフェースでポート 8000、9000、9443 に公開、[compose][cf-portainer])と、2 つの Watchtower([compose][cf-watchtower-ps]、[compose][cf-watchtower-efm]) | なし |
+| イメージのタグ | <!-- n:docker -->21<!-- /n --> の収益アプリのイメージのうち <!-- n:pinned -->9<!-- /n --> つはバージョンかダイジェストに固定。残りは追従 | 15 のアプリのイメージはすべて `:latest`([例][m4b-image])。プロキシのコンテナは v2.6.0、Watchtower は `:1` に固定 | タグなしなので、Docker は `latest` を使います([compose][igm-hosting])。タグを設定しているのは一部の ARM 向けビルドだけ | ほとんどが `:latest`([例][ii-seccomp])。EarnApp は `:lite`、Honeygain は amd64 でプロキシ経由のとき 0.6.6 に固定([スクリプト][ii-honeygain])、Traffmonetizer は ARM でアーキテクチャごとのタグ。Watchtower は `:nightly` | `:latest` またはタグなし。EarnApp だけ `:lite`([compose][cf-compose]) | アドオンごとに 1 つのバージョン。毎日の CI ジョブで更新([ワークフロー][ha-bump]、[例][ha-dockerfile]) |
 | アプリのイメージの更新 | デプロイまたは再デプロイのたびに取得し直す。自動更新ツールはなし | Watchtower([テンプレート][m4b-watchtower]) | 4 時間ごとに Watchtower([compose][igm-watchtower]) | オンにすれば 1 日 1 回 Watchtower([スクリプト][ii-watchtower]) | 2 つの Watchtower がそれぞれ 1 つのアプリだけを対象にします。PacketStream([compose][cf-watchtower-ps])と EarnFM([compose][cf-watchtower-efm])。ほかの 9 つのアプリは更新されません | Home Assistant のアドオンの更新 |
-| LAN の分離 | v1.70.0 以降、新規インストールと、Docker の既定のブリッジに収益アプリがないアップグレード済みのインストールでは既定でオン: ワーカーは収益アプリを専用のブリッジに置き、プライベートの範囲、tailnet の範囲、クラウドのメタデータ、ホストが接続しているサブネット、ホスト自身、さらにパブリック IP の検出がオンなら自宅のパブリック IP を捨てるファイアウォールのテーブルを書き込みます([分離](isolation.md#lan-isolation-by-default)、[コード][cp-fence])。収益アプリがすでに既定のブリッジにあるアップグレード済みのインストールは、**Turn on isolation** (分離をオンにする)を押すまでそこにとどまります。`CASHPILOT_ISOLATION=off` でオフになります。`CASHPILOT_CONTAINER_NETWORK` を設定すると、CashPilot はそのネットワークにフェンスを書き込まず、ファイアウォールのルールはあなたが管理します([分離](isolation.md#modes)、[コード][cp-fence-mode])。2.0.7 以降は Mysterium もフェンスで囲まれます。2.0.6 までにデプロイしたノードは、再デプロイするまでホストのネットワークにとどまります([フェンスの内側の Mysterium](mysterium-fence.md))。チェックで収益アプリが何に届くかを確認できます([チェック](isolation-check.md)) | 独自のブリッジのサブネット([設定][m4b-subnet])。LAN は遮断しません | マージされたものはなし | 見当たらない | 見当たらない | 見当たらない |
-| ARM | arm64 の UI とワーカー。デプロイ前に各サービスのプラットフォームを確認します([ARM](arm.md)) | arm64 と armv7 のバイナリ([リリース][m4b-release]) | README では amd64 と arm64、制限付きで arm32 に対応するとしており、QEMU を設定します([README][igm-arch]) | amd64 専用のイメージには binfmt のエミュレーションが必要([README][ii-arm]) | README には Raspberry Pi では動かないとあります([README][cf-raspberry]) | アドオンごと。ProxyRack は amd64 のみ([設定][ha-proxyrack]) |
+| LAN の分離 | 新規インストールでは既定でオン([分離](isolation.md#lan-isolation-by-default)、[注記](#cashpilot-notes)) | 独自のブリッジのサブネット([設定][m4b-subnet])。LAN は遮断しません | マージされたものはなし | 見当たらない | 見当たらない | 見当たらない |
+| ARM | arm64 の UI とワーカー。デプロイのたびにプラットフォームを確認します([ARM](arm.md)) | arm64 と armv7 のバイナリ([リリース][m4b-release]) | README では amd64 と arm64、制限付きで arm32 に対応するとしており、QEMU を設定します([README][igm-arch]) | amd64 専用のイメージには binfmt のエミュレーションが必要([README][ii-arm]) | README には Raspberry Pi では動かないとあります([README][cf-raspberry]) | アドオンごと。ProxyRack は amd64 のみ([設定][ha-proxyrack]) |
 | UI | Web UI と、Desktop、Android、MCP、Home Assistant のクライアント | CLI、メニュー、既定で 127.0.0.1 にバインドされるローカルの Web ダッシュボード([コード][m4b-bind]) | CLI、メニュー、README によれば LAN から届くポート 4747 の Web UI([README][igm-webui]) | なし、スクリプトのみ | ポート 80 のブックマークページと Portainer([README][cf-ui]) | Home Assistant のアドオンのパネル |
-| 既定のブランチのコミット数、2026-08-06 から 2026-11-04 | 286 | 6、すべてドキュメント(5.0.0 は別の履歴) | 6 | 31 | 0 | 23 |
-| 最新のリリース | v1.64.0、2026-11-04 | 5.0.0、2026-07-25 | 3.0.0-beta.9、2026-09-23 | バージョン付きのリリースなし | v1.10、2024-07-17 | 2.0.6、2026-11-03 |
-| アプリ以外の外部への通信 | 1 日 1 回 GitHub のリリース(`CASHPILOT_UPDATE_CHECK=off` で停止、[コード][cp-update])。パブリック IP のために、各ワーカーから 1 時間に 1 回 `api.ipify.org`、`ifconfig.me`、または `icanhazip.com`(`CASHPILOT_EGRESS_DETECT=off` で停止、[コード][cp-egress])。為替レートのために CoinGecko と Frankfurter([コード][cp-rates])。[オンチェーンの残高](onchain.md)のために mempool.space、api.kaspa.org、公開の Ethereum、Polygon、Solana の RPC ノード。コレクターのために各プロバイダー。ブラウザーは Google Fonts([テンプレート][cp-cdn])と jsDelivr の Chart.js([テンプレート][cp-chartjs])を読み込みます | 更新の確認のために GitHub のリリース([コード][m4b-updater])。イメージのタグを確認するために Docker Hub と ghcr.io([コード][m4b-registry])。IP のチェックを実行したときは、パブリック IP のために `api.ipify.org`、`ifconfig.me`、または `icanhazip.com`、IP のスコアのために平文の HTTP で `ip-api.com`([コード][m4b-ipscore]) | GitHub のリリース([コード][igm-version])。パブリック IP のために `api.ipify.org`、`ifconfig.me`、または `icanhazip.com`([コード][igm-ifconfig])。IP のスコアのために平文の HTTP で `ip-api.com`([コード][igm-ipscore])。クローズドなバイナリは確認していません | 見当たらない | 見当たらない | 見当たらない |
+| 最新のリリース | v3.0.1、2026-11-27 | 5.0.0、2026-07-25 | 3.0.0-beta.9、2026-09-23 | バージョン付きのリリースなし | v1.10、2024-07-17 | 2.0.6、2026-11-03 |
+| アプリ以外の外部への通信 | 更新の確認、パブリック IP の確認、為替レート、オンチェーンの残高。CDN からのフォントと Chart.js([注記](#cashpilot-notes)) | 更新の確認のために GitHub のリリース([コード][m4b-updater])。イメージのタグを確認するために Docker Hub と ghcr.io([コード][m4b-registry])。IP のチェックを実行したときは、パブリック IP のために `api.ipify.org`、`ifconfig.me`、または `icanhazip.com`、IP のスコアのために平文の HTTP で `ip-api.com`([コード][m4b-ipscore]) | GitHub のリリース([コード][igm-version])。パブリック IP のために `api.ipify.org`、`ifconfig.me`、または `icanhazip.com`([コード][igm-ifconfig])。IP のスコアのために平文の HTTP で `ip-api.com`([コード][igm-ipscore])。クローズドなバイナリは確認していません | 見当たらない | 見当たらない | 見当たらない |
+
+### CashPilot の列についての注記 { #cashpilot-notes }
+
+- **多くのプロキシや IP。** v1.69.0 以降、CashPilot はワーカーにデプロイ済みのサービスの追加のコピーを、それぞれ専用のプロキシ経由で動かします。SOCKS5 と HTTP CONNECT が運ぶのは TCP だけです。トンネルはプロキシのポートへの TCP しか外に出さないので、SOCKS5 の UDP リレーは捨てられます。Tailscale の出口ノードは UDP も運びます。収益アプリはトンネルのコンテナのネットワーク名前空間を共有します([コード][cp-proxy-deploy])。その名前空間が外に出すのは、ループバック、トンネル、トンネル自身のプロキシへの接続(そのアドレスとポートへの TCP、または tailscaled のマーク付きパケット)だけです([トンネルのファイアウォール][cp-tunnel-fw])。そのため、プロキシが落ちると収益アプリは止まり、通信が漏れることはありません([仕組み](proxies.md#how-it-works))。ホストネットワーク、公開ポート、ボリューム、デバイス、GPU、または `NET_ADMIN`、`NET_RAW`、`SYS_ADMIN` が必要なサービスや、規約でプロキシを禁じているサービスは、プロキシ経由では動かせません。そのため、<!-- n:docker -->21<!-- /n --> の収益アプリのうち <!-- n:noproxy -->10<!-- /n --> はサーバー自身の IP でしか稼げません([動かせないもの](proxies.md#what-cannot-run-through-a-proxy))。
+- **収益。** ブラウザーからコピーした Cookie やトークンが必要なコレクターもあり、その一部は期限切れになります。どれがそうかは各サービスのガイドに書いてあります。
+- **保存時の認証情報。** UI は暗号化の鍵ファイルをデータベースと同じデータボリュームに置きます([コード][cp-fernet])。収益アプリの認証情報はコンテナの環境変数として各ワーカーに届くので、そのワーカーの Docker の設定(`docker inspect`)では平文です。
+- **収益アプリのコンテナの設定。** ワーカーはすべてのケーパビリティを外し、カタログがそのサービスに挙げているものを戻します。`no-new-privileges` と pids の上限を設定し、特権コンテナを拒否します([コード][cp-hardening]、[コード][cp-privileged]、[セキュリティの既定値](security-defaults.md))。Mysterium は、フェンスで囲まれたブリッジ上の専用のネットワーク名前空間で、`NET_ADMIN`、`SETUID`、`SETGID` 付きで、ダイジェストで固定したイメージで動きます([カタログ][cp-myst])。オプションの gVisor ランタイムを使うと、ユーザー空間のカーネルを加えられます([ランタイム](security-defaults.md#container-runtimes-gvisor-where-it-works))。
+- **Docker ソケット。** v1.71.0 以降、ワーカーはソケットを持ちません。ソケットを持つのはソケットプロキシです。sockguard 2.4.7 で、ダイジェストで固定し、読み取り専用です([compose][cp-sock])。ワーカーはフィルターをかけたコピーを受け取り、これは特権コンテナ、`/` やソケットのバインド、カタログにないケーパビリティやデバイスを拒否します([ソケットプロキシ](security-defaults.md#docker-socket-proxy))。1 回だけ動く `cashpilot-migrate` コンテナもソケットをマウントします。これは古いリリースが作ったボリュームとフェンスのネットワークにオーナーのラベルを付け、その上にそれらのコンテナを作り直します。こうしてプロキシのオーナー分離がそれらにも及びます。このコンテナはプロキシが起動する前に終了します([compose][cp-migrate])。収益アプリがソケットを受け取ることはありません([コード][cp-mounts])。このプロキシはまだ root の境界ではありません。`CASHPILOT_COMPOSE_DIR` か `CASHPILOT_PROXY_BIND_MOUNTS` を設定していると、乗っ取られたワーカーは、1 つ目のコンテナで許可されたフォルダーにシンボリックリンクを仕込み、2 つ目のコンテナでホストの `/` に届くことができます([詳細](security-defaults.md#docker-socket-proxy))。Unraid と TrueNAS の掲載版は、今もワーカーに生のソケットをマウントします([アプリストア](app-stores.md))。
+- **LAN の分離。** v1.70.0 以降、新規インストールと、Docker の既定のブリッジに収益アプリがないアップグレード済みのインストールでは既定でオンです。ワーカーは収益アプリを専用のブリッジに置き、そのブリッジ用のファイアウォールのテーブルを書き込みます([コード][cp-fence])。このテーブルは、プライベートの範囲、tailnet の範囲、クラウドのメタデータ、ホストが接続しているサブネット、ホスト自身への通信を捨てます。パブリック IP の検出がオンなら、自宅のパブリック IP への通信も捨てます([分離](isolation.md#lan-isolation-by-default))。収益アプリがすでに既定のブリッジにあるアップグレード済みのインストールは、**Turn on isolation** (分離をオンにする)を押すまでそこにとどまります。`CASHPILOT_ISOLATION=off` でオフになります。`CASHPILOT_CONTAINER_NETWORK` を設定すると、CashPilot はそのネットワークにフェンスを書き込まず、ファイアウォールのルールはあなたが管理します。Podman ではフェンスはなく、フリートのページにそのことが表示されます([モード](isolation.md#modes)、[コード][cp-fence-mode])。2.0.7 以降は Mysterium もフェンスで囲まれます。2.0.6 までにデプロイしたノードは、再デプロイするまでホストのネットワークにとどまります([フェンスの内側の Mysterium](mysterium-fence.md))。チェックで収益アプリが何に届くかを確認できます([チェック](isolation-check.md))。
+- **外部への通信。** アプリそのもののほかに、CashPilot は次の相手と通信します。
+    - GitHub のリリース。1 日 1 回、更新の確認のため(`CASHPILOT_UPDATE_CHECK=off` で停止、[コード][cp-update])。
+    - `api.ipify.org`、`ifconfig.me`、または `icanhazip.com`。各ワーカーから 1 時間に 1 回、パブリック IP のため(`CASHPILOT_EGRESS_DETECT=off` で停止、[コード][cp-egress])。
+    - CoinGecko と Frankfurter。為替レートのため([コード][cp-rates])。
+    - mempool.space、api.kaspa.org、公開の Ethereum、Ethereum Classic、Polygon、Solana の RPC ノード。[オンチェーンの残高](onchain.md)のため。
+    - iptoasn.com。CashPilot のネットワーク名の表のため。多くても週に 1 回で、[アクティビティ](activity.md#network-names-and-countries)をオンにしたワーカーがあるときだけです([コード][cp-ipgeo])。
+    - 各プロバイダー。コレクターのため。
+
+    ブラウザーは Google Fonts([テンプレート][cp-cdn])と jsDelivr の Chart.js([テンプレート][cp-chartjs])を読み込みます。
 
 読んだコードの中で、利用状況のテレメトリーを送るプロジェクトはありません。IGM のクローズドなバイナリは読めませんでした。
 
@@ -70,20 +87,6 @@ CashPilot の列は v1.64.0 を説明しています。ただし、プロキシ�
 - **HA アドオン。** 設定ファイルのあるアドオンのフォルダー: 10。
 
 各一覧の各アプリが今も支払いをしているかどうかは確認していません。
-
-## CashPilot が遅れている点 { #where-cashpilot-is-behind }
-
-- ホストネットワーク、公開ポート、ボリューム、デバイス、または追加のネットワークのケーパビリティが必要なサービスはプロキシ経由で動かせないので、<!-- n:docker -->21<!-- /n --> のうち 10(EarnApp、URnetwork、ProxyBase Markets、Bitping、Mysterium、Storj、Sia、Anyone Protocol、SRBMiner-Multi、Kryptex Pool (Pearl))は、サーバー自身の IP からしか稼げません([プロキシ経由のコピー](proxies.md#what-cannot-run-through-a-proxy))。
-- 自分で起動するアプリが InternetIncome より少ない。
-- 毎日の報酬の受け取りも、イメージの自動更新もない。
-- <!-- n:docker -->21<!-- /n --> の収益アプリのイメージのうち 12 は、発行元の最新のタグに追従している。
-- ソケットプロキシはまだ root の境界になっていない: 侵害されたワーカーは今もポリシーの範囲内でコンテナを作成でき、2 段階の脱出(ほかのコンテナのプロセス名前空間に参加する、許可されたフォルダーにシンボリックリンクを置く)は拒否されない([詳細](security-defaults.md))。
-- 保存された認証情報の暗号化キーがデータと同じボリュームにあり、各ワーカーでは収益アプリの認証情報が Docker のコンテナの設定に平文で入っている。
-- ブラウザーからコピーした Cookie やトークンが必要なコレクターがあり、その一部は期限切れになるので、それらのサービスでは収益の追跡に手入れが必要。
-- UI はフォントと Chart.js をサードパーティーの CDN から読み込む。
-- LAN の分離は、収益アプリが Docker の既定のブリッジにあるアップグレード済みのインストールでは、オンにするまでオフのまま。`CASHPILOT_CONTAINER_NETWORK` で指定したネットワークにはフェンスを設けない([分離](isolation.md#modes))。また、2.0.6 までにデプロイした Mysterium のノードは、再デプロイするまでフェンスのないままホストのネットワークにとどまる([フェンスの内側の Mysterium](mysterium-fence.md))。
-- コミュニティが money4band よりずっと小さい。
-- リリースが頻繁で、1 日に何度もリリースすることがある。
 
 [m4b-tree]: https://github.com/MRColorR/money4band/tree/af9d903e1908f5e7fc205ab6871bad2e0ca51f28
 [m4b-release]: https://github.com/MRColorR/money4band/releases/tag/5.0.0
@@ -153,19 +156,21 @@ CashPilot の列は v1.64.0 を説明しています。ただし、プロキシ�
 [ha-bump]: https://github.com/bvlinsky/home-assistant-passive-income/blob/bf4b9f4558a06fef28154cde51d2aff087713b0e/.github/workflows/update-addon-versions.yml#L5
 [ha-options]: https://developers.home-assistant.io/docs/add-ons/configuration#options--schema
 
-[cp-payouts]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/database.py#L515-L531
-[cp-fernet]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/database.py#L48
-[cp-hardening]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/orchestrator.py#L745-L752
-[cp-privileged]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/worker_api.py#L1244
-[cp-mounts]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/worker_api.py#L992-L1040
-[cp-myst]: https://github.com/GeiserX/CashPilot/blob/01e7310cf1d923ba35523d8944ebaf2478f39079/services/bandwidth/mysterium.yml#L19-L113
-[cp-sock]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/docker-compose.yml#L69-L106
-[cp-update]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/update_check.py#L80
-[cp-rates]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/exchange_rates.py#L101-L119
-[cp-egress]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/worker_api.py#L313
-[cp-cdn]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/templates/base.html#L12-L16
-[cp-chartjs]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/templates/base.html#L254
-[cp-proxy-deploy]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/app/proxy_tunnel.py#L336-L350
-[cp-tunnel-fw]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/tunnel/cp-tunnel#L48-L99
-[cp-fence]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/app/lan_fence.py#L83-L100
-[cp-fence-mode]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/app/lan_fence.py#L630-L646
+[cp-payouts]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/database.py#L541-L557
+[cp-fernet]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/database.py#L51
+[cp-hardening]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/orchestrator.py#L1534-L1541
+[cp-privileged]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/worker_api.py#L1977-L1978
+[cp-mounts]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/worker_api.py#L1586-L1631
+[cp-myst]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/services/bandwidth/mysterium.yml#L25-L27
+[cp-sock]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/docker-compose.yml#L125-L180
+[cp-update]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/update_check.py#L46-L56
+[cp-rates]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/exchange_rates.py#L125-L145
+[cp-egress]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/worker_api.py#L373-L380
+[cp-cdn]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/templates/base.html#L12-L16
+[cp-chartjs]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/templates/base.html#L292
+[cp-proxy-deploy]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/proxy_tunnel.py#L1145
+[cp-tunnel-fw]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/tunnel/cp-tunnel#L1-L27
+[cp-fence]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/lan_fence.py#L103-L125
+[cp-fence-mode]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/lan_fence.py#L29-L52
+[cp-ipgeo]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/app/ipgeo.py#L1-L40
+[cp-migrate]: https://github.com/GeiserX/CashPilot/blob/47a07fbd3dc1a723fd41c6f22ec6bc9b619699db/docker-compose.yml#L91-L101

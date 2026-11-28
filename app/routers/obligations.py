@@ -23,6 +23,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app import auth, catalog, database, deps, obligations
+from app.i18n import t
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -42,14 +43,14 @@ class ObligationAction(BaseModel):
 
 async def _evaluate() -> tuple[obligations.Evaluation, datetime]:
     if evaluate is None:
-        raise HTTPException(status_code=503, detail="Could not check")
+        raise HTTPException(status_code=503, detail=t("api.could_not_check"))
     try:
         return await evaluate()
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 - "could not check" is never an all-clear
         logger.warning("Reminders: could not evaluate: %s", exc)
-        raise HTTPException(status_code=503, detail="Could not check")
+        raise HTTPException(status_code=503, detail=t("api.could_not_check"))
 
 
 @router.get("/api/obligations")
@@ -99,12 +100,12 @@ async def _done_for(slug: str, rule: str, occurrence: str, today: date) -> str:
 async def api_obligation_action(slug: str, rule: str, body: ObligationAction, request: Request) -> dict[str, Any]:
     user = deps._require_writer(request)
     if body.action not in ACTIONS:
-        raise HTTPException(status_code=400, detail=f"action must be one of {', '.join(ACTIONS)}")
+        raise HTTPException(status_code=400, detail=t("api.action_must_one", actions=", ".join(ACTIONS)))
     # Credential reminders are the owner's (see api_obligations): a writer who
     # never sees one must not mute or snooze it for the household either.
     owner_only = rule.startswith(obligations.CREDENTIAL_PREFIX) and not auth.require_role(user, "owner")
     if owner_only or not _known_rule(slug, rule):
-        raise HTTPException(status_code=404, detail="No such reminder")
+        raise HTTPException(status_code=404, detail=t("api.no_such_reminder"))
     uid = user.get("uid") if isinstance(user.get("uid"), int) else None
     result: dict[str, Any] = {"slug": slug, "rule": rule, "action": body.action}
 
@@ -117,11 +118,11 @@ async def api_obligation_action(slug: str, rule: str, body: ObligationAction, re
         if body.occurrence is not None:
             matches = [i for i in matches if i.occurrence == body.occurrence]
         if not matches:
-            raise HTTPException(status_code=404, detail="This reminder is not due now")
+            raise HTTPException(status_code=404, detail=t("api.reminder_not_due_now"))
         item = matches[0]
         if body.action == "done":
             if not item.can_done:
-                raise HTTPException(status_code=400, detail="This one clears by itself once it is fixed")
+                raise HTTPException(status_code=400, detail=t("api.one_clears_itself_once_fixed"))
             await database.set_obligation_action(
                 slug,
                 rule,
@@ -132,9 +133,9 @@ async def api_obligation_action(slug: str, rule: str, body: ObligationAction, re
             result["occurrence"] = item.occurrence
         else:
             if body.days not in SNOOZE_DAYS:
-                raise HTTPException(status_code=400, detail="days must be 1 or 7")
+                raise HTTPException(status_code=400, detail=t("api.days_must_1_7"))
             if not item.can_snooze:
-                raise HTTPException(status_code=409, detail="Too close to its deadline to snooze")
+                raise HTTPException(status_code=409, detail=t("api.too_close_deadline_snooze"))
             until = today + timedelta(days=body.days)
             await database.set_obligation_action(slug, rule, updated_by=uid, snoozed_until=until.isoformat())
             result["snoozed_until"] = until.isoformat()

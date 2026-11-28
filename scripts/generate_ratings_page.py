@@ -193,7 +193,7 @@ def _live_raw() -> list[dict]:
     """Every service file as written, before the loader strips a bad rating."""
     out = []
     for path in sorted(catalog.SERVICES_DIR.rglob("*.y*ml")):
-        if path.name.startswith("_"):
+        if not catalog.is_service_file(path):
             continue
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         if isinstance(data, dict) and data.get("slug"):

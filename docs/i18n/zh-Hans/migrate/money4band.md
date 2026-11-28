@@ -1,5 +1,5 @@
 ---
-source_hash: 374e39e6eac9
+source_hash: 5a764f1d0f5a
 ---
 # 从 money4band 迁移 { #moving-from-money4band }
 
@@ -20,12 +20,26 @@ money4band 现在运行的机器上，也可以位于另一台机器上。
 
 ## 使用哪个文件 { #which-file-to-use }
 
-使用 money4band 文件夹中的 `config/user-config.json`。money4band 在你运行
-**Setup Apps** 时写入它，其中保存的正是你输入的内容。它旁边的 `.env`
+使用 money4band 文件夹中的 `config/user-config.json`。如何把它交给
+CashPilot，取决于你的 money4band 版本。
+
+在 money4band 4.x 中，money4band 在你运行
+**Setup Apps** 时写入该文件，其中保存的正是你输入的内容。它旁边的 `.env`
 由该文件生成，同样可用；money4band 3.x 中手工编辑的
 `.env` 也可以。两者都只保存在你的磁盘上：money4band 的
 [.gitignore](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/.gitignore)
 列出了它们。
+
+money4band 5.0 会在磁盘上加密 `config/user-config.json`
+（[安全说明](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)），
+并在每次启动后删除它的 `.env`
+（[env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)）。
+CashPilot 无法读取加密后的文件。请在 money4band 文件夹中运行它的 `config edit` 命令。
+发布版二进制文件请使用与你的系统对应的文件，例如 `./Money4Band-linux-amd64 config edit`，在 Windows 上则是 `.\Money4Band-windows-amd64.exe config edit`。
+从源码运行时，执行 `python run.py config edit`。
+它会通过 uv 运行 money4band，没有 uv 时则通过 pip 环境运行（[run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69)）。
+该命令会在你的编辑器中打开解密后的文件（[CLI 参考](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)）。
+复制其中的全部文本，粘贴到 **Import from another tool** (从其他工具导入) 页面，然后关闭编辑器。
 
 优先使用 JSON 文件。在 `.env` 中，Docker Compose 会展开未加引号的值中的 `$`，
 所以含有 `$` 的密码并不是文件中显示的样子。CashPilot 不会
@@ -47,7 +61,9 @@ money4band 现在运行的机器上，也可以位于另一台机器上。
 [user-config 模板](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/template/user-config.json)，
 以及它的
 [生成器](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/utils/generator.py#L535-L545)
-写入的 `.env` 名称（`<APP>_<FLAG>`，例如 `REPOCKET_APIKEY`）。
+写入的 `.env` 名称（`<APP>_<FLAG>`，例如 `REPOCKET_APIKEY`）。money4band 5.0 在它的
+[应用目录](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/config/catalog/supported)中
+沿用了相同的字段名。
 
 | money4band 应用 | CashPilot 服务 | 会带过来的内容 |
 |---|---|---|

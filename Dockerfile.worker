@@ -57,6 +57,8 @@ WORKDIR /app
 COPY --from=builder /build/.venv ./.venv
 
 COPY app/__init__.py ./app/
+# The worker's answers to the dashboard, in the dashboard's language.
+COPY app/i18n/__init__.py app/i18n/*.json ./app/i18n/
 COPY app/constants.py ./app/
 COPY app/fleet_key.py ./app/
 # The plain-http rule for the key on the heartbeat (CASHPILOT_UI_URL).
@@ -79,11 +81,14 @@ COPY app/route_gate.py ./app/
 # against worker_api's actual imports.
 COPY app/version.py ./app/
 COPY app/worker_api.py ./app/
+# `cashpilot-vm remove` runs it in a Secure VM: the UI forgets the worker.
+COPY app/worker_retire.py ./app/
 COPY app/miner_read.py ./app/
 COPY app/orchestrator.py ./app/
 COPY app/isolation_check.py ./app/
 # The security layers this worker can give an earner (system_info.layers, runtime_choice).
 COPY app/layers.py ./app/
+COPY app/gvisor_check.py ./app/
 COPY app/socket_policy.py ./app/
 # The one-shot cashpilot-migrate service of the compose files runs it.
 COPY app/owner_migrate.py ./app/

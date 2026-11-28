@@ -217,7 +217,7 @@ class TestValidate:
         # "at least 40" let one entry vanish without failing anything.
         services_dir = Path(catalog.__file__).resolve().parents[1] / "services"
         files = [*services_dir.rglob("*.yml"), *services_dir.rglob("*.yaml")]
-        on_disk = {p.stem for p in files if not p.name.startswith("_")}
+        on_disk = {p.stem for p in files if catalog.is_service_file(p, services_dir)}
         loaded = {s["slug"] for s in catalog.load_services()}
         assert on_disk - loaded == set()
 

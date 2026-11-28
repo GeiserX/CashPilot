@@ -43,6 +43,8 @@ from typing import Any
 
 import httpx
 
+from app.i18n import t
+
 logger = logging.getLogger(__name__)
 
 #: How long a successful read is reused. Balances move slowly relative to a
@@ -301,9 +303,9 @@ async def _rpc(client: httpx.AsyncClient, url: str, method: str, params: list[An
     response.raise_for_status()
     payload = response.json()
     if not isinstance(payload, dict) or "error" in payload:
-        raise ValueError(f"RPC error: {str(payload)[:200]}")
+        raise ValueError(t("err.onchain.rpc_error", payload=str(payload)[:200]))
     if "result" not in payload:
-        raise ValueError("RPC response carried no result")
+        raise ValueError(t("err.onchain.rpc_response_carried_no_result"))
     return payload["result"]
 
 
@@ -311,23 +313,23 @@ async def _explorer_get(client: httpx.AsyncClient, url: str) -> dict[str, Any]:
     response = await client.get(url, follow_redirects=False)
     response.raise_for_status()
     if response.status_code != 200:
-        raise ValueError("Unexpected explorer status")
+        raise ValueError(t("err.onchain.unexpected_explorer_status"))
     payload = response.json()
     if not isinstance(payload, dict):
-        raise ValueError("Expected an explorer response object")
+        raise ValueError(t("err.onchain.expected_explorer_response_object"))
     return payload
 
 
 def _utxo_delta(stats: Any) -> int:
     fields = ("funded_txo_count", "funded_txo_sum", "spent_txo_count", "spent_txo_sum")
     if not isinstance(stats, dict):
-        raise ValueError("Missing Esplora statistics")
+        raise ValueError(t("err.onchain.missing_esplora_statistics"))
     values = [stats.get(field) for field in fields]
     if any(type(value) is not int or value < 0 for value in values):
-        raise ValueError("Invalid Esplora count or sum")
+        raise ValueError(t("err.onchain.invalid_esplora_count_sum"))
     funded_count, funded, spent_count, spent = values
     if (funded_count == 0 and funded > 0) or (spent_count == 0 and spent > 0):
-        raise ValueError("Esplora count and sum disagree")
+        raise ValueError(t("err.onchain.esplora_count_sum_disagree"))
     return funded - spent
 
 
@@ -350,10 +352,10 @@ async def _read(spec: Chain, address: str, url: str, client: httpx.AsyncClient) 
     if spec.kind == "esplora":
         payload = await _explorer_get(client, f"{url.rstrip('/')}/address/{address}")
         if "address" in payload and payload["address"] != address:
-            raise ValueError("Esplora returned a different address")
+            raise ValueError(t("err.onchain.esplora_returned_different_address"))
         confirmed = _utxo_delta(payload.get("chain_stats"))
         if confirmed < 0:
-            raise ValueError("Esplora confirmed spending exceeds funding")
+            raise ValueError(t("err.onchain.esplora_confirmed_spending_exceeds_funding"))
         pending = _utxo_delta(payload.get("mempool_stats"))
         return _scale(confirmed, spec.decimals), _scale(pending, spec.decimals)
 
@@ -361,25 +363,25 @@ async def _read(spec: Chain, address: str, url: str, client: httpx.AsyncClient) 
         payload = await _explorer_get(client, f"{url.rstrip('/')}/addresses/{address}/balance")
         value = payload.get("balance")
         if payload.get("address") != address or type(value) is not int or value < 0:
-            raise ValueError("Invalid Kaspa address or balance in response")
+            raise ValueError(t("err.onchain.invalid_kaspa_address_balance_response"))
         return _scale(value, spec.decimals), None
 
     if spec.kind == "evm":
         raw = await _rpc(client, url, "eth_getBalance", [address, "latest"])
         # A hex STRING, not merely something str() can render.
         if not isinstance(raw, str) or not _EVM_QUANTITY.fullmatch(raw):
-            raise ValueError(f"unexpected eth_getBalance result: {str(raw)[:120]}")
+            raise ValueError(t("err.onchain.unexpected_eth_getbalance_result", raw=str(raw)[:120]))
         return _scale(int(raw, 16), spec.decimals), None
 
     result = await _rpc(client, url, "getBalance", [address])
     # Solana nests the number under `value`; a bare int is a protocol change,
     # not something to accept quietly.
     if not isinstance(result, dict):
-        raise ValueError(f"unexpected getBalance shape: {str(result)[:120]}")
+        raise ValueError(t("err.onchain.unexpected_getbalance_shape", result=str(result)[:120]))
     value = result.get("value")
     # `type(...) is not int` rather than isinstance: bool subclasses int.
     if type(value) is not int or value < 0:
-        raise ValueError(f"unexpected getBalance value: {str(result)[:120]}")
+        raise ValueError(t("err.onchain.unexpected_getbalance_value", result=str(result)[:120]))
     return _scale(value, spec.decimals), None
 
 

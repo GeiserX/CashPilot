@@ -32,11 +32,30 @@
   }
   const locale = formatLocale();
 
-  let plurals = null;
-  try { plurals = new Intl.PluralRules(lang); } catch (e) { plurals = new Intl.PluralRules('en'); }
-  // A message the page shows in English (no current translation) counts in English too.
-  const english = new Intl.PluralRules('en');
+  let pluralLang = lang;
+  try { new Intl.PluralRules(lang); } catch (e) { pluralLang = 'en'; }
   const fallback = new Set(data.fallback || []);
+
+  // The fraction digits of n as written: what app/i18n's _operands reads from
+  // Python's repr. Intl.PluralRules rounds to 3 digits by default, which would
+  // put 1.0001 in "one" where the server says "other".
+  function fractionDigits(n) {
+    let text = String(Math.abs(n));
+    if (/e/i.test(text)) text = Math.abs(n).toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+    const dot = text.indexOf('.');
+    return dot < 0 ? 0 : Math.min(text.length - dot - 1, 20);
+  }
+  const rulesFor = new Map();
+  function category(tag, n) {
+    const digits = fractionDigits(n);
+    const id = `${tag}|${digits}`;
+    let rules = rulesFor.get(id);
+    if (!rules) {
+      rules = new Intl.PluralRules(tag, {minimumFractionDigits: digits, maximumFractionDigits: digits});
+      rulesFor.set(id, rules);
+    }
+    return rules.select(n);
+  }
 
   // ---- The ICU subset parser: the same grammar as app/i18n/_Parser ----
   function parse(text) {
@@ -129,7 +148,7 @@
       if (kind === 'plural') {
         const count = Number(value);
         const n = Number.isFinite(count) ? count : 0;
-        chosen = options[`=${n}`] || options[rules.select(n)];
+        chosen = options[`=${n}`] || options[category(rules, n)];
         inner = n;
       } else {
         chosen = options[String(value)];
@@ -139,7 +158,7 @@
     return out;
   }
 
-  function format(text, params, rules = plurals) {
+  function format(text, params, rules = pluralLang) {
     let tree = parsed.get(text);
     if (!tree) {
       tree = parse(text);
@@ -149,10 +168,12 @@
   }
 
   function t(key, params) {
+    // An own key only: "toString" must not find the prototype's function.
+    if (!Object.prototype.hasOwnProperty.call(messages, key)) return key;
     const text = messages[key];
-    if (text === undefined) return key;
+    if (typeof text !== 'string') return key;
     try {
-      return format(text, params, fallback.has(key) ? english : plurals);
+      return format(text, params, fallback.has(key) ? 'en' : pluralLang);
     } catch (e) {
       return text;
     }

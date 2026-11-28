@@ -2916,3 +2916,28 @@ class TestAddingAUserDoesNotStealTheOwnersSession:
         set_cookie = [v for k, v in resp.raw_headers if k.lower() == b"set-cookie"]
         assert set_cookie, "the first owner was not signed in"
         assert resp.headers["location"] == "/setup"
+
+
+class TestSpawnLogsAFailedTask:
+    def test_a_failed_background_task_is_logged_and_its_callback_does_not_raise(self):
+        import app.main as main
+
+        callback_errors = []
+
+        async def boom():
+            raise RuntimeError("background boom")
+
+        async def run():
+            asyncio.get_running_loop().set_exception_handler(lambda loop, ctx: callback_errors.append(ctx))
+            task = main._spawn(boom())
+            for _ in range(3):
+                await asyncio.sleep(0)
+            return task
+
+        with patch.object(main.logger, "error") as logged:
+            task = asyncio.run(run())
+
+        assert callback_errors == []
+        assert task not in main._background_tasks
+        logged.assert_called_once()
+        assert isinstance(logged.call_args.kwargs["exc_info"], RuntimeError)

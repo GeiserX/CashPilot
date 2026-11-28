@@ -113,7 +113,7 @@ disclosure:
 
 payout:
   model: minted
-  notes: "The client mints its own wallet on first run. See tier 3."
+  notes: "The client creates its own wallet on first run."
 
 # Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
 # published at docs/ratings.md). The grade itself is computed, never written here.
