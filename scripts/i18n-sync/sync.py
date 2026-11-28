@@ -287,8 +287,9 @@ class NoSeat(Exception):
 def usable_seats(usage: dict, wanted: list[str]) -> tuple[list[str], dict[str, str]]:
     """The wanted seats that `nd usage json` shows with room, most weekly room first, and why the rest are out.
 
-    A seat at 0 weekly left, rejected, or rate-limited on its model windows dies at once with
-    "rate limit reached" or "token was revoked", so it is skipped before any call.
+    A seat at 0 weekly left, rejected, or with its model windows in any state but "ok" (rate-limited,
+    auth-failed, unreachable) dies at once with "rate limit reached" or "token was revoked", so it is
+    skipped before any call.
     """
     seen = {a.get("id"): a for a in usage.get("accounts", [])}
     ok: list[tuple[float, str]] = []
@@ -296,7 +297,8 @@ def usable_seats(usage: dict, wanted: list[str]) -> tuple[list[str], dict[str, s
     for seat in wanted:
         a = seen.get(seat)
         left = ((a or {}).get("weekly") or {}).get("left")
-        state = ((a or {}).get("modelWeeklies") or {}).get("state")
+        windows = (a or {}).get("modelWeeklies") or {}
+        state = windows.get("state")
         if seat not in SEATS:
             skipped[seat] = "not an allowed seat"
         elif a is None:
@@ -305,8 +307,8 @@ def usable_seats(usage: dict, wanted: list[str]) -> tuple[list[str], dict[str, s
             skipped[seat] = "status rejected"
         elif left is not None and left <= 0:
             skipped[seat] = "0% weekly left"
-        elif state == "rate-limited":
-            skipped[seat] = "model windows rate-limited"
+        elif state != "ok":
+            skipped[seat] = f"model windows {state or 'unknown'}: {windows.get('stateLabel') or 'no label'}"
         else:
             ok.append((left if left is not None else 0.0, seat))
     return [seat for _, seat in sorted(ok, key=lambda x: -x[0])], skipped
@@ -931,11 +933,12 @@ def sync_docs(clone: pathlib.Path, pages: list[PageWork], claude: Claude) -> set
 # One repo
 
 
+def gate_repo(clone: pathlib.Path, repo: str) -> list[str]:
+    return [f"placeholder: {e}" for s in REPOS[repo]["surfaces"] if s.fmt != "docs" for e in gate(clone, s)]
+
+
 def run_checks(clone: pathlib.Path, repo: str) -> list[str]:
-    failures = []
-    for s in REPOS[repo]["surfaces"]:
-        if s.fmt != "docs":
-            failures += [f"placeholder: {e}" for e in gate(clone, s)]
+    failures = gate_repo(clone, repo)
     for cmd in REPOS[repo]["checks"]:
         p = sh(cmd, clone, check=False)
         if p.returncode != 0:
@@ -978,7 +981,9 @@ def sync_repo(repo: str, args, claude_box: list) -> str:
     clone = prepare(repo, args.base, args.base_remote)
     head = git(clone, "rev-parse", "--short", "HEAD").strip()
     log.info("%s: %s %s at %s", repo, args.base_remote, args.base, head)
-    failures = run_checks(clone, repo)
+    # Only parse and placeholder errors refuse here. The repo checks also fail on a missing entry, which is
+    # exactly what this run fills, so they run after translating.
+    failures = gate_repo(clone, repo)
     if failures:
         raise Refused(
             f"checks fail on {args.base} ({head}) before any change, so nothing was translated:\n" + "\n".join(failures)
