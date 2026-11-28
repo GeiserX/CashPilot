@@ -368,6 +368,27 @@ async def seed(data_dir: Path) -> None:
         "iproyal on box-c exited with code 137 nine hours ago.",
     )
 
+    # App image updates: one installed, one undone, so the Fleet page's history has rows.
+    first = next(iter(worker_ids.values()))
+    await database.record_image_update(
+        first,
+        "honeygain",
+        "updated",
+        old_image="sha256:" + "a" * 64,
+        new_image="sha256:" + "b" * 64,
+        old_digest="sha256:" + "c" * 64,
+        new_digest="sha256:" + "d" * 64,
+        detail="The old image stays on disk: the Docker socket proxy does not let CashPilot delete images.",
+    )
+    await database.record_image_update(
+        first,
+        "iproyal",
+        "rolled_back",
+        old_digest="sha256:" + "e" * 64,
+        new_digest="sha256:" + "f" * 64,
+        detail="The new cashpilot-iproyal stopped (exited with code 1) within its 120 s check, so it was undone.",
+    )
+
     # Health checks every 30 minutes for a week; iproyal went down last night.
     now = datetime.now(UTC)
     events = []
