@@ -126,7 +126,7 @@ def _read_external_key(path_text: str) -> tuple[bytes | None, str | None]:
     path = Path(path_text)
     try:
         raw = path.read_text().strip()
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         return None, f"CASHPILOT_ENCRYPTION_KEY_FILE is {path}, but it could not be read ({exc})."
     if not raw:
         return None, f"CASHPILOT_ENCRYPTION_KEY_FILE is {path}, but the file is empty."
@@ -445,7 +445,7 @@ def encryption_key_status() -> dict[str, Any]:
         if _FERNET_KEY_FILE.is_file():
             stored = _FERNET_KEY_FILE.read_text().strip().encode()
             copy = "same" if stored == _fernet_key_bytes else "different"
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         copy = "unreadable"
     source = KEY_SOURCE_DATA if _fernet_key_source == KEY_SOURCE_GENERATED else _fernet_key_source
     env_same = source == KEY_SOURCE_DATA and bool(_env_key_bytes) and _env_key_bytes == _fernet_key_bytes
