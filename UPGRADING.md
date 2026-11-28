@@ -50,8 +50,21 @@ CASHPILOT_PROXY_BIND_MOUNTS=/mnt/user/storj/identity,/mnt/user/storj/data
 ```
 
 Then run `docker compose up -d` once, so the proxy and the worker read the
-new list. Named volumes and installs that leave `CASHPILOT_PROXY_BIND_MOUNTS`
-unset need nothing.
+new list.
+
+A container that already binds a folder you took out of the list keeps that
+mount until it is recreated, so it can still write into the folders you now
+list under it. The worker checks the list only at the next deploy, never the
+mounts of a running container. Remove each such container, or redeploy it
+with binds that are on the new list, before you deploy anything that binds
+the new entries. This lists every container's bind sources:
+
+```sh
+docker ps -aq | xargs docker inspect --format '{{.Name}}: {{range .Mounts}}{{if eq .Type "bind"}}{{.Source}} {{end}}{{end}}'
+```
+
+Named volumes and installs that leave `CASHPILOT_PROXY_BIND_MOUNTS` unset
+need nothing.
 
 ---
 
