@@ -27,6 +27,8 @@ EN = json.loads((ROOT / "app/i18n/en.json").read_text(encoding="utf-8"))
 # t('key', ...) or t("key", ...): the Jinja global, the browser global and
 # app.i18n.t. A preceding letter, digit, _ or $ means another identifier.
 CALL = re.compile(r"""(?<![\w$])t\(\s*(['"])([^'"]+)\1\s*(?=[,)])""")
+# A worker's reason (app.i18n.Reason, lan_fence._reason): its key is a literal too.
+REASON_CALL = re.compile(r"""(?<![\w$])_?[Rr]eason\(\s*(['"])(reason\.[^'"]+)\1\s*(?=[,)])""")
 # Any t( that is not a lone literal key: t(key), t(`a.${b}`), t('a.' ~ b), t('a' + b).
 ANY_CALL = re.compile(r"""(?<![\w$])t\((?!\s*\))(?!\s*(['"])[^'"]+\1\s*[,)])""")
 LISTED = re.compile(r"i18n-keys:\s*([\w.\-]+(?:\s*,\s*[\w.\-]+)*)")
@@ -55,6 +57,7 @@ def _scan() -> tuple[set[str], list[str]]:
         lines = text.splitlines()
         # The whole file, not line by line: a formatter can put the key on the line after t(.
         used.update(m.group(2) for m in CALL.finditer(text))
+        used.update(m.group(2) for m in REASON_CALL.finditer(text))
         listed_lines = set()
         for number, line in enumerate(lines, 1):
             listed = LISTED.search(line)

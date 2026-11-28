@@ -1392,6 +1392,13 @@ def move_advice(mode: str | None, service: str = "it", it: str = "it") -> str:
     )
 
 
+def _reason(key: str, /, **params: Any) -> str:
+    """A reason the heartbeat carries with its key, so the UI words it in its reader's language."""
+    from app.i18n import Reason
+
+    return Reason(key, **params)
+
+
 def mode_problem(mode: str, service: str = "this service") -> str | None:
     """Why a fence-gated service cannot run in this isolation mode at all, or None.
 
@@ -1403,7 +1410,7 @@ def mode_problem(mode: str, service: str = "this service") -> str | None:
     """
     if mode in (MODE_ON, MODE_OPERATOR):
         return None
-    return f"isolation is {mode} on this worker, and {service} runs only behind the LAN fence. {move_advice(mode, service)}"
+    return _reason("reason.fence.mode", mode=mode, service=service, advice=move_advice(mode, service))
 
 
 def fence_problem(client: Any, service: str = "this service") -> str | None:
@@ -1417,17 +1424,17 @@ def fence_problem(client: Any, service: str = "this service") -> str | None:
     try:
         mode = resolve_mode(client)
     except RuntimeError as exc:
-        return f"the isolation mode could not be read ({exc})"
+        return _reason("reason.fence.mode_unread", error=exc)
     if mode != MODE_ON:
         return mode_problem(mode, service)
     try:
         result = read_fence(client)
     except Exception as exc:  # noqa: BLE001 - the reason is the answer
-        return f"the LAN fence could not be read ({exc})"
+        return _reason("reason.fence.unread", error=exc)
     if result is None:
-        return f"the {NETWORK_NAME} network does not exist, so the LAN fence is not in place"
+        return _reason("reason.fence.network_missing", network=NETWORK_NAME)
     if not result.get("present") or not result.get("matches"):
-        return "the LAN fence is not complete on this host, so the node stays stopped until the worker restores it"
+        return _reason("reason.fence.incomplete")
     return None
 
 
@@ -1504,7 +1511,7 @@ def guard() -> dict[str, str]:
                 fence = fence_problem(client)
             except RuntimeError as exc:
                 # Not knowing the mode is not knowing the fence is there.
-                mode, fence = None, f"the isolation mode could not be read ({exc})"
+                mode, fence = None, _reason("reason.fence.mode_unread", error=exc)
             # Container.status is read-only in docker-py; what this pass stopped is kept apart.
             stopped_now: set[str] = set()
             if fence and mode in (MODE_ON, None):
@@ -1571,24 +1578,14 @@ def guard() -> dict[str, str]:
 #: record is by name, so it also holds the old container put back by hand, or
 #: one started with docker start: the worker cannot tell it from the failed
 #: one, and the operator has to hear that only a deploy from CashPilot lifts it.
-FAILED_DEPLOY = (
-    "its last deploy from CashPilot failed, so the worker keeps any container under this name stopped, one put "
-    "back or started by hand included, until a deploy from CashPilot succeeds. Redeploy it from the CashPilot "
-    "dashboard; starting it with Docker does not lift this"
-)
+FAILED_DEPLOY = _reason("reason.held.failed_deploy")
 
 
 #: Why the guard holds a node a restore that did not finish left: its volume may be half-written.
-RESTORE_UNFINISHED = (
-    "a restore of it did not finish, so its data may be half-written. Remove the service with its data from the "
-    "CashPilot dashboard, then restore the backup again"
-)
+RESTORE_UNFINISHED = _reason("reason.held.restore_unfinished")
 
 #: Why the guard starts no node while the failed marks or the restore record cannot be read.
-HOLDS_UNREAD = (
-    "the worker could not read its record of failed deploys or of restores that did not finish, so it starts no "
-    "fence-gated node until it can. The worker's log says why"
-)
+HOLDS_UNREAD = _reason("reason.held.records_unread")
 
 
 def _start_holds(orch: Any) -> tuple[set[str], set[str], str | None]:
@@ -1625,15 +1622,15 @@ def _started_unattached(container: Any, mode: str | None) -> str | None:
     try:
         container.reload()
     except Exception as exc:  # noqa: BLE001 - not confirmed is not attached
-        return f"{UNREAD} ({exc})"
+        return _reason("reason.held.unread_after_start", error=exc)
     attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
     state = attrs.get("State") if isinstance(attrs.get("State"), dict) else {}
     nets = ((attrs.get("NetworkSettings") or {}).get("Networks") or {}) if isinstance(attrs, dict) else {}
     address = str(((nets.get(expected) or {}) if isinstance(nets, dict) else {}).get("IPAddress") or "")
     if state and not state.get("Running"):
-        return "it exited right after its start"
+        return _reason("reason.held.exited_after_start")
     if not address:
-        return f"it started with no address on {expected}, so it has no network"
+        return _reason("reason.held.no_address", network=expected)
     return None
 
 

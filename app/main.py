@@ -315,7 +315,8 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             "fatal_at": c.get("fatal_at"),
                             # Why the worker's fence guard keeps this copy stopped, and
                             # what brings it back (lan_fence.guard). Absent when it does not.
-                            "held": c.get("held"),
+                            # In the reader's language when the worker sent its key (i18n.reword).
+                            "held": i18n.reword(c.get("held"), c.get("held_reason")),
                             # What the container was created with, for the drift
                             # check (app/drift.py). None from a worker too old to send it.
                             "shape": c.get("shape"),
@@ -1105,7 +1106,7 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
                         "what": "tunnel_stuck",
                         "tunnel": staged,
                         "age": change.get("age_seconds"),
-                        "reason": str(change.get("reason") or "")[:300],
+                        "reason": str(i18n.reword(change.get("reason"), change.get("reason_wire")) or "")[:300],
                         "copies": [],
                     },
                 )
