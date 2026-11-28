@@ -58,11 +58,13 @@ RULES_PAGE = DOCS + "home-network-security/#the-rules"
 DNS_PAGE = DOCS + "home-network-security/#name-lookups-need-a-resolver-the-rules-allow"
 ISOLATION_PAGE = DOCS + "isolation/#lan-isolation-by-default"
 
+#: The report names each group in the language it is asked in, so the label
+#: is a message key, read when the report is written.
 GROUPS = {
-    "lan": ("Your LAN", FIX_PAGE),
-    "host": ("This host", FIX_PAGE),
-    "overlay": ("Overlay network", OVERLAY_PAGE),
-    "metadata": ("Cloud metadata", FIX_PAGE),
+    "lan": ("isolation_check.group.lan", FIX_PAGE),
+    "host": ("isolation_check.group.host", FIX_PAGE),
+    "overlay": ("isolation_check.group.overlay", OVERLAY_PAGE),
+    "metadata": ("isolation_check.group.metadata", FIX_PAGE),
 }
 
 INTERNET = {"group": "internet", "host": "1.1.1.1", "port": 443, "label": "public address"}
@@ -976,7 +978,7 @@ def _probe(
     """Fill the probe part of ``report``. Returns why it could not test, or ""."""
     image = _self_image(client)
     if not image:
-        return "The worker cannot find its own container, so it has no image to run the probes from."
+        return t("isolation_check.reason.no_own_container")
 
     earner = _pick_earner(running, network)
     try:
@@ -992,7 +994,7 @@ def _probe(
             leftovers=report["leftover_probes"],
         )
     except Exception as exc:  # noqa: BLE001 - the report says what went wrong
-        return f"The control probe on the host network failed: {exc}"
+        return t("isolation_check.reason.control_failed", error=str(exc))
     candidates = found.get("candidates") or []
     kept = _keep(candidates)
     report["not_answering_from_host"] = [
@@ -1017,7 +1019,7 @@ def _probe(
         kwargs = {"network": network}
         report["tested_from"] = {"earner": None, "network": [network]}
     else:
-        return "No earner is running on a bridge and no isolated network is in use, so there is no earner side to test."
+        return t("isolation_check.reason.no_earner_side")
 
     # With CashPilot's own fence the proof does not need anything on the LAN to
     # answer: each blocked range gets one connect to an unused address, and the
@@ -1028,7 +1030,7 @@ def _probe(
         try:
             before = lan_fence.read_fence(client)
         except Exception as exc:  # noqa: BLE001 - the report says what went wrong
-            return f"The fence's counters could not be read: {exc}"
+            return t("isolation_check.reason.fence_unreadable", error=str(exc))
         sentinels = fence_targets(lan_fence.gateway(client), before)
 
     keys = ("group", "host", "port", "label", "refused")
@@ -1043,9 +1045,9 @@ def _probe(
             or []
         )
     except Exception as exc:  # noqa: BLE001
-        return f"The probe on the earner side failed: {exc}"
+        return t("isolation_check.reason.earner_probe_failed", error=str(exc))
     if len(results) != len(targets):
-        return "The probe on the earner side returned an incomplete answer."
+        return t("isolation_check.reason.earner_probe_incomplete")
 
     outcome = [
         dict(target_entry, reachable=bool(r), address=f"{target_entry['host']}:{target_entry['port']}")
@@ -1059,14 +1061,15 @@ def _probe(
         try:
             after = lan_fence.read_fence(client)
         except Exception as exc:  # noqa: BLE001
-            return f"The fence's counters could not be read after the probe: {exc}"
+            return t("isolation_check.reason.fence_unreadable_after", error=str(exc))
         for target_entry, r in zip(sentinels, hit, strict=True):
             target_entry["reachable"] = r["reachable"]
         report["fence"], found_fence = judge_fence(sentinels, before, after)
         report["findings"].extend(found_fence)
     _dns_notes(outcome)
 
-    for group, (label, docs) in GROUPS.items():
+    for group, (label_key, docs) in GROUPS.items():
+        label = t(label_key)  # i18n-keys: isolation_check.group.lan, isolation_check.group.host, isolation_check.group.overlay, isolation_check.group.metadata  # fmt: skip
         rows = [
             {k: target_entry[k] for k in ("address", "label", "reachable", "expected", "note") if k in target_entry}
             for target_entry in outcome
