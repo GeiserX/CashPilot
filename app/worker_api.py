@@ -67,7 +67,13 @@ from app import (
     version,
     wallet_seed,
 )
-from app.constants import DEPLOY_DEADLINE_SECONDS, MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
+from app.constants import (
+    DEPLOY_DEADLINE_SECONDS,
+    MAX_INSTANCES,
+    PROXIED_FORBIDDEN_CAPS,
+    PROXIED_ISOLATED_CAPS,
+    PROXIED_ISOLATED_DEVICES,
+)
 from app.i18n import LocaleMiddleware, t
 
 try:
@@ -956,6 +962,10 @@ async def _send_heartbeat() -> None:
         payload["system_info"]["features"].append("state_restore")
         # Gives a catalog service the GPU its own catalog entry declares (docker.gpu, app/gpu.py).
         payload["system_info"]["features"].append("gpu_grant")
+        # Takes a proxied copy with its own named volumes, and one that holds
+        # NET_ADMIN, NET_RAW or /dev/net/tun the owner acknowledged, which it
+        # runs in an isolated tunnel behind a gate (proxy_tunnel, cp-watch).
+        payload["system_info"]["features"].append("proxied_isolation")
         # Takes runtime_choice on a deploy and reports system_info.layers (app/layers.py).
         payload["system_info"]["features"].append(layers.FEATURE)
         # Runs the gVisor self-test (POST /api/layers/gvisor-check).
@@ -2274,6 +2284,10 @@ class ProxiedDeploySpec(BaseModel):
     # Replace the copy only while it runs and the owner has not stopped it:
     # a rebuild the UI makes on its own (a device rename) must never start it.
     only_if_running: bool = False
+    # What the owner acknowledged lowers this copy's isolation (proxies.ACK_KEYS):
+    # "net_admin" and "net_raw" for those capabilities, "tun_device" for
+    # /dev/net/tun. A copy holding one gets an isolated tunnel of its own.
+    acknowledged: list[str] = []
 
 
 class ProxyTestSpec(BaseModel):
@@ -2321,29 +2335,94 @@ def _validate_proxy(proxy: ProxySpec) -> None:
         raise HTTPException(status_code=400, detail=t("worker.proxy_needs_host_name_ipv4"))
 
 
-def _validate_proxied(slug: str, spec: ProxiedDeploySpec) -> None:
-    """A proxied copy uses the earner checks plus three of its own."""
-    if spec.earner.ports or spec.earner.volumes or spec.earner.network_mode:
+#: A proxied copy's volume: a named one, never a host folder.
+_VOLUME_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
+
+
+def _validate_proxied(slug: str, spec: ProxiedDeploySpec, proxy_id: int | None = None) -> None:
+    """A proxied copy uses the earner checks plus its own.
+
+    It lives in its tunnel's namespace, so it publishes no port and picks no
+    network. Its volumes are named ones only, and a copy's (not a routed
+    service's) end in ``-p<proxy id>``: its own, never the direct service's,
+    so it never runs with the same identity from two addresses. NET_ADMIN,
+    NET_RAW and /dev/net/tun only with the owner's acknowledgement, and they
+    put the copy in an isolated tunnel (proxy_tunnel "Isolated tunnels");
+    SYS_ADMIN and ALL never. A routed service's volumes are its own already.
+    """
+    if spec.earner.ports or spec.earner.network_mode:
         raise HTTPException(
             status_code=400,
             detail=t("worker.proxied_copy_cannot_publish_ports"),
         )
+    # A routed service is the service itself, moved: its volumes, host folders
+    # included, are checked as any deploy's (_validate_deploy_spec).
+    for source in spec.earner.volumes if not spec.routed else ():
+        if not _VOLUME_NAME_RE.match(source):
+            raise HTTPException(status_code=400, detail=t("worker.proxied_copy_named_volumes_only"))
+        if proxy_id is not None and not source.endswith(f"-p{proxy_id}"):
+            raise HTTPException(
+                status_code=400,
+                detail=t("worker.proxied_copy_volume_own", proxy_id=str(proxy_id)),
+            )
     if spec.earner.instance != 1:
         raise HTTPException(status_code=400, detail=t("worker.proxied_copy_has_no_instance"))
     # The earner shares the tunnel's network namespace, so anything that could
-    # rewrite or bypass the tunnel's firewall is refused whatever the catalog says.
+    # reach past it is refused whatever the catalog says.
     caps = {str(c).upper().removeprefix("CAP_") for c in spec.earner.cap_add or []}
-    if risky := sorted(caps & PROXIED_FORBIDDEN_CAPS):
+    if risky := sorted(caps & (PROXIED_FORBIDDEN_CAPS - PROXIED_ISOLATED_CAPS)):
         raise HTTPException(
             status_code=400,
             detail=t("worker.proxied_copy_cannot_hold_could", risky=", ".join(risky)),
         )
-    if spec.earner.devices:
+    acked = set(spec.acknowledged)
+    if missing := sorted(c for c in caps & PROXIED_ISOLATED_CAPS if c.lower() not in acked):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "acknowledge_reduced_isolation",
+                "needs": [c.lower() for c in missing],
+                "message": t("worker.proxied_copy_ack_caps", caps=", ".join(missing)),
+            },
+        )
+    devices = {str(d).split(":")[0].rstrip("/") for d in spec.earner.devices or []}
+    if devices - PROXIED_ISOLATED_DEVICES:
         raise HTTPException(status_code=400, detail=t("worker.proxied_copy_gets_no_host"))
+    if devices and "tun_device" not in acked:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "acknowledge_reduced_isolation",
+                "needs": ["tun_device"],
+                "message": t("worker.proxied_copy_ack_tun"),
+            },
+        )
     if gpu.grant(slug):
         raise HTTPException(status_code=400, detail=t("worker.proxied_copy_gets_no_gpu"))
+    if _catalog_wants_udp(slug):
+        # Its traffic is UDP (Mysterium's VPN range): a SOCKS5 or HTTP proxy does
+        # not carry it, and behind any proxy nobody reaches its inbound ports.
+        if spec.proxy.kind != "tailscale":
+            raise HTTPException(status_code=400, detail=t("worker.proxied_copy_udp_needs_tailscale"))
+        if "no_inbound" not in acked:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "acknowledge_reduced_isolation",
+                    "needs": ["no_inbound"],
+                    "message": t("worker.proxied_copy_ack_no_inbound"),
+                },
+            )
     _validate_deploy_spec(spec.earner, slug)
     _validate_proxy(spec.proxy)
+
+
+def _catalog_wants_udp(slug: str) -> bool:
+    """Whether the catalog gives ``slug`` an inbound UDP port range (docker.udp_port_range)."""
+    for svc in _catalog_get_services() if _catalog_get_services else []:
+        if svc.get("slug") == slug:
+            return bool((svc.get("docker") or {}).get("udp_port_range"))
+    return False
 
 
 async def _own_egress_ip() -> str | None:
@@ -2575,11 +2654,12 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
 
 
 async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec, deadline: float) -> dict[str, Any]:
-    await asyncio.to_thread(_validate_proxied, slug, spec)
+    await asyncio.to_thread(_validate_proxied, slug, spec, proxy_id)
     own_ip = await _own_egress_ip()
     earner = {
         "image": spec.earner.image,
         "env": spec.earner.env,
+        "volumes": spec.earner.volumes,
         "cap_add": spec.earner.cap_add,
         "devices": spec.earner.devices,
         "command": spec.earner.command,

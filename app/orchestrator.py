@@ -1372,7 +1372,10 @@ def deploy_raw(
     # First, before anything is pulled or replaced: a refused earner costs the
     # running one nothing.
     route_gate.check(slug, network_mode, client, leave_route=leave_route)
-    gated = fence_gated(slug)
+    # A proxied copy of a fence-gated service (Mysterium) has no network of its
+    # own to fence: it joins its tunnel's namespace, whose only way out is the
+    # tunnel, and the LAN fence's guard never holds it (lan_fence._gated).
+    gated = fence_gated(slug) and not joined
 
     # Decided before the old container is touched: a network or runtime that
     # cannot be used must fail the deploy while the running service is still running.
@@ -3000,6 +3003,10 @@ def _mount_sources(volumes: Any) -> list[str]:
     return []
 
 
+#: A proxied copy's own volume: the original's name, then -p<proxy id>.
+_COPY_VOLUME_RE = re.compile(r"(.+)-p[0-9]+")
+
+
 def critical_mount_conflicts(slug: str, volumes: Any, client: Any = None) -> list[tuple[str, str]]:
     """(source, owning slug) for each mount in ``volumes`` that holds another service's critical state.
 
@@ -3015,7 +3022,12 @@ def critical_mount_conflicts(slug: str, volumes: Any, client: Any = None) -> lis
     found: list[tuple[str, str]] = []
     for source in sources:
         if not source.startswith("/"):
-            others = sorted(named.get(source, set()) - {slug})
+            # A proxied copy's own volume (<volume>-p<proxy id>, app/proxies.copy_volumes)
+            # belongs to the service whose volume it copies, by its name alone: it
+            # stays that service's after the copy's container is gone.
+            copied = _COPY_VOLUME_RE.fullmatch(source)
+            owners = named.get(source, set()) | (named.get(copied.group(1), set()) if copied else set())
+            others = sorted(owners - {slug})
             if others:
                 found.append((source, others[0]))
             continue

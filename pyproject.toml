@@ -110,4 +110,5 @@ markers = [
     "live: hits a real provider API; needs credentials; excluded from normal runs",
     "real_worker_deploy_inventory: query the worker mock for its live deploy inventory",
     "real_background_replacement: run proxy_tunnel's heartbeat tunnel replacement in its own thread, as the worker does",
+    "real_honeygain_terms: keep Honeygain's proxy_prohibited lock, which other tests clear to use it as a plain service",
 ]

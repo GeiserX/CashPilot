@@ -907,7 +907,9 @@ CREATE TABLE IF NOT EXISTS proxies (
 -- unreachable); the row goes once the worker confirms. rename_pending is 1
 -- while the copy still has the device name its original had before a
 -- confirmed rename: the redeploy that renames it failed or was skipped, so the
--- service page offers it again.
+-- service page offers it again. acknowledged is a JSON list of what its owner
+-- acknowledged lowers its isolation (app/proxies.ACK_KEYS), sent again on every
+-- rebuild of the copy; '[]' for none.
 CREATE TABLE IF NOT EXISTS proxied_copies (
     proxy_id       INTEGER NOT NULL,
     worker_id      INTEGER NOT NULL,
@@ -915,6 +917,7 @@ CREATE TABLE IF NOT EXISTS proxied_copies (
     stopped_by_cap INTEGER NOT NULL DEFAULT 0,
     removing_since TEXT,
     rename_pending INTEGER NOT NULL DEFAULT 0,
+    acknowledged   TEXT    NOT NULL DEFAULT '[]',
     created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (proxy_id, worker_id, slug)
 );
@@ -1518,6 +1521,10 @@ async def init_db() -> None:
         if copy_cols and "rename_pending" not in copy_cols:
             applied.append("proxied_copies.rename_pending")
             await db.execute("ALTER TABLE proxied_copies ADD COLUMN rename_pending INTEGER NOT NULL DEFAULT 0")
+        # '[]' is the truthful backfill: no copy could hold anything to acknowledge before.
+        if copy_cols and "acknowledged" not in copy_cols:
+            applied.append("proxied_copies.acknowledged")
+            await db.execute("ALTER TABLE proxied_copies ADD COLUMN acknowledged TEXT NOT NULL DEFAULT '[]'")
 
         # The appearance choice, per user. NULL means "never chosen".
         cursor = await db.execute("PRAGMA table_info(user_preferences)")
@@ -2879,20 +2886,23 @@ async def delete_proxy(proxy_id: int) -> bool:
         await db.close()
 
 
-async def save_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> None:
+async def save_proxied_copy(proxy_id: int, worker_id: int, slug: str, acknowledged: list[str] | None = None) -> None:
     """Record a proxied copy, or clear a re-added one's stop and removal marks.
 
     ``rename_pending`` is kept: this runs before the worker is asked, so the
-    caller clears it only once the rebuild is confirmed.
+    caller clears it only once the rebuild is confirmed. ``acknowledged``
+    replaces what was acknowledged for the copy before.
     """
+    acks = json.dumps(sorted(set(acknowledged or [])))
     db = await _get_db()
     try:
         await db.execute(
             """
-            INSERT INTO proxied_copies (proxy_id, worker_id, slug) VALUES (?, ?, ?)
-            ON CONFLICT(proxy_id, worker_id, slug) DO UPDATE SET stopped_by_cap = 0, removing_since = NULL
+            INSERT INTO proxied_copies (proxy_id, worker_id, slug, acknowledged) VALUES (?, ?, ?, ?)
+            ON CONFLICT(proxy_id, worker_id, slug) DO UPDATE SET stopped_by_cap = 0, removing_since = NULL,
+                acknowledged = excluded.acknowledged
             """,
-            (proxy_id, worker_id, slug),
+            (proxy_id, worker_id, slug, acks),
         )
         await db.commit()
     finally:
@@ -2908,7 +2918,14 @@ async def list_proxied_copies(proxy_id: int | None = None) -> list[dict[str, Any
             cursor = await db.execute(
                 "SELECT * FROM proxied_copies WHERE proxy_id = ? ORDER BY worker_id, slug", (proxy_id,)
             )
-        return [dict(r) for r in await cursor.fetchall()]
+        rows = [dict(r) for r in await cursor.fetchall()]
+        for row in rows:
+            try:
+                acks = json.loads(row.get("acknowledged") or "[]")
+            except ValueError:
+                acks = []
+            row["acknowledged"] = [str(a) for a in acks] if isinstance(acks, list) else []
+        return rows
     finally:
         await db.close()
 
