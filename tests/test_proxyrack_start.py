@@ -47,7 +47,7 @@ def test_the_client_is_only_replaced_by_a_checked_download():
     script = _script()
     assert "rm -rf script.js" not in script and "rm -f script.js\n" not in script
     assert "-O script.new.js" in script
-    assert "node --check script.new.js" in script
+    assert "[ -s script.new.js ] && node --check script.new.js" in script, "an empty file passes node --check"
     assert script.index("node --check script.new.js") < script.index("mv -f script.new.js script.js")
 
 
@@ -68,6 +68,16 @@ def test_the_start_keeps_the_vendors_node_arguments():
     )
     assert node in script
     assert "/app/api.cfg" in script and 'DEVICE_NAME:-"Device-$UUID"' in script
+
+
+def test_the_registration_retries_a_failed_request_and_encodes_the_name():
+    """run.sh took a curl failure (empty answer) for success and wrote api.cfg, and pasted the name into JSON."""
+    script = _script()
+    assert "JSON.stringify({device_id: process.env.UUID, device_name: process.env.device_name})" in script
+    assert '-d "$payload"' in script
+    success = script.index('echo "Device added successfully!"')
+    check = script.index('[ -n "$response" ] && ! echo "$response" | grep -q')
+    assert script.index("if response=$(curl -sS") < check < success < script.index("touch /app/api.cfg")
 
 
 def test_a_client_that_exits_is_started_again_in_the_same_container():
