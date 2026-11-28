@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "anonrc में ContactInfo के रूप में सेट करें, '@anon:0x...' उपसर्ग के साथ।"
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "कॉमा से अलग किए गए रिले फ़िंगरप्रिंट। यह किसी वेब डैशबोर्ड में नहीं मिलता: रिले चला रहे होस्ट पर <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> चलाएँ।\n"
-  source: "9b5c068c9636"
+  text: "कॉमा से अलग किए गए रिले फ़िंगरप्रिंट। कोई ऑनलाइन डैशबोर्ड इन्हें नहीं दिखाता। CashPilot जो रिले चलाता है, उसके लिए उसे चला रहे होस्ट पर <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> चलाएँ। हार्डवेयर रिले के लिए उसका Relay Control Panel <b>http://relayup.local</b> पर खोलें और Home पेज पर Fingerprint पढ़ें।\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"

@@ -21,7 +21,7 @@ anyone-protocol.docker.critical_volumes.0.holds: "Relay ed25519 identity key. De
 anyone-protocol.earnings.notes: "Pays only with 100 ANYONE locked per relay for at least 180 days and a reward claim signed in your wallet. Without the stake a relay earns nothing. With it, earnings depend on bandwidth contributed and uptime."
 anyone-protocol.payment.frequency: "Epoch-based"
 anyone-protocol.payout.notes: "Set as ContactInfo in anonrc, prefixed '@anon:0x...'."
-anyone-protocol.collector.credential_hint: "Comma-separated relay fingerprints. This one is not in a web dashboard: run <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> on the host running the relay.\n"
+anyone-protocol.collector.credential_hint: "Comma-separated relay fingerprints. No online dashboard shows them. For the relay that CashPilot runs, run <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> on the host running it. For a hardware relay, open its Relay Control Panel at <b>http://relayup.local</b> and read Fingerprint on the Home page.\n"
 anyone-protocol.requirements.min_bandwidth: "10 Mbps"
 anyone-protocol.disclosure.sells: "Bandwidth, as a relay in the Anyone network (a Tor fork)."
 anyone-protocol.disclosure.third_party_traffic: "Yes. It relays other people's traffic. Whether your IP is the final hop depends on whether the relay is configured as an exit."

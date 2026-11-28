@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "Ustawiane jako ContactInfo w anonrc, z prefiksem '@anon:0x...'."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "Odciski przekaźników rozdzielone przecinkami. Nie znajdziesz ich w panelu WWW: uruchom <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> na hoście, na którym działa przekaźnik.\n"
-  source: "9b5c068c9636"
+  text: "Odciski przekaźników rozdzielone przecinkami. Żaden panel online ich nie pokazuje. Dla przekaźnika uruchomionego przez CashPilot uruchom <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> na hoście, na którym działa. Dla przekaźnika sprzętowego otwórz jego Relay Control Panel pod adresem <b>http://relayup.local</b> i odczytaj Fingerprint na stronie Home.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"

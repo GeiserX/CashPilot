@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "在 anonrc 中设为 ContactInfo，前缀为 '@anon:0x...'。"
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "以逗号分隔的中继指纹。它不在网页仪表板中：请在运行中继的主机上执行 <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b>。\n"
-  source: "9b5c068c9636"
+  text: "以逗号分隔的中继指纹。没有任何在线仪表板会显示它们。对于 CashPilot 运行的中继，请在运行它的主机上执行 <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b>。对于硬件中继，请在 <b>http://relayup.local</b> 打开它的 Relay Control Panel，并在 Home 页面查看 Fingerprint。\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"

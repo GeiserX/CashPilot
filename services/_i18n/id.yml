@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "Diatur sebagai ContactInfo di anonrc, dengan awalan '@anon:0x...'."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "Fingerprint relay yang dipisahkan koma. Ini tidak ada di dasbor web: jalankan <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> di host yang menjalankan relay.\n"
-  source: "9b5c068c9636"
+  text: "Fingerprint relay yang dipisahkan koma. Tidak ada dasbor online yang menampilkannya. Untuk relay yang dijalankan CashPilot, jalankan <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> di host tempat relay itu berjalan. Untuk relay perangkat keras, buka Relay Control Panel-nya di <b>http://relayup.local</b> dan baca Fingerprint di halaman Home.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"
