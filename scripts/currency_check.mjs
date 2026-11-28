@@ -92,6 +92,10 @@ const wholeCases = [
   ['$5 bound, USD                       ', 5, 'USD', {USD:1}, money(5, 'USD', 0)],
   ['$2.5 bound, USD                     ', 2.5, 'USD', {USD:1}, money(2.5, 'USD', 2)],
   ['$5 bound, EUR with no rate yet      ', 5, 'EUR', {USD:1}, money(5, 'USD', 0)],
+  // 1.005 as a double is 1.00499...: rounding by hand made it "€1", the
+  // formatter's half-expand rounding makes it "€1.01".
+  ['$0.5 bound, EUR at 2.01             ', 0.5, 'EUR', {USD:1, EUR:2.01}, money(1.005, 'EUR', 2)],
+  ['$4.999 bound, USD                   ', 4.999, 'USD', {USD:1}, money(5, 'USD', 0)],
 ];
 for (const [label, usd, disp, fiat, want] of wholeCases) {
   const fmt = new Function('_displayCurrency','_exchangeRates',
