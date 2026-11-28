@@ -5212,6 +5212,9 @@ async def _deploy(
             if recorded_route is not None:
                 await _refuse_direct_on_proxied_only(svc, slug, worker_id)
                 await _confirm_leave_route(request, svc, slug, worker_id, password)
+                # A runtime choice the worker cannot take refuses the deploy: ask
+                # before the routed copy goes, so a refusal stops nothing.
+                await _runtime_choice_for(worker_id, slug)
                 await _remove_routed_copies(worker_id, slug, [recorded_route])
                 options["leave_route"] = True
         held = await _reserve_pending_identities(slug, worker_id, 1, spec.get("env"))

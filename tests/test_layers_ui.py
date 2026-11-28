@@ -149,6 +149,15 @@ class TestLocks:
         why = layers_ui.worker_view(w, NONE)["earners"][0]["locked"]
         assert "Install gVisor" in why
 
+    def test_bitping_needs_the_net_raw_variant(self):
+        info = json.loads(_worker(_layers(GVISOR_RUNTIMES[:2]))["system_info"])
+        why = layers_ui.locked("bitping", info, "gvisor")
+        assert why and "--net-raw" in why
+        # Any other earner still takes the plain passthrough runtime.
+        assert layers_ui.locked("honeygain", info, "gvisor") is None
+        # With the raw variant registered, Bitping can choose gVisor.
+        assert layers_ui.locked("bitping", json.loads(_worker(_layers())["system_info"]), "gvisor") is None
+
     def test_back_to_runc_is_never_locked_by_a_missing_gvisor(self):
         info = json.loads(_worker(_layers(GVISOR_RUNTIMES[:1]))["system_info"])
         assert layers_ui.locked("honeygain", info, "runc") is None
@@ -184,6 +193,16 @@ class TestStorage:
             # New: takes the default, and keeps it after.
             assert _run(layers_ui.for_new_deploy(w, "honeygain")) == "gvisor"
             assert json.loads(store["worker_c7_runtime_choice"])["earners"]["honeygain"] == "gvisor"
+
+    def test_the_default_ignores_external_containers(self):
+        """An external honeygain is not deployed from here, so it must not pin the managed one to runc."""
+        store, g, s = self._store()
+        external = {"slug": "honeygain", "runtime": "runc", "network": "bridge", "deployed_by": "external"}
+        w = _worker(_layers(), [external])
+        with g, s:
+            _run(layers_ui.set_default(w, "gvisor"))
+            assert "honeygain" not in json.loads(store["worker_c7_runtime_choice"])["earners"]
+            assert _run(layers_ui.for_new_deploy(w, "honeygain")) == "gvisor"
 
     def test_a_stored_choice_an_env_pin_now_overrules_is_not_sent(self):
         store, g, s = self._store()
