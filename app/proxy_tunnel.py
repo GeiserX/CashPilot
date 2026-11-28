@@ -4370,6 +4370,12 @@ def _start_down_tunnel(tunnel: Any, proxy_id: str, name: str) -> None:
                 logger.info("Started %s, which was down while a copy in it should run", tunnel.name)
             except Exception as exc:  # noqa: BLE001 - the next beat tries again
                 logger.warning("Could not start %s: %s", tunnel.name, redact(str(exc)))
+                # The gate made for it holds a proxy session or a tailnet device:
+                # down again unless the inner runs after all (a start that timed out).
+                with contextlib.suppress(Exception):
+                    tunnel.reload()
+                    if tunnel.status not in _LIVE:
+                        _stop_gate(client, tunnel)
             finally:
                 lock.release()
             if started:

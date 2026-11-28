@@ -6346,6 +6346,27 @@ class TestIsolatedTunnel:
         assert not proxy_tunnel._deploy_lock(3).locked()
         assert tunnel.status == "running" and _gate(docker, tunnel).status == "running"
 
+    def test_a_heartbeat_start_whose_inner_docker_refuses_stops_its_gate(self, docker):
+        """No gate stays up, holding a proxy session or a tailnet device, beside an inner that is down."""
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        _gate(docker, tunnel).status = "exited"
+        tunnel.status = "exited"
+        tunnel.attrs["State"]["ExitCode"] = 0
+
+        def refused():
+            raise APIError("500 Server Error: no space left on device")
+
+        later = []
+        with patch.object(proxy_tunnel, "_in_background", later.append):
+            _heartbeat()
+        with patch.object(tunnel, "start", refused):
+            for work in later:
+                work()
+        assert tunnel.status == "exited"
+        assert _gate(docker, tunnel).status != "running"
+        assert not proxy_tunnel._deploy_lock(3).locked()
+
     def test_a_gate_with_no_address_fails_the_deploy_and_leaves_nothing(self, docker):
         docker.gate_gets_no_address = True
         with pytest.raises(proxy_tunnel.ProxyTunnelError, match="no address on its copy's network"):
