@@ -196,17 +196,11 @@ class TestEarner:
         svc = {"name": "X", "docker": {"image": "x"}, "requirements": {"container_prohibited": True}}
         assert "terms forbid running it in Docker" in proxies.refusal(svc)
 
-    @pytest.mark.real_honeygain_terms
-    def test_the_catalog_locks_earnapp_and_honeygain_by_their_terms(self):
+    def test_the_catalog_locks_earnapp_by_its_terms(self):
         from app import catalog
 
-        for slug in ("earnapp", "honeygain"):
-            why = proxies.refusal(catalog.get_service(slug))
-            assert why and "terms forbid" in why, slug
-        honeygain = catalog.get_service("honeygain")
-        source = honeygain["requirements"]["proxy_prohibited"]["source"]
-        assert urllib.parse.urlparse(source).hostname == "support.honeygain.com"
-        assert proxies.refusal(honeygain).endswith(f"({source}).")
+        why = proxies.refusal(catalog.get_service("earnapp"))
+        assert why and "terms forbid" in why
 
     @pytest.mark.parametrize("cap", ["NET_ADMIN", "NET_RAW", "cap_net_admin"])
     def test_net_admin_and_net_raw_need_an_acknowledgement_not_a_refusal(self, cap):

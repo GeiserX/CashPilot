@@ -497,8 +497,6 @@ What this means for each Docker earner the catalog had refused before:
 | SRBMiner-Multi, Kryptex Pool (Pearl) | Refused: they need the GPU. |
 | EarnApp | Refused: its terms forbid running it in Docker, a VM or hosting. |
 
-Honeygain stays refused too: its help centre forbids VPNs.
-
 ### Volumes of its own
 
 A volume holds the device's identity: a key, a wallet, a session. A copy that

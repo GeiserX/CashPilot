@@ -62,10 +62,6 @@ requirements:
   min_bandwidth: ""
   gpu: false
   min_storage: ""
-  # Honeygain's help centre says VPN use is strictly prohibited, so CashPilot
-  # never runs it through a proxy (app/proxies.refusal).
-  proxy_prohibited:
-    source: "https://support.honeygain.com/hc/en-us/articles/30688484350492-Does-Honeygain-work-with-VPNs"
 
 payment:
   methods: [paypal, crypto]
