@@ -10,6 +10,169 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [3.1.0] - 2026-11-28
+
+### CI
+
+- Install markupsafe, so the catalog check loads the catalog again
+- Fail the translation check when a translated page types a count instead of keeping its marker
+- Fail the translation check on a changed heading id, not only the build
+
+### Documentation
+
+- Carry the real money4band 5.0 commands into the 19 translations
+- Retake the fleet screenshot, which still showed October's date
+- Carry the money4band 5.0 commands and the capability wording into all 19 languages
+- Give the money4band 5.0 command for the release binary and for source, and say which capabilities stay
+- Carry the socket, proxy, outbound and import wording fixes into all 19 languages
+- Say who plants the symlink, what the migrate container labels, and name the import page
+- Carry the comparison rework and the money4band 5.0 steps into all 19 languages
+- Make the Docker Compose install address a link, not plain text
+- Drop the "Where CashPilot is behind" section and keep its facts in the notes
+- Keep CashPilot's cells to one short clause, drop the commit-count row and check the column against v3.0.1
+- Generate the comparison's pinned and no-proxy counts, and say how to import from money4band 5.0
+- Remake the leaf key and chain together when they stop matching
+- Take the Python peer id from the verified chain, renew the leaf with the identity, and let a Desktop hub accept enrolment
+- Reset a box's failure count only on its own completed requests, and give each box its own recycle allowance
+- Prove key possession on an enrolment retry, pair over iroh, and give the Desktop sidecar two sockets
+- Bind a re-pair window to one endpoint id, and recover a lost enrolment reply and a stalled iroh request
+- Word the iroh echo test so the three-container docs check does not misread it
+- Format the iroh example the way ruff formats Markdown code
+- Pin one transport design so the Python, Go and Kotlin lanes build the same thing
+- Describe the LAN fence in plain words: the apps reach the internet and nothing else
+- Say that the LAN fence is the default on new installs, not a guarantee
+- Say that declared capabilities stay and that new installs fence the Docker earners
+- Say that Mysterium runs behind the fence since 2.0.7
+- Qualify the socket-proxy and container claims
+- Describe CashPilot as it is now: five kinds of earners, the LAN fence and one fleet view
+- Translate the Get started pages and the navigation into Italian
+- Say "salud" for health, not "estado", in the Spanish pages
+- Translate the Get started pages and the navigation into 17 more languages
+- Carry the Mysterium fence fix into the Spanish comparison
+- Say Mysterium runs behind the fence since 2.0.7
+- Translate the Get started pages, two Reference pages and the navigation into Spanish
+- Say the worker reaches Docker through the socket proxy, and list the mining catalog
+- Publish the docs in 20 languages, with English at the same URLs
+- Link CashPilot's official site and X account (#869)
+- Point new Koinly users at a sign-up link that credits CashPilot (#868)
+- Make the 3.0 install, upgrade and rollback work when followed word for word (#866)
+- Add the CoinTracking referral link, with its 10% discount and disclosure
+- Put every major's changes and upgrade steps in one UPGRADING.md section (#863)
+- Ask before opening a referral link, and check who gets a bonus
+- Keep the AI-agents page and the referral rule true to the catalog
+
+### Features
+
+- Give a service's data on disk its own glossary word, apart from status
+- Keep the encryption key and earner passwords out of reach of a copy
+- Word the log viewer in the page's language
+- Word the server's refusals in the language of the page
+- Word API errors and the worker's answers in the language of the page
+- Translate changed English into every language each night, so no language falls behind
+- Translate the catalog into 19 languages
+- Load translated catalog strings, with English as the fallback
+- Install gVisor with one pinned command and prove it with a red/green check
+- Let the UI ask a Secure VM's host to run its self-test
+- Let a Secure VM worker name its host, and let its removal forget it
+- Give health and status separate words in every locale
+- Fix one way of addressing the user per locale in the glossary
+- Add the product glossary every surface translates with
+- Add the locale parity check every CashPilot repo copies
+- Let each user pick the web UI's language, ready for 20 locales
+- Let the owner choose runc or gVisor per earner, and report what each host can give
+- Add Clore.ai, move two links to our new referral codes, and tell AI agents to ask about referral links (#864)
+- Sign up for Nodle through the CashPilot invite link
+- Add Clore.ai and move ProxyBase Markets and Teneo to referral codes that pay us
+
+### Fixes
+
+- Roll back at once when the credentials file fails, and back up a key kept outside
+- Keep the secrets plan from failing a deploy, and list when it falls back
+- Never refuse a usable key or delete the last copy of it
+- Show a worker without container shapes as unknown, never as zero earners
+- Tell hardware relay owners where Anyone shows their fingerprint
+- Write numbers the way each language reads them, and say where Nodle keeps NODL
+- Drop an estimate's cents by the formatter's own rounding
+- Keep the cents of a converted estimate, and convert an open service detail's too
+- Give money4band 5.0 config edit commands that run as written
+- Redraw the catalog once the first exchange rates arrive
+- Word the restore refusals, the deploy deadline and the log pointers in the page's language
+- Name the hold hours, the deploy and the lost balance in plain words
+- Word the seed phrase checks and the import's saved list, and redraw the catalog in a new currency
+- Read an older worker's English answer as it was meant, on any page
+- Name exactly one with =1 where a plural hides its number
+- Quote names one way, count days, files and ports with plurals, and say what the backup could not read
+- Name the real update buttons in the About text
+- Keep the device id refusal opening with "Only an id"
+- Log a failed background task again, not an AttributeError from its callback
+- Name CashPilot Desktop, the device id rule and the DNS addresses in plain words
+- Word the encrypted money4band refusal in the language of the page
+- Stop passing English words into messages, so every language reads whole
+- Count 1.0 and 1.0001 the same in the page and on the server
+- List each Claude account once, so the sync tries every one before it gives up
+- Keep the sync's good answers and pages when a later call or check fails
+- Give the money4band 5.0 config edit command that works for the release binary and for source
+- Say the io.net claim is probably high in Filipino, and ask for a payout in Italian
+- Rewrite internal notes in the service text for the people who read it
+- Build each recorded gVisor install state from the previous one, never from the live file
+- Restore daemon.json only when it is byte for byte a state the gVisor install left
+- Remove a gVisor probe only when its labels say this worker made it
+- Stop cashpilot-gvisor when Docker does not answer or daemon.json cannot be edited
+- Make the gVisor check test what earners really get, and never call no answer "not installed"
+- Stop a retried gVisor install from overwriting the only backup of daemon.json
+- Retry a registration that got an HTTP error or a compact error answer
+- Retry a registration that failed and keep a client an empty download would replace
+- Keep the client and retry when ProxyRack's update host is down
+- Let only the worker's own key ask the host for a self-test
+- Refuse the stamp when the file changed after its last read
+- Stop the parity check passing a select swap, broken braces and a stale stamp
+- Never give two glossary terms one word in a locale
+- Use the docs' words for health and status
+- Give backup its own verb in the glossary note
+- Keep handler names and the fleet key free of translated words
+- Keep the bell's newer alerts when a slower services refresh draws the attention list
+- Say how to decrypt an encrypted money4band 5.0 config
+- Fail on a plural form left empty
+- Keep counting the links that sit outside a plural
+- Count links outside plural branches only, and never reuse a temporary file name
+- Close the gaps the third full review of the parity check found
+- Close the gaps the second full review of the parity check found
+- Keep attribute placeholders in their printf position
+- Compare placeholders in tag attributes and keep ignored keys when stamping
+- Close the parity check's review gaps
+- Count in English where a page shows English, and log a lost preference read
+- Keep the last language choice and write counts the way the server does
+- Keep an unreadable runtime list unknown, and refuse a runtime choice that a named runtime or a routed copy cannot honour
+- Keep the wrap choice in memory when storage refuses writes
+- Keep logs working without storage, redate lines after midnight, keep empty lines visible
+- Show each log entry on one line with a short local time, so long Docker lines stop wrapping
+- Deploy to Desktops only through their checked route, so a deploy never deletes a container that CashPilot did not make
+- Never send a box's key over plain HTTP to a public address (#870)
+- Say when Pawns refuses a copy because another device holds its IP (#871)
+- Stop new workers refusing commands for a minute after they enrol, plus 7 UI fixes (#867)
+- Show GPU hosts' monthly ranges per GPU, not per GPU-hour
+
+### Maintenance
+
+- Format the key-file test as the lockfile's ruff does
+
+### Refactoring
+
+- Move the rest of app.js's English into en.json
+- Move the first half of app.js's English into en.json
+- Move the Activity page's English into en.json
+- Move the Payouts page's English into en.json
+- Move the server pages' and the Fleet page's English into en.json
+
+### Testing
+
+- Stub the key and earner credential loaders in the device-id check
+- See keys that a formatter wraps, and read Python source back in English
+- Read a t() call back as the source it replaced, so tests keep their strings
+- Check every string key both ways, and rename locals that would hide t()
+- Make the custom image deploy tests pass when run alone (#865)
+- Find a replacement referral URL among all README links
+
 ## [3.0.1] - 2026-11-27
 
 ### Fixes
