@@ -8,10 +8,12 @@ guest that cannot reach the LAN, red then green) is in docs/secure-vm.md.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -42,9 +44,15 @@ host_addrs() { printf '%s\\n' 192.168.1.10 100.101.102.103; }
 host_connected_public() { echo 203.0.113.0/24; }
 egress_ip() { echo 198.51.100.7; }
 """
-    out = subprocess.run(
-        ["bash", "-c", prelude + body, "bash", str(SCRIPT), *args], capture_output=True, text=True, check=False
-    )
+    # mktemp in the script and the prelude writes under a folder that goes with the test.
+    with tempfile.TemporaryDirectory() as tmp:
+        out = subprocess.run(
+            ["bash", "-c", prelude + body, "bash", str(SCRIPT), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "TMPDIR": tmp},
+        )
     assert out.returncode == 0, out.stderr
     return out.stdout
 
@@ -284,8 +292,7 @@ def test_state_on_unraid_without_a_domains_share_is_empty():
     [
         (None, "refused"),  # no lookup ever worked: no drop for the home's IP
         (60, "198.51.100.9"),  # fresh
-        (1800, "198.51.100.9"),  # every lookup fails: the last address, for an hour
-        (7200, "refused"),  # older than that
+        (1800, "refused"),  # every lookup fails: the address may have changed
     ],
 )
 def test_the_fence_is_not_written_without_a_current_public_ip(cache_age, want):
@@ -394,3 +401,14 @@ ns_base_ok "$live" && echo yes || echo no
         up,
     )
     assert out.strip() == ("yes" if ok else "no")
+
+
+def test_the_uis_own_address_and_port_is_not_a_forbidden_target():
+    # A UI on this host listens on one of its addresses: the guest may reach
+    # exactly that address and port, which the self-test checks apart.
+    out = _run(
+        'UI_IP=192.168.1.10; UI_PORT=8080; ss() { echo "LISTEN 0 4096 0.0.0.0:8080 0.0.0.0:*"; };'
+        "ip() { :; }; probe_targets | grep '^host '"
+    )
+    assert out.split("\n")[:1] == ["host 100.101.102.103 8080"]
+    assert "192.168.1.10 8080" not in out
