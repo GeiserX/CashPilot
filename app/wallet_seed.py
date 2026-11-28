@@ -260,19 +260,13 @@ def phrase_problem(phrase: str, words: int = 12) -> str | None:
     """
     found = normalize(phrase).split()
     if len(found) != words:
-        return f"A seed phrase has {words} words; this one has {len(found)}."
+        return t("err.wallet_seed.phrase_word_count", words=words, n=len(found))
     wordlist = _wordlist()
     unknown = [n for n, word in enumerate(found, 1) if word not in wordlist]
     if unknown:
-        many = len(unknown) > 1
-        return (
-            ("Words " if many else "Word ")
-            + ", ".join(map(str, unknown))
-            + (" are not BIP-39 words." if many else " is not a BIP-39 word.")
-            + " Check the spelling."
-        )
+        return t("err.wallet_seed.not_bip39_words", n=len(unknown), list=", ".join(map(str, unknown)))
     if not _valid_checksum([wordlist[word] for word in found]):
-        return "The words are all valid, but the phrase does not check out. One of them is probably wrong."
+        return t("err.wallet_seed.phrase_checksum")
     return None
 
 
