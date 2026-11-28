@@ -51,6 +51,7 @@ VM_DOCS="https://geiserx.github.io/CashPilot/home-network-security/#4-dont-run-i
 
 ASSUME_YES=0
 TMP_DIR=""
+RUNSC=""
 
 say() { printf '%s\n' "$*"; }
 fail() {
@@ -108,6 +109,7 @@ preflight() {
     fail "gVisor needs Linux 5.6 or newer; this host runs $(uname -r). Nothing was changed."
   fi
   command -v docker >/dev/null || fail "the docker command is not installed here. Nothing was changed."
+  command -v cmp >/dev/null || fail "the cmp command (package diffutils) is not installed here, and undo needs it to compare daemon.json with its backup. Install diffutils. Nothing was changed."
   docker info >/dev/null 2>&1 || fail "Docker is not answering (is it running, and are you root?). Nothing was changed."
   if [ "$(docker info --format '{{.OperatingSystem}}' 2>/dev/null)" = "Docker Desktop" ]; then
     fail "this is Docker Desktop, which already runs every container inside its own VM. Nothing was changed."
@@ -180,6 +182,20 @@ our_containers() {
   done <<<"$rows"
 }
 
+register() {
+  # $1: the step, $2: runsc, $3: the runtime, then its arguments. Saves in
+  # states/ what the step leaves daemon.json as, BEFORE it edits the real file,
+  # so an install killed in the middle still leaves a state undo recognises.
+  local n="$1" runsc="$2" name="$3" stage="$TMP_DIR/stage.json"
+  shift 3
+  rm -f "$stage"
+  if [ -f "$DAEMON_JSON" ]; then cp -p "$DAEMON_JSON" "$stage"; fi
+  "$runsc" install -download-sidecars NEVER -config_file "$stage" -runtime "$name" -- "$@" >/dev/null 2>&1
+  cp -p "$stage" "$STATE/states/$n"
+  "$runsc" install -download-sidecars NEVER -config_file "$DAEMON_JSON" -runtime "$name" -- "$@"
+  cmp -s "$DAEMON_JSON" "$STATE/states/$n" || cp -p "$DAEMON_JSON" "$STATE/states/$n"
+}
+
 cmd_install() {
   preflight install
   local arch dir url fmt want
@@ -237,16 +253,20 @@ cmd_install() {
   if [ "$fmt" = zstd ]; then tar --zstd -xf "$tmp/gvisor.tar" -C "$dir" runsc gvisor-bin; else tar -xjf "$tmp/gvisor.tar" -C "$dir" runsc gvisor-bin; fi
   "$dir/runsc" --version >/dev/null || fail "the downloaded runsc does not run on this host. Run '$0 undo' to clean up."
 
+  # states/ keeps a copy of daemon.json after each step, so undo can tell this
+  # script's own edits from anyone else's, even after an install stopped halfway.
+  mkdir -p "$STATE/states"
   if [ -f "$DAEMON_JSON" ]; then
     cp -p "$DAEMON_JSON" "$STATE/daemon.json.orig"
+    cp -p "$DAEMON_JSON" "$STATE/states/0"
   else
     : >"$STATE/daemon.json.absent"
     mkdir -p "$(dirname "$DAEMON_JSON")"
   fi
   if [ ! -e "$DAEMON_JSON~" ]; then : >"$STATE/backup.absent"; fi
   printf '%s\n' "$GVISOR_RELEASE" >"$STATE/release"
-  "$dir/runsc" install -download-sidecars NEVER -config_file "$DAEMON_JSON" -runtime runsc-hostnet -- --network=host
-  "$dir/runsc" install -download-sidecars NEVER -config_file "$DAEMON_JSON" -runtime runsc-hostnet-raw -- --network=host --net-raw
+  register 1 "$dir/runsc" runsc-hostnet --network=host
+  register 2 "$dir/runsc" runsc-hostnet-raw --network=host --net-raw
   sha256_of "$DAEMON_JSON" >"$STATE/daemon.json.ours"
   : >"$STATE/installed"
 
@@ -261,17 +281,41 @@ cmd_install() {
   say "Then choose gVisor per worker or per earner there. Nothing switches over by itself."
 }
 
-restorable() {
-  # True when undo puts daemon.json back from the backup: the file is as the
-  # install left it, or the install stopped halfway, before it could record
-  # what it left. Never after someone edited it while an undo ran.
-  if [ -f "$STATE/edited" ]; then
-    return 1
-  elif [ -f "$STATE/installed" ]; then
-    [ -f "$STATE/daemon.json.ours" ] && [ -f "$DAEMON_JSON" ] && [ "$(sha256_of "$DAEMON_JSON")" = "$(cat "$STATE/daemon.json.ours")" ]
-  else
-    [ -f "$STATE/daemon.json.orig" ] || [ -f "$STATE/daemon.json.absent" ]
+matched_state() {
+  # Prints the copy in states/ that daemon.json now is, byte for byte, or
+  # nothing when someone else edited it. Only then does undo restore the backup.
+  local n
+  [ ! -f "$STATE/edited" ] && [ -f "$DAEMON_JSON" ] || return 0
+  for n in 2 1 0; do
+    if [ -f "$STATE/states/$n" ] && cmp -s "$DAEMON_JSON" "$STATE/states/$n"; then
+      printf '%s\n' "$STATE/states/$n"
+      return 0
+    fi
+  done
+}
+
+drop_ours() {
+  # $1: a daemon.json. Takes our two runtimes out of it. A runtime the file does
+  # not have is fine; any other failure (not valid JSON) stops the script.
+  local file="$1" out name
+  if [ -z "$RUNSC" ]; then
+    ! grep -q cashpilot-gvisor "$file" ||
+      fail "the gVisor binary is gone, so it cannot edit $file; remove the entries ${RUNTIMES[*]} from it by hand, then run undo again."
+    return 0
   fi
+  for name in "${RUNTIMES[@]}"; do
+    if ! out=$("$RUNSC" uninstall -config_file "$file" -runtime "$name" 2>&1); then
+      case "$out" in
+        *"runtime \"$name\" not found"*) ;;
+        *) fail "could not take $name out of $file: ${out##*Uninstall failed: }. Docker was not reloaded and the backup is kept. Fix the file (Docker could not load it either), then run undo again." ;;
+      esac
+    fi
+  done
+}
+
+edited_meanwhile() {
+  : >"$STATE/edited"
+  fail "$DAEMON_JSON changed while undo ran, so it was left as it is. $1 The backup is kept in $STATE. Run undo again: it keeps your edit."
 }
 
 cmd_undo() {
@@ -286,7 +330,7 @@ cmd_undo() {
     fail "these containers still use our gVisor runtimes: $(printf '%s' "$users" | tr '\n' ' '). Switch them to Standard in the CashPilot UI (it redeploys them), then run undo again. Nothing was changed."
   fi
   say "cashpilot-gvisor undo will:"
-  if restorable; then
+  if [ -n "$(matched_state)" ]; then
     if [ -f "$STATE/daemon.json.absent" ]; then say "  1. remove ${DAEMON_JSON}, which did not exist before;"; else say "  1. restore ${DAEMON_JSON} from its backup;"; fi
   else
     say "  1. remove only the runtimes ${RUNTIMES[*]} from ${DAEMON_JSON}, which was edited since the install;"
@@ -295,47 +339,34 @@ cmd_undo() {
   say "  3. reload Docker's settings. Running containers keep running."
   confirm "Go ahead?" || fail "nothing was changed."
 
-  local runsc restored="" untouched=0
-  runsc=$(find "$PREFIX" -mindepth 2 -maxdepth 2 -name runsc -type f 2>/dev/null | head -n1 || true)
-  if restorable; then
+  local restored="" untouched=0 match expected=""
+  RUNSC=$(find "$PREFIX" -mindepth 2 -maxdepth 2 -name runsc -type f 2>/dev/null | head -n1 || true)
+  TMP_DIR=$(mktemp -d)
+  trap 'rm -rf "$TMP_DIR"' EXIT
+  match=$(matched_state)
+  if [ -n "$match" ]; then
+    # What our own removal must leave. If the live file ends up any different,
+    # someone edited it in between, and the backup must not overwrite that.
     untouched=1
+    expected="$TMP_DIR/expected.json"
+    cp -p "$match" "$expected"
+    drop_ours "$expected"
   fi
   # Step 1: take our two runtimes out and reload. A reload drops a runtime only
   # when the file still has a "runtimes" key without it; a file with no such
   # key keeps every runtime Docker has, so restoring the backup alone is not enough.
-  if [ -f "$DAEMON_JSON" ]; then
-    if [ -n "$runsc" ]; then
-      local out
-      for name in "${RUNTIMES[@]}"; do
-        # A runtime the file no longer has is fine; any other failure (a file
-        # that is not valid JSON) stops here, before Docker is reloaded.
-        if ! out=$("$runsc" uninstall -config_file "$DAEMON_JSON" -runtime "$name" 2>&1); then
-          case "$out" in
-            *"runtime \"$name\" not found"*) ;;
-            *) fail "could not take $name out of $DAEMON_JSON: ${out##*Uninstall failed: }. Docker was not reloaded and the backup is kept. Fix the file (Docker could not load it either), then run undo again." ;;
-          esac
-        fi
-      done
-    elif grep -q cashpilot-gvisor "$DAEMON_JSON"; then
-      fail "the gVisor binary is gone, so it cannot edit $DAEMON_JSON; remove the entries ${RUNTIMES[*]} from it by hand, then run undo again."
-    fi
+  if [ -f "$DAEMON_JSON" ]; then drop_ours "$DAEMON_JSON"; fi
+  if [ "$untouched" = 1 ] && ! cmp -s "$DAEMON_JSON" "$expected"; then
+    edited_meanwhile "Our runtimes are out of the file, and Docker was not reloaded."
   fi
-  # What step 1 left. The restore below goes ahead only if the file still is so.
-  local after=""
-  if [ -f "$DAEMON_JSON" ]; then after=$(sha256_of "$DAEMON_JSON"); fi
   reload_docker
   if ! wait_for absent; then
     restart_docker
     wait_for absent || fail "Docker still reports a runtime of ours after the restart; see 'journalctl -u docker'."
   fi
   # Step 2: put the file back as it was. Docker's runtimes already match it.
-  if [ "$untouched" = 1 ]; then
-    local now=""
-    if [ -f "$DAEMON_JSON" ]; then now=$(sha256_of "$DAEMON_JSON"); fi
-    if [ "$now" != "$after" ]; then
-      : >"$STATE/edited"
-      fail "$DAEMON_JSON changed while undo ran, so it was left as it is. Our runtimes are out of Docker; the backup is kept in $STATE. Run undo again: it keeps your edit."
-    fi
+  if [ "$untouched" = 1 ] && ! cmp -s "$DAEMON_JSON" "$expected"; then
+    edited_meanwhile "Our runtimes are out of Docker."
   fi
   if [ "$untouched" = 1 ]; then
     if [ -f "$STATE/daemon.json.absent" ]; then
