@@ -69,6 +69,11 @@ jobs:
       - name: Proxy policy note
         run: node scripts/proxy_policy_card_check.mjs
 
+      # Also browser-free. The image update section reloads every minute and
+      # after each action; only running it proves an unsaved choice survives.
+      - name: Image update choices survive a refresh
+        run: node scripts/image_updates_check.mjs
+
       # Also browser-free. The claim modal has to give THREE different answers
       # for what looks like one empty result; only running it proves which.
       - name: Claim modal honesty

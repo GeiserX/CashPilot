@@ -1317,6 +1317,10 @@ class _FakeDocker:
     def get(self, name):
         if name in self.by_name:
             return self.by_name[name]
+        # By ID too, as Docker answers: a create that hands back only its ID.
+        for c in self.by_name.values():
+            if isinstance(getattr(c, "id", None), str) and c.id == name:
+                return c
         raise orchestrator.NotFound(f"no {name}")
 
     def create(self, **kwargs):

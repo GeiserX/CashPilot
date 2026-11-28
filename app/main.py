@@ -62,6 +62,7 @@ from app import (
     gpu,
     health_probe,
     i18n,
+    image_updates,
     income_export,
     ipgeo,
     lan_isolation,
@@ -2452,6 +2453,7 @@ async def _run_collection() -> None:
             alerts.extend(_proxied_bell.values())
             alerts.extend(_stall_bell.values())
             alerts.extend(_docker_bell.values())
+            alerts.extend(_image_update_bell.values())
             alerts.extend(_activity_bell)
             _collector_alerts = _with_account_disabled(alerts)
             if collectors and platforms_ok == 0:
@@ -3437,6 +3439,17 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=15,
         id="exchange_rates",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    # App image updates (app/image_updates.py): each tick starts the daily
+    # run once the owner's hour has come. Not run at startup.
+    scheduler.add_job(
+        _image_update_tick,
+        "interval",
+        minutes=5,
+        id="image_updates",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,
@@ -4840,7 +4853,12 @@ async def _deploy(
     request: Request | None = None,
     restore: dict[str, Any] | None = None,
     confirm_proxied: bool = False,
+    settle_seconds: int = 0,
+    expect_image: str = "",
 ) -> dict[str, Any]:
+    # ``settle_seconds``: an image update (app/image_updates.py); each copy must
+    # stay healthy that long on its worker, or the worker undoes it.
+    # ``expect_image``: the build its check found, the only one it may install.
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
     # the deploy has run and persisted — a stricter type turns the successful
@@ -5216,6 +5234,11 @@ async def _deploy(
                     expected=expected,
                     request=request,
                 )
+            # An image update (app/image_updates.py) asks each copy to pass a check period.
+            if settle_seconds:
+                options["settle_seconds"] = settle_seconds
+                if expect_image:
+                    options["expect_image"] = expect_image
             # A service routed through a proxy on this worker leaves the route only with
             # the owner's password, and its routed copy goes first: both run the same
             # device. The worker refuses the direct deploy without that confirmation.
@@ -5403,6 +5426,8 @@ async def _deploy(
         response["device_link"] = _device_link_for(auth.get_current_user(request) if request else None, link)
     if divergence:
         response["kept_from_previous_deployment"] = divergence
+    if settle_seconds and isinstance(result.get("image_update"), dict):
+        response["image_update"] = result["image_update"]
     if restore is not None:
         response["restored"] = {key: result.get(key) for key in ("files", "targets", "started")}
     if wallet:
@@ -7638,6 +7663,10 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "invalid_proxy_start_approval",
         # The scale-down found no such copy on the box (app/worker_api.py).
         "copy_not_found",
+        # An app image update the worker undid after its check period (app/image_updates.py).
+        "image_update_rolled_back",
+        # The pull of an app image check failed; the worker redacted the reason.
+        "image_check_failed",
     ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
@@ -8041,10 +8070,11 @@ async def _proxy_worker_command(
     # for storj). Cut off sooner, a stop that went through answers 504 and is
     # never recorded, so the copy raises a container-down alert.
     timeout = 30 + _catalog_stop_timeout(slug) if command in ("stop", "restart", "remove") else 30
-    if command == "stop" and catalog.fence_gated(catalog.get_service(slug)):
-        # The worker stops a fence-gated node under the lock a redeploy holds
-        # (orchestrator.GATED_DEPLOY_LOCK), so a Stop sent during one waits for it first.
-        timeout += _deploy_timeout(slug)
+    if command == "stop":
+        # The worker stops every copy under the route lock a redeploy holds
+        # (orchestrator.stop_service), and an image update holds it through its
+        # check period, so a Stop sent during one waits for all of it first.
+        timeout += _deploy_timeout(slug) + image_updates.SETTLE_SECONDS + 30
     if command == "remove":
         return await _proxy_to_worker(
             worker_id, "DELETE", f"/api/containers/{slug}", params=params, timeout=timeout, headers=headers
@@ -8287,6 +8317,8 @@ async def _proxy_worker_deploy(
     approve: bool = False,
     leave_route: bool = False,
     expected_container: str = "none",
+    settle_seconds: int = 0,
+    expect_image: str = "",
 ) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
@@ -8296,6 +8328,12 @@ async def _proxy_worker_deploy(
     while the worker was still shutting the old node down cleanly.
     """
     spec = await _image_for_worker(worker_id, slug, spec)
+    if settle_seconds:
+        # An image update: the worker watches the new container this long
+        # before it removes the old one, so the answer comes that much later.
+        spec = {**spec, "settle_seconds": settle_seconds}
+        if expect_image:
+            spec["expect_image"] = expect_image
     if approve:
         # After the image is final: the approval covers the spec as sent.
         spec = await _approve_spec(worker_id, slug, spec)
@@ -8307,7 +8345,7 @@ async def _proxy_worker_deploy(
         slug,
         spec,
         expected=expected_container,
-        timeout=_deploy_timeout(slug),
+        timeout=_deploy_timeout(slug) + (settle_seconds + 30 if settle_seconds else 0),
         # Desktop gets its runtime settings from its own catalog.
         desktop_json={key: spec[key] for key in _DesktopDeploySpec.model_fields if key in spec},
     )
@@ -13683,6 +13721,368 @@ async def api_worker_retire(request: Request, body: WorkerRetire) -> dict[str, s
     return {"status": "deleted"}
 
 
+# --- Automatic app image updates (app/image_updates.py) ---------------------
+
+#: One run at a time: the daily one and an owner's "Check now" never overlap.
+_image_update_lock = asyncio.Lock()
+#: Held over each read and save of the settings, so a run's last_run stamp and
+#: an owner's save never overwrite each other. Never held during a check.
+_image_update_settings_lock = asyncio.Lock()
+#: Config key of the bell rows a later check answered: "<worker id>|<slug>" ->
+#: the row id. It keeps a cleared row out of the bell after a restart too.
+_IMAGE_UPDATE_CLEARED_KEY = "image_updates_cleared"
+#: The bell's entries, keyed "<worker id>|<slug>": a build that failed and was
+#: undone, a deploy that failed, or a new build waiting for the owner.
+_image_update_bell: dict[str, dict[str, Any]] = {}
+_image_update_bell_loaded = False
+
+
+async def _image_update_settings() -> dict[str, Any]:
+    return image_updates.parse_settings(await database.get_config(image_updates.CONFIG_KEY))
+
+
+async def _save_image_update_settings(settings: dict[str, Any]) -> None:
+    await database.set_config(image_updates.CONFIG_KEY, json.dumps(settings, sort_keys=True))
+
+
+def _image_update_targets(worker: dict[str, Any]) -> list[str] | None:
+    """The services this worker's last heartbeat lists as CashPilot's own copies, or None when it cannot update."""
+    info = placement.system_info(worker)
+    if worker.get("status") != "online" or placement.is_desktop(info):
+        return None
+    features = info.get("features") if isinstance(info.get("features"), list) else []
+    if image_updates.FEATURE not in features:
+        return None
+    slugs = {
+        egress.container_slug(entry)
+        for entry in _safe_json(worker.get("containers", "[]"), [])
+        if isinstance(entry, dict) and entry.get("deployed_by") in constants.CASHPILOT_DEPLOYED
+    }
+    return sorted(s for s in slugs if s)
+
+
+async def _image_update_check(worker_id: int, slug: str) -> dict[str, Any]:
+    # The check pulls the tag, which can take minutes on a slow line.
+    try:
+        answer = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/image-check", timeout=960)
+    except HTTPException as exc:
+        # The worker's own reason, such as the registry refusing the pull, for the log.
+        reason = exc.detail.get("message") if isinstance(exc.detail, dict) else exc.detail
+        raise RuntimeError(f"the image check failed (HTTP {exc.status_code}): {reason}") from None
+    return answer if isinstance(answer, dict) else {}
+
+
+_CUSTOM_UNSAVED = "a saved setting of it was not deployed yet; redeploy it to apply it"
+
+
+async def _custom_values_unsaved(slug: str, recorded: dict[str, Any], worker_id: int) -> bool:
+    """Whether the saved definition of a custom service holds a value its deployment does not.
+
+    A custom service's saved definition is the only source of a redeploy
+    (_deploy), so a saved value not deployed yet would arrive with an update.
+    """
+    revealed = await _custom_service(slug, reveal=True) or {}
+    docker_conf = revealed.get("docker") or {}
+    saved = {str(v["key"]): str(v.get("default") or "") for v in docker_conf.get("env") or []}
+    deployed = {str(k): str(v or "") for k, v in (recorded.get("env") or {}).items()}
+    if set(saved) != set(deployed):
+        return True
+    if any("{hostname}" in value for value in saved.values()):
+        # Filled in as the blank redeploy fills it (_deploy), then compared: a
+        # device that still has the old shared name keeps it, since a blank
+        # redeploy never renames.
+        name, renames = await _device_names(slug, docker_conf, DeployRequest(env={}), worker_id, recorded)
+        saved = {key: value.replace("{hostname}", name) for key, value in saved.items()}
+        saved.update({r["key"]: r["old"] for r in renames})
+    return any(deployed[key] != value for key, value in saved.items())
+
+
+async def _image_update_blocker(worker_id: int, slug: str, answer: dict[str, Any]) -> str:
+    """Why the blank redeploy would not rebuild this service exactly as it runs, so it is not updated by itself."""
+    is_custom = custom_services.is_custom_slug(slug)
+    svc = await _custom_service(slug, reveal=False) if is_custom else catalog.get_service(slug)
+    if not svc:
+        return "it is no longer in the catalog"
+    if svc.get("status") in _UNDEPLOYABLE_STATUSES:
+        return "the catalog no longer deploys it"
+    recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
+    if not recorded:
+        return "this box has no deployment record of it, so a redeploy cannot rebuild it"
+    if proxies.route_of(recorded) is not None:
+        return "it runs through a proxy, and a copy behind a proxy is not updated by itself yet"
+    if int(recorded.get("instances") or 1) > 1:
+        # A redeploy rebuilds every recorded copy, one by one, even one that is
+        # not running now, so a later copy that fails would leave two builds.
+        return (
+            f"it is deployed as {int(recorded['instances'])} copies here, and only a single copy is updated by itself"
+        )
+    if is_custom and await _custom_values_unsaved(slug, recorded, worker_id):
+        return _CUSTOM_UNSAVED
+    docker_conf = svc.get("docker") or {}
+    custom_image = None if is_custom else (_custom_image(None, recorded) or None)
+    asked = {"image": custom_image or docker_conf.get("image") or ""}
+    if custom_image:
+        asked["custom_image"] = custom_image
+    wanted = (await _image_for_worker(worker_id, slug, asked))["image"]
+    running = str(answer.get("ref") or "")
+    if _docker_hub_short(running) != _docker_hub_short(str(wanted)):
+        return f"it runs {running}, and a redeploy would run {wanted}"
+    worker = await database.get_worker(worker_id) or {}
+    arch_name = placement.system_info(worker).get("arch")
+    for entry in _safe_json(worker.get("containers", "[]"), []):
+        if not isinstance(entry, dict) or egress.container_slug(entry) != slug:
+            continue
+        if not isinstance(entry.get("shape"), dict):
+            return "this box did not report how it was created"
+        # A custom service is judged against its saved definition: an edit is kept
+        # until the owner redeploys (api_update_custom_service), so an update
+        # must not be the deploy that brings in a new command or data path.
+        found = drift.container_drift(svc, entry["shape"], recorded, custom_image=custom_image, worker_arch=arch_name)
+        if found:
+            return "it differs from what a redeploy builds (" + "; ".join(found) + ")"
+        if is_custom:
+            # A folder outside its data path (an image VOLUME) is an anonymous
+            # volume: the new container gets an empty one, and the old one is
+            # removed with the old container (orchestrator._remove_container).
+            kept = drift._volume_targets(docker_conf.get("volumes")) | drift._volume_targets(recorded.get("volumes"))
+            if loose := sorted(set(entry["shape"].get("mounts") or []) - kept):
+                return (
+                    f"it keeps data at {', '.join(loose)} outside its data path, "
+                    "and a new container would start that folder empty"
+                )
+    return ""
+
+
+async def _image_update_deploy(worker_id: int, slug: str, expected: dict[str, str], new_image: str) -> dict[str, Any]:
+    """The dashboard's own blank redeploy, with the check period, as the Redeploy button runs it."""
+    body = DeployRequest(env={}, replace_existing=True, expected_containers=expected)
+    custom = custom_services.is_custom_slug(slug)
+    if custom:
+        # Held against a delete while it runs, as api_deploy holds it.
+        if slug in _custom_deleting:
+            raise image_updates.DeployRefused(f"{slug} is being deleted", rolled_back=False)
+        _custom_deploying[slug] += 1
+    try:
+        if custom:
+            # Again here, right before the deploy reads the definition: a value
+            # saved since the blocker's look must not arrive with the update.
+            recorded = await database.get_deployment_spec(slug, worker_id=worker_id) or {}
+            if await _custom_values_unsaved(slug, recorded, worker_id):
+                raise image_updates.DeployRefused(_CUSTOM_UNSAVED, rolled_back=False)
+        # The owner can change the choice while the check runs: the one saved
+        # when the deploy starts decides. Nothing is awaited between the two.
+        async with _image_update_settings_lock:
+            mode = image_updates.effective_mode(await _image_update_settings(), worker_id, slug)
+        if mode != image_updates.AUTO:
+            raise image_updates.ModeChanged(mode)
+        return await _deploy(slug, body, worker_id, settle_seconds=image_updates.SETTLE_SECONDS, expect_image=new_image)
+    except HTTPException as exc:
+        detail = exc.detail
+        message = str(detail.get("message") or detail) if isinstance(detail, dict) else str(detail)
+        raise image_updates.DeployRefused(
+            message, rolled_back=_worker_error(exc) == "image_update_rolled_back"
+        ) from None
+    finally:
+        if custom:
+            _custom_deploying[slug] -= 1
+            if not _custom_deploying[slug]:
+                del _custom_deploying[slug]
+
+
+def _image_update_hooks() -> image_updates.Hooks:
+    return image_updates.Hooks(
+        check=_image_update_check,
+        blocker=_image_update_blocker,
+        deploy=_image_update_deploy,
+        record=database.record_image_update,
+        seen=database.image_update_seen,
+    )
+
+
+def _image_update_alert_text(row: dict[str, Any], worker_name: str) -> str:
+    detail = str(row.get("detail") or "").strip()
+    if row["result"] == image_updates.ROLLED_BACK:
+        return f"On {worker_name}: {detail}" if detail else f"A new build failed on {worker_name} and was undone."
+    if row["result"] == image_updates.FAILED:
+        return f"The update on {worker_name} did not go through. {detail}".strip()
+    if row["result"] == image_updates.SKIPPED:
+        return f"A new build is out, but it was not installed on {worker_name}: {detail}."
+    return f"A new build is out for {worker_name}. Update it from the Fleet page."
+
+
+@i18n.owner_text
+async def _refresh_image_update_bell(outcomes: dict[int, dict[str, str]] | None = None) -> None:
+    """Rebuild the bell's image update entries from the newest row of each service on each box. Never raises."""
+    global _collector_alerts, _image_update_bell_loaded
+    try:
+        rows = await database.list_image_updates(1000)
+        try:
+            cleared = json.loads(await database.get_config(_IMAGE_UPDATE_CLEARED_KEY) or "{}")
+        except ValueError:
+            cleared = {}
+        if not isinstance(cleared, dict):
+            cleared = {}
+        names = {w["id"]: str(w.get("name") or w["id"]) for w in await database.list_workers()}
+        custom_names = {row["slug"]: row["definition"].get("name") for row in await database.list_custom_services()}
+        newest: dict[tuple[int, str], dict[str, Any]] = {}
+        for row in rows:
+            newest.setdefault((row["worker_id"], row["slug"]), row)
+        bell: dict[str, dict[str, Any]] = {}
+        answered: dict[str, int] = {}
+        for (wid, slug), row in newest.items():
+            key = f"{wid}|{slug}"
+            outcome = (outcomes or {}).get(wid, {}).get(slug)
+            # A check that found the box up to date (or updated it) answers the older row,
+            # and it stays answered across a restart.
+            if outcome in ("current", "updated", "pinned", "off") or cleared.get(key) == row["id"]:
+                answered[key] = row["id"]
+                continue
+            if row["result"] == image_updates.UPDATED or wid not in names:
+                continue
+            text = _image_update_alert_text(row, names[wid])
+            name = custom_names.get(slug) or (catalog.get_service(slug) or {}).get("name") or slug
+            entry = {"kind": "image_update", "platform": name, "error": text}
+            if row["result"] in (image_updates.AVAILABLE, image_updates.SKIPPED):
+                entry["category"] = "notice"
+            bell[key] = entry
+            if row["result"] in (image_updates.ROLLED_BACK, image_updates.FAILED) and (
+                alert_id := await database.record_alert("image_update", key, text)
+            ):
+                what = "update undone" if row["result"] == image_updates.ROLLED_BACK else "update failed"
+                _spawn(_push_alert("image_update", key, f"{name}: {what}", text, alert_id))
+        if answered != cleared:
+            await database.set_config(_IMAGE_UPDATE_CLEARED_KEY, json.dumps(answered, sort_keys=True))
+        _image_update_bell.clear()
+        _image_update_bell.update(bell)
+        _image_update_bell_loaded = True
+        _collector_alerts = [a for a in _collector_alerts if a.get("kind") != "image_update"]
+        _collector_alerts.extend(_image_update_bell.values())
+    except Exception as exc:  # noqa: BLE001 - the bell must not break a run
+        logger.warning("Could not rebuild the image update alerts: %s", exc)
+
+
+async def _run_image_updates(*, force: bool = False) -> dict[int, dict[str, str]]:
+    """The daily run (or the owner's Check now): every box at once, one service at a time on each."""
+    if _image_update_lock.locked():
+        return {}
+    async with _image_update_lock:
+        # The owner's day and hour, as the docs say, not the server's.
+        now = (await _obligations_now()).replace(tzinfo=None)
+        async with _image_update_settings_lock:
+            settings = await _image_update_settings()
+            if not force and not (image_updates.anything_on(settings) and image_updates.due(settings, now)):
+                return {}
+            # Check now does not count as the day's run: the run at the owner's hour still happens.
+            if not force:
+                settings["last_run"] = now.date().isoformat()
+                await _save_image_update_settings(settings)
+        targets = [
+            (int(w["id"]), slugs)
+            for w in await database.list_workers()
+            if (slugs := _image_update_targets(w)) is not None
+        ]
+        logger.info("Image update run on %d worker(s)", len(targets))
+        hooks = _image_update_hooks()
+        done = await asyncio.gather(*(image_updates.run_worker(hooks, settings, wid, slugs) for wid, slugs in targets))
+        outcomes = {wid: result for (wid, _), result in zip(targets, done, strict=True)}
+        await _refresh_image_update_bell(outcomes)
+        return outcomes
+
+
+async def _image_update_tick() -> None:
+    """Every few minutes: start the daily run once its hour has come. Never raises."""
+    try:
+        # Under the run's lock: a run in progress rebuilds the bell when it ends,
+        # and this older read must not overwrite it.
+        if not _image_update_bell_loaded and not _image_update_lock.locked():
+            async with _image_update_lock:
+                if not _image_update_bell_loaded:
+                    await _refresh_image_update_bell()
+        await _run_image_updates()
+    except Exception as exc:  # noqa: BLE001 - a failed tick waits for the next one
+        logger.warning("Image update run failed: %s", exc)
+
+
+class ImageUpdateSettingsBody(BaseModel):
+    mode: Literal["off", "notify", "auto"]
+    hour: int = Field(ge=0, le=23)
+    # None (or a missing key) follows the fleet's choice.
+    workers: dict[str, Literal["off", "notify", "auto"] | None] = {}
+    services: dict[str, Literal["off", "notify", "auto"] | None] = {}
+
+
+@app.get("/api/image-updates")
+async def api_image_updates(_auth: dict[str, Any] = Depends(_require_owner)) -> dict[str, Any]:
+    """The update settings, the boxes and services they apply to, and what the updates did. Owner only."""
+    settings = await _image_update_settings()
+    workers = []
+    services: dict[str, str] = {}
+    custom_names = {row["slug"]: row["definition"].get("name") for row in await database.list_custom_services()}
+
+    def name_of(slug: str) -> str:
+        return custom_names.get(slug) or (catalog.get_service(slug) or {}).get("name") or slug
+
+    for w in await database.list_workers():
+        info = placement.system_info(w)
+        targets = _image_update_targets({**w, "status": "online"})
+        workers.append(
+            {
+                "id": w["id"],
+                "name": w.get("name") or str(w["id"]),
+                "online": w.get("status") == "online",
+                "desktop": placement.is_desktop(info),
+                "supported": targets is not None,
+            }
+        )
+        for slug in targets or []:
+            services[slug] = name_of(slug)
+    names = {w["id"]: w["name"] for w in workers}
+    history = [
+        {
+            **{k: row[k] for k in ("created_at", "worker_id", "slug", "result", "old_digest", "new_digest", "detail")},
+            "worker": names.get(row["worker_id"], str(row["worker_id"])),
+            "service": name_of(row["slug"]),
+        }
+        for row in await database.list_image_updates(200)
+    ]
+    return {
+        "settings": settings,
+        "settle_seconds": image_updates.SETTLE_SECONDS,
+        "workers": workers,
+        "services": [{"slug": k, "name": v} for k, v in sorted(services.items(), key=lambda kv: kv[1].lower())],
+        "history": history,
+        "running": _image_update_lock.locked(),
+    }
+
+
+@app.put("/api/image-updates")
+async def api_set_image_updates(
+    body: ImageUpdateSettingsBody, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    """Save the fleet's choice, its hour and the per-box and per-service overrides. Owner only."""
+    settings = {
+        "mode": body.mode,
+        "hour": body.hour,
+        "workers": {k: v for k, v in body.workers.items() if v},
+        "services": {k: v for k, v in body.services.items() if v},
+    }
+    async with _image_update_settings_lock:
+        current = await _image_update_settings()
+        if "last_run" in current:
+            settings["last_run"] = current["last_run"]
+        await _save_image_update_settings(settings)
+    return {"settings": image_updates.parse_settings(settings)}
+
+
+@app.post("/api/image-updates/run")
+async def api_run_image_updates(_auth: dict[str, Any] = Depends(_require_owner)) -> dict[str, str]:
+    """Check every box now, as the daily run does. Owner only; one run at a time."""
+    if _image_update_lock.locked():
+        raise HTTPException(status_code=409, detail="A check is already running.")
+    _spawn(_run_image_updates(force=True))
+    return {"status": "started"}
+
+
 @app.delete("/api/workers/{worker_id}")
 async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
     """Remove a registered worker."""
@@ -13795,7 +14195,8 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             worker_id,
             body.slug,
             1,
-            lambda: _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{command}"),
+            # The canonical proxy: a Stop waits for a deploy and its check period.
+            lambda: _proxy_worker_command(worker_id, command, body.slug),
             lambda pid: _routed_command(worker_id, body.slug, command, pid),
         )
     elif body.command == "remove":
