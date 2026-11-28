@@ -731,7 +731,7 @@ honeygain.obligations.withdraw-before-24-month-write-off.title:
   text: "Preleva il tuo saldo Honeygain"
   source: "0868662c5a12"
 honeygain.obligations.keep-active-6-months.title:
-  text: "Tieni attivo un dispositivo Honeygain che condivide, oppure fai un pagamento"
+  text: "Tieni attivo un dispositivo Honeygain che condivide, oppure richiedi un pagamento"
   source: "936e03475b32"
 honeygain.obligations.withdraw-before-24-month-write-off.loss:
   text: "I guadagni restano validi per 24 mesi dopo aver raggiunto il minimo di $20. Dopo, Honeygain può cancellare ciò che non è stato pagato."
