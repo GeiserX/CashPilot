@@ -75,14 +75,21 @@ def parse_settings(raw: Any) -> dict[str, Any]:
     mode = data.get("mode") if data.get("mode") in MODES else OFF
     hour = data.get("hour")
     hour = hour if isinstance(hour, int) and not isinstance(hour, bool) and 0 <= hour <= 23 else DEFAULT_HOUR
-    workers = {str(k): v for k, v in (data.get("workers") or {}).items() if v in MODES}
-    services = {str(k): v for k, v in (data.get("services") or {}).items() if v in MODES}
+    workers = _overrides(data.get("workers"))
+    services = _overrides(data.get("services"))
     out: dict[str, Any] = {"mode": mode, "hour": hour, "workers": workers, "services": services}
     if data.get("offer") is True:
         out["offer"] = True
     if isinstance(data.get("last_run"), str):
         out["last_run"] = data["last_run"]
     return out
+
+
+def _overrides(raw: Any) -> dict[str, str]:
+    """The valid entries of one override map; anything that is not a map is none."""
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): v for k, v in raw.items() if isinstance(v, str) and v in MODES}
 
 
 def effective_mode(settings: dict[str, Any], worker_id: int, slug: str) -> str:
@@ -113,8 +120,9 @@ class Hooks:
     check: Callable[[int, str], Awaitable[dict[str, Any]]]
     #: Why the dashboard will not update this service by itself, or "" when it may.
     blocker: Callable[[int, str, dict[str, Any]], Awaitable[str]]
-    #: Run the blank redeploy with the check period: (worker_id, slug, expected containers) -> the deploy's answer.
-    deploy: Callable[[int, str, dict[str, str]], Awaitable[dict[str, Any]]]
+    #: Run the blank redeploy with the check period: (worker_id, slug, expected containers, checked image ID)
+    #: -> the deploy's answer.
+    deploy: Callable[[int, str, dict[str, str], str], Awaitable[dict[str, Any]]]
     #: Write one result row.
     record: Callable[..., Awaitable[None]]
     #: Whether a row with this result already names this new image on this box.
@@ -168,7 +176,9 @@ async def update_service(hooks: Hooks, worker_id: int, slug: str, mode: str) -> 
         return "skipped"
     expected = {str(c.get("instance") or 1): str(c.get("container_id") or "") for c in copies}
     try:
-        result = await hooks.deploy(worker_id, slug, expected)
+        # The checked build, and only it: a tag that moved since is refused by
+        # the worker, so the build undone and held is the one named here.
+        result = await hooks.deploy(worker_id, slug, expected, new_id)
     except DeployRefused as exc:
         await hooks.record(worker_id, slug, ROLLED_BACK if exc.rolled_back else FAILED, detail=str(exc), **facts)
         return "rolled_back" if exc.rolled_back else "failed"

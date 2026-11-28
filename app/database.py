@@ -1991,7 +1991,8 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
 
 # --- Image updates (app/image_updates.py) ---
 
-#: Rows kept in image_updates; older ones go on each write.
+#: Rows kept in image_updates; older ones go on each write. A rolled_back row
+#: is never dropped: it holds a failed build back on that box for good.
 IMAGE_UPDATE_ROWS = 1000
 
 
@@ -2014,7 +2015,8 @@ async def record_image_update(
             (worker_id, slug, result, old_image, new_image, old_digest, new_digest, detail[:1000]),
         )
         await db.execute(
-            "DELETE FROM image_updates WHERE id <= (SELECT MAX(id) FROM image_updates) - ?", (IMAGE_UPDATE_ROWS,)
+            "DELETE FROM image_updates WHERE result != 'rolled_back' AND id <= (SELECT MAX(id) FROM image_updates) - ?",
+            (IMAGE_UPDATE_ROWS,),
         )
         await db.commit()
     finally:
