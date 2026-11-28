@@ -35,7 +35,7 @@ and it deletes its `.env` after each start
 CashPilot cannot read the encrypted file. Run `m4b config edit` in your
 money4band folder: it opens the decrypted file in your editor
 ([CLI reference](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
-Copy all of its text, paste it on the import page, then close the editor.
+Copy all of its text, paste it on the **Import from another tool** page, then close the editor.
 
 Prefer the JSON file. In a `.env`, Docker Compose expands `$` in unquoted
 values, so a password with `$` in it is not what the file shows. CashPilot does
