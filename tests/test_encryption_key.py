@@ -274,6 +274,7 @@ def test_key_file_is_never_copied_into_the_data_folder(tmp_path: Path):
     assert status == {
         "source": "file",
         "file": str(tmp_path / "secret"),
+        "file_inside": False,
         "data_file": str(data / ".fernet_key"),
         "data_copy": "none",
         "env_same": False,
@@ -392,6 +393,19 @@ def test_the_one_value_that_decrypts_is_found_past_any_sample(tmp_path: Path):
     db.verify_encryption_key_matches()
 
 
+def test_a_setting_that_only_looks_encrypted_is_not_checked(tmp_path: Path):
+    """set_config stores only secret keys encrypted; another setting may hold "enc:" text as written."""
+    import sqlite3
+
+    _database_with(tmp_path)
+    conn = sqlite3.connect(tmp_path / "cashpilot.db")
+    conn.execute("INSERT INTO config VALUES ('site_name', 'enc:office')")
+    conn.commit()
+    conn.close()
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY": Fernet.generate_key().decode()})
+    db.verify_encryption_key_matches()
+
+
 def test_a_database_with_no_credentials_starts_on_any_key(tmp_path: Path):
     _database_with(tmp_path)
     db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
@@ -489,6 +503,7 @@ def test_a_key_file_inside_the_data_folder_is_not_outside_it(tmp_path: Path):
     db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY_FILE": str(tmp_path / ".fernet_key")})
     status = db.encryption_key_status()
     assert status["source"] == "file" and not status["removable"] and not status["outside"]
+    assert status["file_inside"]
     with pytest.raises(ValueError):
         db.remove_data_folder_key()
     assert (tmp_path / ".fernet_key").exists()

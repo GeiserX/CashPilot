@@ -224,7 +224,9 @@ Not tested here, but each one is the same two steps:
   `op run -- docker compose up -d` sets the variable. 1Password Connect serves
   the same items to an agent that writes the file.
 - **Bitwarden Secrets Manager**: `bws run -- docker compose up -d` sets the
-  variable, or `bws secret get <id>` writes the value into the file.
+  variable. For the file, take only the value out of the JSON answer:
+  `bws secret get <id> | jq -er .value > secrets/cashpilot_encryption_key`,
+  then the same `sudo chown 1000:1000` and `sudo chmod 400` as above.
 
 ## Undo
 

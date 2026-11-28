@@ -357,8 +357,16 @@ def _stored_ciphertexts(path: Path) -> Iterator[str]:
                 if not (name.endswith(("_enc", "_encrypted")) or (table == "config" and name == "value")):
                     continue
                 col = '"' + name.replace('"', '""') + '"'
-                rows = conn.execute(f"SELECT {col} FROM {quoted} WHERE {col} LIKE 'enc:%'")
-                for (value,) in rows:
+                if table == "config":
+                    # Only secret keys are stored encrypted (set_config); another
+                    # setting may hold "enc:..." text as written.
+                    rows = conn.execute(f"SELECT key, {col} FROM {quoted} WHERE {col} LIKE 'enc:%'")
+                    values = (value for key, value in rows if _is_secret_key(str(key)))
+                else:
+                    values = (
+                        value for (value,) in conn.execute(f"SELECT {col} FROM {quoted} WHERE {col} LIKE 'enc:%'")
+                    )
+                for value in values:
                     if isinstance(value, str):
                         yield value
     finally:
@@ -449,7 +457,7 @@ def encryption_key_status() -> dict[str, Any]:
         copy = "unreadable"
     source = KEY_SOURCE_DATA if _fernet_key_source == KEY_SOURCE_GENERATED else _fernet_key_source
     env_same = source == KEY_SOURCE_DATA and bool(_env_key_bytes) and _env_key_bytes == _fernet_key_bytes
-    file_outside = False
+    file_outside = inside = False
     if source == KEY_SOURCE_FILE:
         path = Path(key_file_env())
         try:
@@ -460,6 +468,8 @@ def encryption_key_status() -> dict[str, Any]:
     return {
         "source": source,
         "file": key_file_env() if source == KEY_SOURCE_FILE else None,
+        # The named key file sits in the data folder, so a copy of it holds the key.
+        "file_inside": inside,
         "data_file": str(_FERNET_KEY_FILE),
         "data_copy": copy,
         "env_same": env_same,

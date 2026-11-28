@@ -211,6 +211,28 @@ class TestTheContainer:
         assert not secret_env.is_shimmed(attrs)
         assert secret_env.volume_of(MagicMock(attrs=attrs)) is None
 
+    def test_a_provision_with_no_answer_is_a_refusal_so_the_deploy_rolls_back_at_once(self, on):
+        """The earner was never started, so there is no start to wait for."""
+        import requests
+
+        from app import orchestrator
+
+        container = MagicMock()
+        container.put_archive.side_effect = requests.exceptions.ReadTimeout("no answer")
+        with pytest.raises(RuntimeError, match="did not take the credentials file") as caught:
+            secret_env.provision(container, _plan())
+        assert not orchestrator._outcome_unknown(caught.value)
+
+    def test_a_removed_copy_takes_its_credentials_volume_even_when_its_data_stays(self, on):
+        from app import proxy_tunnel
+
+        p = _plan()
+        container = MagicMock(attrs={"Mounts": [{"Name": p.volume, "Destination": secret_env.SECRET_DIR}]})
+        proxy_tunnel._remove_quietly(container, volumes=False)
+        container.remove.assert_called_once_with(force=True, v=False)
+        container.client.volumes.get.assert_called_once_with(p.volume)
+        container.client.volumes.get.return_value.remove.assert_called_once_with()
+
     def test_a_volume_in_use_is_left(self):
         client = MagicMock()
         client.volumes.get.return_value.remove.side_effect = RuntimeError("volume is in use")
