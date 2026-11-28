@@ -76,8 +76,8 @@ def test_the_registration_retries_a_failed_request_and_encodes_the_name():
     assert "JSON.stringify({device_id: process.env.UUID, device_name: process.env.device_name})" in script
     assert '-d "$payload"' in script
     success = script.index('echo "Device added successfully!"')
-    check = script.index('[ -n "$response" ] && ! echo "$response" | grep -q')
-    assert script.index("if response=$(curl -sS") < check < success < script.index("touch /app/api.cfg")
+    check = script.index('[ -n "$response" ] && ! echo "$response" | grep -Eq \'"status" *: *"error"\'')
+    assert script.index("if response=$(curl -fsS") < check < success < script.index("touch /app/api.cfg")
 
 
 def test_a_client_that_exits_is_started_again_in_the_same_container():
