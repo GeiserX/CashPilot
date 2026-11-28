@@ -178,6 +178,12 @@ class TestWhatTheInstallerWouldRefuse:
         assert _get([_worker(7, "box")], ui_url="http://192.168.1.5:8080").status_code == 200
         assert _get([_worker(7, "box")], ui_url="https://cashpilot.example.com").status_code == 200
 
+    def test_a_public_http_ui_still_gets_the_commands_for_an_existing_vm(self):
+        # status, verify and remove never use the UI address.
+        resp = _get([_worker(7, "box"), _vm_of("box")], ui_url="http://203.0.113.9:8080")
+        assert resp.status_code == 200, resp.text
+        assert set(resp.json()) == {"status", "verify", "remove"}
+
     @pytest.mark.parametrize("name", ["box$(id)", "b" * 65, "café"])
     def test_a_host_name_the_installer_refuses_gets_no_command(self, name):
         resp = _get([_worker(7, name)])

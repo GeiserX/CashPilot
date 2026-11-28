@@ -45,12 +45,7 @@ def _ui_url(raw: str) -> str:
         or any(c.isspace() for c in raw)
     ):
         raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.bad_ui_url"))
-    url = f"{parts.scheme}://{parts.netloc}"
-    # The guest's worker refuses to send its key over plain http to a public
-    # host, so such an install could never enrol: say so before it starts.
-    if not cleartext.bearer_allowed(url):
-        raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.public_http"))
-    return url
+    return f"{parts.scheme}://{parts.netloc}"
 
 
 def commands(host_name: str, ui_url: str, has_vm: bool) -> dict[str, str]:
@@ -107,4 +102,9 @@ async def api_secure_vm_commands(request: Request, worker_id: int, ui_url: str =
         is_secure_vm(vi) and (h := vm_host(vi, workers)) is not None and h["id"] == host["id"]
         for vi in (placement.system_info(w) for w in workers)
     )
+    # The guest's worker refuses to send its key over plain http to a public
+    # host, so such an install could never enrol: say so before it starts.
+    # status, verify and remove never use the address, so they stay available.
+    if not has_vm and not cleartext.bearer_allowed(url):
+        raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.public_http"))
     return commands(host["name"], url, has_vm)
