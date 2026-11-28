@@ -743,9 +743,12 @@ def write_work(clone: pathlib.Path, w: Work) -> set[pathlib.Path]:
         order = [k for k in source if k in entries] + [k for k in entries if k not in source]
         before = t.path.read_text(encoding="utf-8")
         ic.write_catalog(t.path, {k: entries[k] for k in order}, hashes, ic._leading_comments(t.path))
-        # write_catalog quotes a key that starts with a digit ("2miners-etc..."). en.yml writes every key
-        # bare and every reader loads it, so keep that form: only the translated entries change.
-        bare = set(source) | set(re.findall(r"^([^\s\"#][^\n]*?):$", before, re.M))
+        # write_catalog quotes a key that starts with a digit ("2miners-etc..."). Unquote only a key that
+        # en.yml or this file already writes bare, so every reader still loads it as that string and only
+        # the translated entries change. A key en.yml quotes (one YAML would read as a number) stays quoted.
+        en_text = (clone / s.source).read_text(encoding="utf-8")
+        bare = set(re.findall(r"^([^\s\"'#:][^:\n]*):(?: |$)", en_text, re.M))
+        bare |= set(re.findall(r"^([^\s\"#][^\n]*?):$", before, re.M))
         after = re.sub(
             r'^"([^"\n]+)":$', lambda m: f"{m[1]}:" if m[1] in bare else m[0], t.path.read_text("utf-8"), flags=re.M
         )
