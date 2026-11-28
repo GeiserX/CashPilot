@@ -3221,6 +3221,9 @@ async def lifespan(app: FastAPI):
     # cannot survive a restart. Continuing would encrypt every credential entered
     # during this run under a key that dies with the process.
     database.verify_encryption_key_persisted()
+    # And refuse a key that reads none of the credentials already stored: a
+    # restore without its key, or a secret file holding another install's key.
+    database.verify_encryption_key_matches()
     # A sign-in CAPTCHA the operator asked for but that cannot work refuses the
     # start the same way, rather than running with sign-in unprotected.
     captcha.check_startup()
@@ -14953,6 +14956,7 @@ async def _restore_upload(
 # ---------------------------------------------------------------------------
 from app.routers import activity as activity_router  # noqa: E402
 from app.routers import auth as auth_router  # noqa: E402
+from app.routers import credential_storage as credential_storage_router  # noqa: E402
 from app.routers import importers as importers_router  # noqa: E402
 from app.routers import obligations as obligations_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
@@ -14964,6 +14968,7 @@ app.include_router(pages_router.router)
 app.include_router(users_router.router)
 app.include_router(importers_router.router)
 app.include_router(obligations_router.router)
+app.include_router(credential_storage_router.router)
 # The router may not import main (tests/test_login_rate_limit.py), so main
 # hands in the evaluation, which reads main's worker and alert state. Looked
 # up at call time, so a test that patches app.main._evaluate_obligations lands.

@@ -60,6 +60,7 @@ from app import (
     payout_read,
     proxy_tunnel,
     route_gate,
+    secret_env,
     socket_policy,
     state_backup,
     step_up,
@@ -958,6 +959,10 @@ async def _send_heartbeat() -> None:
         payload["system_info"]["features"].append(layers.FEATURE)
         # Runs the gVisor self-test (POST /api/layers/gvisor-check).
         payload["system_info"]["features"].append("gvisor_check")
+        # CASHPILOT_EARNER_SECRETS: "file" keeps earner credentials out of
+        # Docker's container config (app/secret_env.py); each container's shape
+        # says whether it got that.
+        payload["system_info"]["earner_secrets"] = secret_env.mode() if secret_env.shim_available() else "unavailable"
         payload["system_info"]["gpu_grants"] = {
             service["slug"]: grant
             for service in (_catalog_get_services() if _catalog_get_services else [])

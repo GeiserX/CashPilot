@@ -65,7 +65,7 @@ from urllib.parse import quote, unquote
 from docker.errors import APIError, DockerException, NotFound
 from docker.types import Mount
 
-from app import egress, gpu, lan_fence, orchestrator, route_gate, version
+from app import egress, gpu, lan_fence, orchestrator, route_gate, secret_env, version
 from app.constants import (
     CONTAINER_PREFIX,
     DEPLOY_DEADLINE_SECONDS,
@@ -790,8 +790,12 @@ def _remove_quietly(container: Any, stop_timeout: int = SIDECAR_STOP_SECONDS, *,
     # A failed stop is no reason to keep the container; the removal is what matters.
     with contextlib.suppress(Exception):
         container.stop(timeout=stop_timeout)
+    secrets_volume = secret_env.volume_of(container) if volumes else None
     with contextlib.suppress(NotFound):
         container.remove(force=True, v=volumes)
+    # A proxied copy's credentials volume (app/secret_env.py) is a named one, which v leaves.
+    if secrets_volume:
+        secret_env.remove_volume(container.client, secrets_volume)
 
 
 def _get(client: Any, name: str) -> Any | None:

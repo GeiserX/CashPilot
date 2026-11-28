@@ -51,7 +51,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-from app import gpu, layers, route_gate, socket_policy, version  # noqa: E402
+from app import gpu, layers, route_gate, secret_env, socket_policy, version  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
@@ -569,6 +569,12 @@ def _shape(container: Any) -> dict[str, Any]:
     devices = host.get("Devices") if isinstance(host.get("Devices"), list) else []
     mounts = attrs.get("Mounts") if isinstance(attrs.get("Mounts"), list) else []
     entrypoint = config.get("Entrypoint")
+    env_keys = {str(item).split("=", 1)[0] for item in config.get("Env") or []}
+    secrets_file = secret_env.is_shimmed(attrs)
+    if secrets_file:
+        # Its own entrypoint and the variables kept in its file, not the shim's.
+        entrypoint, in_file = secret_env.logical_view(attrs)
+        env_keys |= set(in_file)
     return {
         "image": str(config.get("Image") or ""),
         "cap_add": sorted({str(cap).upper().removeprefix("CAP_") for cap in host.get("CapAdd") or []}),
@@ -579,8 +585,10 @@ def _shape(container: Any) -> dict[str, Any]:
         ),
         "ports": sorted(str(key) for key in (host.get("PortBindings") or {})),
         "mounts": sorted({str(m.get("Destination") or "").rstrip("/") for m in mounts if isinstance(m, dict)} - {""}),
-        "env_keys": sorted({str(item).split("=", 1)[0] for item in config.get("Env") or []}),
+        "env_keys": sorted(env_keys),
         "entrypoint": [str(part) for part in entrypoint] if isinstance(entrypoint, list) else None,
+        # Its credentials are in a file, not in Docker's config (app/secret_env.py).
+        "secrets_file": secrets_file,
         "restart_policy": str((host.get("RestartPolicy") or {}).get("Name") or "no"),
         # The drivers of its GPU device requests (the GPU grant, app/gpu.py).
         "gpu": sorted(
@@ -1587,6 +1595,14 @@ def deploy_raw(
     # This line makes `docker logs cashpilot-worker` state what THIS worker
     # applied, so an operator comparing against the catalog can see the gap.
     logger.info("Creating container %s from %s (resources: %s)", name, image, resource_kwargs or "docker defaults")
+    # CASHPILOT_EARNER_SECRETS=file: the secret variables go into a file in the
+    # earner's own volume instead of its config (app/secret_env.py).
+    secrets_plan = secret_env.plan(
+        slug, get_service(slug) if get_service else None, env, command, entrypoint, image_config
+    )
+    if secrets_plan is not None:
+        env = secrets_plan.env
+        all_labels.update(secrets_plan.labels())
     # A fence-gated container is created, then started only once the fence is
     # confirmed again: containers.run would start it in the same call.
     run_kwargs: dict[str, Any] = dict(
@@ -1627,8 +1643,8 @@ def deploy_raw(
         init=not _brings_own_init(image_config, entrypoint, command),
         # From the worker's own catalog (see _get_entrypoint), like the stop
         # timeout below: neither is something the deploy request can set.
-        entrypoint=entrypoint,
-        command=command if command else None,
+        entrypoint=secrets_plan.entrypoint if secrets_plan else entrypoint,
+        command=secrets_plan.command if secrets_plan else (command if command else None),
         # The container keeps the catalog's grace for every stop, not only the
         # ones this worker sends with an explicit timeout.
         stop_timeout=_get_stop_timeout(slug),
@@ -1647,6 +1663,8 @@ def deploy_raw(
         runtime=runtime or None,
         **resource_kwargs,
     )
+    if secrets_plan is not None:
+        run_kwargs["mounts"] = [secret_env.mount(secrets_plan)]
     created = None
     created_id: str | None = None
     began = time.monotonic()
@@ -1654,6 +1672,8 @@ def deploy_raw(
         # Again here: the volumes and the old container's stop come after the
         # check above, and can take long. Past it, the old one is put back.
         _refuse_past(deadline, image)
+        if secrets_plan is not None:
+            secret_env.create_volume(client, secrets_plan, name)
         try:
             if on_created is not None:
                 # The ID from Docker's create answer, before the SDK's follow-up
@@ -1664,10 +1684,13 @@ def deploy_raw(
             else:
                 container = (
                     client.containers.create(**run_kwargs)
-                    if gated or not start
+                    if gated or not start or secrets_plan is not None
                     else client.containers.run(detach=True, **run_kwargs)
                 )
             created = container
+            if secrets_plan is not None:
+                # Between create and start: the earner never runs without its file.
+                secret_env.provision(container, secrets_plan)
             if not start:
                 # Restore: the caller writes the data, checks it, then starts it.
                 logger.info("Container %s created, not started: %s", name, container.short_id)
@@ -1677,7 +1700,7 @@ def deploy_raw(
                 # Left created, not started, when the fence is not confirmed: the guard
                 # starts it as soon as it is, and nothing runs before that.
                 _require_fence(slug)
-            if gated or on_created is not None:
+            if gated or on_created is not None or secrets_plan is not None:
                 container.start()
         except ContainerNetworkError:
             raise
@@ -1722,6 +1745,9 @@ def deploy_raw(
             gated=gated,
             joined=joined,
         )
+        if secrets_plan is not None:
+            # The refused container is gone (_roll_back), so its credentials go too.
+            secret_env.remove_volume(client, secrets_plan.volume)
         if conflict and (current := deploy_target(client, name)) is not None and current.id != expected_container:
             raise DeployTargetChanged(current.id) from None
         raise _deploy_failure(exc, restored, slug) from exc
@@ -2721,10 +2747,12 @@ def _remove_container(container: Any, slug: str) -> None:
     so the data path (cashpilot-custom-<name>-data) stays. A catalog service is
     removed exactly as before: its data is never touched here.
     """
+    volume = secret_env.volume_of(container)
     if slug.startswith("custom-"):
         container.remove(force=True, v=True)
     else:
         container.remove(force=True)
+    secret_env.remove_volume(getattr(container, "client", None) or _get_client(), volume)
 
 
 def _norm_mount(path: str) -> str:
@@ -3716,7 +3744,9 @@ def _restore_cleanup(
     # The helper first (made last): it holds the volumes too.
     for container in reversed(containers):
         try:
+            secrets_volume = secret_env.volume_of(container)
             container.remove(force=True)
+            secret_env.remove_volume(getattr(container, "client", None) or _get_client(), secrets_volume)
         except NotFound:
             pass
         except Exception as exc:  # noqa: BLE001 - keep going: the volumes must be read too
@@ -4182,7 +4212,10 @@ def remove_extra_instances(slug: str) -> list[str]:
         if _instance_of(extra) > 1:
             # Not _remove_container: this is whole-service removal, where the
             # operator decides about data, and the first copy keeps its volumes.
+            # Its credentials volume is no data: it goes with it.
+            volume = secret_env.volume_of(extra)
             extra.remove(force=True)
+            secret_env.remove_volume(getattr(extra, "client", None) or _get_client(), volume)
             logger.info("Removed container %s", extra.name)
             removed.append(extra.name)
     return removed
@@ -4440,8 +4473,11 @@ def _remove_service(
             503,
         )
     if container is not None:
+        secrets_volume = secret_env.volume_of(container)
         container.remove(force=True)
         logger.info("Removed container %s", name)
+        # Its credentials file is no data the owner chooses to keep.
+        secret_env.remove_volume(getattr(container, "client", None) or _get_client(), secrets_volume)
     # A restore that died midway left its helper, which mounts the volume, so
     # the volume could not go and the next restore would refuse it. Only here
     # with delete_volumes: without it the refusal above stopped first.
