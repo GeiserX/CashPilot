@@ -1847,6 +1847,32 @@ class TestTheProbeNeverRunsPastTheWorkersWait:
         assert '"ip":"203.0.113.7"' in proc.stdout
         assert int(clock.read_text()) < proxy_tunnel.READY_TIMEOUT
 
+    @pytest.mark.parametrize("answer", ["e", "deadbeef", "1.2.3", "1.2.3.4.5", "256.1.1.1", "1..2.3", "1234.1.1.1"])
+    def test_an_answer_that_is_no_address_gives_the_next_endpoint_its_turn(self, tmp_path, answer):
+        """An error page cut down to its hex letters is no exit: the probe never prints it as one."""
+        import subprocess
+
+        bin_dir, clock = _stub_clock_bin(
+            tmp_path,
+            f"*https://api.ipify.org*) echo {answer}; exit 0 ;;\n"
+            "*https://ifconfig.me/ip*) echo 203.0.113.7; exit 0 ;;\n",
+        )
+        clock.write_text("46")
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CP_DEADLINE": "40"}
+        proc = subprocess.run(["sh", str(bin_dir / "cp-probe")], env=env, capture_output=True, text=True, timeout=30)
+        assert proc.returncode == 0, proc.stderr
+        assert '"ip":"203.0.113.7"' in proc.stdout
+
+    @pytest.mark.parametrize("answer", ["203.0.113.7", "0.0.0.0", "2001:db8::7"])
+    def test_an_address_is_the_answer(self, tmp_path, answer):
+        import subprocess
+
+        bin_dir, clock = _stub_clock_bin(tmp_path, f"*https://api.ipify.org*) echo {answer}; exit 0 ;;\n")
+        clock.write_text("46")
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CP_DEADLINE": "40"}
+        proc = subprocess.run(["sh", str(bin_dir / "cp-probe")], env=env, capture_output=True, text=True, timeout=30)
+        assert f'"ip":"{answer}"' in proc.stdout
+
     def test_control_after_the_wait_the_country_gets_its_full_time(self, tmp_path):
         """Nobody waits any more: the country lookup gets its 8 s and labels the answer."""
         import subprocess

@@ -18,10 +18,32 @@ cap() {
     elif [ "$left" -lt 1 ]; then echo 1; else echo "$left"; fi
 }
 
+# An address, or nothing: an error page cut down to its hex letters ("e") is
+# no exit, and the next endpoint gets its turn.
+is_ip() {
+    case "$1" in
+    *:*:*) case "$1" in *[!0-9a-fA-F:]*) return 1 ;; esac ;;
+    *.*.*.*)
+        case "$1" in *[!0-9.]* | *..* | .* | *.) return 1 ;; esac
+        old_ifs=$IFS
+        IFS=.
+        # shellcheck disable=SC2086 # split on the dots
+        set -- $1
+        IFS=$old_ifs
+        [ "$#" -eq 4 ] || return 1
+        for octet in "$@"; do
+            [ "${#octet}" -le 3 ] && [ "$octet" -le 255 ] || return 1
+        done
+        ;;
+    *) return 1 ;;
+    esac
+}
+
 ip=""
 for url in https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com; do
     ip=$(curl -fsS --max-time "$(cap 8)" "$url" 2>/dev/null | tr -cd '0-9a-fA-F.:' | cut -c1-45)
-    [ -n "$ip" ] && break
+    is_ip "$ip" && break
+    ip=""
 done
 [ -n "$ip" ] || exit 1
 
