@@ -107,8 +107,10 @@ def _check_text(name: str, content: str) -> str:
     # Before the line cap: the token is one line, and a filled-in config passes 8 KiB.
     if content.lstrip().startswith(_M4B_ENCRYPTED_PREFIX):
         raise ImportRefused(
-            f"{name} is an encrypted money4band 5.0 file. Run `m4b config edit`, "
-            "copy the decrypted JSON it opens, and paste it here."
+            f"{name} is an encrypted money4band 5.0 file. In your money4band folder, run "
+            "`./Money4Band-<os>-<arch> config edit` for the release binary, or "
+            "`python main.py config edit` from source. Copy the decrypted JSON it opens, "
+            "and paste it here."
         )
     lines = content.splitlines()
     if len(lines) > MAX_LINES:
