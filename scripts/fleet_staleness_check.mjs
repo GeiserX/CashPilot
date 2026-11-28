@@ -541,6 +541,32 @@ check('viewers cannot save power settings', !viewerPower.button() || viewerPower
 await viewerPower.save();
 check('viewer clicks cannot post settings', viewerPower.posts.length === 0, JSON.stringify(viewerPower.posts));
 
+// The Security layers row: an offline worker's last report is stale, so its
+// chips must not say "on" in green, and a choice whose redeploy failed must
+// stay one click away.
+const buildLayers = new Function(
+  'esc', 'CP', '_layers', '_isOwner',
+  ['const _layerBusy = {}; const _gvisorCheck = {}; const _layersOpen = new Set();',
+    extract('layerChip'), extract('runtimeLabel'), extract('renderCheck'), extract('commandBox'), extract('renderLayers'),
+    'return renderLayers;'].join('\n'),
+);
+const layersView = {workers: {'7': {
+  gvisor: {state: 'installed', why: ''}, kvm: true, default: null, default_locked: null, can_check: false, check: null,
+  earners: [{slug: 'honeygain', service: 'Honeygain', fence: true, runtime: 'runc', choice: 'gvisor', status: 'running', locked: null}],
+}}, commands: {install: 'i', undo: 'u', status: 's'}};
+const renderLayers = buildLayers(esc, CP, layersView, true);
+const layerInfo = {docker_access: 'proxy', isolation: {mode: 'on', fence: {state: 'applied'}}};
+const onlineLayers = renderLayers({id: 7}, layerInfo, true);
+const offlineLayers = renderLayers({id: 7}, layerInfo, false);
+check('an online worker shows the proxy and the fence on', onlineLayers.includes('flag-ok">Socket proxy: on')
+  && onlineLayers.includes('flag-ok">LAN fence: on'), onlineLayers);
+check('an offline worker shows its stale proxy, fence and gVisor as unknown, never ok',
+  !offlineLayers.includes('flag-ok') && offlineLayers.includes('Socket proxy: unknown')
+  && offlineLayers.includes('LAN fence: unknown'), offlineLayers);
+check('a saved choice still on the old runtime offers it again',
+  onlineLayers.includes('data-choice="gvisor"') && onlineLayers.includes('Run under gVisor again')
+  && onlineLayers.includes('data-choice="runc"'), onlineLayers);
+
 if (failures.length) {
   console.error('fleet staleness check FAILED:');
   for (const f of failures) console.error(`  - ${f}`);

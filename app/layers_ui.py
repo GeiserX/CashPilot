@@ -84,14 +84,27 @@ def kind(runtime: str | None, report: dict[str, Any] | None) -> str | None:
     return GVISOR if runtime.startswith("runsc") else RUNC
 
 
-def gvisor_ready(report: dict[str, Any] | None) -> bool:
-    """Whether the worker has the --network=host gVisor runtime an earner would get."""
+def gvisor_ready(report: dict[str, Any] | None, net_raw: bool = False) -> bool:
+    """Whether the worker has the --network=host gVisor runtime an earner would get.
+
+    ``net_raw``: the earner declares NET_RAW (Bitping), so it needs the variant
+    registered with --net-raw too, as layers.pick on the worker does.
+    """
     runtimes = (report or {}).get("runtimes") or []
     allowed = (report or {}).get("proxy_runtimes")
     return any(
-        isinstance(f, dict) and f.get("gvisor") and f.get("hostnet") and (allowed is None or f.get("name") in allowed)
+        isinstance(f, dict)
+        and f.get("gvisor")
+        and f.get("hostnet")
+        and (f.get("net_raw") or not net_raw)
+        and (allowed is None or f.get("name") in allowed)
         for f in runtimes
     )
+
+
+def _needs_net_raw(slug: str) -> bool:
+    caps = ((catalog.get_service(slug) or {}).get("docker") or {}).get("cap_add") or []
+    return any(str(c).upper().removeprefix("CAP_") == "NET_RAW" for c in caps)
 
 
 def gvisor_state(info: dict[str, Any]) -> dict[str, Any]:
@@ -159,6 +172,10 @@ def locked(slug: str, info: dict[str, Any], choice: str) -> str | None:
         return state["why"]
     if choice == GVISOR and state["state"] != "installed":
         return i18n.t("layers.why.install_first")
+    report = info.get("layers") if isinstance(info.get("layers"), dict) else None
+    if choice == GVISOR and slug and _needs_net_raw(slug) and not gvisor_ready(report, net_raw=True):
+        name = (catalog.get_service(slug) or {}).get("name") or slug
+        return i18n.t("layers.why.net_raw_missing", service=name)
     return None
 
 
@@ -287,6 +304,9 @@ async def set_default(worker: dict[str, Any], choice: str | None) -> dict[str, A
         report = info.get("layers") if isinstance(info.get("layers"), dict) else None
         for c in _containers(worker):
             slug = str(c.get("slug") or "")
+            # Only CashPilot's own earners: an external container is not deployed from here.
+            if c.get("deployed_by") == "external":
+                continue
             if slug and slug not in stored["earners"] and (now := kind(c.get("runtime"), report)):
                 stored["earners"][slug] = now
         stored["default"] = choice

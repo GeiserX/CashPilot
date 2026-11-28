@@ -829,14 +829,15 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const view = _layers && _layers.workers ? _layers.workers[String(w.id)] : null;
     if (!view) return '';
     const iso = sysInfo.isolation || {};
-    const proxy = sysInfo.docker_access === 'proxy' ? true : sysInfo.docker_access === 'socket' ? false : null;
+    // An offline worker's last report is stale: its chips say unknown, never on.
+    const proxy = !isOnline ? null : sysInfo.docker_access === 'proxy' ? true : sysInfo.docker_access === 'socket' ? false : null;
     // On only once the worker applied the filter; before its first apply it cannot say.
     const fenceState = (iso.fence || {}).state;
-    const fenceOn = iso.mode === 'on'
+    const fenceOn = !isOnline ? null : iso.mode === 'on'
       ? (fenceState === 'applied' ? true : !fenceState || fenceState === 'n/a' ? null : false)
       : iso.mode ? false : null;
     const g = view.gvisor || {};
-    const gState = g.state === 'installed' ? true : g.state === 'missing' ? false : null;
+    const gState = !isOnline ? null : g.state === 'installed' ? true : g.state === 'missing' ? false : null;
     const gText = g.state === 'installed' ? t('layers.gvisor.installed') : g.state === 'missing' ? t('layers.gvisor.missing')
       : g.state === 'unsupported' ? t('layers.gvisor.unsupported') : t('layers.unknown');
     // A worker inside a Secure VM shows the VM's fence; any other shows whether its host has KVM.
@@ -867,8 +868,11 @@ CASHPILOT_WORKER_NAME=server-name</code>
         : '';
       const pending = e.choice && e.runtime && e.choice !== e.runtime
         ? ` <span class="text-warn">${esc(t('layers.earner.pending', { runtime: runtimeLabel(e.choice) }))}</span>` : '';
+      // A redeploy that failed leaves the choice saved and the old runtime running: offer it again.
+      const retry = owner && pending && !e.locked
+        ? ` <button class="btn btn-ghost btn-sm btn-layer-runtime" data-worker-id="${w.id}" data-slug="${esc(e.slug)}" data-service="${esc(e.service)}" data-choice="${esc(e.choice)}" data-running="${e.status === 'running' || e.status === 'restarting' ? 1 : 0}"${working ? ' disabled' : ''}>${esc(t('layers.earner.retry', { runtime: runtimeLabel(e.choice) }))}</button>` : '';
       const inVm = vm ? ` · ${esc(e.vm === true ? t('layers.earner.vm_ok') : e.vm === false ? t('layers.earner.vm_failed') : t('layers.earner.vm_unknown'))}` : '';
-      return `<li><strong>${esc(e.service)}</strong>: ${esc(fence)} · ${esc(runtimeLabel(e.runtime))}${inVm}${pending} ${button}${e.locked ? ` <span class="muted">${esc(e.locked)}</span>` : ''}</li>`;
+      return `<li><strong>${esc(e.service)}</strong>: ${esc(fence)} · ${esc(runtimeLabel(e.runtime))}${inVm}${pending}${retry} ${button}${e.locked ? ` <span class="muted">${esc(e.locked)}</span>` : ''}</li>`;
     }).join('');
     let body = '';
     if (earners) body += `<ul class="layer-earners">${earners}</ul>`;
