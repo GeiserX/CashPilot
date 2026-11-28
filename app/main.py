@@ -8238,31 +8238,34 @@ async def _confirm_deploy_targets(worker_id: int, slug: str, keys: list[str]) ->
         await _ask_deploy_confirmation(worker_id, slug, targets, old=old)
 
 
-async def _runtime_choice_for(worker_id: int, slug: str) -> str | None:
+async def _runtime_choice_for(worker_id: int, slug: str, *, routed: bool = False) -> str | None:
     """The runtime choice a deploy of ``slug`` sends to this worker, or None for Docker's default.
 
     Refused when a choice is stored but the worker cannot take it: deploying
     under Docker's default instead would show the owner a layer the earner
-    does not have.
+    does not have. A copy routed through a proxy takes no choice (the worker
+    runs it under Docker's default), so an earner set to gVisor is refused there.
     """
     worker = await database.get_worker(worker_id) or {}
     info = placement.system_info(worker)
     if placement.is_desktop(info) or placement.is_android(info):
         return None
+    if routed:
+        if (await layers_ui.choices(worker))["earners"].get(slug) == layers_ui.GVISOR:
+            raise HTTPException(
+                status_code=409, detail=t("api.runtime_choice_routed", worker=worker.get("name") or f"#{worker_id}")
+            )
+        return None
     choice = await layers_ui.for_new_deploy(worker, slug)
     if choice and layers_ui.FEATURE not in (info.get("features") or []):
         raise HTTPException(
             status_code=409,
-            detail=f"This earner is set to run under {choice} on {worker.get('name') or 'this worker'}, "
-            "and the worker is too old to take a runtime choice. Update the worker, or set the earner "
-            "back to Standard on the Fleet page. Nothing was deployed.",
+            detail=t("api.runtime_choice_worker_too_old", runtime=choice, worker=worker.get("name") or f"#{worker_id}"),
         )
     if choice == layers_ui.GVISOR and (why := layers_ui.locked(slug, info, choice)):
         raise HTTPException(
             status_code=409,
-            detail=f"This earner is set to run under gVisor on {worker.get('name') or 'this worker'}, "
-            f"and it cannot: {why} Set it back to Standard on the Fleet page, or fix that first. "
-            "Nothing was deployed.",
+            detail=t("api.runtime_choice_cannot", worker=worker.get("name") or f"#{worker_id}", why=why),
         )
     return choice
 
@@ -8285,7 +8288,9 @@ async def _send_worker_deploy(
     body = {**spec, "expected_container": expected}
     body.pop("replace_existing", None)
     # The owner's runtime choice for this earner on this worker (app/layers_ui.py).
-    if proxy_id is None and "runtime_choice" not in body and (choice := await _runtime_choice_for(worker_id, slug)):
+    if proxy_id is not None:
+        await _runtime_choice_for(worker_id, slug, routed=True)
+    elif "runtime_choice" not in body and (choice := await _runtime_choice_for(worker_id, slug)):
         body["runtime_choice"] = choice
 
     async def send(*, checked: bool) -> dict[str, Any]:

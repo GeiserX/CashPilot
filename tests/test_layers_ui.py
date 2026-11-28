@@ -370,6 +370,30 @@ class TestTheDeploySendsTheChoice:
         assert err.value.status_code == 409
         assert "Nothing was deployed" in err.value.detail
 
+    def test_a_routed_copy_of_an_earner_set_to_gvisor_is_refused_before_the_worker_is_asked(self):
+        w = _worker(_layers())
+        stored = {"default": None, "earners": {"honeygain": "gvisor"}}
+        call = AsyncMock(return_value={"status": "deployed"})
+        with (
+            patch.object(database, "get_worker", AsyncMock(return_value=w)),
+            patch.object(layers_ui, "choices", AsyncMock(return_value=stored)),
+            patch.object(main, "_proxy_worker_call", call),
+            pytest.raises(HTTPException) as err,
+        ):
+            _run(main._send_worker_deploy(7, "honeygain", {"earner": {}}, proxy_id=3, definition={}))
+        assert err.value.status_code == 409 and "Nothing was deployed" in err.value.detail
+        call.assert_not_called()
+
+    @pytest.mark.parametrize("stored", [{"honeygain": "runc"}, {}])
+    def test_a_routed_copy_without_a_gvisor_choice_takes_no_choice(self, stored):
+        # A gVisor default alone does not block a route: it covers direct deploys.
+        w = _worker(_layers())
+        with (
+            patch.object(database, "get_worker", AsyncMock(return_value=w)),
+            patch.object(layers_ui, "choices", AsyncMock(return_value={"default": "gvisor", "earners": stored})),
+        ):
+            assert _run(main._runtime_choice_for(7, "honeygain", routed=True)) is None
+
     def test_a_stored_runc_choice_without_gvisor_still_deploys(self):
         w = _worker(_layers(runtimes=["runc"]))
         with (
@@ -399,7 +423,8 @@ class TestTheDeploySendsTheChoice:
             patch.object(main, "_proxy_worker_call", AsyncMock(return_value={"container_id": "abc123"})) as call,
         ):
             _run(main._send_worker_deploy(7, "honeygain", {"image": "honeygain/honeygain"}, proxy_id=3))
-        choice.assert_not_called()
+        # Asked only whether the copy may be routed; whatever it answers is never sent.
+        choice.assert_awaited_once_with(7, "honeygain", routed=True)
         assert "runtime_choice" not in call.call_args.kwargs["json"]
 
     def test_a_restore_keeps_the_runtime_choice(self):
