@@ -492,5 +492,7 @@ def test_a_key_file_inside_the_data_folder_is_not_outside_it(tmp_path: Path):
     with pytest.raises(ValueError):
         db.remove_data_folder_key()
     assert (tmp_path / ".fernet_key").exists()
-    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY_FILE": str(_secret(tmp_path, key, "in-data"))})
+    db = _reload(
+        {"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY_FILE": str(_secret(tmp_path, key, "in-data"))}
+    )
     assert not db.encryption_key_status()["outside"]
