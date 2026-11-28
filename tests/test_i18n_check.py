@@ -992,6 +992,14 @@ def test_each_select_needs_its_own_other_branch(tmp_path):
     assert run(en, es)[0] == 0
 
 
+@pytest.mark.parametrize("kind", ["select", "plural"])
+def test_a_keyword_given_twice_in_one_select_or_plural_fails(tmp_path, kind):
+    en = write(tmp_path / "en.json", json.dumps({"k": f"{{g, {kind}, one {{{{p}}}} other {{{{q}}}}}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"k": f"{{g, {kind}, one {{{{q}}}} one {{{{p}}}} other {{{{q}}}}}}"}))
+    code, out = run(en, es)
+    assert code == 1 and "malformed braces" in out
+
+
 def test_plural_forms_join_what_they_render_for_each_select_keyword():
     # A language may drop the "one" form and say {p} in "other" instead.
     en = {"k": {"one": "{p}", "other": "{g, select, x {{q}} other {{q}}}"}}

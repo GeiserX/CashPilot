@@ -780,6 +780,9 @@ def _icu_argument(s: str, i: int, out: set, depth: int, pick: dict | None = None
                 continue
             if s[j : j + 1] != "{":
                 raise IcuError(f"{kind} option {o.group(1)!r} needs a {{message}}")
+            if o.group(1) in keys:
+                # ICU refuses it, and only one of the two branches would ever render.
+                raise IcuError(f"{kind} {name!r} repeats the keyword {o.group(1)!r}")
             keys.append(o.group(1))
             if kind == "select":
                 inner: set = set()
