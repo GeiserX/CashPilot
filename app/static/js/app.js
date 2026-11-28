@@ -6557,18 +6557,21 @@ const CP = (() => {
     }
     // else: no rate, so the value stays in USD and says so.
 
-    const fractionDigits = digits === 'whole'
-      ? (Number.isInteger(Math.round(displayAmount * 100) / 100) ? 0 : 2)
-      : (digits ?? 2);
+    // 'whole' writes two decimals and drops them only when the formatter's own
+    // rounding leaves both zero: 1.005 is "1.01", 4.999 is "5".
+    const whole = digits === 'whole';
+    const fractionDigits = whole ? 2 : (digits ?? 2);
     try {
       return new Intl.NumberFormat(undefined, {
         style: 'currency',
         currency,
         minimumFractionDigits: fractionDigits,
         maximumFractionDigits: fractionDigits,
+        ...(whole ? { trailingZeroDisplay: 'stripIfInteger' } : {}),
       }).format(displayAmount);
     } catch {
-      return displayAmount.toFixed(fractionDigits) + ' ' + currency;
+      const text = displayAmount.toFixed(fractionDigits);
+      return (whole ? text.replace(/\.00$/, '') : text) + ' ' + currency;
     }
   }
 
