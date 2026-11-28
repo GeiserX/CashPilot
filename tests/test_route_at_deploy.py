@@ -467,8 +467,8 @@ class TestTheWorkerProxiedRoutes:
         body = {"earner": BODY, "proxy": PROXY, "routed": routed, **extra}
         return worker("POST", "/api/proxied/honeygain/3/deploy", body), seen
 
-    def _routed_wallet(self, worker, monkeypatch, image, **extra):
-        """A routed ProxyBase (a wallet on its volume), with ``image``, through the real critical-spec check."""
+    def _routed_wallet(self, worker, monkeypatch, image, *, routed=True, **extra):
+        """A routed ProxyBase (a wallet on its volume), or a copy of it, with ``image``, through the real check."""
         seen = {}
 
         def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
@@ -480,12 +480,16 @@ class TestTheWorkerProxiedRoutes:
         monkeypatch.setattr(proxy_tunnel, "_deploy", deploy)
         docker_conf = catalog.get_service("proxybase-xyz")["docker"]
         earner = {"image": image, "command": docker_conf.get("command"), "env": {}, **extra}
-        resp = worker("POST", "/api/proxied/proxybase-xyz/3/deploy", {"earner": earner, "proxy": PROXY, "routed": True})
+        body = {"earner": earner, "proxy": PROXY, "routed": routed}
+        resp = worker("POST", "/api/proxied/proxybase-xyz/3/deploy", body)
         return resp, seen, earner
 
-    def test_a_routed_wallet_service_on_another_image_needs_the_owners_approval(self, worker, monkeypatch):
-        """As a direct deploy (_validate_critical_spec): its container can read or replace the wallet."""
-        resp, seen, _ = self._routed_wallet(worker, monkeypatch, "attacker/proxybase:1")
+    @pytest.mark.parametrize("routed", [True, False])
+    def test_a_routed_wallet_service_on_another_image_needs_the_owners_approval(self, worker, monkeypatch, routed):
+        """As a direct deploy (_validate_critical_spec): its container can read or replace the wallet.
+
+        A copy too: its own volume holds the copy's wallet once it has run."""
+        resp, seen, _ = self._routed_wallet(worker, monkeypatch, "attacker/proxybase:1", routed=routed)
         assert resp.status_code == 403 and _detail(resp)["error"] == "step_up_required", resp.text
         assert seen == {} and route_gate.routed() == {}
 
@@ -497,9 +501,10 @@ class TestTheWorkerProxiedRoutes:
         assert resp.status_code == 200, resp.text
         assert seen == {"image": "custom/proxybase:1"}
 
-    def test_a_routed_wallet_service_on_the_catalogs_image_needs_no_approval(self, worker, monkeypatch):
+    @pytest.mark.parametrize("routed", [True, False])
+    def test_a_routed_wallet_service_on_the_catalogs_image_needs_no_approval(self, worker, monkeypatch, routed):
         image = catalog.get_service("proxybase-xyz")["docker"]["image"]
-        resp, seen, _ = self._routed_wallet(worker, monkeypatch, image)
+        resp, seen, _ = self._routed_wallet(worker, monkeypatch, image, routed=routed)
         assert resp.status_code == 200, resp.text
         assert seen == {"image": image}
 

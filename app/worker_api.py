@@ -2655,11 +2655,11 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
 
 async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec, deadline: float) -> dict[str, Any]:
     await asyncio.to_thread(_validate_proxied, slug, spec, proxy_id)
-    if spec.routed:
-        # The service itself, on its own volumes: a wallet or node identity runs
-        # as the catalog says or with the owner's approval, as on the direct path.
-        # Last of the checks: it spends the approval.
-        await asyncio.to_thread(_validate_critical_spec, spec.earner, slug)
+    # A wallet or node identity runs as the catalog says or with the owner's
+    # approval, as on the direct path: the routed service on its own volumes, and
+    # a copy on its own, which holds the copy's wallet once it has run. Last of
+    # the checks: it spends the approval.
+    await asyncio.to_thread(_validate_critical_spec, spec.earner, slug)
     own_ip = await _own_egress_ip()
     earner = {
         "image": spec.earner.image,
