@@ -434,7 +434,7 @@ earnfm.payment.frequency:
   text: "Na żądanie"
   source: "be820103712e"
 earnfm.cashout.notes:
-  text: "Minimum $15. Metody: USDT w sieci BEP20 lub Polygon (opłata $1) albo TRC20 (opłata $3), PayPal, karty podarunkowe Amazon lub Starbucks od $15 albo przelew bankowy od $1,000 z potrąceniem opłat za przelew. Przed pierwszą wypłatą wypełniasz profil rozliczeniowy (imię i nazwisko oraz adres), używany na potwierdzeniach wypłat."
+  text: "Minimum $15. Metody: USDT w sieci BEP20 lub Polygon (opłata $1) albo TRC20 (opłata $3), PayPal, karty podarunkowe Amazon lub Starbucks od $15 albo przelew bankowy od $1000 z potrąceniem opłat za przelew. Przed pierwszą wypłatą wypełniasz profil rozliczeniowy (imię i nazwisko oraz adres), używany na potwierdzeniach wypłat."
   source: "3df5624c8702"
 earnfm.payout.notes:
   text: "Saldo przechowuje Earn.fm; wypłacane na żądanie."
@@ -449,7 +449,7 @@ earnfm.referral.bonus.referee:
   text: "$5 salda na start"
   source: "fb8d2b82e1e7"
 earnfm.rating.cons.0.text:
-  text: "Minimum $15, opłata od $1 do $3 przy USDT, a przelew bankowy dopiero od $1,000."
+  text: "Minimum $15, opłata od $1 do $3 przy USDT, a przelew bankowy dopiero od $1000."
   source: "1e1a5493f40f"
 earnfm.rating.cons.1.text:
   text: "Przed pierwszą wypłatą wypełniasz profil rozliczeniowy z imieniem i nazwiskiem oraz adresem."
@@ -491,13 +491,13 @@ ebesucher.rating.pros.2.text:
   text: "Nota prawna (Impressum) podaje operatora, TurboAd GmbH, zarejestrowanego w Berlin-Charlottenburg (HRB 160730 B)."
   source: "84cbddd4330b"
 flux.description:
-  text: "Flux to globalnie rozproszona infrastruktura obliczeniowa. Operatorzy węzłów stakują tokeny FLUX i udostępniają zasoby serwerowe. Trzy poziomy: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Dostępne oficjalne obrazy Docker.\n"
+  text: "Flux to globalnie rozproszona infrastruktura obliczeniowa. Operatorzy węzłów stakują tokeny FLUX i udostępniają zasoby serwerowe. Trzy poziomy: Cumulus (1000 FLUX), Nimbus (12 500 FLUX), Stratus (40 000 FLUX). Dostępne oficjalne obrazy Docker.\n"
   source: "02dfc13a22fc"
 flux.short_description:
   text: "Zdecentralizowana moc obliczeniowa - wymaga stakingu tokenów FLUX"
   source: "ba2bca8449db"
 flux.earnings.notes:
-  text: "Wymaga stakingu 1,000+ FLUX (~$50-500 zależnie od ceny). Wyższe poziomy wymagają większego zabezpieczenia, ale zarabiają więcej."
+  text: "Wymaga stakingu 1000+ FLUX (~$50-500 zależnie od ceny). Wyższe poziomy wymagają większego zabezpieczenia, ale zarabiają więcej."
   source: "a8f6679daf85"
 flux.payment.frequency:
   text: "Nagrody za bloki"
@@ -512,7 +512,7 @@ flux.requirements.min_storage:
   text: "220GB"
   source: "fd0df44a57f5"
 flux.rating.cons.0.text:
-  text: "Najmniejszy poziom węzła wymaga 1,000 FLUX zablokowanych jako zabezpieczenie."
+  text: "Najmniejszy poziom węzła wymaga 1000 FLUX zablokowanych jako zabezpieczenie."
   source: "a69f2d39e25d"
 flux.rating.cons.1.text:
   text: "Nagroda za blok spada co roku o 10%, a przewodnik z 2026 ocenił nagrody na najniższym poziomie jako słabe w przeliczeniu na dolary."
@@ -713,7 +713,7 @@ honeygain.payment.frequency:
   text: "Na żądanie"
   source: "be820103712e"
 honeygain.cashout.notes:
-  text: "Minimum $20 (20,000 kredytów). Dwie opcje: PayPal przez Tipalti, z opłatą około 15%, albo kredyty JumpTask bez opłat, wypłacane do portfela JumpTask. Zlecenie wymaga 6-cyfrowego kodu wysłanego e-mailem. Pierwsza wypłata PayPal ma status „waiting for details”, dopóki nie zarejestrujesz się w Tipalti przez link z e-maila. Ten link działa tylko raz, więc otwórz go, gdy możesz skończyć za jednym podejściem i masz telefon pod ręką: po ustawieniu hasła Tipalti każe potwierdzić numer telefonu komórkowego SMS-em (kody wygasają w ciągu kilku minut), a potem prosi o imię i nazwisko, adres, kraj i datę urodzenia oraz adres PayPal. Tipalti pobiera $2.02 za każdą płatność; wybierz USD, aby uniknąć jego opłaty za przewalutowanie 1.9-3%. Płatność następuje w ciągu 2 dni roboczych. Saldo znika z Twojego konta od razu po zleceniu, nawet gdy wypłata czeka na Tipalti. Każde kolejne logowanie do Tipalti wysyła nowy kod SMS, chyba że zaznaczysz opcję zapamiętania urządzenia na 30 dni. W październiku 2026 Tipalti nie poprosił odbiorcy w Hiszpanii o formularz podatkowy."
+  text: "Minimum $20 (20 000 kredytów). Dwie opcje: PayPal przez Tipalti, z opłatą około 15%, albo kredyty JumpTask bez opłat, wypłacane do portfela JumpTask. Zlecenie wymaga 6-cyfrowego kodu wysłanego e-mailem. Pierwsza wypłata PayPal ma status „waiting for details”, dopóki nie zarejestrujesz się w Tipalti przez link z e-maila. Ten link działa tylko raz, więc otwórz go, gdy możesz skończyć za jednym podejściem i masz telefon pod ręką: po ustawieniu hasła Tipalti każe potwierdzić numer telefonu komórkowego SMS-em (kody wygasają w ciągu kilku minut), a potem prosi o imię i nazwisko, adres, kraj i datę urodzenia oraz adres PayPal. Tipalti pobiera $2.02 za każdą płatność; wybierz USD, aby uniknąć jego opłaty za przewalutowanie 1.9-3%. Płatność następuje w ciągu 2 dni roboczych. Saldo znika z Twojego konta od razu po zleceniu, nawet gdy wypłata czeka na Tipalti. Każde kolejne logowanie do Tipalti wysyła nowy kod SMS, chyba że zaznaczysz opcję zapamiętania urządzenia na 30 dni. W październiku 2026 Tipalti nie poprosił odbiorcy w Hiszpanii o formularz podatkowy."
   source: "553463d96535"
 honeygain.payout.notes:
   text: "Saldo przechowuje Honeygain; wypłacane na żądanie."
@@ -1142,8 +1142,8 @@ nodle.cashout.notes:
   text: "NODL znajduje się we własnym portfelu aplikacji na ZKsync Era; sprawdzisz go w aplikacji lub w eksploratorze bloków ZKsync Era. Nodle opuścił swój parachain Polkadot, a most Polkadot-ZKsync zamknięto 31 grudnia 2025, więc NODL pozostałych po stronie Polkadot nie da się już przenieść na ZKsync."
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
-  source: "8d61a71de590"
+  text: "Twoje NODL są we własnym portfelu aplikacji Nodle w ZKsync Era. CashPilot nie widzi adresu tego portfela."
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "Nagroda NODL za każdego nowego aktywnego użytkownika, który dołączy z zaproszenia (Nodle nie podaje kwoty)"
   source: "03308fe33661"
@@ -1502,8 +1502,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "Przyjazna nazwa urządzenia w panelu"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "Klient Proxyrack nie pobrał się przy starcie kontenera, więc kontener działa, ale nic nie zarabia. Restart pobierze go ponownie; jeśli problem nie zniknie po restarcie, sprawdź, czy ta maszyna ma dostęp do internetu."
-  source: "b5143d72ce35"
+  text: "Klient ProxyRack nie może działać na tej kopii, więc nic nie zarabia. Zwykle przyczyną jest to, że serwer aktualizacji ProxyRack nie odpowiada, a bez niego klient nie może się uruchomić. Kopia próbuje ponownie co 5 minut i uruchamia się sama, gdy tylko serwer odpowie. Nie musisz nic naprawiać."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "Klient ProxyRack nie został pobrany przy starcie tej kopii, bo serwer aktualizacji ProxyRack był nieosiągalny, więc kopia działa, ale nic nie zarabia. CashPilot uruchamia ją ponownie co 6 godzin, żeby spróbować jeszcze raz. Wdróż ją ponownie, aby dostała własny start CashPilot, który zachowuje klienta i sam próbuje ponownie co 5 minut."
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "Zaloguj się do ProxyRack, otwórz Devices, wybierz Add device i wklej ten UUID. Dopóki urządzenie nie jest na Twoim koncie, nie zarabia dla nikogo. Jeśli podano klucz API, kontener rejestruje się sam: sprawdź, czy urządzenie jest tam na liście."
   source: "54c4041903b5"
@@ -2159,7 +2162,7 @@ traffmonetizer.payment.frequency:
   text: "Na żądanie"
   source: "be820103712e"
 traffmonetizer.cashout.notes:
-  text: "Minimum $10. PayPal nie jest już oferowany. Najpierw zapisz w profilu jedną metodę wypłaty: USDT w sieci Solana lub TON (najniższe opłaty), Arbitrum (niskie opłaty) lub Tron TRC20 (wysokie opłaty sieciowe) albo przelew bankowy od $1,000. Pierwszy zapisany adres obowiązuje od razu; późniejsza zmiana wymaga potwierdzenia e-mailem. Przed pierwszą wypłatą panel może poprosić o kontakt w komunikatorze (WhatsApp, Telegram lub Skype). Zlecenie wypłaca pełne dolary, a centy zostają na saldzie."
+  text: "Minimum $10. PayPal nie jest już oferowany. Najpierw zapisz w profilu jedną metodę wypłaty: USDT w sieci Solana lub TON (najniższe opłaty), Arbitrum (niskie opłaty) lub Tron TRC20 (wysokie opłaty sieciowe) albo przelew bankowy od $1000. Pierwszy zapisany adres obowiązuje od razu; późniejsza zmiana wymaga potwierdzenia e-mailem. Przed pierwszą wypłatą panel może poprosić o kontakt w komunikatorze (WhatsApp, Telegram lub Skype). Zlecenie wypłaca pełne dolary, a centy zostają na saldzie."
   source: "0bf13220a706"
 traffmonetizer.payout.notes:
   text: "USDT w sieci zapisanej w ustawieniach wypłat profilu (Solana, TON, Arbitrum lub Tron) albo przelew bankowy. Adres jest w ustawieniach Traffmonetizer, a nie w kontenerze."
@@ -2180,7 +2183,7 @@ traffmonetizer.rating.cons.1.text:
   text: "Ci sami recenzenci zgłaszają, że czat na żywo i wsparcie e-mailowe nie odpowiadają, czasem przez tygodnie."
   source: "514323fc7b1f"
 traffmonetizer.rating.cons.2.text:
-  text: "Tylko kryptowaluty lub przelew bankowy od $1,000; PayPala już nie ma, a zlecenie wypłaca tylko pełne dolary."
+  text: "Tylko kryptowaluty lub przelew bankowy od $1000; PayPala już nie ma, a zlecenie wypłaca tylko pełne dolary."
   source: "ad8194944e13"
 traffmonetizer.rating.cons.3.text:
   text: "Regulamin Traffmonetizer wymaga IP domowego, więc serwer na łączu hostingowym go nie spełnia."
