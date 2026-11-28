@@ -167,6 +167,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
 {% endblock %}
 
 {% block scripts %}
+{% include "_secure_vm.html" %}
 <script nonce="{{ csp_nonce(request) }}">
 (function() {
   let fleetTimer = null;
