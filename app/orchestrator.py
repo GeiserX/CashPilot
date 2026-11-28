@@ -537,24 +537,25 @@ def _fatal_entry(container: Any, slug: str) -> dict[str, Any]:
     return {"fatal": kind, "fatal_at": finished} if kind else {}
 
 
-def _held_reason_entry(container: Any) -> dict[str, Any]:
-    """``{"held_reason": {code, params}}`` beside ``held``, so the UI words it in its reader's language."""
-    from app import lan_fence
-
-    wired = wire((lan_fence._state.get("guard") or {}).get(getattr(container, "name", None)))
-    return {"held_reason": wired} if wired else {}
-
-
-def _held_entry(container: Any) -> dict[str, Any]:
-    """``{"held": why}`` for a container the fence guard keeps stopped (lan_fence.guard), else nothing.
+def _held_entries(container: Any) -> dict[str, Any]:
+    """``held`` and ``held_reason`` for a container the fence guard keeps stopped (lan_fence.guard), else nothing.
 
     The guard's last pass, so the dashboard can say on the service itself why
     the node is down and what brings it back, not only on the Fleet page.
+    ``held_reason`` is the reason's key and arguments beside its English, so
+    the UI words it in its reader's language. Both come from one read of the
+    guard, so a guard pass that lands in between cannot pair one pass's
+    English with the next pass's key.
     """
     from app import lan_fence
 
     why = (lan_fence._state.get("guard") or {}).get(getattr(container, "name", None))
-    return {"held": str(why)} if why else {}
+    if not why:
+        return {}
+    entry: dict[str, Any] = {"held": str(why)}
+    if wired := wire(why):
+        entry["held_reason"] = wired
+    return entry
 
 
 def _shape(container: Any) -> dict[str, Any]:
@@ -5684,8 +5685,7 @@ def get_status() -> list[dict[str, Any]]:
                 **_identity_entry(c, slug),
                 **_state_id_entry(c, slug, client),
                 **_fatal_entry(c, slug),
-                **_held_entry(c),
-                **_held_reason_entry(c),
+                **_held_entries(c),
             }
             # Present only when the service declares a dial-back address var;
             # the key's absence is "nothing to say", never "checked and fine".
@@ -5983,8 +5983,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 **_layer_entry(c),
                 **_stop_facts(c),
                 **_fatal_entry(c, slug),
-                **_held_entry(c),
-                **_held_reason_entry(c),
+                **_held_entries(c),
             }
             # Same contract as get_status: key present only when declared+set.
             if advertised := _advertised_address(c, slug):
