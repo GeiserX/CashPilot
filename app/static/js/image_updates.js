@@ -147,17 +147,20 @@
   }
 
   // Saves run one after another, in the order the owner asked for them: two
-  // PUTs in flight could reach the server in the other order.
+  // PUTs in flight could reach the server in the other order. Each save takes
+  // what the page shows when it is asked for, so a later change that was not
+  // saved never goes out with it, nor counts as saved.
   let saving = Promise.resolve();
   let queued = 0;
   function save(mode) {
+    const asked = capture(mode);
     queued += 1;
-    const run = queued === 1 ? saveNow(mode) : saving.then(() => saveNow(mode));
+    const run = queued === 1 ? send(asked) : saving.then(() => send(asked));
     saving = run.finally(() => { queued -= 1; });
     return saving;
   }
 
-  async function saveNow(mode) {
+  function capture(mode) {
     // A stored choice with no control on the page (an app or box not listed
     // now) is sent back as it is: the server replaces the whole map.
     const pick = (sel, stored) => {
@@ -175,10 +178,13 @@
       workers: pick('[data-updates-worker]', state.settings.workers),
       services: pick('[data-updates-service]', state.settings.services),
     };
-    const sent = edits;
+    return { body, sent: edits };
+  }
+
+  async function send({ body, sent }) {
     try {
       await CP.api('/api/image-updates', { method: 'PUT', body });
-      savedEdits = sent;
+      savedEdits = Math.max(savedEdits, sent);
       CP.toast(t('fleet.updates.saved'), 'success');
       await load();
     } catch (err) {

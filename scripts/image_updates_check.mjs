@@ -156,6 +156,21 @@ await p.answer({});
 await p.answer();
 check('the second save goes once the first is done', puts() === 2, `${puts()} PUTs sent`);
 
+// 6d. A save takes the page as it is when asked for: a change made while it
+// waits in the queue is not sent with it, and stays unsaved.
+p = makePage();
+await p.answer();
+p.change();
+p.click('save');
+p.change();
+p.click('save');
+p.change();
+await p.answer({});
+await p.answer();
+await p.answer({});
+await p.answer();
+check('a change made after a queued save stays unsaved', p.root.renders === 1, `drawn ${p.root.renders} times`);
+
 // 7. A reload that fails keeps the controls and a change not saved, and says so.
 p = makePage();
 await p.answer();

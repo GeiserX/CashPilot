@@ -140,7 +140,11 @@ class DeployRefused(Exception):
 
 
 class ModeChanged(Exception):
-    """The owner chose another mode for the service while its check ran: nothing is deployed or recorded."""
+    """The owner chose another mode for the service while its check ran: nothing is deployed."""
+
+    def __init__(self, mode: str) -> None:
+        super().__init__(mode)
+        self.mode = mode
 
 
 def _short(digest: str) -> str:
@@ -187,8 +191,13 @@ async def update_service(hooks: Hooks, worker_id: int, slug: str, mode: str) -> 
         # The checked build, and only it: a tag that moved since is refused by
         # the worker, so the build undone and held is the one named here.
         result = await hooks.deploy(worker_id, slug, expected, new_id)
-    except ModeChanged:
-        return "off"
+    except ModeChanged as exc:
+        if exc.mode != NOTIFY:
+            return "off"
+        # Notify only now: the build is announced as Notify only announces it.
+        if not await hooks.seen(worker_id, slug, new_id, (AVAILABLE,)):
+            await hooks.record(worker_id, slug, AVAILABLE, **facts)
+        return "available"
     except DeployRefused as exc:
         await hooks.record(worker_id, slug, ROLLED_BACK if exc.rolled_back else FAILED, detail=str(exc), **facts)
         return "rolled_back" if exc.rolled_back else "failed"

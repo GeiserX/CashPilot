@@ -13735,19 +13735,23 @@ async def _image_update_check(worker_id: int, slug: str) -> dict[str, Any]:
 _CUSTOM_UNSAVED = "a saved setting of it was not deployed yet; redeploy it to apply it"
 
 
-async def _custom_values_unsaved(slug: str, recorded: dict[str, Any]) -> bool:
+async def _custom_values_unsaved(slug: str, recorded: dict[str, Any], worker_id: int) -> bool:
     """Whether the saved definition of a custom service holds a value its deployment does not.
 
     A custom service's saved definition is the only source of a redeploy
     (_deploy), so a saved value not deployed yet would arrive with an update.
     """
     revealed = await _custom_service(slug, reveal=True) or {}
-    saved = {str(v["key"]): str(v.get("default") or "") for v in (revealed.get("docker") or {}).get("env") or []}
+    docker_conf = revealed.get("docker") or {}
+    saved = {str(v["key"]): str(v.get("default") or "") for v in docker_conf.get("env") or []}
     deployed = {str(k): str(v or "") for k, v in (recorded.get("env") or {}).items()}
-    # A value with {hostname} is recorded filled in (_deploy), so only its key compares.
-    return set(saved) != set(deployed) or any(
-        "{hostname}" not in value and deployed[key] != value for key, value in saved.items()
-    )
+    if set(saved) != set(deployed):
+        return True
+    if any("{hostname}" in value for value in saved.values()):
+        # Filled in as the blank redeploy fills it (_deploy), then compared.
+        name, _ = await _device_names(slug, docker_conf, DeployRequest(env={}), worker_id, recorded)
+        saved = {key: value.replace("{hostname}", name) for key, value in saved.items()}
+    return any(deployed[key] != value for key, value in saved.items())
 
 
 async def _image_update_blocker(worker_id: int, slug: str, answer: dict[str, Any]) -> str:
@@ -13769,7 +13773,7 @@ async def _image_update_blocker(worker_id: int, slug: str, answer: dict[str, Any
         return (
             f"it is deployed as {int(recorded['instances'])} copies here, and only a single copy is updated by itself"
         )
-    if is_custom and await _custom_values_unsaved(slug, recorded):
+    if is_custom and await _custom_values_unsaved(slug, recorded, worker_id):
         return _CUSTOM_UNSAVED
     docker_conf = svc.get("docker") or {}
     custom_image = None if is_custom else (_custom_image(None, recorded) or None)
@@ -13809,11 +13813,6 @@ async def _image_update_blocker(worker_id: int, slug: str, answer: dict[str, Any
 async def _image_update_deploy(worker_id: int, slug: str, expected: dict[str, str], new_image: str) -> dict[str, Any]:
     """The dashboard's own blank redeploy, with the check period, as the Redeploy button runs it."""
     body = DeployRequest(env={}, replace_existing=True, expected_containers=expected)
-    # The owner can turn updates off while the check runs: the choice saved now decides.
-    async with _image_update_settings_lock:
-        mode = image_updates.effective_mode(await _image_update_settings(), worker_id, slug)
-    if mode != image_updates.AUTO:
-        raise image_updates.ModeChanged(mode)
     custom = custom_services.is_custom_slug(slug)
     if custom:
         # Held against a delete while it runs, as api_deploy holds it.
@@ -13825,8 +13824,14 @@ async def _image_update_deploy(worker_id: int, slug: str, expected: dict[str, st
             # Again here, right before the deploy reads the definition: a value
             # saved since the blocker's look must not arrive with the update.
             recorded = await database.get_deployment_spec(slug, worker_id=worker_id) or {}
-            if await _custom_values_unsaved(slug, recorded):
+            if await _custom_values_unsaved(slug, recorded, worker_id):
                 raise image_updates.DeployRefused(_CUSTOM_UNSAVED, rolled_back=False)
+        # The owner can change the choice while the check runs: the one saved
+        # when the deploy starts decides. Nothing is awaited between the two.
+        async with _image_update_settings_lock:
+            mode = image_updates.effective_mode(await _image_update_settings(), worker_id, slug)
+        if mode != image_updates.AUTO:
+            raise image_updates.ModeChanged(mode)
         return await _deploy(slug, body, worker_id, settle_seconds=image_updates.SETTLE_SECONDS, expect_image=new_image)
     except HTTPException as exc:
         detail = exc.detail
