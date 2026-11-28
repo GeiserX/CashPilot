@@ -52,15 +52,16 @@ CASHPILOT_PROXY_BIND_MOUNTS=/mnt/user/storj/identity,/mnt/user/storj/data
 Then run `docker compose up -d` once, so the proxy and the worker read the
 new list.
 
-A container that already binds a host path that is not on the new list keeps
-that mount until it is recreated. If the path holds one of your new entries
-(the parent you took out, or any folder between it and the entry, which the
-old rule also allowed), the container can still write into that entry. The
-worker checks the list only at the next deploy, never the mounts of a running
-container. So remove every container that binds a host path not on the new
-list, or redeploy it with binds that are on the list, before you deploy
-anything that binds the new entries. This lists every container's bind
-sources:
+A container that already binds a folder above one of your new entries keeps
+that mount until it is recreated, and it can still write into that entry.
+Such a folder is the parent you took out, or any folder between it and the
+entry, which the old rule also allowed. The worker checks the list only at
+the next deploy, never the mounts of a running container. So before you
+deploy anything that binds the new entries, redeploy each of those
+containers with binds that are on the new list, or remove it (`docker rm`
+leaves the files of a bound folder on the host). Leave every other container
+as it is, the socket proxy included. This lists every container's bind
+sources, so you can find the ones whose source is a folder above a new entry:
 
 ```sh
 docker ps -aq | xargs docker inspect --format '{{.Name}}: {{range .Mounts}}{{if eq .Type "bind"}}{{.Source}} {{end}}{{end}}'
