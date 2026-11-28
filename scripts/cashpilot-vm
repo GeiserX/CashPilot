@@ -54,7 +54,7 @@ readonly GVISOR_SHA512_X86_64=e8ed92b5a4287c33b03803cd936a68b094b3206e3f09e5d862
 # docker-compose.worker.yml of the same release as this script. The guest
 # downloads it from the release tag (--ref) and checks it against this hash.
 # tests/test_cashpilot_vm.py fails when the two drift apart.
-readonly COMPOSE_SHA256=cdfb4cc424a758a8ed595ad4da0352283766ef2c3578d8aa11e950717144f659
+readonly COMPOSE_SHA256=922947e3787f64c13e7bc28b3177e2e176904033a3ec7146b88f505c8a1c60e1
 
 # Ranges the fence drops for anything leaving the guest. Name, CIDR.
 readonly BLOCKED=(

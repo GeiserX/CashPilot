@@ -67,6 +67,32 @@ def test_compose_pin_matches_the_worker_compose_file():
     )
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the release runs GNU sed")
+def test_the_release_moves_the_compose_pin_with_the_image_pins(tmp_path):
+    # The release bumps the image pins in docker-compose.worker.yml on main
+    # after the tag. If the hash did not move with them, the test above would
+    # fail on main after every minor release. Run the step's own lines on a copy.
+    import yaml
+
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "release.yml").read_text())
+    steps = [s for job in wf["jobs"].values() for s in job.get("steps", [])]
+    run = next(s["run"] for s in steps if s.get("name") == "Bump the example compose pins to this series")
+    lines = run.splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.strip().startswith("HASH=$(sha256sum"))
+    end = next(i for i in range(start, len(lines)) if lines[i].strip() == "fi")
+    snippet = "\n".join(lines[start : end + 1])
+    assert "scripts/cashpilot-vm" in next(ln for ln in lines if ln.strip().startswith("git add"))
+
+    (tmp_path / "scripts").mkdir()
+    shutil.copy(SCRIPT, tmp_path / "scripts" / "cashpilot-vm")
+    compose = (ROOT / "docker-compose.worker.yml").read_text() + "# moved\n"
+    (tmp_path / "docker-compose.worker.yml").write_text(compose)
+    out = subprocess.run(["bash", "-euo", "pipefail", "-c", snippet], cwd=tmp_path, capture_output=True, text=True)
+    assert out.returncode == 0, out.stdout + out.stderr
+    pinned = re.search(r"^readonly COMPOSE_SHA256=(\w+)$", (tmp_path / "scripts" / "cashpilot-vm").read_text(), re.M)
+    assert pinned and pinned.group(1) == hashlib.sha256(compose.encode()).hexdigest()
+
+
 def test_image_and_gvisor_are_pinned_by_full_checksums():
     assert re.fullmatch(r"[0-9a-f]{128}", _pin("IMAGE_SHA512_AMD64"))
     assert re.fullmatch(r"[0-9a-f]{128}", _pin("GVISOR_SHA512_X86_64"))
