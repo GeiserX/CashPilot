@@ -18,6 +18,13 @@
   const asked = {};      // VM worker id -> message after asking for a self-test
   const open = new Set();
   const loading = new Set();
+  const RETRY_MS = 30000;
+
+  // Commands are kept once they load. An error is kept only until its retry time.
+  function needsLoad(key) {
+    const c = commands[key];
+    return !c || (c.error !== undefined && Date.now() >= (c.retryAt || 0));
+  }
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -124,7 +131,7 @@
       body += `<div class="cpvm-commands">${renderCommands(key)}</div>`;
       // An open panel whose state changed (the VM registered, or went) needs
       // the commands for the new state; the toggle event will not fire again.
-      if (open.has(String(w.id)) && !commands[key]) {
+      if (open.has(String(w.id)) && needsLoad(key)) {
         setTimeout(() => {
           const d = document.querySelector(`details.cpvm[data-host-id="${w.id}"]`);
           if (d && d.open) loadCommands(d);
@@ -141,7 +148,7 @@
   async function loadCommands(details) {
     const id = details.dataset.hostId;
     const key = details.dataset.cmdKey;
-    if (!key || commands[key] || loading.has(key)) return;
+    if (!key || !needsLoad(key) || loading.has(key)) return;
     loading.add(key);
     let reply;
     try {
@@ -150,6 +157,8 @@
       reply = { error: err.message || String(err) };
     }
     loading.delete(key);
+    // A failed request is tried again on a later redraw, after RETRY_MS.
+    if (reply.error) reply.retryAt = Date.now() + RETRY_MS;
     commands[key] = reply;
     // The fleet page redraws on its own timer; until then, fill this panel in
     // place, but only while it still shows the state the reply is for.

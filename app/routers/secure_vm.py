@@ -12,34 +12,51 @@ add-worker box, because that is the address the owner's workers report to.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app import database, deps, i18n, layer_scripts, placement, version
+from app import cleartext, database, deps, i18n, layer_scripts, placement, version
 
 router = APIRouter()
 
 SCRIPT = "cashpilot-vm"
 
 
+# What the installer accepts for --host-worker (scripts/cashpilot-vm), and the
+# 64 characters the guest's worker keeps of CASHPILOT_SECURE_VM_OF.
+_HOST_NAME = re.compile(r"[A-Za-z0-9._ -]{1,64}")
+
+
 def _ui_url(raw: str) -> str:
-    parts = urlsplit(raw.strip())
+    try:
+        parts = urlsplit(raw.strip())
+        hostname = parts.hostname
+    except ValueError:
+        raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.bad_ui_url")) from None
     if (
         parts.scheme not in ("http", "https")
-        or not parts.hostname
+        or not hostname
         or parts.username
         or parts.password
         or len(raw) > 300
         or any(c.isspace() for c in raw)
     ):
         raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.bad_ui_url"))
-    return f"{parts.scheme}://{parts.netloc}"
+    url = f"{parts.scheme}://{parts.netloc}"
+    # The guest's worker refuses to send its key over plain http to a public
+    # host, so such an install could never enrol: say so before it starts.
+    if not cleartext.bearer_allowed(url):
+        raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.public_http"))
+    return url
 
 
 def commands(host_name: str, ui_url: str, has_vm: bool) -> dict[str, str]:
     """``install`` for a host without a Secure VM; ``status``, ``verify`` and ``remove`` for one with it."""
+    if not has_vm and not _HOST_NAME.fullmatch(host_name):
+        return {"error": i18n.t("secure_vm.cmd.bad_host_name", name=host_name)}
     try:
         if has_vm:
             return {action: layer_scripts.command(SCRIPT, action) for action in ("status", "verify", "remove")}

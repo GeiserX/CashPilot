@@ -37,7 +37,7 @@ def _vm_of(host, wid=9):
     )
 
 
-def _get(workers, wid=7, ui_url="http://ui.example:8080"):
+def _get(workers, wid=7, ui_url="http://ui.lan:8080"):
     with (
         patch.object(database, "list_workers", AsyncMock(return_value=workers)),
         patch.object(secure_vm.deps, "_require_owner", return_value={"r": "owner"}),
@@ -55,7 +55,7 @@ class TestTheCommands:
         assert layer_scripts.sha256("cashpilot-vm") in cmd
         # --ref: the guest's compose file comes from the same release as the script.
         assert cmd.endswith(
-            'sudo bash "$d/cashpilot-vm" install --ui http://ui.example:8080 --host-worker box --ref v3.1.0'
+            'sudo bash "$d/cashpilot-vm" install --ui http://ui.lan:8080 --host-worker box --ref v3.1.0'
         )
 
     def test_the_fleet_key_is_never_in_the_command(self):
@@ -75,8 +75,9 @@ class TestTheCommands:
         assert set(resp.json()) == {"install"}
 
     def test_the_host_name_is_quoted(self):
-        resp = _get([_worker(7, "my box; reboot")])
-        assert "--host-worker 'my box; reboot'" in resp.json()["install"]
+        # The installer allows spaces; anything a shell would read never gets this far.
+        resp = _get([_worker(7, "my box")])
+        assert "--host-worker 'my box'" in resp.json()["install"]
 
     def test_only_the_ui_address_is_kept(self):
         resp = _get([_worker(7, "box")], ui_url="https://ui.example/fleet?x=1#y")
@@ -162,3 +163,24 @@ class TestTwoWorkersWithOneName:
     def test_the_fleet_page_matches_the_same_way(self):
         js = (ROOT / "app/templates/_secure_vm.html").read_text()
         assert "hosts.length === 1 ? hosts[0] : null" in js
+
+
+class TestWhatTheInstallerWouldRefuse:
+    @pytest.mark.parametrize("url", ["http://[::1", "http://["])
+    def test_an_unparseable_ui_address_is_a_400(self, url):
+        assert _get([_worker(7, "box")], ui_url=url).status_code == 400
+
+    def test_a_public_http_ui_is_refused_before_the_install(self):
+        # The guest's worker never sends its key over http to a public host.
+        resp = _get([_worker(7, "box")], ui_url="http://203.0.113.9:8080")
+        assert resp.status_code == 400
+        assert "https" in resp.json()["detail"]
+        assert _get([_worker(7, "box")], ui_url="http://192.168.1.5:8080").status_code == 200
+        assert _get([_worker(7, "box")], ui_url="https://cashpilot.example.com").status_code == 200
+
+    @pytest.mark.parametrize("name", ["box$(id)", "b" * 65, "café"])
+    def test_a_host_name_the_installer_refuses_gets_no_command(self, name):
+        resp = _get([_worker(7, name)])
+        assert resp.status_code == 200
+        assert "install" not in resp.json()
+        assert "Rename the worker" in resp.json()["error"]
