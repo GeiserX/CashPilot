@@ -107,10 +107,7 @@ def _check_text(name: str, content: str) -> str:
     content = content.lstrip("\ufeff")
     # Before the line cap: the token is one line, and a filled-in config passes 8 KiB.
     if content.lstrip().startswith(_M4B_ENCRYPTED_PREFIX):
-        raise ImportRefused(
-            f"{name} is an encrypted money4band 5.0 file. Run `m4b config edit`, "
-            "copy the decrypted JSON it opens, and paste it here."
-        )
+        raise ImportRefused(t("err.importers_parse.encrypted_money4band", name=name))
     lines = content.splitlines()
     if len(lines) > MAX_LINES:
         raise ImportRefused(t("err.importers_parse.has_more_than_lines_not", name=name, max_lines=MAX_LINES))
