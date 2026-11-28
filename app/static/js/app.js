@@ -5866,7 +5866,9 @@ const CP = (() => {
   function encryptionKeyStatusHtml(st) {
     if (!st || typeof st !== 'object') return '';
     const lines = [];
-    if (st.source === 'file') {
+    if (st.source === 'file' && st.file_inside) {
+      lines.push(t('app.key.status.data', { path: st.file || '' }));
+    } else if (st.source === 'file') {
       lines.push(t('app.key.status.file', { path: st.file || '' }));
     } else if (st.source === 'env') {
       lines.push(t('app.key.status.env'));
@@ -5874,7 +5876,7 @@ const CP = (() => {
       lines.push(t('app.key.status.data', { path: st.data_file || '' }));
       if (st.env_same) lines.push(t('app.key.env_same'));
     }
-    if (st.source === 'file' && st.data_copy === 'same') lines.push(t('app.key.copy_same', { path: st.data_file || '' }));
+    if (st.source === 'file' && !st.file_inside && st.data_copy === 'same') lines.push(t('app.key.copy_same', { path: st.data_file || '' }));
     if (st.source !== 'data' && st.data_copy === 'different') lines.push(t('app.key.copy_different', { path: st.data_file || '' }));
     if (st.outside) lines.push(t('app.key.outside'));
     return lines.map(line => `<p>${escapeHtml(line)}</p>`).join('');

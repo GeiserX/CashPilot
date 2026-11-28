@@ -787,10 +787,12 @@ def _remove_quietly(container: Any, stop_timeout: int = SIDECAR_STOP_SECONDS, *,
     # A failed stop is no reason to keep the container; the removal is what matters.
     with contextlib.suppress(Exception):
         container.stop(timeout=stop_timeout)
-    secrets_volume = secret_env.volume_of(container) if volumes else None
+    secrets_volume = secret_env.volume_of(container)
     with contextlib.suppress(NotFound):
         container.remove(force=True, v=volumes)
     # A proxied copy's credentials volume (app/secret_env.py) is a named one, which v leaves.
+    # It goes even when the data volumes stay: each deploy makes a new one, so nothing
+    # reuses it, and Docker refuses to remove it while another container still uses it.
     if secrets_volume:
         secret_env.remove_volume(container.client, secrets_volume)
 

@@ -89,6 +89,11 @@ class TestTheKeyCard:
         assert "still in the data folder (/data/.fernet_key)" in lines[1]
         assert not any(line.startswith("Done") for line in lines)
 
+    def test_a_key_file_inside_the_data_folder_is_said_to_be_there(self):
+        lines = _key(source="file", file="/data/key", file_inside=True)
+        assert "in the data folder (/data/key)" in lines[0]
+        assert not any("outside the data folder" in line or "still in the data folder" in line for line in lines)
+
     def test_a_finished_move_says_done(self):
         lines = _key(source="file", file="/run/secrets/k", data_copy="none", outside=True)
         assert len(lines) == 2

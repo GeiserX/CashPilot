@@ -32,7 +32,7 @@ def _status(**over):
 def test_the_status_never_carries_the_key():
     with patch.object(deps, "_require_owner", lambda r: OWNER):
         body = _client().get("/api/settings/encryption-key").json()
-    assert set(body) == {"source", "file", "data_file", "data_copy", "env_same", "outside", "removable"}
+    assert set(body) == {"source", "file", "file_inside", "data_file", "data_copy", "env_same", "outside", "removable"}
     assert database.encryption_key_value() not in str(body)
 
 

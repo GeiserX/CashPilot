@@ -275,8 +275,17 @@ def mount(p: Plan) -> Any:
 
 
 def provision(container: Any, p: Plan) -> None:
-    """Write the files into the created, not yet started, earner. Raises when Docker refuses."""
-    if not container.put_archive(SECRET_DIR, archive(p)):
+    """Write the files into the created, not yet started, earner. Raises when Docker refuses.
+
+    Always as RuntimeError, even when Docker gave no answer: the earner was never
+    started, so the deploy must roll back at once, not wait for a start that
+    was never asked for.
+    """
+    try:
+        taken = container.put_archive(SECRET_DIR, archive(p))
+    except Exception as exc:  # noqa: BLE001 - a timeout or a refusal: either way it did not start
+        raise RuntimeError(f"Docker did not take the credentials file ({type(exc).__name__})") from exc
+    if not taken:
         raise RuntimeError("Docker did not take the credentials file")
 
 

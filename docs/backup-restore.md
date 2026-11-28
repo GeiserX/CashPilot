@@ -87,6 +87,16 @@ chmod 700 "$OUT" && chmod 600 "$OUT"/cashpilot.db "$OUT"/.*key &&
 ls -la "$OUT"
 ```
 
+!!! note "If the key lives outside the data folder"
+
+    With `CASHPILOT_ENCRYPTION_KEY_FILE` or `CASHPILOT_ENCRYPTION_KEY` and no
+    copy left in `/data` ([guide](encryption-key.md)), `/data/.fernet_key` does
+    not exist, and the `docker cp ... .fernet_key` line above fails. Delete
+    that line and back up the key from where it lives: the secret file, or your
+    secret manager. Settings can also show the key once to the owner. Keep the
+    key apart from the database backup: that separation is the point of the
+    move.
+
 !!! warning "The backup is now as sensitive as the server"
 
     `.fernet_key` plus `cashpilot.db` is every provider credential you own, in a
@@ -134,6 +144,12 @@ The restore checks that `cashpilot.db` and `.fernet_key` are both in the backup
 before it stops the UI or changes anything. It copies the files into the volume
 under temporary names, and puts them in place only when every copy worked. If
 any step fails, the UI does not start.
+
+If the key lives outside the data folder, the backup holds no `.fernet_key`.
+In the block below, delete `&& test -s "$BACKUP/.fernet_key"` from the first
+check, and the `cp` and `mv` lines for `.fernet_key`. Then start the UI with
+the same `CASHPILOT_ENCRYPTION_KEY_FILE` or `CASHPILOT_ENCRYPTION_KEY` as
+before. The key never enters `/data`.
 
 ```bash
 # Set OUT to the backup directory first, for example:
