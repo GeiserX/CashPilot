@@ -383,6 +383,15 @@ def test_one_value_that_decrypts_is_enough(tmp_path: Path):
     db.verify_encryption_key_matches()
 
 
+def test_the_one_value_that_decrypts_is_found_past_any_sample(tmp_path: Path):
+    """Many values from an old key before the one re-entered: the check reads them all, never a sample."""
+    key = Fernet.generate_key().decode()
+    _database_with(tmp_path, *[Fernet.generate_key().decode()] * 50, key)
+    (tmp_path / ".fernet_key").write_text(key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
+    db.verify_encryption_key_matches()
+
+
 def test_a_database_with_no_credentials_starts_on_any_key(tmp_path: Path):
     _database_with(tmp_path)
     db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
@@ -453,3 +462,35 @@ def test_a_variable_with_the_same_key_lets_the_data_folder_copy_go(tmp_path: Pat
     db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY": key})
     assert db.encryption_key_status()["source"] == "env" and db.encryption_key_status()["outside"]
     assert not (tmp_path / ".fernet_key").exists()
+
+
+def test_a_key_file_gone_since_the_start_keeps_the_data_folder_copy(tmp_path: Path):
+    """The secret was unmounted after the start: the data folder's copy is the only one left."""
+    data = tmp_path / "data"
+    data.mkdir()
+    key = Fernet.generate_key().decode()
+    (data / ".fernet_key").write_text(key)
+    secret = _secret(tmp_path, key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(data), "CASHPILOT_ENCRYPTION_KEY_FILE": str(secret)})
+    assert db.encryption_key_status()["removable"]  # the positive control
+    secret.unlink()
+    assert not db.encryption_key_status()["removable"]
+    with pytest.raises(ValueError):
+        db.remove_data_folder_key()
+    assert (data / ".fernet_key").exists()
+    secret.write_text(Fernet.generate_key().decode())
+    assert not db.encryption_key_status()["removable"]
+
+
+def test_a_key_file_inside_the_data_folder_is_not_outside_it(tmp_path: Path):
+    """CASHPILOT_ENCRYPTION_KEY_FILE naming the data folder's own file: removing the copy would remove the key."""
+    key = Fernet.generate_key().decode()
+    (tmp_path / ".fernet_key").write_text(key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY_FILE": str(tmp_path / ".fernet_key")})
+    status = db.encryption_key_status()
+    assert status["source"] == "file" and not status["removable"] and not status["outside"]
+    with pytest.raises(ValueError):
+        db.remove_data_folder_key()
+    assert (tmp_path / ".fernet_key").exists()
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY_FILE": str(_secret(tmp_path, key, "in-data"))})
+    assert not db.encryption_key_status()["outside"]

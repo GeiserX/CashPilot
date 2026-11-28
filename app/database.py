@@ -339,15 +339,13 @@ def verify_encryption_key_persisted() -> None:
     )
 
 
-#: How many stored values per column the key check tries. One that decrypts is enough.
-_KEY_CHECK_SAMPLE = 20
-
-
 def _stored_ciphertexts(path: Path) -> Iterator[str]:
-    """Encrypted values already in the database at ``path``, a few per column.
+    """Encrypted values already in the database at ``path``, every one, lazily.
 
     The columns are found by name (``*_enc``, ``*_encrypted``, and the config
     table's values), so a column added later is checked with no change here.
+    Never a sample: a sample can show that the key reads a value, but not that
+    it reads none, and the one value it reads may be the last row.
     """
     conn = sqlite3.connect(path)
     try:
@@ -359,9 +357,7 @@ def _stored_ciphertexts(path: Path) -> Iterator[str]:
                 if not (name.endswith(("_enc", "_encrypted")) or (table == "config" and name == "value")):
                     continue
                 col = '"' + name.replace('"', '""') + '"'
-                rows = conn.execute(
-                    f"SELECT {col} FROM {quoted} WHERE {col} LIKE 'enc:%' LIMIT ?", (_KEY_CHECK_SAMPLE,)
-                )
+                rows = conn.execute(f"SELECT {col} FROM {quoted} WHERE {col} LIKE 'enc:%'")
                 for (value,) in rows:
                     if isinstance(value, str):
                         yield value
@@ -439,7 +435,10 @@ def encryption_key_status() -> dict[str, Any]:
 
     ``removable``: the data folder's file can go, because the same key also
     comes from outside it (CASHPILOT_ENCRYPTION_KEY_FILE, or an equal
-    CASHPILOT_ENCRYPTION_KEY that takes over once the file is gone).
+    CASHPILOT_ENCRYPTION_KEY that takes over once the file is gone). The key
+    file is read again here, not trusted from startup: a secret unmounted
+    since then would leave the data folder's copy as the only one. A key file
+    inside the data folder is not outside it, and may be the copy itself.
     """
     copy = "none"
     try:
@@ -450,14 +449,22 @@ def encryption_key_status() -> dict[str, Any]:
         copy = "unreadable"
     source = KEY_SOURCE_DATA if _fernet_key_source == KEY_SOURCE_GENERATED else _fernet_key_source
     env_same = source == KEY_SOURCE_DATA and bool(_env_key_bytes) and _env_key_bytes == _fernet_key_bytes
+    file_outside = False
+    if source == KEY_SOURCE_FILE:
+        path = Path(key_file_env())
+        try:
+            inside = path.resolve().is_relative_to(_FERNET_KEY_FILE.parent.resolve())
+        except OSError:
+            inside = True
+        file_outside = not inside and _read_external_key(str(path))[0] == _fernet_key_bytes
     return {
         "source": source,
         "file": key_file_env() if source == KEY_SOURCE_FILE else None,
         "data_file": str(_FERNET_KEY_FILE),
         "data_copy": copy,
         "env_same": env_same,
-        "outside": source in (KEY_SOURCE_FILE, KEY_SOURCE_ENV) and copy == "none",
-        "removable": copy == "same" and (source == KEY_SOURCE_FILE or env_same),
+        "outside": (file_outside or source == KEY_SOURCE_ENV) and copy == "none",
+        "removable": copy == "same" and (file_outside or env_same),
     }
 
 
