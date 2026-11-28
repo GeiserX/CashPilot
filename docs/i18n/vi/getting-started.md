@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # Bắt đầu { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   bằng `docker compose version`. Các phiên bản cũ hơn không đọc được cấu hình
   nội tuyến trong file compose. Docker Desktop đã có sẵn plugin này. Trên Docker
   Engine thuần trên Linux, hãy cài nó từ kho gói của Docker
-  (https://docs.docker.com/compose/install/linux/). Trên macOS dùng Colima,
+  (<https://docs.docker.com/compose/install/linux/>). Trên macOS dùng Colima,
   hãy cài nó bằng Homebrew rồi liên kết nó thành plugin của Docker:
 
     ```sh

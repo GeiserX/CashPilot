@@ -1,5 +1,5 @@
 ---
-source_hash: 374e39e6eac9
+source_hash: 5a764f1d0f5a
 ---
 
 # ย้ายมาจาก money4band { #moving-from-money4band }
@@ -22,12 +22,26 @@ money4band
 
 ## ใช้ไฟล์ใด { #which-file-to-use }
 
-ใช้ `config/user-config.json` ในโฟลเดอร์ money4band ซึ่ง money4band เขียนไว้
+ใช้ `config/user-config.json` ในโฟลเดอร์ money4band วิธีนำไฟล์นี้ไปยัง
+CashPilot ขึ้นอยู่กับเวอร์ชันของ money4band
+
+ใน money4band 4.x นั้น money4band เขียนไฟล์นี้
 เมื่อรัน **Setup Apps** และเก็บสิ่งที่พิมพ์ไว้ตรงตามจริง `.env`
 ที่อยู่ข้างกันสร้างจากไฟล์นั้นและใช้ได้เช่นกัน รวมถึง `.env` ที่แก้ด้วยมือ
 ของ money4band 3.x ทั้งสองไฟล์อยู่บนดิสก์ของคุณเท่านั้น:
 [.gitignore](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/.gitignore)
 ของ money4band ระบุไฟล์ทั้งสองไว้
+
+money4band 5.0 เข้ารหัส `config/user-config.json` บนดิสก์
+([หมายเหตุด้านความปลอดภัย](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption))
+และลบ `.env` ของตัวเองหลังการเริ่มทำงานทุกครั้ง
+([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11))
+CashPilot อ่านไฟล์ที่เข้ารหัสไม่ได้ ในโฟลเดอร์ money4band ให้รันคำสั่ง `config edit`
+ของมัน สำหรับไบนารีจากรีลีส ให้ใช้ไฟล์ที่ตรงกับระบบของคุณ เช่น `./Money4Band-linux-amd64 config edit` หรือ `.\Money4Band-windows-amd64.exe config edit` บน Windows
+เมื่อรันจากซอร์สโค้ด ให้รัน `python run.py config edit`
+ซึ่งจะรัน money4band ผ่าน uv หรือผ่านสภาพแวดล้อม pip เมื่อไม่มี uv ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69))
+คำสั่งนี้จะเปิดไฟล์ที่ถอดรหัสแล้วในโปรแกรมแก้ไขข้อความของคุณ ([ข้อมูลอ้างอิง CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit))
+คัดลอกข้อความทั้งหมด วางลงในหน้า **Import from another tool** (นำเข้าจากเครื่องมืออื่น) แล้วปิดโปรแกรมแก้ไข
 
 ควรใช้ไฟล์ JSON ใน `.env` นั้น Docker Compose จะขยาย `$` ในค่าที่ไม่มีเครื่องหมายคำพูด
 รหัสผ่านที่มี `$` จึงไม่ใช่สิ่งที่ไฟล์แสดง CashPilot ไม่เดา
@@ -49,7 +63,9 @@ money4band
 [เทมเพลต user-config](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/template/user-config.json)
 ของ money4band และชื่อใน `.env` ที่
 [ตัวสร้าง](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/utils/generator.py#L535-L545)
-เขียนไว้ (`<APP>_<FLAG>` เช่น `REPOCKET_APIKEY`)
+เขียนไว้ (`<APP>_<FLAG>` เช่น `REPOCKET_APIKEY`) money4band 5.0 ยังใช้
+ชื่อฟิลด์เดียวกันใน
+[แคตตาล็อกแอป](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/config/catalog/supported) ของตัวเอง
 
 | แอปของ money4band | บริการของ CashPilot | สิ่งที่นำมาได้ |
 |---|---|---|

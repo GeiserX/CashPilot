@@ -1,5 +1,5 @@
 ---
-source_hash: 374e39e6eac9
+source_hash: 5a764f1d0f5a
 ---
 # Migrar desde money4band { #moving-from-money4band }
 
@@ -21,12 +21,26 @@ adicionales, detén también cada una de ellas.
 
 ## Qué archivo usar { #which-file-to-use }
 
-Usa `config/user-config.json` de tu carpeta de money4band. money4band lo escribe
-cuando ejecutas **Setup Apps**, y contiene exactamente lo que escribiste. El `.env`
+Usa `config/user-config.json` de tu carpeta de money4band. Cómo lo llevas a
+CashPilot depende de tu versión de money4band.
+
+En money4band 4.x, money4band escribe el archivo cuando ejecutas **Setup Apps**, y
+contiene exactamente lo que escribiste. El `.env`
 que está a su lado se genera a partir de ese archivo y también funciona, igual que el `.env`
 editado a mano de money4band 3.x. Los dos se quedan solo en tu disco: el
 [.gitignore](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/.gitignore)
 de money4band los incluye.
+
+money4band 5.0 cifra `config/user-config.json` en el disco
+([notas de seguridad](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
+y borra su `.env` después de cada arranque
+([generador del env](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
+CashPilot no puede leer el archivo cifrado. En tu carpeta de money4band, ejecuta
+su comando `config edit`. Para el binario publicado, usa el archivo de tu sistema, por ejemplo `./Money4Band-linux-amd64 config edit`, o `.\Money4Band-windows-amd64.exe config edit` en Windows.
+Desde el código fuente, ejecuta `python run.py config edit`.
+Este arranca money4band con uv, o con un entorno de pip si no tienes uv ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69)).
+El comando abre el archivo descifrado en tu editor ([referencia de la CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+Copia todo su texto, pégalo en la página **Import from another tool** (Importar desde otra herramienta) y después cierra el editor.
 
 Es preferible el archivo JSON. En un `.env`, Docker Compose expande `$` en los valores
 sin comillas, así que una contraseña que contiene `$` no es lo que muestra el archivo. CashPilot no
@@ -48,7 +62,9 @@ Los nombres de los campos salen de la
 [plantilla de user-config](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/template/user-config.json)
 de money4band, y los nombres del `.env`, de los que escribe su
 [generador](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/utils/generator.py#L535-L545)
-(`<APP>_<FLAG>`, por ejemplo `REPOCKET_APIKEY`).
+(`<APP>_<FLAG>`, por ejemplo `REPOCKET_APIKEY`). money4band 5.0 mantiene
+los mismos nombres de campo en su
+[catálogo de apps](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/config/catalog/supported).
 
 | App de money4band | Servicio de CashPilot | Qué se trae |
 |---|---|---|

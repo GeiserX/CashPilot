@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # Pierwsze kroki { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   poleceniem `docker compose version`. Starsze wersje nie potrafią odczytać konfiguracji
   wpisanej bezpośrednio w pliku compose. Docker Desktop zawiera tę wtyczkę. Na samym Docker
   Engine w Linuksie zainstaluj ją z repozytorium pakietów Dockera
-  (https://docs.docker.com/compose/install/linux/). Na macOS z Colimą
+  (<https://docs.docker.com/compose/install/linux/>). Na macOS z Colimą
   zainstaluj ją przez Homebrew i podlinkuj jako wtyczkę Dockera:
 
     ```sh

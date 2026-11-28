@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app import catalog, database
 from app.deps import _require_owner
+from app.i18n import t
 from app.importers import parse
 
 logger = logging.getLogger(__name__)
@@ -44,21 +45,21 @@ async def _read_body(request: Request) -> dict[str, Any]:
     async for chunk in request.stream():
         size += len(chunk)
         if size > MAX_BODY_BYTES:
-            raise HTTPException(status_code=413, detail=f"The upload is larger than {MAX_BODY_BYTES // 1024} KiB.")
+            raise HTTPException(status_code=413, detail=t("api.upload_larger_than_kib", value=MAX_BODY_BYTES // 1024))
         chunks.append(chunk)
     try:
         body = json.loads(b"".join(chunks).decode("utf-8"))
     except (UnicodeDecodeError, ValueError, RecursionError):
         body = None
     if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="Expected a JSON object.")
+        raise HTTPException(status_code=400, detail=t("api.expected_json_object"))
     return body
 
 
 def _source(body: dict[str, Any]) -> str:
     source = body.get("source") or "auto"
     if source != "auto" and source not in parse.SOURCES:
-        raise HTTPException(status_code=400, detail="Unknown tool.")
+        raise HTTPException(status_code=400, detail=t("api.unknown_tool"))
     return source
 
 
@@ -123,11 +124,11 @@ def _extra(body: dict[str, Any]) -> dict[str, dict[str, str]]:
     if raw is None:
         return {}
     if not isinstance(raw, dict):
-        raise HTTPException(status_code=400, detail="extra must be an object.")
+        raise HTTPException(status_code=400, detail=t("api.extra_must_object"))
     out: dict[str, dict[str, str]] = {}
     for slug, fields in raw.items():
         if not isinstance(fields, dict):
-            raise HTTPException(status_code=400, detail="extra must map each service to its fields.")
+            raise HTTPException(status_code=400, detail=t("api.extra_must_map_each_service"))
         out[str(slug)] = {str(k): v for k, v in fields.items() if isinstance(v, str)}
     return out
 
@@ -136,7 +137,7 @@ _apply_lock = asyncio.Lock()
 
 
 def _already_saved(saved: list[str]) -> str:
-    return f" Already saved: {', '.join(saved)}." if saved else " Nothing was saved."
+    return " " + (t("api.import_already_saved", saved=", ".join(saved)) if saved else t("api.import_nothing_saved"))
 
 
 async def apply(request: Request, set_collector_config: Callable[[dict[str, str]], Awaitable[Any]]) -> dict[str, Any]:
@@ -149,16 +150,18 @@ async def apply(request: Request, set_collector_config: Callable[[dict[str, str]
     body = await _read_body(request)
     slugs = body.get("slugs")
     if not isinstance(slugs, list) or not slugs or not all(isinstance(s, str) for s in slugs):
-        raise HTTPException(status_code=400, detail="Choose at least one service.")
+        raise HTTPException(status_code=400, detail=t("api.choose_least_one_service"))
     preview = _preview(body, _extra(body))
     by_slug = {row["slug"]: row for row in preview["rows"]}
     chosen = []
     for slug in dict.fromkeys(slugs):
         row = by_slug.get(slug)
         if row is None:
-            raise HTTPException(status_code=400, detail=f"{slug[:60]} is not in these files.")
+            raise HTTPException(status_code=400, detail=t("api.not_these_files", slug=slug[:60]))
         if row["state"] != "ready":
-            raise HTTPException(status_code=400, detail=f"{row['name']} cannot be imported yet: {row['reason']}")
+            raise HTTPException(
+                status_code=400, detail=t("api.cannot_imported_yet", name=row["name"], reason=row["reason"])
+            )
         chosen.append(row)
 
     saved: list[str] = []
@@ -179,8 +182,7 @@ async def apply(request: Request, set_collector_config: Callable[[dict[str, str]
             except database.EphemeralKeyError:
                 raise HTTPException(
                     status_code=409,
-                    detail="CashPilot's encryption key is temporary, so it will not store credentials. "
-                    "Set CASHPILOT_ENCRYPTION_KEY or fix the data directory, then restart." + _already_saved(saved),
+                    detail=t("api.cashpilot_s_encryption_key_temporary") + _already_saved(saved),
                 ) from None
             except Exception as exc:
                 # Each write commits on its own, so say what is already saved.
@@ -188,7 +190,7 @@ async def apply(request: Request, set_collector_config: Callable[[dict[str, str]
                 logger.error("Import of %s failed (%s); already saved: %s", row["slug"], type(exc).__name__, saved)
                 status = exc.status_code if isinstance(exc, HTTPException) else 500
                 raise HTTPException(
-                    status_code=status, detail=f"Saving {row['name']} failed." + _already_saved(saved)
+                    status_code=status, detail=t("api.saving_failed", name=row["name"]) + _already_saved(saved)
                 ) from None
     logger.info("Imported from %s: %s (earnings login set for: %s)", preview["source"], saved, collectors or "none")
     return {"saved": saved, "collectors_set": collectors}
@@ -198,7 +200,7 @@ async def draft_env(slug: str) -> dict[str, str]:
     """The saved env of ``slug``'s import, for main's deploy route to hand to api_deploy."""
     draft = await database.get_import_draft(slug)
     if not draft:
-        raise HTTPException(status_code=404, detail="Nothing imported for this service.")
+        raise HTTPException(status_code=404, detail=t("api.nothing_imported_service"))
     return draft["env"]
 
 
@@ -214,5 +216,5 @@ async def api_import_drafts(_auth: dict[str, Any] = Depends(_require_owner)) -> 
 @router.delete("/api/import/drafts/{slug}")
 async def api_import_draft_forget(slug: str, _auth: dict[str, Any] = Depends(_require_owner)) -> dict[str, Any]:
     if not await database.delete_import_draft(slug):
-        raise HTTPException(status_code=404, detail="Nothing imported for this service.")
+        raise HTTPException(status_code=404, detail=t("api.nothing_imported_service"))
     return {"status": "forgotten"}

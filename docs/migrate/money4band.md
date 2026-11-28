@@ -18,12 +18,30 @@ instances, stop each of them too.
 
 ## Which file to use
 
-Use `config/user-config.json` in your money4band folder. money4band writes it
-when you run **Setup Apps**, and it holds exactly what you typed. The `.env`
-next to it is generated from that file and also works, as does the hand-edited
-`.env` of money4band 3.x. Both stay on your disk only: money4band's
+Use `config/user-config.json` in your money4band folder. How you get it to
+CashPilot depends on your money4band version.
+
+In money4band 4.x, money4band writes the file when you run **Setup Apps**, and
+it holds exactly what you typed. The `.env` next to it is generated from that
+file and also works, as does the hand-edited `.env` of money4band 3.x. Both
+stay on your disk only: money4band's
 [.gitignore](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/.gitignore)
 lists them.
+
+money4band 5.0 encrypts `config/user-config.json` on disk
+([security notes](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
+and it deletes its `.env` after each start
+([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
+CashPilot cannot read the encrypted file. In your money4band folder, run its
+`config edit` command. For the release binary, use the file for your system,
+for example `./Money4Band-linux-amd64 config edit`, or
+`.\Money4Band-windows-amd64.exe config edit` on Windows. From source, run
+`python run.py config edit`. It runs money4band through uv, or through a pip
+environment when uv is missing
+([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69)).
+The command opens the decrypted file in your editor
+([CLI reference](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+Copy all of its text, paste it on the **Import from another tool** page, then close the editor.
 
 Prefer the JSON file. In a `.env`, Docker Compose expands `$` in unquoted
 values, so a password with `$` in it is not what the file shows. CashPilot does
@@ -45,7 +63,9 @@ Field names come from money4band's
 [user-config template](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/template/user-config.json)
 and the `.env` names its
 [generator](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/utils/generator.py#L535-L545)
-writes (`<APP>_<FLAG>`, for example `REPOCKET_APIKEY`).
+writes (`<APP>_<FLAG>`, for example `REPOCKET_APIKEY`). money4band 5.0 keeps
+the same field names in its
+[app catalog](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/config/catalog/supported).
 
 | money4band app | CashPilot service | What comes over |
 |---|---|---|

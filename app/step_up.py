@@ -39,6 +39,8 @@ import threading
 import time
 from typing import Any
 
+from app.i18n import t
+
 #: Deploying a service that keeps irreplaceable state (``critical_volumes`` in
 #: its YAML) other than as the catalog says: another image, command, env key or
 #: mount. Target: :func:`deploy_target` of the exact spec sent to the worker.
@@ -154,7 +156,7 @@ def _unb64(text: str) -> bytes:
 def sign(worker_key: str, action: str, target: str, ttl: int = APPROVAL_TTL_SECONDS, now: float | None = None) -> str:
     """An approval for one ``action`` on one ``target``, for the worker holding ``worker_key``."""
     if not worker_key:
-        raise StepUpError("No per-worker key to sign the approval with")
+        raise StepUpError(t("err.step_up.no_per_worker_key_sign"))
     issued = int(now if now is not None else time.time())
     payload = {"a": action, "t": target, "exp": issued + int(ttl), "n": secrets.token_hex(16)}
     body = _b64(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
@@ -173,36 +175,33 @@ _used_lock = threading.Lock()
 def check(worker_key: str | None, token: str | None, action: str, target: str, now: float | None = None) -> None:
     """Raise :class:`StepUpError` unless ``token`` approves ``action`` on ``target`` right now."""
     if not worker_key:
-        raise StepUpError(
-            "This worker is still on the shared fleet key, so it cannot check a password confirmation. "
-            "Let it finish enrolling (one heartbeat), then try again."
-        )
+        raise StepUpError(t("err.step_up.worker_still_shared_fleet_key"))
     if not token or not isinstance(token, str) or token.count(".") != 1:
-        raise StepUpError("The password confirmation is missing or malformed")
+        raise StepUpError(t("err.step_up.password_confirmation_missing_malformed"))
     body, mac = token.split(".")
     expected = hmac.new(_derive(worker_key), body.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(mac, expected):
-        raise StepUpError("The password confirmation was not signed by this worker's UI")
+        raise StepUpError(t("err.step_up.password_confirmation_not_signed_worker"))
     try:
         payload: Any = json.loads(_unb64(body))
     except (ValueError, UnicodeDecodeError):
-        raise StepUpError("The password confirmation is malformed") from None
+        raise StepUpError(t("err.step_up.password_confirmation_malformed")) from None
     if not isinstance(payload, dict):
-        raise StepUpError("The password confirmation is malformed")
+        raise StepUpError(t("err.step_up.password_confirmation_malformed"))
     current = int(now if now is not None else time.time())
     exp = payload.get("exp")
     if not isinstance(exp, int) or exp <= current:
-        raise StepUpError("The password confirmation has expired; confirm again")
+        raise StepUpError(t("err.step_up.password_confirmation_has_expired_confirm"))
     if exp - current > _MAX_TTL_SECONDS:
-        raise StepUpError("The password confirmation claims too long a life")
+        raise StepUpError(t("err.step_up.password_confirmation_claims_too_long"))
     if payload.get("a") != action or payload.get("t") != target:
-        raise StepUpError("The password confirmation was given for another action")
+        raise StepUpError(t("err.step_up.password_confirmation_given_another_action"))
     nonce = payload.get("n")
     if not isinstance(nonce, str) or not nonce:
-        raise StepUpError("The password confirmation is malformed")
+        raise StepUpError(t("err.step_up.password_confirmation_malformed"))
     with _used_lock:
         for seen in [n for n, until in _used.items() if until <= current]:
             del _used[seen]
         if nonce in _used:
-            raise StepUpError("The password confirmation was already used; confirm again")
+            raise StepUpError(t("err.step_up.password_confirmation_already_used_confirm"))
         _used[nonce] = exp

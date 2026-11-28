@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # Primeros pasos { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   con `docker compose version`. Las versiones anteriores no pueden leer la configuración
   en línea del archivo compose. Docker Desktop incluye el plugin. En un Docker
   Engine sin más en Linux, instálalo desde el repositorio de paquetes de Docker
-  (https://docs.docker.com/compose/install/linux/). En macOS con Colima,
+  (<https://docs.docker.com/compose/install/linux/>). En macOS con Colima,
   instálalo con Homebrew y enlázalo como plugin de Docker:
 
     ```sh

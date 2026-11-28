@@ -36,6 +36,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from app.i18n import t
+
 #: PCI vendor ids as sysfs writes them.
 VENDOR_IDS = {"nvidia": "0x10de", "amd": "0x1002", "intel": "0x8086"}
 VENDOR_NAMES = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel"}
@@ -154,7 +156,7 @@ def _read(path: Path) -> str:
     """One sysfs attribute. An empty one is a failed read: every attribute read here holds a value."""
     value = path.read_text(encoding="ascii", errors="replace").strip().lower()
     if not value:
-        raise OSError(f"{path} is empty")
+        raise OSError(t("err.gpu.empty", path=path))
     return value
 
 
@@ -322,8 +324,11 @@ def render_devices(grant_: dict[str, Any], host: dict[str, Any]) -> list[str]:
     vendor = grant_["vendor"]
     if not host.get("conclusive"):
         raise GpuRefused(
-            f"CashPilot could not read this machine's GPUs ({host.get('reason') or 'no reason given'}), "
-            f"so it cannot pick the {VENDOR_NAMES[vendor]} render node to pass in."
+            t(
+                "err.gpu.cashpilot_could_not_read_machine",
+                reason=host.get("reason") or "no reason given",
+                vendor_names=VENDOR_NAMES[vendor],
+            )
         )
     nodes = [n for n in host["vendors"][vendor]["render_nodes"] if n in RENDER_NODE_CEILING]
     picked = nodes if grant_["count"] == "all" else nodes[:1]

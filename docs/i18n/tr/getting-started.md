@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # Başlarken { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   `docker compose version` ile kontrol edin. Eski sürümler compose dosyasındaki satır içi
   yapılandırmayı okuyamaz. Docker Desktop eklentiyi içerir. Linux'ta yalın bir Docker
   Engine üzerinde eklentiyi Docker'ın paket deposundan kurun
-  (https://docs.docker.com/compose/install/linux/). Colima kullanan macOS'ta
+  (<https://docs.docker.com/compose/install/linux/>). Colima kullanan macOS'ta
   eklentiyi Homebrew ile kurun ve bir Docker eklentisi olarak bağlayın:
 
     ```sh
