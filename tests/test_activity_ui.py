@@ -450,6 +450,25 @@ class TestAlertRules:
     def test_each_lan_class_raises(self, cls):
         assert self._kinds([["tcp", "10.1.2.3", 22, cls, 1, {"syn_sent": 1}]]) == [("activity_lan", cls)]
 
+    @pytest.mark.parametrize(
+        ("cls", "phrase"),
+        [
+            ("lan", "tried to reach your local network: 1 destination, port 22."),
+            ("tailnet", "tried to reach your tailnet: 1 destination, port 22."),
+            ("docker_host", "tried to reach the Docker host itself: 1 destination, port 22."),
+            ("link_local", "tried to reach a link-local address: 1 destination, port 22."),
+            ("docker_peer", "tried to reach another container on its Docker network (not an earner): 2 destinations"),
+        ],
+    )
+    def test_each_lan_class_names_its_destination_in_one_sentence(self, cls, phrase):
+        # One message with a select on the class, so a translation words the
+        # whole sentence; a code that no branch names would show as the code.
+        rows = [["tcp", "10.1.2.3", 22, cls, 1, {"est": 1}]]
+        if cls == "docker_peer":
+            rows.append(["tcp", "10.1.2.4", 22, cls, 1, {"est": 1}])
+        f = activity_ui.alert_findings(activity_ui.sanitise(window(out=rows), NOW))
+        assert phrase in f[0]["message"]
+
     def test_pending_wording(self):
         f = activity_ui.alert_findings(
             activity_ui.sanitise(window(out=[["tcp", "10.1.2.3", 22, "lan", 1, {"syn_sent": 1}]]), NOW)
