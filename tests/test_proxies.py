@@ -196,6 +196,26 @@ class TestEarner:
         svc = {"name": "X", "docker": {"image": "x"}, "requirements": {"container_prohibited": True}}
         assert "terms forbid running it in Docker" in proxies.refusal(svc)
 
+    @pytest.mark.real_honeygain_terms
+    def test_honeygain_runs_behind_a_proxy_only_with_its_account_risk_ticked(self):
+        """Its help centre forbids VPNs and can suspend the account: the owner picks that risk."""
+        import json
+        from pathlib import Path
+
+        from app import catalog
+
+        honeygain = catalog.get_service("honeygain")
+        assert proxies.refusal(honeygain) is None
+        assert proxies.acknowledgements(honeygain) == ["account_risk"]
+        assert proxies.missing_acknowledgements(honeygain, []) == ["account_risk"]
+        assert proxies.missing_acknowledgements(honeygain, ["account_risk"]) == []
+        source = honeygain["requirements"]["proxy_risk"]["source"]
+        assert urllib.parse.urlparse(source).hostname == "support.honeygain.com"
+        # The tick says plainly what the owner risks, and cites the catalog's source.
+        en = json.loads((Path(__file__).resolve().parent.parent / "app" / "i18n" / "en.json").read_text())
+        text = en["app.route.ack.account_risk"]
+        assert "account may be suspended" in text and text.endswith(source)
+
     def test_the_catalog_locks_earnapp_by_its_terms(self):
         from app import catalog
 
@@ -2631,6 +2651,14 @@ class TestWorkerChecksTheAcknowledgements:
             "bitping", self._spec("bitping", cap_add=[cap], acknowledged=["net_admin", "net_raw", "tun_device"])
         )
         assert refused.status_code == 400 and "reaches past any network namespace" in refused.detail
+
+    @pytest.mark.real_honeygain_terms
+    def test_honeygain_is_refused_without_its_account_risk_tick_and_taken_with_it(self):
+        refused = self._check("honeygain", self._spec("honeygain"))
+        assert refused.status_code == 400
+        assert refused.detail["error"] == "acknowledge_reduced_isolation"
+        assert refused.detail["needs"] == ["account_risk"]
+        assert self._check("honeygain", self._spec("honeygain", acknowledged=["account_risk"])) is None
 
     def test_no_host_device_but_the_tun_device(self):
         refused = self._check(

@@ -2413,6 +2413,15 @@ def _validate_proxied(slug: str, spec: ProxiedDeploySpec, proxy_id: int | None =
                     "message": t("worker.proxied_copy_ack_no_inbound"),
                 },
             )
+    if ((_catalog_service(slug) or {}).get("requirements") or {}).get("proxy_risk") and "account_risk" not in acked:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "acknowledge_reduced_isolation",
+                "needs": ["account_risk"],
+                "message": t("worker.proxied_copy_ack_account_risk", slug=slug),
+            },
+        )
     _validate_deploy_spec(spec.earner, slug)
     _validate_proxy(spec.proxy)
 

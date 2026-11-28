@@ -2225,6 +2225,7 @@ const CP = (() => {
       net_raw: t('app.route.ack.net_raw'),
       tun_device: t('app.route.ack.tun_device'),
       no_inbound: t('app.route.ack.no_inbound'),
+      account_risk: t('app.route.ack.account_risk'),
     }[key] || key;
   }
 

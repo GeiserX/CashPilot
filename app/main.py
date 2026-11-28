@@ -5689,7 +5689,9 @@ def _acknowledge_refusal(name: str, missing: list[str]) -> HTTPException:
 async def _require_isolation_feature(svc: dict[str, Any], features: Any) -> None:
     """A service with volumes, or one that needs an acknowledgement, runs behind a proxy only on a worker that can."""
     docker_conf = svc.get("docker") or {}
-    if (docker_conf.get("volumes") or proxies.acknowledgements(svc)) and "proxied_isolation" not in features:
+    # The account risk asks a worker nothing new: the UI's own check is enough there.
+    isolation = [key for key in proxies.acknowledgements(svc) if key != "account_risk"]
+    if (docker_conf.get("volumes") or isolation) and "proxied_isolation" not in features:
         raise HTTPException(
             status_code=409,
             detail=t("api.worker_too_old_isolation", name=svc.get("name") or svc.get("slug") or ""),

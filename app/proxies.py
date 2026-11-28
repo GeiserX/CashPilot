@@ -244,7 +244,7 @@ def _caps(values: Any) -> list[str]:
 #: order the deploy form lists them. Each lowers its isolation, so each is its
 #: own checkbox (app/templates/fleet.html, app/static/js/app.js); the worker
 #: enforces the first three again (worker_api._validate_proxied).
-ACK_KEYS = ("net_admin", "net_raw", "tun_device", "no_inbound")
+ACK_KEYS = ("net_admin", "net_raw", "tun_device", "no_inbound", "account_risk")
 
 
 def _host_folder(source: str) -> bool:
@@ -312,6 +312,8 @@ def acknowledgements(svc: dict[str, Any]) -> list[str]:
         "net_raw": "NET_RAW" in caps,
         "tun_device": bool(devices & PROXIED_ISOLATED_DEVICES),
         "no_inbound": _udp(docker_conf),
+        # Terms that forbid proxies and can suspend the account (Honeygain's).
+        "account_risk": bool((svc.get("requirements") or {}).get("proxy_risk")),
     }
     return [key for key in ACK_KEYS if needs[key]]
 

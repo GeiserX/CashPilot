@@ -34,6 +34,35 @@ def schema_path():
 
 
 @pytest.fixture(autouse=True)
+def _honeygain_as_a_plain_proxied_service(request):
+    """Most proxy and route tests use Honeygain as a plain service to copy and route.
+
+    Its terms can suspend the account behind a VPN, so its catalog entry asks
+    the owner to tick that risk (requirements.proxy_risk); that tick is not
+    what those tests test. It is cleared here for the test's length, in the
+    loaded catalog only. Tests marked ``real_honeygain_terms`` keep it.
+    """
+    if request.node.get_closest_marker("real_honeygain_terms"):
+        yield
+        return
+    from app import catalog
+
+    svc = catalog._by_slug.get("honeygain") if catalog._by_slug else None
+    if svc is None:
+        catalog.get_service("honeygain")
+        svc = catalog._by_slug.get("honeygain")
+    reqs = (svc or {}).get("requirements")
+    if not isinstance(reqs, dict) or "proxy_risk" not in reqs:
+        yield
+        return
+    svc["requirements"] = {k: v for k, v in reqs.items() if k != "proxy_risk"}
+    try:
+        yield
+    finally:
+        svc["requirements"] = reqs
+
+
+@pytest.fixture(autouse=True)
 def _no_pending_worker_key():
     """A test that enrols the worker leaves its key handover open; close it after each test.
 

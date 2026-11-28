@@ -476,6 +476,7 @@ follow it there. Others cannot, and the form says why before anything starts.
 | The service needs | Behind a proxy |
 | --- | --- |
 | Terms that forbid proxies or VPNs (`requirements.proxy_prohibited`), or forbid Docker, VMs or hosting (`requirements.container_prohibited`) | Refused. The form shows the reason and a link to the provider's terms. |
+| Terms that forbid VPNs and can suspend the account, where the owner may still choose that risk (`requirements.proxy_risk`) | Runs after you tick that the provider may suspend your account. The tick cites the provider's terms. |
 | The host's own network | Refused. The form offers the closest option: run it directly on the box. |
 | A published port (inbound connections) | Refused. Those connections reach the box, never the proxy's address. Run it directly on the box. |
 | A GPU, or a host device other than `/dev/net/tun` | Refused. |
@@ -496,6 +497,17 @@ What this means for each Docker earner the catalog had refused before:
 | Storj, Sia, Anyone Protocol | Refused: each needs a published port for inbound connections. |
 | SRBMiner-Multi, Kryptex Pool (Pearl) | Refused: they need the GPU. |
 | EarnApp | Refused: its terms forbid running it in Docker, a VM or hosting. |
+
+Honeygain was never refused, but its copies and routes now need a tick.
+Its help centre strictly prohibits VPNs. It wants your regular home or mobile
+connection, and it does not support data-center IPs. It can suspend the
+account, and one shared IP can get several accounts suspended at once:
+https://support.honeygain.com/hc/en-us/articles/30688484350492-Does-Honeygain-work-with-VPNs
+
+So a Honeygain copy or route runs only after you tick that your Honeygain
+account may be suspended. A copy that already runs keeps running. Its next
+rebuild asks you to add it again with the tick. The tick needs no worker
+update. The UI checks it, and an updated worker checks it too.
 
 ### Volumes of its own
 

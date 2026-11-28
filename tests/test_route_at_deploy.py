@@ -1406,6 +1406,24 @@ class TestTheUiDeploysARoute:
         assert error.status_code == 400 and "terms forbid running it in Docker" in str(error.detail)
         assert ui.calls == []
 
+    @pytest.mark.real_honeygain_terms
+    def test_honeygain_is_routed_only_with_its_account_risk_tick(self, db):
+        """Its terms can suspend the account; an older worker needs no new feature for it."""
+        ui = _Ui()
+
+        async def go():
+            pid = await ui.proxy()
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            refused = exc.value
+            assert ui.calls == []
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid, route_acknowledged=["account_risk"]))
+            return refused, ui.calls[-1][2]
+
+        refused, sent = _run(go)
+        assert refused.status_code == 400 and refused.detail["needs"] == ["account_risk"]
+        assert sent["acknowledged"] == ["account_risk"]
+
     def test_a_service_that_lowers_its_isolation_is_routed_only_with_its_tick(self, db):
         ui = _Ui(_worker_row(features=("proxy_tunnel", "route_at_deploy", "proxied_isolation")))
         env = {"BITPING_EMAIL": "a@b.c", "BITPING_PASSWORD": "pw"}
