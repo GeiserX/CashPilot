@@ -556,6 +556,14 @@ class TestDecisions:
         assert await _run(state, image_updates.AUTO) == "off"
         assert not state.rows
 
+    async def test_a_switch_to_notify_during_the_check_announces_the_build(self):
+        # "off" would answer the bell's notice of a build that is still on offer.
+        state = _Hooks(_answer(), deploy=image_updates.ModeChanged("notify"))
+        assert await _run(state, image_updates.AUTO) == "available"
+        assert [r[0] for r in state.rows] == ["available"]
+        assert await _run(state, image_updates.AUTO) == "available"
+        assert len(state.rows) == 1
+
     async def test_a_failed_deploy_is_not_held_and_is_tried_at_the_next_run(self):
         state = _Hooks(_answer(), deploy=image_updates.DeployRefused("registry down", rolled_back=False))
         assert await _run(state, image_updates.AUTO) == "failed"
@@ -756,6 +764,26 @@ class TestTheDashboardSide:
             await main._image_update_deploy(1, "honeygain", {"1": "abc"}, "sha256:" + "a" * 64)
         deploy.assert_not_called()
 
+    async def test_off_saved_while_the_custom_check_runs_is_the_one_that_decides(self):
+        from app import main
+
+        deploy = AsyncMock()
+        settings = {"mode": "auto", "workers": {}, "services": {}}
+
+        async def owner_turns_it_off(*_args):
+            settings["services"] = {"custom-mine": "off"}
+            return False
+
+        with (
+            patch.object(main, "_image_update_settings", AsyncMock(side_effect=lambda: dict(settings))),
+            patch.object(main.database, "get_deployment_spec", AsyncMock(return_value={"env": {}})),
+            patch.object(main, "_custom_values_unsaved", owner_turns_it_off),
+            patch.object(main, "_deploy", deploy),
+            pytest.raises(image_updates.ModeChanged),
+        ):
+            await main._image_update_deploy(1, "custom-mine", {"1": "abc"}, "sha256:" + "a" * 64)
+        deploy.assert_not_called()
+
     async def test_a_custom_value_saved_after_the_blocker_is_not_deployed(self):
         from app import main
 
@@ -950,10 +978,16 @@ class TestCustomServiceBlocker:
         assert "not deployed yet" in why and "new-value" not in why and "old-value" not in why
         assert await self._blocker(monkeypatch, saved, made, deployed_env={"GREETING": "new-value"}) == ""
 
-    async def test_a_hostname_value_compares_by_its_key(self, monkeypatch):
+    async def test_a_hostname_value_compares_as_the_redeploy_fills_it(self, monkeypatch):
+        from app import main
+
         made = {"image": "example/mine:latest", "command": "", "data_path": ""}
         saved = {"name": "Mine", "image": "example/mine:latest", "env": [{"key": "NAME", "value": "box-{hostname}"}]}
-        assert await self._blocker(monkeypatch, saved, made, deployed_env={"NAME": "box-mini2"}) == ""
+        own = main._device_hostname({}, 1)
+        assert await self._blocker(monkeypatch, saved, made, deployed_env={"NAME": f"box-{own}"}) == ""
+        # The template changed since the deploy: the redeploy would bring it in.
+        why = await self._blocker(monkeypatch, saved, made, deployed_env={"NAME": f"node-{own}"})
+        assert "not deployed yet" in why
 
     async def test_data_in_an_image_volume_outside_the_data_path_is_left_to_the_owner(self, monkeypatch):
         # The new container would get an empty anonymous volume, and the old one
