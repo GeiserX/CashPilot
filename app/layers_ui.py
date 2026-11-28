@@ -222,8 +222,10 @@ def secure_vm(info: dict[str, Any], now: float | None = None) -> dict[str, Any] 
     if fence.get("state") == "failed":
         view["state"] = "failed"
     elif fence.get("state") == "ok" and isinstance(checked, (int, float)):
-        fresh = ((time.time() if now is None else now) - checked) <= VM_FENCE_STALE
-        view["state"] = "ok" if fresh else "stale"
+        age = (time.time() if now is None else now) - checked
+        # A time in the future is a wrong clock, not a fresh check: unknown.
+        if age >= 0:
+            view["state"] = "ok" if age <= VM_FENCE_STALE else "stale"
     return view
 
 
