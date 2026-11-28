@@ -193,33 +193,38 @@ Schema at version <N>; no migration needed this boot.
 Schema now at version <N> (was 0). Migrations applied this boot: earnings.source
 ```
 
-And there should be **no** decryption error. If the key did not come across you
-will see this, once per affected credential:
+If the key did not come across, the UI does not start. Its log says which
+key it tried and that it decrypts none of the stored credentials:
 
 ```
-Failed to decrypt a stored credential: the credential-encryption key
-(CASHPILOT_ENCRYPTION_KEY / /data/.fernet_key) does not match the key this
-value was encrypted with.
+RuntimeError: The credential-encryption key in use comes from a new key,
+because no key was found (/data/.fernet_key is missing), and it decrypts none
+of the 1 stored credentials checked. This database was encrypted with another
+key.
 ```
 
 That message means exactly what it says: the database was restored and the key
 was not. Put the original `.fernet_key` back. **The credentials cannot be
-recovered any other way.**
+recovered any other way.** The key CashPilot made on that start is deleted
+again, so the next start with the right key works.
 
-### Restoring the key by environment variable instead
+### Restoring the key from a secret instead
 
-If you kept the key as a secret rather than a file, `CASHPILOT_ENCRYPTION_KEY`
-is adopted **only when no key file exists**, which covers both a fresh install
-and a restore onto an empty volume:
+If you keep the key outside the data folder, give it back the same way:
+`CASHPILOT_ENCRYPTION_KEY_FILE` pointing at the file (a Docker secret, or a file
+your secret manager writes), or `CASHPILOT_ENCRYPTION_KEY` with the value:
 
 ```yaml
 environment:
-  - CASHPILOT_ENCRYPTION_KEY=<the base64 key from your backup>
+  - CASHPILOT_ENCRYPTION_KEY_FILE=/run/secrets/cashpilot_encryption_key
 ```
 
-The file always wins where it exists. That ordering is deliberate: a running
-install must never have its key silently replaced by a stale environment
-variable.
+The order is `CASHPILOT_ENCRYPTION_KEY_FILE`, then `/data/.fernet_key`, then
+`CASHPILOT_ENCRYPTION_KEY`. A key from the variable is never written into
+`/data`, so the data folder stays without its key. A running install never has
+its key replaced by a stale variable, and a key that reads none of the stored
+credentials stops the start. The recipes are in
+[Encryption key outside the data folder](encryption-key.md).
 
 ---
 
