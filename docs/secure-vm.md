@@ -49,7 +49,7 @@ the release your UI runs, checks it against a SHA-256, and runs it as root:
 ```bash
 curl -fsSLo cashpilot-vm https://raw.githubusercontent.com/GeiserX/CashPilot/<release>/scripts/cashpilot-vm \
   && echo "<sha256>  cashpilot-vm" | sha256sum -c - \
-  && sudo bash cashpilot-vm install --ui http://<ui-host>:8080 --host-worker <name>
+  && sudo bash cashpilot-vm install --ui http://<ui-host>:8080 --host-worker <name> --ref <release>
 ```
 
 It shows what it will do, asks once to continue, and asks for your fleet key
@@ -68,10 +68,14 @@ line, so it is not in your shell history. Then it:
 
 Options:
 
+- `--ref TAG`: the release that the guest takes its compose file from. Give
+  the same release as the script, because the script checks the file against
+  its own SHA-256. The Fleet page's command already does.
 - `--ram MB`: 1024 at least.
 - `--cpus N` and `--disk GB`.
-- `--port PORT`: the host port where the UI reaches the guest's worker, 18081 by
-  default.
+- `--port PORT`: the host port where the UI reaches the guest's worker. Without
+  it, the first free port of 18081, 18091, 18181 and 28081. A port you give
+  must be free, or the install stops.
 - `--worker-url URL`: when the UI reaches this computer through NAT or a port
   forward.
 - `--net 10.x.y`: when `10.213.0.0/29` is in use here.
@@ -126,11 +130,18 @@ routes, sysctls and the whole ruleset. All of it must match what it recorded
 when it wrote the fence, exactly.
 
 - On any drift it takes the guest's link down at once, writes the fence again,
-  reads it back, and brings the link up only on an exact match.
+  reads it back, and brings the link up only on an exact match. If the link
+  does not go down, the guard stops the guest.
 - At boot the link starts down. The guard brings it up only after the fence
-  reads back as written.
+  reads back as written: the rules it wrote and no other rule in any table.
 - When the host's addresses or your public IP change, the guard cuts the link,
   writes the new fence and reconnects. This takes well under a second.
+- The guard looks up your public IP every 2 minutes. If every lookup fails, it
+  keeps the last address for up to an hour. After that, and on an install where
+  no lookup ever worked, the guest stays cut off, because the fence cannot drop
+  an address it does not know.
+- `verify --prove-red` holds the guard off while the fence is open. If that run
+  dies, the next guard pass finds it gone and puts the fence back.
 
 It logs each change to the journal (`journalctl -t cashpilot-vm`), or to syslog
 on Unraid.
@@ -141,16 +152,26 @@ on Unraid.
 sudo cashpilot-vm verify
 ```
 
-The self-test runs probes from inside the guest. For each target it also runs a
-control from outside the fence, so a blocked result means the fence stopped it,
-not that nothing was listening. It checks:
+The self-test runs probes from inside the guest. It checks:
 
 - every address of the host, the namespace's gateway, your router and up to
   four other LAN devices, your tailnet's DNS and the metadata address: each must
   be blocked
 - the UI's address and port: must be reachable
 - the internet by name: must work
-- gVisor is registered in the guest, and the guest's own LAN fence is in place.
+- gVisor is registered in the guest. The guest's own LAN fence is checked too,
+  but it appears only with the first earner.
+
+For each target, the self-test also runs a control from outside the fence. A
+blocked probe proves the fence only when its control reaches the target. Then
+the line says `ok`. When the control gets no answer either, the line says
+`skip`: the target was not there to reach, so the probe proves nothing. The
+fence drops packets without an answer. So any answer to the guest (a
+connection, a refusal or an error) fails the test, and so does a target with no
+result.
+
+The Fleet page's self-test button runs the same checks, and the page shows the
+result.
 
 `--json` prints the result for scripts. `--prove-red` is for a throwaway test
 host only. It opens the fence for one probe run, so you can see every target
@@ -166,7 +187,9 @@ sudo cashpilot-vm remove
 `remove` asks the UI to forget the Secure VM's worker and stops the guest. Then
 it deletes the guest, its disk, the image, the namespace and its links, the
 host's firewall rules, the guard, the units and the service user. Last, it
-checks that none of them is left, and says what is left if something is. A UI
+checks that none of them is left, and says what is left if something is. When
+the guest is stopped or cut off, it cannot ask the UI, so `remove` says so, and
+you delete the worker on the Fleet page. A UI
 that cannot forget a worker on request (3.0.x and older) gets no request.
 `remove` then says so, and you delete the worker on the Fleet page.
 
