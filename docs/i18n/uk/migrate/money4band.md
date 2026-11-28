@@ -1,5 +1,5 @@
 ---
-source_hash: 1a7f6b462b56
+source_hash: 098dcc2576d9
 ---
 # Перехід з money4band { #moving-from-money4band }
 
@@ -38,7 +38,7 @@ money4band 5.0 шифрує `config/user-config.json` на диску
 CashPilot не може прочитати зашифрований файл. Запустіть `m4b config edit` у своїй теці
 money4band: ця команда відкриває розшифрований файл у вашому редакторі
 ([довідка CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
-Скопіюйте весь його текст, вставте його на сторінці імпорту, потім закрийте редактор.
+Скопіюйте весь його текст, вставте його на сторінці **Import from another tool** (Імпорт з іншого інструмента), потім закрийте редактор.
 
 Надавайте перевагу файлу JSON. У `.env` Docker Compose розгортає `$` у значеннях без лапок,
 тож пароль із `$` — це не те, що показує файл. CashPilot не

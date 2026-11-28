@@ -1,5 +1,5 @@
 ---
-source_hash: 1a7f6b462b56
+source_hash: 098dcc2576d9
 ---
 # Pindah dari money4band { #moving-from-money4band }
 
@@ -38,7 +38,7 @@ dan menghapus `.env` miliknya setelah setiap kali dijalankan
 CashPilot tidak dapat membaca file terenkripsi itu. Jalankan `m4b config edit` di folder
 money4band Anda: perintah itu membuka file yang sudah didekripsi di editor Anda
 ([referensi CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
-Salin seluruh teksnya, tempelkan di halaman impor, lalu tutup editornya.
+Salin seluruh teksnya, tempelkan di halaman **Import from another tool** (Impor dari alat lain), lalu tutup editornya.
 
 Utamakan file JSON. Di `.env`, Docker Compose mengekspansi `$` dalam nilai tanpa tanda kutip,
 sehingga kata sandi yang mengandung `$` tidak sama dengan yang tampak di file. CashPilot tidak

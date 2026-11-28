@@ -1,5 +1,5 @@
 ---
-source_hash: b48a8fc19aa4
+source_hash: 06e0336d2a02
 ---
 # CashPilot 与同类项目的比较 { #how-cashpilot-compares }
 
@@ -57,18 +57,18 @@ CashPilot 一列描述的是 v3.0.1。这一列的每个单元格都很简短，
 
 ### 关于 CashPilot 一列的说明 { #cashpilot-notes }
 
-- **多个代理或 IP。** 自 v1.69.0 起，CashPilot 会为已部署在工作节点上的服务运行额外副本，每个副本都经由自己的代理。SOCKS5 和 HTTP CONNECT 只承载 TCP：隧道只放行发往代理端口的 TCP，所以 SOCKS5 的 UDP 中继会被丢弃。Tailscale 出口节点也承载 UDP。收益应用与一个隧道容器共享网络命名空间（[代码][cp-proxy-deploy]）。该命名空间只放行回环、隧道以及隧道自身到代理的连接：发往其地址和端口的 TCP，或 tailscaled 标记的数据包（[隧道防火墙][cp-tunnel-fw]）。所以代理失效时，收益应用会停止，而不会泄漏流量（[工作原理](proxies.md#how-it-works)）。如果服务需要主机网络、发布端口、卷、设备、GPU 或 `NET_ADMIN`、`NET_RAW` 或 `SYS_ADMIN`，或者其条款禁止使用代理，它就无法通过代理运行。所以 <!-- n:docker -->21<!-- /n --> 个中有 <!-- n:noproxy -->10<!-- /n --> 个只能用服务器自己的 IP 赚取收益（[无法通过代理运行的服务](proxies.md#what-cannot-run-through-a-proxy)）。
+- **多个代理或 IP。** 自 v1.69.0 起，CashPilot 会为已部署在工作节点上的服务运行额外副本，每个副本都经由自己的代理。SOCKS5 和 HTTP CONNECT 只承载 TCP：隧道只放行发往代理端口的 TCP，所以 SOCKS5 的 UDP 中继会被丢弃。Tailscale 出口节点也承载 UDP。收益应用与一个隧道容器共享网络命名空间（[代码][cp-proxy-deploy]）。该命名空间只放行回环、隧道以及隧道自身到代理的连接：发往其地址和端口的 TCP，或 tailscaled 标记的数据包（[隧道防火墙][cp-tunnel-fw]）。所以代理失效时，收益应用会停止，而不会泄漏流量（[工作原理](proxies.md#how-it-works)）。如果服务需要主机网络、发布端口、卷、设备、GPU 或 `NET_ADMIN`、`NET_RAW` 或 `SYS_ADMIN`，或者其条款禁止使用代理，它就无法通过代理运行。所以 <!-- n:docker -->21<!-- /n --> 个收益应用中有 <!-- n:noproxy -->10<!-- /n --> 个只能用服务器自己的 IP 赚取收益（[无法通过代理运行的服务](proxies.md#what-cannot-run-through-a-proxy)）。
 - **收益。** 有些采集器需要从你的浏览器复制的 cookie 或令牌，其中一些会过期。各服务的指南会说明是哪些。
 - **静态存储的凭据。** UI 把加密密钥文件放在与数据库相同的数据卷中（[代码][cp-fernet]）。收益应用的凭据以容器环境变量的形式到达每个工作节点，所以在该工作节点的 Docker 配置中是明文（`docker inspect`）。
 - **收益应用容器设置。** 工作节点移除所有 capability，然后加回目录为该服务列出的那些。它设置 `no-new-privileges` 和进程数（pids）限制，并拒绝特权容器（[代码][cp-hardening]、[代码][cp-privileged]、[安全默认设置](security-defaults.md)）。Mysterium 在隔离网桥上的自有网络命名空间中运行，带 `NET_ADMIN`、`SETUID` 和 `SETGID`，使用按摘要固定的镜像（[目录][cp-myst]）。可选的 gVisor 运行时可以再加一层用户空间内核（[运行时](security-defaults.md#container-runtimes-gvisor-where-it-works)）。
-- **Docker socket。** 自 v1.71.0 起，只有 socket 代理挂载 socket：sockguard 2.4.7，按摘要固定，只读（[compose][cp-sock]）。工作节点获得一个经过过滤的副本，它拒绝特权容器、对 `/` 或 socket 的绑定，以及目录之外的 capability 或设备（[socket 代理](security-defaults.md#docker-socket-proxy)）。只运行一次的 `cashpilot-migrate` 容器也会挂载 socket：它为旧版本创建的对象加上标签，供代理的所有者隔离使用，并在代理启动前退出（[compose][cp-migrate]）。收益应用从不获得 socket（[代码][cp-mounts]）。该代理还不是一道 root 边界：设置了 `CASHPILOT_COMPOSE_DIR` 或 `CASHPILOT_PROXY_BIND_MOUNTS` 时，放在允许文件夹中的符号链接只需两次部署就能触及主机的 `/`（[详情](security-defaults.md#docker-socket-proxy)）。Unraid 和 TrueNAS 的应用条目仍会把原始 socket 挂载到工作节点中（[应用商店](app-stores.md)）。
+- **Docker socket。** 自 v1.71.0 起，工作节点不再持有 socket。socket 由 socket 代理持有：sockguard 2.4.7，按摘要固定，只读（[compose][cp-sock]）。工作节点获得一个经过过滤的副本，它拒绝特权容器、对 `/` 或 socket 的绑定，以及目录之外的 capability 或设备（[socket 代理](security-defaults.md#docker-socket-proxy)）。只运行一次的 `cashpilot-migrate` 容器也会挂载 socket。它为旧版本创建的卷和隔离墙网络加上所有者标签，并在其上重新创建它们的容器，使代理的所有者隔离也覆盖它们。它在代理启动前退出（[compose][cp-migrate]）。收益应用从不获得 socket（[代码][cp-mounts]）。该代理还不是一道 root 边界。设置了 `CASHPILOT_COMPOSE_DIR` 或 `CASHPILOT_PROXY_BIND_MOUNTS` 时，被攻破的工作节点可以用一个容器在允许的文件夹中放置符号链接，再用第二个容器触及主机的 `/`（[详情](security-defaults.md#docker-socket-proxy)）。Unraid 和 TrueNAS 的应用条目仍会把原始 socket 挂载到工作节点中（[应用商店](app-stores.md)）。
 - **LAN 隔离。** 自 v1.70.0 起，对新安装以及没有任何收益应用位于 Docker 默认网桥上的升级安装默认开启。工作节点把收益应用放到它自己的网桥上，并为该网桥写入一个防火墙表（[代码][cp-fence]）。该表丢弃发往私有地址段、tailnet 地址段、云元数据、主机已连接的子网以及主机本身的流量。开启公网 IP 检测时，它还会丢弃发往家庭公网 IP 的流量（[隔离](isolation.md#lan-isolation-by-default)）。收益应用已经位于默认网桥上的升级安装会一直留在那里，直到你按下 **Turn on isolation** (开启隔离)。`CASHPILOT_ISOLATION=off` 会关闭它。设置了 `CASHPILOT_CONTAINER_NETWORK` 时，CashPilot 不为该网络写入隔离墙，防火墙规则由你负责。在 Podman 上没有隔离墙，机群页面会注明这一点（[模式](isolation.md#modes)、[代码][cp-fence-mode]）。自 2.0.7 起，Mysterium 也受隔离墙保护。通过 2.0.6 及更早版本部署的节点会留在主机网络上，直到你重新部署它（[隔离墙之后的 Mysterium](mysterium-fence.md)）。有一项检查可以显示收益应用能访问到什么（[检查](isolation-check.md)）。
 - **对外调用。** 除应用本身之外，CashPilot 会访问：
     - GitHub releases，每天一次，用于更新检查（`CASHPILOT_UPDATE_CHECK=off` 可停止，[代码][cp-update]）。
     - `api.ipify.org`、`ifconfig.me` 或 `icanhazip.com`，每个工作节点每小时一次，以获取其公网 IP（`CASHPILOT_EGRESS_DETECT=off` 可停止，[代码][cp-egress]）。
     - CoinGecko 和 Frankfurter，用于汇率（[代码][cp-rates]）。
     - mempool.space、api.kaspa.org 以及公共的 Ethereum、Ethereum Classic、Polygon 和 Solana RPC 节点，用于[链上余额](onchain.md)。
-    - iptoasn.com，用于它的网络名称表，最多每周一次，并且只在有工作节点开启了[活动](activity.md#network-names-and-countries)时访问（[代码][cp-ipgeo]）。
+    - iptoasn.com，用于 CashPilot 的网络名称表，最多每周一次，并且只在有工作节点开启了[活动](activity.md#network-names-and-countries)时访问（[代码][cp-ipgeo]）。
     - 各提供商，用于采集器。
 
     浏览器会加载 Google Fonts（[模板][cp-cdn]）以及来自 jsDelivr 的 Chart.js（[模板][cp-chartjs]）。

@@ -1,5 +1,5 @@
 ---
-source_hash: b48a8fc19aa4
+source_hash: 06e0336d2a02
 ---
 # CashPilot とほかのツールの比較 { #how-cashpilot-compares }
 
@@ -57,18 +57,18 @@ CashPilot の列は v3.0.1 を説明しています。この列の各セルは�
 
 ### CashPilot の列についての注記 { #cashpilot-notes }
 
-- **多くのプロキシや IP。** v1.69.0 以降、CashPilot はワーカーにデプロイ済みのサービスの追加のコピーを、それぞれ専用のプロキシ経由で動かします。SOCKS5 と HTTP CONNECT が運ぶのは TCP だけです。トンネルはプロキシのポートへの TCP しか外に出さないので、SOCKS5 の UDP リレーは捨てられます。Tailscale の出口ノードは UDP も運びます。収益アプリはトンネルのコンテナのネットワーク名前空間を共有します([コード][cp-proxy-deploy])。その名前空間が外に出すのは、ループバック、トンネル、トンネル自身のプロキシへの接続(そのアドレスとポートへの TCP、または tailscaled のマーク付きパケット)だけです([トンネルのファイアウォール][cp-tunnel-fw])。そのため、プロキシが落ちると収益アプリは止まり、通信が漏れることはありません([仕組み](proxies.md#how-it-works))。ホストネットワーク、公開ポート、ボリューム、デバイス、GPU、または `NET_ADMIN`、`NET_RAW`、`SYS_ADMIN` が必要なサービスや、規約でプロキシを禁じているサービスは、プロキシ経由では動かせません。そのため、<!-- n:docker -->21<!-- /n --> のうち <!-- n:noproxy -->10<!-- /n --> はサーバー自身の IP でしか稼げません([動かせないもの](proxies.md#what-cannot-run-through-a-proxy))。
+- **多くのプロキシや IP。** v1.69.0 以降、CashPilot はワーカーにデプロイ済みのサービスの追加のコピーを、それぞれ専用のプロキシ経由で動かします。SOCKS5 と HTTP CONNECT が運ぶのは TCP だけです。トンネルはプロキシのポートへの TCP しか外に出さないので、SOCKS5 の UDP リレーは捨てられます。Tailscale の出口ノードは UDP も運びます。収益アプリはトンネルのコンテナのネットワーク名前空間を共有します([コード][cp-proxy-deploy])。その名前空間が外に出すのは、ループバック、トンネル、トンネル自身のプロキシへの接続(そのアドレスとポートへの TCP、または tailscaled のマーク付きパケット)だけです([トンネルのファイアウォール][cp-tunnel-fw])。そのため、プロキシが落ちると収益アプリは止まり、通信が漏れることはありません([仕組み](proxies.md#how-it-works))。ホストネットワーク、公開ポート、ボリューム、デバイス、GPU、または `NET_ADMIN`、`NET_RAW`、`SYS_ADMIN` が必要なサービスや、規約でプロキシを禁じているサービスは、プロキシ経由では動かせません。そのため、<!-- n:docker -->21<!-- /n --> の収益アプリのうち <!-- n:noproxy -->10<!-- /n --> はサーバー自身の IP でしか稼げません([動かせないもの](proxies.md#what-cannot-run-through-a-proxy))。
 - **収益。** ブラウザーからコピーした Cookie やトークンが必要なコレクターもあり、その一部は期限切れになります。どれがそうかは各サービスのガイドに書いてあります。
 - **保存時の認証情報。** UI は暗号化の鍵ファイルをデータベースと同じデータボリュームに置きます([コード][cp-fernet])。収益アプリの認証情報はコンテナの環境変数として各ワーカーに届くので、そのワーカーの Docker の設定(`docker inspect`)では平文です。
 - **収益アプリのコンテナの設定。** ワーカーはすべてのケーパビリティを外し、カタログがそのサービスに挙げているものを戻します。`no-new-privileges` と pids の上限を設定し、特権コンテナを拒否します([コード][cp-hardening]、[コード][cp-privileged]、[セキュリティの既定値](security-defaults.md))。Mysterium は、フェンスで囲まれたブリッジ上の専用のネットワーク名前空間で、`NET_ADMIN`、`SETUID`、`SETGID` 付きで、ダイジェストで固定したイメージで動きます([カタログ][cp-myst])。オプションの gVisor ランタイムを使うと、ユーザー空間のカーネルを加えられます([ランタイム](security-defaults.md#container-runtimes-gvisor-where-it-works))。
-- **Docker ソケット。** v1.71.0 以降、ソケットをマウントするのはソケットプロキシだけです。sockguard 2.4.7 で、ダイジェストで固定し、読み取り専用です([compose][cp-sock])。ワーカーはフィルターをかけたコピーを受け取り、これは特権コンテナ、`/` やソケットのバインド、カタログにないケーパビリティやデバイスを拒否します([ソケットプロキシ](security-defaults.md#docker-socket-proxy))。1 回だけ動く `cashpilot-migrate` コンテナもソケットをマウントします。これは古いリリースが作ったものにプロキシのオーナー分離用のラベルを付け、プロキシが起動する前に終了します([compose][cp-migrate])。収益アプリがソケットを受け取ることはありません([コード][cp-mounts])。このプロキシはまだ root の境界ではありません。`CASHPILOT_COMPOSE_DIR` か `CASHPILOT_PROXY_BIND_MOUNTS` を設定していると、許可されたフォルダーに仕込まれたシンボリックリンクが、2 回のデプロイでホストの `/` に届きます([詳細](security-defaults.md#docker-socket-proxy))。Unraid と TrueNAS の掲載版は、今もワーカーに生のソケットをマウントします([アプリストア](app-stores.md))。
+- **Docker ソケット。** v1.71.0 以降、ワーカーはソケットを持ちません。ソケットを持つのはソケットプロキシです。sockguard 2.4.7 で、ダイジェストで固定し、読み取り専用です([compose][cp-sock])。ワーカーはフィルターをかけたコピーを受け取り、これは特権コンテナ、`/` やソケットのバインド、カタログにないケーパビリティやデバイスを拒否します([ソケットプロキシ](security-defaults.md#docker-socket-proxy))。1 回だけ動く `cashpilot-migrate` コンテナもソケットをマウントします。これは古いリリースが作ったボリュームとフェンスのネットワークにオーナーのラベルを付け、その上にそれらのコンテナを作り直します。こうしてプロキシのオーナー分離がそれらにも及びます。このコンテナはプロキシが起動する前に終了します([compose][cp-migrate])。収益アプリがソケットを受け取ることはありません([コード][cp-mounts])。このプロキシはまだ root の境界ではありません。`CASHPILOT_COMPOSE_DIR` か `CASHPILOT_PROXY_BIND_MOUNTS` を設定していると、乗っ取られたワーカーは、1 つ目のコンテナで許可されたフォルダーにシンボリックリンクを仕込み、2 つ目のコンテナでホストの `/` に届くことができます([詳細](security-defaults.md#docker-socket-proxy))。Unraid と TrueNAS の掲載版は、今もワーカーに生のソケットをマウントします([アプリストア](app-stores.md))。
 - **LAN の分離。** v1.70.0 以降、新規インストールと、Docker の既定のブリッジに収益アプリがないアップグレード済みのインストールでは既定でオンです。ワーカーは収益アプリを専用のブリッジに置き、そのブリッジ用のファイアウォールのテーブルを書き込みます([コード][cp-fence])。このテーブルは、プライベートの範囲、tailnet の範囲、クラウドのメタデータ、ホストが接続しているサブネット、ホスト自身への通信を捨てます。パブリック IP の検出がオンなら、自宅のパブリック IP への通信も捨てます([分離](isolation.md#lan-isolation-by-default))。収益アプリがすでに既定のブリッジにあるアップグレード済みのインストールは、**Turn on isolation** (分離をオンにする)を押すまでそこにとどまります。`CASHPILOT_ISOLATION=off` でオフになります。`CASHPILOT_CONTAINER_NETWORK` を設定すると、CashPilot はそのネットワークにフェンスを書き込まず、ファイアウォールのルールはあなたが管理します。Podman ではフェンスはなく、フリートのページにそのことが表示されます([モード](isolation.md#modes)、[コード][cp-fence-mode])。2.0.7 以降は Mysterium もフェンスで囲まれます。2.0.6 までにデプロイしたノードは、再デプロイするまでホストのネットワークにとどまります([フェンスの内側の Mysterium](mysterium-fence.md))。チェックで収益アプリが何に届くかを確認できます([チェック](isolation-check.md))。
 - **外部への通信。** アプリそのもののほかに、CashPilot は次の相手と通信します。
     - GitHub のリリース。1 日 1 回、更新の確認のため(`CASHPILOT_UPDATE_CHECK=off` で停止、[コード][cp-update])。
     - `api.ipify.org`、`ifconfig.me`、または `icanhazip.com`。各ワーカーから 1 時間に 1 回、パブリック IP のため(`CASHPILOT_EGRESS_DETECT=off` で停止、[コード][cp-egress])。
     - CoinGecko と Frankfurter。為替レートのため([コード][cp-rates])。
     - mempool.space、api.kaspa.org、公開の Ethereum、Ethereum Classic、Polygon、Solana の RPC ノード。[オンチェーンの残高](onchain.md)のため。
-    - iptoasn.com。ネットワーク名の表のため。多くても週に 1 回で、[アクティビティ](activity.md#network-names-and-countries)をオンにしたワーカーがあるときだけです([コード][cp-ipgeo])。
+    - iptoasn.com。CashPilot のネットワーク名の表のため。多くても週に 1 回で、[アクティビティ](activity.md#network-names-and-countries)をオンにしたワーカーがあるときだけです([コード][cp-ipgeo])。
     - 各プロバイダー。コレクターのため。
 
     ブラウザーは Google Fonts([テンプレート][cp-cdn])と jsDelivr の Chart.js([テンプレート][cp-chartjs])を読み込みます。

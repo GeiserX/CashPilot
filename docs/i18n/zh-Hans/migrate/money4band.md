@@ -1,5 +1,5 @@
 ---
-source_hash: 1a7f6b462b56
+source_hash: 098dcc2576d9
 ---
 # 从 money4band 迁移 { #moving-from-money4band }
 
@@ -37,7 +37,7 @@ money4band 5.0 会在磁盘上加密 `config/user-config.json`
 CashPilot 无法读取加密后的文件。请在 money4band 文件夹中运行 `m4b config edit`：
 它会在你的编辑器中打开解密后的文件
 （[CLI 参考](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)）。
-复制其中的全部文本，粘贴到导入页面，然后关闭编辑器。
+复制其中的全部文本，粘贴到 **Import from another tool** (从其他工具导入) 页面，然后关闭编辑器。
 
 优先使用 JSON 文件。在 `.env` 中，Docker Compose 会展开未加引号的值中的 `$`，
 所以含有 `$` 的密码并不是文件中显示的样子。CashPilot 不会
