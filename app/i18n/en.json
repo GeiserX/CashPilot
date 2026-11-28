@@ -644,6 +644,7 @@
   "app.detail.estimated": "Estimated earnings",
   "app.detail.everywhere": "Already on every available worker.",
   "app.detail.load_failed": "Could not load service: {error}",
+  "app.detail.loading": "Loading...",
   "app.detail.more_boxes": "Deploy to more boxes",
   "app.detail.more_boxes_image": "Deploy to more boxes, or change the image",
   "app.detail.na": "N/A",
