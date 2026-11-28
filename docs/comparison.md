@@ -72,7 +72,7 @@ CashPilot's column describes v3.0.1. Each of its cells is short, and the [notes 
 
 None of the projects sends usage telemetry in the code we read. IGM's closed binary could not be read.
 
-Every project here passes app credentials to containers as environment variables, and InternetIncome passes some as command arguments too, so on the host that runs the apps they are plain text in Docker's container config (`Env` and `Args` in `docker inspect`), readable by anyone with Docker access. Since v3.1.0 CashPilot can optionally keep them out of it (see the CashPilot notes). The "Credentials at rest" row describes the stored copy only.
+Every project here passes app credentials to containers as environment variables, and InternetIncome passes some as command arguments too, so on the host that runs the apps they are plain text in Docker's container config (`Env` and `Args` in `docker inspect`), readable by anyone with Docker access. Since v3.1.0 CashPilot can optionally keep the passwords of most catalog earners out of it (see the CashPilot notes). The "Credentials at rest" row describes the stored copy only.
 
 ## How we counted
 
