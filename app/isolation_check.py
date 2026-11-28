@@ -432,9 +432,9 @@ def host_netns_findings(containers: list[Any], mode: str | None = None) -> list[
             "kind": "net_admin_in_host_netns",
             "exposure": True,
             "detail": (
-                "These containers hold firewall capabilities in this host's own network namespace, so they can "
-                "rewrite the host's firewall, the LAN fence included, and reach everything the host reaches: "
-                f"{', '.join(sorted(held))}. " + lan_fence.move_advice(mode, "them", "them")
+                t("isolation_check.these_containers_hold_firewall_capabilities", held=", ".join(sorted(held)))
+                + " "
+                + lan_fence.move_advice(mode, "them", "them")
             ),
             "docs": ISOLATION_PAGE,
         }
@@ -449,30 +449,14 @@ def placement_findings(earners: list[Any], network: str, mode: str | None = None
     if not network:
         names = ", ".join(sorted(_name(c) for c in bridge))
         if mode == lan_fence.MODE_LEGACY:
-            why, docs = (
-                "Isolation is not switched on for this worker, so these earners sit on Docker's default bridge "
-                "and can reach your LAN and this host. Turn it on with the button on this worker's row",
-                ISOLATION_PAGE,
-            )
+            detail, docs = t("isolation_check.no_network.legacy", names=names), ISOLATION_PAGE
         elif mode == lan_fence.MODE_UNSUPPORTED:
-            why, docs = (
-                "This worker runs on Podman, which CashPilot cannot fence yet, so these earners sit on Podman's "
-                "default network and can reach your LAN and this host",
-                ISOLATION_PAGE,
-            )
+            detail, docs = t("isolation_check.no_network.podman", names=names), ISOLATION_PAGE
         elif mode == lan_fence.MODE_OFF:
-            why, docs = (
-                "Isolation is turned off on this worker with CASHPILOT_ISOLATION=off, so these earners sit on "
-                "Docker's default bridge and can reach your LAN and this host",
-                ISOLATION_PAGE,
-            )
+            detail, docs = t("isolation_check.no_network.off", names=names), ISOLATION_PAGE
         else:
-            why, docs = (
-                "CASHPILOT_CONTAINER_NETWORK is not set, so these earners sit on Docker's default bridge "
-                "next to your other containers and no rule can single them out",
-                BRIDGE_PAGE,
-            )
-        return [{"kind": "no_isolated_network", "exposure": True, "detail": f"{why}: {names}.", "docs": docs}]
+            detail, docs = t("isolation_check.no_network.unset", names=names), BRIDGE_PAGE
+        return [{"kind": "no_isolated_network", "exposure": True, "detail": detail, "docs": docs}]
     found = []
     outside = sorted(_name(c) for c in bridge if network not in _networks(c))
     if outside:
@@ -481,8 +465,7 @@ def placement_findings(earners: list[Any], network: str, mode: str | None = None
                 "kind": "not_on_isolated_network",
                 "exposure": True,
                 "detail": (
-                    f"These earners are not on {network}, so the rules on its bridge do not cover them: "
-                    f"{', '.join(outside)}. Redeploy them from the dashboard."
+                    t("isolation_check.these_earners_not_rules_bridge", network=network, outside=", ".join(outside))
                 ),
                 "docs": BRIDGE_PAGE,
             }
@@ -500,8 +483,7 @@ def placement_findings(earners: list[Any], network: str, mode: str | None = None
                 "kind": "also_on_other_network",
                 "exposure": True,
                 "detail": (
-                    f"These earners are on {network} and also on another network, which the rules on its bridge "
-                    f"do not cover: {', '.join(also)}. Disconnect them from it with docker network disconnect."
+                    t("isolation_check.these_earners_also_another_network", network=network, also=", ".join(also))
                 ),
                 "docs": BRIDGE_PAGE,
             }
@@ -532,10 +514,7 @@ def dns_findings(earners: list[Any], network: str, resolvers: list[str], blocked
         {
             "kind": "dns_blocked_resolver",
             "exposure": False,
-            "detail": (
-                "These earners ask a resolver the fence blocks, so every name lookup waits about 4 s: "
-                f"{listed}. Redeploy them so they get CASHPILOT_CONTAINER_DNS."
-            ),
+            "detail": (t("isolation_check.these_earners_ask_resolver_fence", listed=listed)),
             "docs": DNS_PAGE,
         }
     ]
@@ -703,16 +682,17 @@ def ipv6_findings(client: Any, earners: list[Any], network: str) -> list[dict[st
             enabled = bool((client.networks.get(network).attrs or {}).get("EnableIPv6"))
     if not names and not enabled:
         return []
-    where = f"{network} has IPv6 enabled" if enabled else "These earners have an IPv6 address"
-    listed = f": {', '.join(names)}" if names else ""
+    if not enabled:
+        detail = t("isolation_check.ipv6.earners", names=", ".join(names))
+    elif names:
+        detail = t("isolation_check.ipv6.network_earners", network=network, names=", ".join(names))
+    else:
+        detail = t("isolation_check.ipv6.network", network=network)
     return [
         {
             "kind": "ipv6_not_tested",
             "exposure": False,
-            "detail": (
-                f"{where}{listed}. This check tries IPv4 only, so it did not test whether an earner reaches "
-                "your LAN over IPv6. That needs its own ip6tables rules."
-            ),
+            "detail": detail,
             "docs": RULES_PAGE,
         }
     ]
@@ -791,9 +771,12 @@ def _run(client: Any) -> dict[str, Any]:
                 "kind": "node_firewall_unprotected",
                 "exposure": True,
                 "detail": (
-                    f"{node_fw['service']} ({node_fw['container']}) does not blackhole "
-                    f"{', '.join(node_fw['missing'])} for its customers. Redeploy it from the dashboard to pick "
-                    "up the catalog's list."
+                    t(
+                        "isolation_check.does_not_blackhole_customers_redeploy",
+                        service=node_fw["service"],
+                        container=node_fw["container"],
+                        missing=", ".join(node_fw["missing"]),
+                    )
                 ),
                 "docs": NODE_FIREWALL_PAGE,
             }
@@ -950,10 +933,7 @@ def judge_fence(
             {
                 "kind": "fence_missing",
                 "exposure": True,
-                "detail": (
-                    "CashPilot's firewall table is not on this host. Earners on its network have no internet "
-                    "until the worker writes it again, which it tries every 5 minutes and before every deploy."
-                ),
+                "detail": (t("isolation_check.cashpilot_s_firewall_table_not")),
                 "docs": ISOLATION_PAGE,
             }
         )
@@ -964,11 +944,7 @@ def judge_fence(
             {
                 "kind": "fence_incomplete",
                 "exposure": True,
-                "detail": (
-                    "CashPilot's firewall table on this host does not hold every rule it should, so a range it "
-                    "is meant to block may be reachable. The worker rewrites it within 5 minutes and before "
-                    "the next deploy; check again after that."
-                ),
+                "detail": (t("isolation_check.cashpilot_s_firewall_table_host")),
                 "docs": ISOLATION_PAGE,
             }
         )
@@ -978,11 +954,15 @@ def judge_fence(
                 "kind": "fence_not_hit",
                 "exposure": True,
                 "detail": (
-                    "An earner's test connection was not stopped by CashPilot's own rule for "
-                    + ", ".join(
-                        f"{r['range']} ({r['address']}{', it connected' if r['reachable'] else ''})" for r in missed
+                    t(
+                        "isolation_check.earner_s_test_connection_not",
+                        ranges=", ".join(
+                            t("isolation_check.missed_connected", range=r["range"], address=r["address"])
+                            if r["reachable"]
+                            else t("isolation_check.missed", range=r["range"], address=r["address"])
+                            for r in missed
+                        ),
                     )
-                    + ". Something on this host routes that traffic around the fence."
                 ),
                 "docs": ISOLATION_PAGE,
             }
@@ -1105,7 +1085,11 @@ def _probe(
                 {
                     "kind": f"reachable_{group}",
                     "exposure": True,
-                    "detail": f"{label}: an earner reaches {', '.join(target_entry['address'] for target_entry in exposed)}.",
+                    "detail": t(
+                        "isolation_check.earner_reaches",
+                        label=label,
+                        address=", ".join(target_entry["address"] for target_entry in exposed),
+                    ),
                     "docs": docs,
                 }
             )

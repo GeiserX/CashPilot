@@ -121,7 +121,7 @@ def plain_http_refusal(raw_url: str) -> str | None:
     return t(
         "api.worker_s_address_plain_http",
         raw_url=cleartext.host_of(raw_url),
-        private_hosts_text=cleartext.PRIVATE_HOSTS_TEXT,
+        private_hosts_text=t("cleartext.private_hosts"),
     )
 
 

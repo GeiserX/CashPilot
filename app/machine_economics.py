@@ -34,6 +34,8 @@ from collections.abc import Collection, Mapping
 from datetime import date, timedelta
 from typing import Any
 
+from app.i18n import t
+
 # DEFAULT_IDLE_WATTS used to live here: 65.0, described as what a small
 # always-on server draws. It was never referenced by anything, and
 # `power.DEFAULT_HOST_TDP_WATTS` is the SAME number with the same meaning and
@@ -129,11 +131,7 @@ def assess_machine(
             "monthly_cost": None,
             "monthly_net": None,
             "break_even_watts": None,
-            "summary": (
-                f"{name} is not reporting, so CashPilot cannot see what it earns. Nothing here "
-                "says whether it is worth running. The last figures it sent are not evidence "
-                "about now."
-            ),
+            "summary": (t("machine_economics.not_reporting_cashpilot_cannot_see", name=name)),
         }
 
     gross = float(monthly_gross or 0.0)
@@ -147,10 +145,7 @@ def assess_machine(
             "monthly_gross": round(gross, 4),
             "monthly_cost": None,
             "monthly_net": None,
-            "summary": (
-                f"{name} is not billed by the kilowatt-hour, so electricity is not what decides "
-                "whether it is worth running."
-            ),
+            "summary": (t("machine_economics.not_billed_kilowatt_hour_electricity", name=name)),
         }
         if heat is not None:
             # The credit is capped at the electricity cost, and a fixed-price
@@ -168,8 +163,12 @@ def assess_machine(
             "monthly_net": None,
             "break_even_watts": None,
             "summary": (
-                f"{name} earned {gross:.2f} last month. Without {missing} CashPilot cannot say "
-                "whether that covers the electricity, and guessing would be worse than not saying."
+                t(
+                    "machine_economics.earned_last_month_without_cashpilot",
+                    name=name,
+                    gross=format(gross, ".2f"),
+                    missing=missing,
+                )
             ),
         }
         # The break-even TARIFF needs only the gross and the draw, not a price:
@@ -344,7 +343,7 @@ def _finite(raw: Any) -> float | None:
 
 def parse_heat_months(raw: Any) -> frozenset[int] | None:
     """``"11,12,1"`` as a set of calendar months, or None if empty or invalid."""
-    tokens = [t.strip() for t in str(raw or "").split(",")]
+    tokens = [part.strip() for part in str(raw or "").split(",")]
     if not any(tokens):
         return None
     months: set[int] = set()
