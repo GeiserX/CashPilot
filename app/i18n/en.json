@@ -250,7 +250,7 @@
   "api.nothing_deployed": "{problem} Nothing was deployed.",
   "api.nothing_imported_service": "Nothing imported for this service.",
   "api.one_clears_itself_once_fixed": "This one clears by itself once it is fixed",
-  "api.only_id_deploy_set_box": "Only a device id that a deploy set, and that this box runs now, can be changed. A proxied copy's id follows its box's.",
+  "api.only_id_deploy_set_box": "Only an id that a deploy set, and that this box runs now, can be changed. A proxied copy's id follows its box's.",
   "api.owner_access_required": "Owner access required",
   "api.passphrase_public_key_must_text": "The passphrase and the public key must be text.",
   "api.password_must_least_10_characters": "Password must be at least 10 characters",
