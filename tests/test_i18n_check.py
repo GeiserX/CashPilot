@@ -879,3 +879,20 @@ def test_a_hash_belongs_to_its_own_plural(tmp_path):
     )
     code, out = run(en, es)
     assert code == 1 and "# of f" in out
+
+
+def _nested_selects(n: int, leaf: str) -> str:
+    for i in range(n):
+        leaf = f"{{s{i}, select, other {{{leaf}}}}}"
+    return leaf
+
+
+def test_the_report_on_nested_selects_stays_small():
+    # Each level once copied every level below it, so the report doubled per level.
+    found = ic.check_target({"k": _nested_selects(14, "{a}")}, {"k": _nested_selects(14, "{b}")}, None)
+    assert found["placeholder"] and len(str(found)) < 100_000
+
+
+def test_a_message_nested_too_deep_is_broken():
+    found = ic.check_target({"k": _nested_selects(40, "{a}")}, {"k": _nested_selects(40, "{a}")}, None)
+    assert found["placeholder"] == [("k", "unbalanced or malformed braces")]

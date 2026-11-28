@@ -716,8 +716,15 @@ _ICU_HEAD = re.compile(r"\s*([\w.\-]+)\s*(?:,\s*(\w+)\s*)?")
 _ICU_OPTION = re.compile(r"\s*(offset:\s*\d+|=?[\w\-]+)\s*")
 
 
+# Real messages nest two or three levels; a deeper one is treated as broken,
+# which keeps the scan and its description small for any input.
+_ICU_MAX_DEPTH = 16
+
+
 def _icu_argument(s: str, i: int, out: set, depth: int, pick: tuple | None = None) -> int:
     """Parse one argument starting just after its '{'; return the index after its '}'."""
+    if depth >= _ICU_MAX_DEPTH:
+        raise IcuError(f"nested more than {_ICU_MAX_DEPTH} levels deep")
     m = _ICU_HEAD.match(s, i)
     if not m:
         raise IcuError("bad argument name")
