@@ -326,6 +326,17 @@ def test_json_inline_stamp(tmp_path):
     assert "ok" in run(en, es)[1]
 
 
+def test_an_android_target_in_utf16_is_read_by_its_encoding_declaration(tmp_path):
+    res = tmp_path / "res"
+    en = write(res / "values" / "strings.xml", '<resources><string name="hi">Hello %1$s</string></resources>')
+    de = res / "values-de" / "strings.xml"
+    de.parent.mkdir(parents=True)
+    xml = '<?xml version="1.0" encoding="utf-16"?><resources><string name="hi">Hallo %1$s</string></resources>'
+    de.write_bytes(xml.encode("utf-16"))
+    code, out = run(en, de)
+    assert code == 0 and "error:" not in out
+
+
 def test_android_sidecar_hashes(tmp_path):
     en = write(tmp_path / "res" / "values" / "strings.xml", '<resources><string name="a">Fleet</string></resources>')
     de = write(
@@ -817,7 +828,8 @@ def test_a_source_hash_changed_after_the_check_is_not_overwritten(tmp_path, monk
     en = write(tmp_path / "en.json", json.dumps({"a": "Hi", "b": "Bye"}))
     es = write(tmp_path / "es.json", json.dumps({"a": {"text": "Hola", "source": "111111111111"}, "b": "Adiós"}))
     edited = json.dumps({"a": {"text": "Hola", "source": "222222222222"}, "b": "Adiós"})
-    _edit_after_read(monkeypatch, es, 1, edited)
+    # The first read keeps the text a write compares against, the second parses it.
+    _edit_after_read(monkeypatch, es, 2, edited)
     assert ic.main([str(en), str(es), "--stamp"]) != 0
     assert json.loads(es.read_text(encoding="utf-8"))["a"]["source"] == "222222222222"
 
@@ -853,3 +865,176 @@ def test_restamp_leaves_a_still_broken_translation_stale(tmp_path):
     data = yaml.safe_load(es.read_text(encoding="utf-8"))
     assert data["iproyal.notes"]["source"] == "000000000000"
     assert data["iproyal.description"]["source"] == ic.source_hash("Share bandwidth")
+
+
+def test_a_select_that_wraps_more_of_the_sentence_passes(tmp_path):
+    # Filipino puts the verb first, so its select holds the whole sentence.
+    en = (
+        "{n, plural, =1 {{slug}} other {Copy {n} of {slug}}} on {worker} {cmd, select, stop {stopped} other {removed}}."
+    )
+    branch = "{n, plural, =1 {{slug}} other {kopya {n} ng {slug}}} sa {worker}"
+    fil = f"{{cmd, select, stop {{Inihinto ang {branch}.}} other {{Inalis ang {branch}.}}}}"
+    en_f = write(tmp_path / "en.json", json.dumps({"a": en}))
+    fil_f = write(tmp_path / "fil.json", json.dumps({"a": fil}))
+    assert run(en_f, fil_f)[0] == 0
+    # Dropping {worker} from one keyword still fails.
+    write(fil_f, json.dumps({"a": fil.replace(f"Inalis ang {branch}", "Inalis ang {slug}")}))
+    assert run(en_f, fil_f)[0] == 1
+
+
+def test_a_hash_belongs_to_its_own_plural(tmp_path):
+    en = write(
+        tmp_path / "en.json", json.dumps({"a": "{f, plural, other {# files}} in {d, plural, other {{d} folders}}"})
+    )
+    es = write(
+        tmp_path / "es.json", json.dumps({"a": "{f, plural, other {{f} archivos}} en {d, plural, other {# carpetas}}"})
+    )
+    code, out = run(en, es)
+    assert code == 1 and "# of f" in out
+
+
+def _nested_selects(n: int, leaf: str) -> str:
+    for i in range(n):
+        leaf = f"{{s{i}, select, other {{{leaf}}}}}"
+    return leaf
+
+
+def test_the_report_on_nested_selects_stays_small():
+    # Each level once copied every level below it, so the report doubled per level.
+    found = ic.check_target({"k": _nested_selects(14, "{a}")}, {"k": _nested_selects(14, "{b}")}, None)
+    assert found["placeholder"] and len(str(found)) < 100_000
+
+
+def test_a_message_nested_too_deep_is_broken():
+    found = ic.check_target({"k": _nested_selects(40, "{a}")}, {"k": _nested_selects(40, "{a}")}, None)
+    assert found["placeholder"] == [("k", "unbalanced or malformed braces")]
+
+
+def test_a_placeholder_moved_between_two_selects_keywords_fails(tmp_path):
+    src = "{a, select, x {{b, select, x {{p}} other {{q}}}} other {{b, select, x {{q}} other {{p}}}}}"
+    swapped = "{a, select, x {{b, select, x {{q}} other {{p}}}} other {{b, select, x {{p}} other {{q}}}}}"
+    en = write(tmp_path / "en.json", json.dumps({"k": src}))
+    es = write(tmp_path / "es.json", json.dumps({"k": swapped}))
+    code, out = run(en, es)
+    assert code == 1 and "a = x, b = x" in out
+    write(es, json.dumps({"k": src}))
+    assert run(en, es)[0] == 0
+
+
+def test_a_message_with_too_many_select_combinations_fails(tmp_path):
+    src = "{a, select, x {{b, select, x {{p}} other {{q}}}} other {{b, select, x {{q}} other {{p}}}}}"
+    src += "".join(f" {{{n}, select, x {{{n.upper()}}} other {{{n.upper()}}}}}" for n in "cdefg")
+    en = write(tmp_path / "en.json", json.dumps({"k": src}))
+    es = write(tmp_path / "es.json", json.dumps({"k": src}))
+    code, out = run(en, es)
+    assert code == 1 and "more than 64 select combinations" in out
+
+
+def test_two_selects_with_one_name_share_their_keywords(tmp_path):
+    en = write(
+        tmp_path / "en.json", json.dumps({"k": "{g, select, x {{p} {q}} other {}} {g, select, y {{p}} other {}}"})
+    )
+    es = write(
+        tmp_path / "es.json", json.dumps({"k": "{g, select, x {{p} {q}} other {}} {g, select, y {{q}} other {}}"})
+    )
+    code, out = run(en, es)
+    assert code == 1 and "g = y" in out
+
+
+def test_one_select_may_take_the_place_of_two_with_its_name(tmp_path):
+    en = write(
+        tmp_path / "en.json", json.dumps({"k": "{g, select, x {{p}} other {{q}}} {g, select, y {{r}} other {{s}}}"})
+    )
+    es = write(tmp_path / "es.json", json.dumps({"k": "{g, select, x {{p} {s}} y {{q} {r}} other {{q} {s}}}"}))
+    assert run(en, es)[0] == 0
+
+
+@pytest.mark.parametrize("p, q", [("${p}", "${q}"), ("%(p)s", "%(q)s"), ("<b>", "<i>")])
+def test_a_placeholder_of_another_kind_moved_between_select_keywords_fails(tmp_path, p, q):
+    en = write(tmp_path / "en.json", json.dumps({"k": f"{{g, select, x {{a {p}}} other {{b {q}}}}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"k": f"{{g, select, x {{a {q}}} other {{b {p}}}}}"}))
+    assert run(en, es)[0] == 1
+    write(es, json.dumps({"k": f"{{g, select, other {{b {q}}} x {{a {p}}}}}"}))
+    assert run(en, es)[0] == 0
+
+
+def test_a_placeholder_moved_between_select_keywords_inside_quoted_braces_fails(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"k": "{g, select, x {'{%(p)s}'} other {'{%(q)s}'}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"k": "{g, select, x {'{%(q)s}'} other {'{%(p)s}'}}"}))
+    code, out = run(en, es)
+    assert code == 1 and "g = x" in out
+    write(es, json.dumps({"k": "{g, select, other {'{%(q)s}'} x {'{%(p)s}'}}"}))
+    assert run(en, es)[0] == 0
+
+
+def test_a_select_inside_a_plural_may_lose_the_one_form(tmp_path):
+    # Japanese has only "other", so the select in the English "one" form goes.
+    en = write(
+        tmp_path / "en.json",
+        json.dumps(
+            {
+                "k": "{n, plural, one {{g, select, x {A single box} other {One box}}} other {{g, select, x {{who} has # boxes} other {# boxes}}}}"
+            }
+        ),
+    )
+    ja = write(
+        tmp_path / "ja.json", json.dumps({"k": "{n, plural, other {{g, select, x {{who} の # 個} other {# 個}}}}"})
+    )
+    assert run(en, ja)[0] == 0
+
+
+def test_each_select_needs_its_own_other_branch(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"k": "{g, select, x {A} other {B}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"k": "{g, select, x {A}} {g, select, other {B}}"}))
+    code, out = run(en, es)
+    assert code == 1 and "no 'other' branch in g" in out
+    write(es, json.dumps({"k": "{g, select, x {A} other {}} {g, select, other {B}}"}))
+    assert run(en, es)[0] == 0
+
+
+@pytest.mark.parametrize("kind", ["select", "plural"])
+def test_a_keyword_given_twice_in_one_select_or_plural_fails(tmp_path, kind):
+    en = write(tmp_path / "en.json", json.dumps({"k": f"{{g, {kind}, one {{{{p}}}} other {{{{q}}}}}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"k": f"{{g, {kind}, one {{{{q}}}} one {{{{p}}}} other {{{{q}}}}}}"}))
+    code, out = run(en, es)
+    assert code == 1 and "malformed braces" in out
+
+
+def test_plural_forms_join_what_they_render_for_each_select_keyword():
+    # A language may drop the "one" form and say {p} in "other" instead.
+    en = {"k": {"one": "{p}", "other": "{g, select, x {{q}} other {{q}}}"}}
+    ja = {"k": {"other": "{p} {g, select, x {{q}} other {{q}}}"}}
+    assert ic.check_target(en, ja, None)["placeholder"] == []
+    assert ic.check_target(en, {"k": {"other": "{g, select, x {{q}} other {{q}}}"}}, None)["placeholder"]
+    # A swap between keywords still fails when the forms are joined.
+    two = {"k": {"one": "{p}", "other": "{g, select, x {{q}} other {{r}}}"}}
+    swapped = {"k": {"other": "{p} {g, select, x {{r}} other {{q}}}"}}
+    assert ic.check_target(two, swapped, None)["placeholder"]
+    assert ic.check_target(two, {"k": {"other": "{p} {g, select, x {{q}} other {{r}}}"}}, None)["placeholder"] == []
+
+
+def _edit_during_the_temp_write(monkeypatch, path, text):
+    real = ic.os.fdopen
+
+    def fdopen(*a, **k):
+        path.write_text(text, encoding="utf-8")
+        return real(*a, **k)
+
+    monkeypatch.setattr(ic.os, "fdopen", fdopen)
+
+
+def test_a_json_save_during_the_stamp_is_kept(tmp_path, monkeypatch):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hi"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": "Hola"}))
+    _edit_during_the_temp_write(monkeypatch, es, json.dumps({"a": "Hola, editado"}))
+    assert ic.main([str(en), str(es), "--stamp"]) != 0
+    assert json.loads(es.read_text(encoding="utf-8")) == {"a": "Hola, editado"}
+    assert not list(tmp_path.glob(".es.json.*"))
+
+
+def test_a_catalog_save_during_the_stamp_is_kept(tmp_path, monkeypatch):
+    d, en = catalog(tmp_path)
+    es = write(d / "es.yml", 'iproyal.description:\n  text: "Comparte"\n')
+    _edit_during_the_temp_write(monkeypatch, es, 'iproyal.description:\n  text: "Comparte, editado"\n')
+    assert ic.main([str(en), str(es), "--stamp"]) != 0
+    assert "editado" in es.read_text(encoding="utf-8")

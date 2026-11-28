@@ -118,7 +118,9 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import itertools
 import json
+import math
 import os
 import pathlib
 import re
@@ -509,8 +511,14 @@ def load_catalog(path: pathlib.Path) -> tuple[dict, dict]:
     return entries, hashes
 
 
-def _write_atomic(path: pathlib.Path, text: str) -> None:
-    """Replace path with text in one step, so a failed write leaves the old file."""
+def _write_atomic(path: pathlib.Path, text: str, expect: str | None = None) -> None:
+    """Replace path with text in one step, so a failed write leaves the old file.
+
+    With `expect`, the file must still hold exactly that text just before the
+    replace, or nothing is written: an editor's save is refused, never lost.
+    A save in the instant between that read and the replace is the one case
+    left, so do not stamp a file while an editor is saving it.
+    """
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
     tmp = pathlib.Path(name)
     try:
@@ -525,12 +533,14 @@ def _write_atomic(path: pathlib.Path, text: str) -> None:
         os.chmod(name, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
+        if expect is not None and path.read_text(encoding="utf-8") != expect:
+            raise ParseError(f"{path}: the file changed while it was being stamped; run again")
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
 
 
-def write_catalog(path: pathlib.Path, entries: dict, hashes: dict, header: str = "") -> None:
+def write_catalog(path: pathlib.Path, entries: dict, hashes: dict, header: str = "", expect: str | None = None) -> None:
     lines = [header.rstrip("\n")] if header else []
     for key, text in entries.items():
         # A plain key must stay a string for every YAML reader: start with a
@@ -549,7 +559,7 @@ def write_catalog(path: pathlib.Path, entries: dict, hashes: dict, header: str =
         lines.append(f"  text: {dump_yaml_string(text)}")
         if hashes.get(key):
             lines.append(f"  source: {dump_yaml_string(hashes[key])}")
-    _write_atomic(path, "\n".join(lines) + "\n")
+    _write_atomic(path, "\n".join(lines) + "\n", expect)
 
 
 def _inner_xml(elem: ET.Element) -> str:
@@ -672,8 +682,18 @@ class IcuError(Exception):
     pass
 
 
-def _icu_scan(s: str, i: int, in_plural: bool, out: set, depth: int) -> int:
-    """Scan message text from i until an unmatched '}' (returned) or the end."""
+def _icu_scan(
+    s: str, i: int, plural: str | None, out: set, depth: int, pick: dict | None = None, marks: list | None = None
+) -> int:
+    """Scan message text from i until an unmatched '}' (returned) or the end.
+
+    `plural` names the plural whose branch this is, for "#". With `pick` set,
+    a select it names adds only the placeholders of
+    the branch that keyword chooses (or "other"): what renders for it.
+    `pick` maps each chosen select's name to its keyword. `marks` holds the
+    placeholders that were not ICU ({{x}}, ${x}, %s, tags): placeholders()
+    leaves a marker where each one was, so a branch records them too.
+    """
     n = len(s)
     while i < n:
         c = s[i]
@@ -682,20 +702,28 @@ def _icu_scan(s: str, i: int, in_plural: bool, out: set, depth: int) -> int:
             if nxt == "'":
                 i += 2
                 continue
-            if nxt in ("{", "}") or (in_plural and nxt == "#"):
+            if nxt in ("{", "}") or (plural and nxt == "#"):
                 end = s.find("'", i + 1)
                 while end != -1 and s[end + 1 : end + 2] == "'":
                     end = s.find("'", end + 2)
                 if end == -1:
                     raise IcuError("unterminated quote")
+                if marks is not None:
+                    # Quoted braces are literal, but a placeholder inside them still renders.
+                    out.update(marks[int(k)] for k in re.findall("\x02(\\d+)\x03", s[i:end]))
                 i = end + 1
                 continue
             i += 1
             continue
-        if c == "#" and in_plural:
-            out.add(("plural-number",))  # the count shown in a plural branch
+        if c == "\x02" and marks is not None:
+            end = s.index("\x03", i)
+            out.add(marks[int(s[i + 1 : end])])
+            i = end + 1
+            continue
+        if c == "#" and plural:
+            out.add(("plural-number", plural))  # the count shown in a plural branch
         if c == "{":
-            i = _icu_argument(s, i + 1, out, depth)
+            i = _icu_argument(s, i + 1, out, depth, pick, marks)
             continue
         if c == "}":
             if depth == 0:
@@ -711,8 +739,16 @@ _ICU_HEAD = re.compile(r"\s*([\w.\-]+)\s*(?:,\s*(\w+)\s*)?")
 _ICU_OPTION = re.compile(r"\s*(offset:\s*\d+|=?[\w\-]+)\s*")
 
 
-def _icu_argument(s: str, i: int, out: set, depth: int) -> int:
+# Real messages nest two or three levels; a deeper one is treated as broken,
+# which keeps the scan and its description small for any input.
+_ICU_MAX_DEPTH = 16
+_SELECT_COMBOS = 64
+
+
+def _icu_argument(s: str, i: int, out: set, depth: int, pick: dict | None = None, marks: list | None = None) -> int:
     """Parse one argument starting just after its '{'; return the index after its '}'."""
+    if depth >= _ICU_MAX_DEPTH:
+        raise IcuError(f"nested more than {_ICU_MAX_DEPTH} levels deep")
     m = _ICU_HEAD.match(s, i)
     if not m:
         raise IcuError("bad argument name")
@@ -728,6 +764,7 @@ def _icu_argument(s: str, i: int, out: set, depth: int) -> int:
             raise IcuError(f"{kind} {name!r} has no options")
         j += 1
         keys: list[str] = []
+        branches: dict = {}
         while True:
             while j < len(s) and s[j].isspace():
                 j += 1
@@ -743,22 +780,29 @@ def _icu_argument(s: str, i: int, out: set, depth: int) -> int:
                 continue
             if s[j : j + 1] != "{":
                 raise IcuError(f"{kind} option {o.group(1)!r} needs a {{message}}")
+            if o.group(1) in keys:
+                # ICU refuses it, and only one of the two branches would ever render.
+                raise IcuError(f"{kind} {name!r} repeats the keyword {o.group(1)!r}")
             keys.append(o.group(1))
             if kind == "select":
-                # Each select keyword must keep its own placeholders: {name}
-                # moved from one keyword to another is a different message.
                 inner: set = set()
-                j = _icu_scan(s, j + 1, False, inner, depth + 1) + 1
-                out.update(inner)
-                out.add(("select-branch", name, o.group(1), frozenset(inner)))
+                j = _icu_scan(s, j + 1, None, inner, depth + 1, pick, marks) + 1
+                branches[o.group(1)] = inner
             else:
-                j = _icu_scan(s, j + 1, True, out, depth + 1) + 1
+                j = _icu_scan(s, j + 1, name, out, depth + 1, pick, marks) + 1
         if kind == "select":
+            if pick and name in pick:
+                out.update(branches.get(pick[name], branches.get("other", set())))
+            else:
+                for inner in branches.values():
+                    out.update(inner)
             out.add(("select", name, tuple(sorted(keys))))
         else:
             out.add((kind, name))
-            if "other" not in keys:
-                out.add(("no-other", name))
+        # Checked for each select here, before selects of one name share
+        # their keywords: ICU needs "other" in every one of them.
+        if "other" not in keys:
+            out.add(("no-other", name))
         return j + 1
     # number, date, time, ... with an optional style
     if s[j : j + 1] == "}":
@@ -783,11 +827,19 @@ def placeholders(text: str) -> frozenset:
     # the branches. So an ICU message checks links only by destination, which
     # the "tag" entries already do, and counts none.
     icu = bool(_ICU_COMPLEX.search(text))
+    # Each placeholder found below is replaced by a marker, so the ICU scan
+    # sees where it sits: inside which select branch, or outside all of them.
+    marks: list = []
+
+    def mark(*tokens: tuple) -> str:
+        out.update(tokens)
+        marks.extend(tokens)
+        return "".join(f"\x02{len(marks) - len(tokens) + n}\x03" for n in range(len(tokens)))
 
     def tag(m: re.Match) -> str:
         href = _HREF.search(m.group(3))
         dest = (href.group(1) or href.group(2)) if href else ""
-        out.add(("tag", m.group(1) + m.group(2).lower(), dest))
+        here = mark(("tag", m.group(1) + m.group(2).lower(), dest))
         if href and not icu:
             # links to A, A, B differ from links to A, B, B
             links[dest] = links.get(dest, 0) + 1
@@ -796,55 +848,123 @@ def placeholders(text: str) -> frozenset:
         # tag becomes its attribute values, unquoted and in place, so implicit
         # printf positions keep their order.
         values = [a or b for a, b in _ATTR_VALUE.findall(_HREF.sub("", m.group(3)))]
-        return " " + " ".join(values) + " " if values else ""
+        return here + (" " + " ".join(values) + " " if values else "")
 
     text = _TAG.sub(tag, text)
-    for m in _SHELL.finditer(text):
-        out.add(("shell", m.group(1)))
-    body = _SHELL.sub("", text)
+    body = _SHELL.sub(lambda m: mark(("shell", m.group(1))), text)
     # In an ICU plural or select, "{{" is a branch opening on an argument
     # ("other {{who} has #}"), not a mustache placeholder.
     if not _ICU_COMPLEX.search(body):
-        for m in _MUSTACHE.finditer(body):
-            out.add(("mustache", m.group(1)))
-        body = _MUSTACHE.sub("", body)
+        body = _MUSTACHE.sub(lambda m: mark(("mustache", m.group(1))), body)
     body = body.replace("%%", "")  # a literal percent sign, never a conversion
-    for m in _PY_NAMED.finditer(body):
+
+    def py(m: re.Match) -> str:
         conv = m.group(2)
-        out.add(("py", m.group(1), "s" if conv == "s" else ("d" if conv in "diu" else conv)))
-    body = _PY_NAMED.sub("", body)
+        return mark(("py", m.group(1), "s" if conv == "s" else ("d" if conv in "diu" else conv)))
+
+    body = _PY_NAMED.sub(py, body)
     # Unindexed conversions take the next argument in turn, and a "*" width or
     # precision takes one too (an integer); %2$s does not move that counter.
     implicit = 0
-    for m in _PRINTF.finditer(body):
+
+    def printf(m: re.Match) -> str:
+        nonlocal implicit
+        found = []
         for star in (m.group(3), m.group(4)):
             if star == "*":
                 implicit += 1
-                out.add(("printf", implicit, "d"))
+                found.append(("printf", implicit, "d"))
         conv = m.group(5)
         if m.group(1):
             pos = int(m.group(1))
         else:
             implicit += 1
             pos = implicit
-        out.add(("printf", pos, "s" if conv in "s@" else ("d" if conv in "diu" else conv)))
-    body = _PRINTF.sub("", body)
+        found.append(("printf", pos, "s" if conv in "s@" else ("d" if conv in "diu" else conv)))
+        return mark(*found)
+
+    body = _PRINTF.sub(printf, body)
     if "{" in body or "}" in body:
         try:
-            _icu_scan(body, 0, False, out, 0)
+            _icu_scan(body, 0, None, out, 0, None, marks)
+            # Each select keyword must render the same placeholders as in the
+            # English. A select may wrap more of the sentence in another
+            # language, so compare what renders for the keyword, not the
+            # branch alone: {name} moved from one keyword to another fails.
+            # Every combination of keywords is compared, so a placeholder
+            # moved between combinations of two selects fails too. A message
+            # with more than _SELECT_COMBOS combinations is too big to check,
+            # and fails. Two selects with one name share their keywords.
+            selects: dict = {}
+            for t in out:
+                if t[0] == "select":
+                    selects.setdefault(t[1], set()).update(t[2])
+            names = sorted(selects)
+            # One "select" entry per name, so a translation may join two
+            # selects of one name into one, or split one into two.
+            out -= {t for t in out if t[0] == "select"}
+            out.update(("select", n, tuple(sorted(selects[n]))) for n in names)
+            picks = []
+            if math.prod(len(selects[n]) for n in names) > _SELECT_COMBOS:
+                out.add(("too-many-selects",))
+            elif names:
+                keysets = [sorted(selects[n]) for n in names]
+                picks = [dict(zip(names, keys, strict=True)) for keys in itertools.product(*keysets)]
+            for pick in picks:
+                shown: set = set()
+                _icu_scan(body, 0, None, shown, 0, pick, marks)
+                shown = {t for t in shown if t[0] != "select"}
+                out.add(("select-branch", tuple(sorted(pick.items())), frozenset(shown)))
         except IcuError:
             out.add(("broken-braces",))
             out.update(("arg", n) for n in re.findall(r"\{\s*([\w.\-]+)\s*\}", body))
     return frozenset(out)
 
 
+_SELECT_META = ("select", "select-branch", "too-many-selects")
+
+
 def signature(value: str | dict) -> frozenset:
-    if isinstance(value, dict):
-        sig: set = set()
-        for form in value.values():
-            sig |= placeholders(form)
+    """The placeholder signature of a string, or of a plural's forms together.
+
+    A plural compares the union of its forms, because a language may drop a
+    form it does not need. For each combination of select keywords, the
+    forms' rendered placeholders are joined the same way. A form without
+    that select adds all it renders, and a form whose select lacks that
+    keyword adds what its "other" branch renders.
+    """
+    if not isinstance(value, dict):
+        return placeholders(value)
+    sigs = [placeholders(form) for form in value.values()]
+    if len(sigs) == 1:
+        return sigs[0]
+    sig: set = {t for s in sigs for t in s if t[0] not in _SELECT_META}
+    if any(("too-many-selects",) in s for s in sigs):
+        return frozenset(sig | {("too-many-selects",)})
+    selects: dict = {}
+    for s in sigs:
+        for t in s:
+            if t[0] == "select":
+                selects.setdefault(t[1], set()).update(t[2])
+    names = sorted(selects)
+    sig.update(("select", n, tuple(sorted(selects[n]))) for n in names)
+    if not names:
         return frozenset(sig)
-    return placeholders(value)
+    if math.prod(len(selects[n]) for n in names) > _SELECT_COMBOS:
+        return frozenset(sig | {("too-many-selects",)})
+    for keys in itertools.product(*(sorted(selects[n]) for n in names)):
+        shown: set = set()
+        for s in sigs:
+            own = {t[1]: set(t[2]) for t in s if t[0] == "select"}
+            records = {t[1]: t[2] for t in s if t[0] == "select-branch"}
+            if not own or not records:
+                # No select here, or broken braces: everything it renders.
+                shown |= {t for t in s if t[0] not in _SELECT_META}
+                continue
+            pick = tuple((n, k if k in own[n] else "other") for n, k in zip(names, keys, strict=True) if n in own)
+            shown |= records.get(pick, set())
+        sig.add(("select-branch", tuple(zip(names, keys, strict=True)), frozenset(shown)))
+    return frozenset(sig)
 
 
 def _describe(sig: frozenset) -> str:
@@ -871,11 +991,12 @@ def _describe(sig: frozenset) -> str:
         if kind == "broken-braces":
             return "(unbalanced braces)"
         if kind == "select-branch":
-            return f"({t[1]} = {t[2]}: " + (_describe(t[3]) if t[3] else "no placeholder") + ")"
+            when = ", ".join(f"{n} = {k}" for n, k in t[1])
+            return f"({when}: " + (_describe(t[2]) if t[2] else "no placeholder") + ")"
         if kind == "link":
             return f"(link {t[1]} #{t[2]})"
         if kind == "plural-number":
-            return "(# in a plural)"
+            return f"(# of {t[1]})"
         return str(t)
 
     return ", ".join(sorted(one(t) for t in sig)) or "none"
@@ -914,6 +1035,9 @@ def check_target(source: dict, target: dict, hashes: dict | None) -> dict:
         if ("broken-braces",) in t_sig:
             # Reported even when the English is broken the same way.
             found["placeholder"].append((key, "unbalanced or malformed braces"))
+            continue
+        if ("too-many-selects",) in s_sig | t_sig:
+            found["placeholder"].append((key, f"more than {_SELECT_COMBOS} select combinations; split the message"))
             continue
         no_other = sorted(t[1] for t in t_sig if t[0] == "no-other")
         if no_other:
@@ -998,9 +1122,7 @@ def write_json_inline(path: pathlib.Path, hashes: dict, checked: tuple[dict, dic
                 walk(v, key)
 
     walk(root, "")
-    if path.read_text(encoding="utf-8") != raw:
-        raise changed
-    _write_atomic(path, json.dumps(tree, ensure_ascii=False, indent=2) + "\n")
+    _write_atomic(path, json.dumps(tree, ensure_ascii=False, indent=2) + "\n", raw)
 
 
 def _drop_ignored(entries: dict, globs: list[str]) -> dict:
@@ -1016,7 +1138,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--i18next-plurals", action="store_true", help="group key_one/key_other... families")
     ap.add_argument("--ignore", action="append", default=[], metavar="GLOB", help="skip source keys matching GLOB")
     ap.add_argument("--strict", action="store_true", help="extra, stale and unstamped keys fail too")
-    ap.add_argument("--stamp", action="store_true", help="store hashes for translated keys that have none")
+    ap.add_argument(
+        "--stamp",
+        action="store_true",
+        help="store hashes for translated keys that have none (not while an editor is saving the file)",
+    )
     ap.add_argument(
         "--restamp", action="append", default=[], metavar="GLOB", help="re-store hashes for keys matching GLOB"
     )
@@ -1038,6 +1164,9 @@ def main(argv: list[str] | None = None) -> int:
         fmt = args.format if args.format != "auto" else None
         try:
             fmt = fmt or detect_format(path)
+            # Read before the parse: a write later refuses any change since.
+            # Only the catalog writer needs it; XML keeps its own encoding declaration.
+            raw = path.read_text(encoding="utf-8") if fmt == "catalog" and path.is_file() else None
             whole, inline = load(path, fmt, args.i18next_plurals)
             snapshot = (dict(whole), dict(inline or {}))
             # Ignored keys leave the comparison, never the file a stamp rewrites.
@@ -1075,7 +1204,7 @@ def main(argv: list[str] | None = None) -> int:
             if n:
                 try:
                     if fmt == "catalog":
-                        write_catalog(path, whole, hashes, _leading_comments(path))
+                        write_catalog(path, whole, hashes, _leading_comments(path), raw)
                     elif sidecar is not None:
                         sidecar.parent.mkdir(parents=True, exist_ok=True)
                         _write_atomic(sidecar, json.dumps(hashes, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
