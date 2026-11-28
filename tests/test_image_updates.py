@@ -328,6 +328,22 @@ class TestRepoDigest:
         image.attrs["RepoDigests"].append("docker.io/honeygain/honeygain@sha256:" + "d" * 64)
         assert orchestrator._repo_digest(image, "honeygain/honeygain:latest") == "sha256:" + "d" * 64
 
+    @pytest.mark.parametrize(
+        ("name", "full"),
+        [
+            ("busybox", "docker.io/library/busybox"),
+            ("library/busybox", "docker.io/library/busybox"),
+            ("docker.io/busybox", "docker.io/library/busybox"),
+            ("honeygain/honeygain", "docker.io/honeygain/honeygain"),
+            ("localhost/mine", "localhost/mine"),
+            ("127.0.0.1:5000/mine", "127.0.0.1:5000/mine"),
+            ("ghcr.io/org/app", "ghcr.io/org/app"),
+            ("mirror.example/docker.io/busybox", "mirror.example/docker.io/busybox"),
+        ],
+    )
+    def test_a_repository_is_spelled_in_full(self, name, full):
+        assert orchestrator._repo_name(name) == full
+
 
 def _image(image_id, digest="", ref="honeygain/honeygain"):
     return MagicMock(id=image_id, attrs={"RepoDigests": [f"{ref}@{digest}"] if digest else []})

@@ -2125,13 +2125,13 @@ def _remove_old_image(client: Any, image_id: str) -> str | None:
 
 def _repo_name(name: str) -> str:
     """A repository name as Docker Hub spells it in full, so two spellings of one repository compare equal."""
-    first = name.split("/", 1)[0]
+    parts = name.split("/")
     # A first part with no dot, colon or "localhost" is a Docker Hub namespace, not a registry.
-    if "/" not in name or ("." not in first and ":" not in first and first != "localhost"):
-        name = "docker.io/" + name
-    if name.startswith("docker.io/") and name.count("/") == 1:
-        name = "docker.io/library/" + name.split("/", 1)[1]
-    return name
+    if len(parts) == 1 or ("." not in parts[0] and ":" not in parts[0] and parts[0] != "localhost"):
+        parts = ["docker.io", *parts]
+    if parts[0] == "docker.io" and len(parts) == 2:
+        parts = ["docker.io", "library", parts[1]]
+    return "/".join(parts)
 
 
 def _repo_digest(image: Any, ref: str) -> str:
