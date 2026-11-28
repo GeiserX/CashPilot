@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # 从 money4band 迁移 { #moving-from-money4band }
 
@@ -34,8 +34,9 @@ money4band 5.0 会在磁盘上加密 `config/user-config.json`
 （[安全说明](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)），
 并在每次启动后删除它的 `.env`
 （[env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)）。
-CashPilot 无法读取加密后的文件。请在 money4band 文件夹中运行 `m4b config edit`：
-它会在你的编辑器中打开解密后的文件
+CashPilot 无法读取加密后的文件。请在 money4band 文件夹中运行它的 `config edit` 命令：
+发布版二进制文件用 `./Money4Band-<os>-<arch> config edit`，从源码运行则用
+`python main.py config edit`。它会在你的编辑器中打开解密后的文件
 （[CLI 参考](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)）。
 复制其中的全部文本，粘贴到 **Import from another tool** (从其他工具导入) 页面，然后关闭编辑器。
 

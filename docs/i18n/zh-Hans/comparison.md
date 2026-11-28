@@ -1,5 +1,5 @@
 ---
-source_hash: 06e0336d2a02
+source_hash: 4b8d25fab777
 ---
 # CashPilot 与同类项目的比较 { #how-cashpilot-compares }
 
@@ -45,7 +45,7 @@ CashPilot 一列描述的是 v3.0.1。这一列的每个单元格都很简短，
 | 付款 | 余额下降时提议记录一笔付款，并在你确认后记录它（[schema][cp-payouts]） | 无 | 无 | 无 | 无 | 无 |
 | 领取每日奖励 | 否 | 是，通过边车容器（[README][m4b-features]） | 是（[README][igm-features]、[compose][igm-sidecars]） | 否 | 否 | 否 |
 | 静态存储的凭据 | 在 UI 的数据库中加密（Fernet）（[说明](#cashpilot-notes)） | 加密（Fernet）；密钥文件位于数据目录中（[代码][m4b-crypto]） | 加密（用 openssl 进行 AES-256）；密钥文件就在保险库旁边（[代码][igm-encryptor]） | 在 `properties.conf` 中是明文；有些密码作为 `docker run` 参数传递（[脚本][ii-password-arg]） | 在 `.env` 中是明文（[文件][cf-env]） | 加载项选项，由 Supervisor 存储在 `/data/options.json` 中（[HA 文档][ha-options]） |
-| 收益应用容器设置 | 移除所有 capability，`no-new-privileges`，进程数（pids）限制；拒绝特权模式（[说明](#cashpilot-notes)） | 每个非特权服务都设置了 `no-new-privileges`（[代码][m4b-nnp]）；代理容器是特权容器，带 `NET_ADMIN`（[模板][m4b-tun]） | 应用服务上什么都没设置；Mysterium 获得 `NET_ADMIN`（[compose][igm-hosting-myst]）；代理容器获得 `NET_ADMIN`，带 `no-new-privileges` 和进程数限制（[compose][igm-proxy]） | Ebesucher 以 `seccomp=unconfined` 运行（[脚本][ii-seccomp]）；代理容器和 Mysterium 获得 `NET_ADMIN` | 什么都没设置 | 没有任何加载项要求特权模式、主机网络或 Docker API 访问（[示例配置][ha-config]） |
+| 收益应用容器设置 | 移除 capability，目录授予的除外；`no-new-privileges`，进程数（pids）限制；拒绝特权模式（[说明](#cashpilot-notes)） | 每个非特权服务都设置了 `no-new-privileges`（[代码][m4b-nnp]）；代理容器是特权容器，带 `NET_ADMIN`（[模板][m4b-tun]） | 应用服务上什么都没设置；Mysterium 获得 `NET_ADMIN`（[compose][igm-hosting-myst]）；代理容器获得 `NET_ADMIN`，带 `no-new-privileges` 和进程数限制（[compose][igm-proxy]） | Ebesucher 以 `seccomp=unconfined` 运行（[脚本][ii-seccomp]）；代理容器和 Mysterium 获得 `NET_ADMIN` | 什么都没设置 | 没有任何加载项要求特权模式、主机网络或 Docker API 访问（[示例配置][ha-config]） |
 | Docker socket 挂载到 | socket 代理（只读），以及一个只运行一次的迁移容器（[说明](#cashpilot-notes)） | Watchtower（[模板][m4b-watchtower]） | Watchtower，只读，带 `no-new-privileges`（[compose][igm-watchtower]） | 五个重启辅助容器（[脚本][ii-sock-helper]）和 Watchtower（[脚本][ii-watchtower]） | Portainer，在所有网络接口上发布 8000、9000 和 9443 端口（[compose][cf-portainer]），以及两个 Watchtower（[compose][cf-watchtower-ps]、[compose][cf-watchtower-efm]） | 无 |
 | 镜像标签 | <!-- n:docker -->21<!-- /n --> 个收益应用镜像中有 <!-- n:pinned -->9<!-- /n --> 个固定到某个版本或摘要；其余的是浮动的 | 所有 15 个应用镜像都使用 `:latest`（[示例][m4b-image]）；代理容器固定为 v2.6.0，Watchtower 固定为 `:1` | 没有标签，所以 Docker 使用 `latest`（[compose][igm-hosting]）；只有部分 ARM 构建设置了标签 | 大多是 `:latest`（[示例][ii-seccomp]）；EarnApp 为 `:lite`，在 amd64 上通过代理运行时 Honeygain 固定为 0.6.6（[脚本][ii-honeygain]），Traffmonetizer 在 ARM 上使用按架构区分的标签；Watchtower 为 `:nightly` | `:latest` 或没有标签，EarnApp 的 `:lite` 除外（[compose][cf-compose]） | 每个加载项一个版本，由每日 CI 任务更新（[工作流][ha-bump]、[示例][ha-dockerfile]） |
 | 应用镜像更新 | 每次部署或重新部署时重新拉取；没有自动更新工具 | Watchtower（[模板][m4b-watchtower]） | Watchtower，每 4 小时一次（[compose][igm-watchtower]） | Watchtower，每天一次，如果你开启的话（[脚本][ii-watchtower]） | 两个 Watchtower，各自只负责一个应用：PacketStream（[compose][cf-watchtower-ps]）和 EarnFM（[compose][cf-watchtower-efm]）；其他 9 个应用不会更新 | Home Assistant 的加载项更新 |

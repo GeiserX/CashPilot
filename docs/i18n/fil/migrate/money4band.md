@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # Paglipat mula sa money4band { #moving-from-money4band }
 
@@ -35,8 +35,10 @@ Ine-encrypt ng money4band 5.0 ang `config/user-config.json` sa disk
 ([mga tala sa seguridad](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
 at binubura nito ang `.env` nito pagkatapos ng bawat pagsisimula
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
-Hindi mabasa ng CashPilot ang naka-encrypt na file. Patakbuhin ang `m4b config edit` sa iyong
-folder ng money4band: binubuksan nito ang na-decrypt na file sa iyong editor
+Hindi mabasa ng CashPilot ang naka-encrypt na file. Sa iyong folder ng money4band, patakbuhin
+ang `config edit` command nito: `./Money4Band-<os>-<arch> config edit` para sa release
+binary, o `python main.py config edit` kung mula sa source. Binubuksan nito ang
+na-decrypt na file sa iyong editor
 ([CLI reference](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Kopyahin ang lahat ng teksto nito, i-paste ito sa pahina ng **Import from another tool** (Mag-import mula sa ibang tool), pagkatapos isara ang editor.
 

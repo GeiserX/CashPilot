@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # money4band से आना { #moving-from-money4band }
 
@@ -35,8 +35,10 @@ money4band 5.0 डिस्क पर `config/user-config.json` को एन्
 ([सुरक्षा नोट्स](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
 और हर शुरुआत के बाद अपनी `.env` मिटा देता है
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11))।
-CashPilot एन्क्रिप्ट की गई फ़ाइल नहीं पढ़ सकता। अपने money4band फ़ोल्डर में
-`m4b config edit` चलाएँ: यह डिक्रिप्ट की गई फ़ाइल को आपके editor में खोलता है
+CashPilot एन्क्रिप्ट की गई फ़ाइल नहीं पढ़ सकता। अपने money4band फ़ोल्डर में उसका
+`config edit` कमांड चलाएँ: release binary के लिए `./Money4Band-<os>-<arch> config edit`,
+या source से चलाने पर `python main.py config edit`। यह डिक्रिप्ट की गई फ़ाइल को आपके
+editor में खोलता है
 ([CLI reference](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit))।
 उसका पूरा टेक्स्ट कॉपी करें, उसे **Import from another tool** (किसी दूसरे टूल से import करें) पेज पर पेस्ट करें, फिर editor बंद करें।
 
