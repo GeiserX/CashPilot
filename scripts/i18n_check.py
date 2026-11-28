@@ -796,8 +796,10 @@ def _icu_argument(s: str, i: int, out: set, depth: int, pick: dict | None = None
             out.add(("select", name, tuple(sorted(keys))))
         else:
             out.add((kind, name))
-            if "other" not in keys:
-                out.add(("no-other", name))
+        # Checked for each select here, before selects of one name share
+        # their keywords: ICU needs "other" in every one of them.
+        if "other" not in keys:
+            out.add(("no-other", name))
         return j + 1
     # number, date, time, ... with an optional style
     if s[j : j + 1] == "}":
@@ -916,13 +918,50 @@ def placeholders(text: str) -> frozenset:
     return frozenset(out)
 
 
+_SELECT_META = ("select", "select-branch", "too-many-selects")
+
+
 def signature(value: str | dict) -> frozenset:
-    if isinstance(value, dict):
-        sig: set = set()
-        for form in value.values():
-            sig |= placeholders(form)
+    """The placeholder signature of a string, or of a plural's forms together.
+
+    A plural compares the union of its forms, because a language may drop a
+    form it does not need. For each combination of select keywords, the
+    forms' rendered placeholders are joined the same way. A form without
+    that select adds all it renders, and a form whose select lacks that
+    keyword adds what its "other" branch renders.
+    """
+    if not isinstance(value, dict):
+        return placeholders(value)
+    sigs = [placeholders(form) for form in value.values()]
+    if len(sigs) == 1:
+        return sigs[0]
+    sig: set = {t for s in sigs for t in s if t[0] not in _SELECT_META}
+    if any(("too-many-selects",) in s for s in sigs):
+        return frozenset(sig | {("too-many-selects",)})
+    selects: dict = {}
+    for s in sigs:
+        for t in s:
+            if t[0] == "select":
+                selects.setdefault(t[1], set()).update(t[2])
+    names = sorted(selects)
+    sig.update(("select", n, tuple(sorted(selects[n]))) for n in names)
+    if not names:
         return frozenset(sig)
-    return placeholders(value)
+    if math.prod(len(selects[n]) for n in names) > _SELECT_COMBOS:
+        return frozenset(sig | {("too-many-selects",)})
+    for keys in itertools.product(*(sorted(selects[n]) for n in names)):
+        shown: set = set()
+        for s in sigs:
+            own = {t[1]: set(t[2]) for t in s if t[0] == "select"}
+            records = {t[1]: t[2] for t in s if t[0] == "select-branch"}
+            if not own or not records:
+                # No select here, or broken braces: everything it renders.
+                shown |= {t for t in s if t[0] not in _SELECT_META}
+                continue
+            pick = tuple((n, k if k in own[n] else "other") for n, k in zip(names, keys, strict=True) if n in own)
+            shown |= records.get(pick, set())
+        sig.add(("select-branch", tuple(zip(names, keys, strict=True)), frozenset(shown)))
+    return frozenset(sig)
 
 
 def _describe(sig: frozenset) -> str:

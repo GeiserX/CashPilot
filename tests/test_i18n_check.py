@@ -983,6 +983,28 @@ def test_a_select_inside_a_plural_may_lose_the_one_form(tmp_path):
     assert run(en, ja)[0] == 0
 
 
+def test_each_select_needs_its_own_other_branch(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"k": "{g, select, x {A} other {B}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"k": "{g, select, x {A}} {g, select, other {B}}"}))
+    code, out = run(en, es)
+    assert code == 1 and "no 'other' branch in g" in out
+    write(es, json.dumps({"k": "{g, select, x {A} other {}} {g, select, other {B}}"}))
+    assert run(en, es)[0] == 0
+
+
+def test_plural_forms_join_what_they_render_for_each_select_keyword():
+    # A language may drop the "one" form and say {p} in "other" instead.
+    en = {"k": {"one": "{p}", "other": "{g, select, x {{q}} other {{q}}}"}}
+    ja = {"k": {"other": "{p} {g, select, x {{q}} other {{q}}}"}}
+    assert ic.check_target(en, ja, None)["placeholder"] == []
+    assert ic.check_target(en, {"k": {"other": "{g, select, x {{q}} other {{q}}}"}}, None)["placeholder"]
+    # A swap between keywords still fails when the forms are joined.
+    two = {"k": {"one": "{p}", "other": "{g, select, x {{q}} other {{r}}}"}}
+    swapped = {"k": {"other": "{p} {g, select, x {{r}} other {{q}}}"}}
+    assert ic.check_target(two, swapped, None)["placeholder"]
+    assert ic.check_target(two, {"k": {"other": "{p} {g, select, x {{q}} other {{r}}}"}}, None)["placeholder"] == []
+
+
 def _edit_during_the_temp_write(monkeypatch, path, text):
     real = ic.os.fdopen
 
