@@ -880,6 +880,20 @@ def tripped(client: Any, tunnel: Any | None) -> bool:
     return _exited_tripped(tunnel) or (is_isolated(tunnel) and _exited_tripped(_gate_of(client, tunnel)))
 
 
+def _hold_others_if_tripped(client: Any, tunnel: Any | None, chosen: str | None) -> None:
+    """Before a tripped ``tunnel`` runs again for copy ``chosen``: hold and stop every other copy in it.
+
+    A deploy or a Start of one copy is no Start of the others, and the
+    heartbeat, which holds them (_hold_tripped), may not have seen the trip yet."""
+    if chosen is None or not tripped(client, tunnel):
+        return
+    for member in _members(client, tunnel):
+        if str(member.name) != chosen:
+            _set_held(str(member.name), True, strict=True)
+            if getattr(member, "status", "") in _LIVE:
+                member.stop(timeout=orchestrator._get_stop_timeout(_labels(member).get(LABEL_SERVICE) or ""))
+
+
 def _gate_running(client: Any, tunnel: Any) -> bool:
     gate = _gate_of(client, tunnel)
     return gate is not None and getattr(gate, "status", "") == "running"
@@ -1613,13 +1627,7 @@ def _ensure_tunnel(
     # yet. A deploy of one copy is no Start of the others: their holds go in
     # before this tunnel runs again. ``starting`` is the copy the owner's Start
     # is for, which is no Start of the others either.
-    chosen = keep or starting
-    if chosen is not None and current is not None and tripped(client, current):
-        for member in _members(client, current):
-            if str(member.name) != chosen:
-                _set_held(str(member.name), True, strict=True)
-                if getattr(member, "status", "") in _LIVE:
-                    member.stop(timeout=orchestrator._get_stop_timeout(_labels(member).get(LABEL_SERVICE) or ""))
+    _hold_others_if_tripped(client, current, keep or starting)
     broken = False
     # An older worker's tunnel, which Docker restarts on its own, is never used
     # as it is: replaced before any earner starts in it (_restarts_by_itself).
@@ -2932,6 +2940,7 @@ def _start(
                 raise ProxyTunnelError(t("err.proxy_tunnel.not_started_not_tunnel_proved", name=name))
         else:
             if tunnel.status != "running":
+                _hold_others_if_tripped(client, tunnel, name)
                 refresh_proxy_ip(tunnel)
                 _gate_up(client, tunnel)
                 tunnel.start()

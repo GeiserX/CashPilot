@@ -6244,6 +6244,17 @@ class TestIsolatedTunnel:
         assert docker.named("cashpilot-earnfm-p3").status == "running"
         assert docker.named("cashpilot-honeygain-p3").status != "running"
 
+    def test_a_start_without_settings_of_one_copy_in_a_tripped_tunnel_holds_the_others(self, docker):
+        """A UI older than the worker sends no proxy: the tunnel is only started, never past the others' holds."""
+        _deploy("earnfm")
+        _deploy("honeygain")
+        _tripped(docker.named("cashpilot-tunnel-p3"))
+        proxy_tunnel.start("earnfm", 3, None, None)
+        assert "cashpilot-honeygain-p3" in proxy_tunnel.held()
+        assert "cashpilot-earnfm-p3" not in proxy_tunnel.held()
+        assert docker.named("cashpilot-earnfm-p3").status == "running"
+        assert docker.named("cashpilot-honeygain-p3").status != "running"
+
     def test_a_copy_replaced_since_the_beat_listed_it_is_not_held(self, docker):
         """The beat read the trip; a deploy replaced the copy under its name before the beat took the lock."""
         _deploy("earnfm")
