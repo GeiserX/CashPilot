@@ -1886,7 +1886,7 @@
   "fleet.updates.loading": "Loading updates",
   "fleet.updates.meta": "Installs the new builds of your apps' images, one app at a time on each box.",
   "fleet.updates.mode.auto": "Update automatically",
-  "fleet.updates.mode.inherit": "Same as the fleet",
+  "fleet.updates.mode.inherit": "Inherit",
   "fleet.updates.mode.notify": "Notify only",
   "fleet.updates.mode.off": "Off",
   "fleet.updates.never_run": "No check yet.",

@@ -50,6 +50,12 @@ def fast(monkeypatch):
     monkeypatch.setattr(orchestrator, "_SETTLE_POLL_SECONDS", 0)
 
 
+@pytest.fixture(autouse=True)
+def create_answers_an_id(monkeypatch):
+    """Docker's create answer, as orchestrator._create_container_id reads it: the ID only."""
+    monkeypatch.setattr(orchestrator, "_create_container_id", lambda client, kw: client.containers.create(**kw).id)
+
+
 class TestCheckPeriod:
     def test_a_new_build_that_stops_is_undone_and_the_old_container_runs_again(self, markers, fast):
         old, docker = _docker("exited", State={"Status": "exited", "ExitCode": 1})
@@ -71,6 +77,66 @@ class TestCheckPeriod:
         old, docker = _docker(State={"Status": "running", "Health": {"Status": "unhealthy"}})
         with pytest.raises(orchestrator.ImageUpdateFailed, match="unhealthy"):
             _deploy(docker, old, settle_seconds=0.01)
+
+    def test_a_health_check_still_starting_at_the_end_does_not_pass(self, markers, fast, monkeypatch):
+        monkeypatch.setattr(orchestrator, "_SETTLE_GRACE_SECONDS", 0.05)
+        old, docker = _docker(State={"Status": "running", "Health": {"Status": "starting"}})
+        with pytest.raises(orchestrator.ImageUpdateFailed, match="had not passed its own health check"):
+            _deploy(docker, old, settle_seconds=0.01)
+        assert docker.get("cashpilot-honeygain") is old and not old.removed
+
+    def test_a_health_check_that_turns_healthy_in_the_grace_passes(self, markers, fast, monkeypatch):
+        monkeypatch.setattr(orchestrator, "_SETTLE_GRACE_SECONDS", 5)
+        old, docker = _docker(State={"Status": "running", "Health": {"Status": "starting"}})
+        looks = []
+
+        def reload():
+            looks.append(1)
+            if len(looks) > 3:
+                docker.created.attrs["State"]["Health"]["Status"] = "healthy"
+
+        docker.created.reload.side_effect = reload
+        _deploy(docker, old, settle_seconds=0.01)
+        assert old.removed
+
+    def test_a_stop_while_the_final_log_is_read_fails_the_check(self, markers, fast, monkeypatch):
+        signal = {"pattern": "cannot be reached", "means": "It cannot start."}
+        monkeypatch.setattr(orchestrator, "get_service", lambda slug: {"docker": {"health_signals": [signal]}})
+        old, docker = _docker()
+
+        def logs(**kwargs):
+            # The container exits while Docker streams its log, with no failure line.
+            docker.created.status = "exited"
+            docker.created.attrs["State"] = {"Status": "exited", "ExitCode": 3}
+            return b"starting\n"
+
+        docker.created.logs.side_effect = logs
+        with pytest.raises(orchestrator.ImageUpdateFailed, match="exit code 3"):
+            _deploy(docker, old, settle_seconds=0.01)
+        assert docker.get("cashpilot-honeygain") is old
+
+    def test_a_fence_that_goes_during_an_update_puts_the_old_node_back(self, markers, fast):
+        # A manual deploy leaves the new node to the fence guard. An update must
+        # not: the guard would start a build nobody checked.
+        old = fenced._running_old()
+        docker = _FakeDocker(old)
+        with (
+            patch.object(orchestrator, "_require_fence", side_effect=orchestrator.ContainerNetworkError("gone")),
+            pytest.raises(orchestrator.ContainerRuntimeError) as failed,
+        ):
+            fenced._raw_deploy(client=docker.client, old=old, settle_seconds=0.01)
+        assert not isinstance(failed.value, orchestrator.ImageUpdateFailed)
+        assert docker.get("cashpilot-mysterium") is old and not old.removed
+        assert docker.created.removed
+        # The control: a manual deploy keeps the old behaviour.
+        old = fenced._running_old()
+        docker = _FakeDocker(old)
+        with (
+            patch.object(orchestrator, "_require_fence", side_effect=orchestrator.ContainerNetworkError("gone")),
+            pytest.raises(orchestrator.ContainerNetworkError),
+        ):
+            fenced._raw_deploy(client=docker.client, old=old)
+        assert old.removed and not docker.created.removed
 
     def test_a_catalog_failure_signal_in_the_new_log_fails_the_check(self, markers, fast, monkeypatch):
         old, docker = _docker()
@@ -421,7 +487,8 @@ class _Hooks:
             self.deploys.append((wid, slug, expected, new_image))
             if isinstance(self._deploy, Exception):
                 raise self._deploy
-            return self._deploy or {"image_update": {"new_image": "sha256:new", "old_kept": ""}}
+            # The worker installs the checked build.
+            return self._deploy or {"image_update": {"new_image": new_image, "old_kept": ""}}
 
         async def record(wid, slug, result, **facts):
             self.rows.append((result, facts))
@@ -481,6 +548,13 @@ class TestDecisions:
         state._answer = _answer(latest="sha256:newer")
         state._deploy = None
         assert await _run(state, image_updates.AUTO) == "updated"
+        assert state.deploys[-1][3] == "sha256:newer"
+        assert state.rows[-1][0] == "updated" and state.rows[-1][1]["new_image"] == "sha256:newer"
+
+    async def test_a_mode_changed_during_the_check_deploys_and_records_nothing(self):
+        state = _Hooks(_answer(), deploy=image_updates.ModeChanged("off"))
+        assert await _run(state, image_updates.AUTO) == "off"
+        assert not state.rows
 
     async def test_a_failed_deploy_is_not_held_and_is_tried_at_the_next_run(self):
         state = _Hooks(_answer(), deploy=image_updates.DeployRefused("registry down", rolled_back=False))
@@ -652,18 +726,51 @@ class TestTheDashboardSide:
             ),
         )
         failed = HTTPException(status_code=502, detail="pull")
+        auto = {"mode": "auto", "workers": {}, "services": {}}
         with (
+            patch.object(main, "_image_update_settings", AsyncMock(return_value=auto)),
             patch.object(main, "_deploy", AsyncMock(side_effect=refusal)),
             pytest.raises(image_updates.DeployRefused) as caught,
         ):
             await main._image_update_deploy(1, "honeygain", {"1": "abc"}, "sha256:" + "a" * 64)
         assert caught.value.rolled_back and str(caught.value) == "undone"
         with (
+            patch.object(main, "_image_update_settings", AsyncMock(return_value=auto)),
             patch.object(main, "_deploy", AsyncMock(side_effect=failed)),
             pytest.raises(image_updates.DeployRefused) as caught,
         ):
             await main._image_update_deploy(1, "honeygain", {"1": "abc"}, "sha256:" + "a" * 64)
         assert not caught.value.rolled_back
+
+    async def test_a_choice_saved_during_the_check_is_the_one_that_decides(self):
+        """The owner turned the app off while its check ran: nothing is deployed."""
+        from app import main
+
+        deploy = AsyncMock()
+        saved = {"mode": "auto", "workers": {}, "services": {"honeygain": "off"}}
+        with (
+            patch.object(main, "_image_update_settings", AsyncMock(return_value=saved)),
+            patch.object(main, "_deploy", deploy),
+            pytest.raises(image_updates.ModeChanged),
+        ):
+            await main._image_update_deploy(1, "honeygain", {"1": "abc"}, "sha256:" + "a" * 64)
+        deploy.assert_not_called()
+
+    async def test_a_custom_value_saved_after_the_blocker_is_not_deployed(self):
+        from app import main
+
+        deploy = AsyncMock()
+        auto = {"mode": "auto", "workers": {}, "services": {}}
+        with (
+            patch.object(main, "_image_update_settings", AsyncMock(return_value=auto)),
+            patch.object(main.database, "get_deployment_spec", AsyncMock(return_value={"env": {"A": "old"}})),
+            patch.object(main, "_custom_values_unsaved", AsyncMock(return_value=True)),
+            patch.object(main, "_deploy", deploy),
+            pytest.raises(image_updates.DeployRefused) as caught,
+        ):
+            await main._image_update_deploy(1, "custom-mine", {"1": "abc"}, "sha256:" + "a" * 64)
+        deploy.assert_not_called()
+        assert "not deployed yet" in str(caught.value) and not caught.value.rolled_back
 
     async def test_saving_keeps_the_last_run_and_ends_the_offer(self, db):
         from app import main

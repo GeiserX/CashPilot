@@ -1686,19 +1686,20 @@ def deploy_raw(
         # check above, and can take long. Past it, the old one is put back.
         _refuse_past(deadline, image)
         try:
-            if on_created is not None:
+            if on_created is not None or expect_image:
                 # The ID from Docker's create answer, before the SDK's follow-up
                 # inspect: one that times out must not hide a container that exists.
-                created_id = _create_container_id(client, run_kwargs)
-                on_created(created_id)
-                container = client.containers.get(created_id)
-            else:
                 # An image update is created, checked, then started: Docker reads
                 # the tag again at create time, and the checked build is the only
                 # one that may run against the app's volumes.
+                created_id = _create_container_id(client, run_kwargs)
+                if on_created is not None:
+                    on_created(created_id)
+                container = client.containers.get(created_id)
+            else:
                 container = (
                     client.containers.create(**run_kwargs)
-                    if gated or not start or expect_image
+                    if gated or not start
                     else client.containers.run(detach=True, **run_kwargs)
                 )
             created = container
@@ -1741,14 +1742,24 @@ def deploy_raw(
                 raise ContainerRuntimeError(t("err.orchestrator.did_not_come_up_network", name=name, problem=problem))
         if settle_seconds > 0 and replaced is not None and start and not joined:
             _settle(container, slug, settle_seconds, began_wall, name)
-    except ContainerNetworkError:
-        # The fence went between the checks above and the start: the new node is
-        # created and the guard starts it once the fence reads complete.
-        if gated:
-            _mark_failed(name, False)
-        _remove_replaced(replaced, name, slug)
-        raise
+    except ContainerNetworkError as exc:
+        if not (settle_seconds > 0 and replaced is not None):
+            # The fence went between the checks above and the start: the new node is
+            # created and the guard starts it once the fence reads complete.
+            if gated:
+                _mark_failed(name, False)
+            _remove_replaced(replaced, name, slug)
+            raise
+        # An image update: a build nobody checked must never wait for the guard
+        # to start it. The previous container goes back, and the guard starts it
+        # once the fence is safe (_start_again).
+        failure: BaseException = exc
     except Exception as exc:
+        failure = exc
+    else:
+        failure = None
+    if failure is not None:
+        exc = failure
         conflict = (
             expected_container is not None
             and created is None
@@ -2024,17 +2035,15 @@ class _SettleUnreadable(Exception):
     """Docker did not describe the replacement on one look."""
 
 
-def _settle_problem(container: Any, slug: str, since: float, *, logs: bool = True) -> str | None:
-    """Why a replacement is not healthy now, or None while it looks well.
+class _SettleStarting(_SettleUnreadable):
+    """The replacement's own health check has not answered yet, on a look after the period."""
 
-    It must run, must not have been restarted by Docker, must not report an
-    unhealthy Docker health check, and its log since ``since`` must show none
-    of the catalog's failing or account_disabled health signals (an idle one
-    is not a fault). The whole log since ``since`` is read, never a tail, so a
-    failure line is not pushed out by the lines after it, and an ``unless``
-    line anywhere in the period still counts. A log Docker does not return,
-    for a service with signals to look for, is an unreadable look. ``logs``
-    False judges the state alone: the log is judged once the period is over.
+
+def _settle_state(container: Any, *, final: bool) -> str | None:
+    """Why the replacement's state is not healthy now, or None. Raises _SettleUnreadable on a look Docker did not answer.
+
+    On a ``final`` look, a health check that is still starting has not passed
+    yet: that look does not count, and the next one decides.
     """
     try:
         container.reload()
@@ -2053,6 +2062,28 @@ def _settle_problem(container: Any, slug: str, since: float, *, logs: bool = Tru
     health = state.get("Health") if isinstance(state.get("Health"), dict) else {}
     if health.get("Status") == "unhealthy":
         return "is reported unhealthy by its image's own health check"
+    if final and health.get("Status") == "starting":
+        raise _SettleStarting("its health check has not answered yet")
+    return None
+
+
+def _settle_problem(container: Any, slug: str, since: float, *, logs: bool = True) -> str | None:
+    """Why a replacement is not healthy now, or None while it looks well.
+
+    It must run, must not have been restarted by Docker, must not report an
+    unhealthy Docker health check, and its log since ``since`` must show none
+    of the catalog's failing or account_disabled health signals (an idle one
+    is not a fault). The whole log since ``since`` is read, never a tail, so a
+    failure line is not pushed out by the lines after it, and an ``unless``
+    line anywhere in the period still counts. A log Docker does not return,
+    for a service with signals to look for, is an unreadable look. ``logs``
+    False judges the state alone: the log is judged once the period is over,
+    and that final look reads the state again after the log, since the
+    container can stop while its log is read.
+    """
+    problem = _settle_state(container, final=logs)
+    if problem:
+        return problem
     signals = ((get_service(slug) or {}).get("docker") or {}).get("health_signals") if get_service else None
     if not logs or not isinstance(signals, list) or not signals:
         return None
@@ -2067,13 +2098,14 @@ def _settle_problem(container: Any, slug: str, since: float, *, logs: bool = Tru
         if _signal_hit(text, signal):
             means = " ".join(str(signal.get("means") or "").split())
             return f"logged a known failure ({means})" if means else "logged a known failure"
-    return None
+    return _settle_state(container, final=True)
 
 
 def _settle(container: Any, slug: str, seconds: float, since: float, name: str) -> None:
     """Watch a replacement for ``seconds``; raise ImageUpdateFailed as soon as it is not healthy."""
     logger.info("Watching %s for %d s before the previous container is removed", name, int(seconds))
     end = time.monotonic() + seconds
+    unreadable: _SettleUnreadable | None = None
     while True:
         # Passing needs a look that started once the period was over: one that
         # began earlier can miss a stop that came while Docker answered it.
@@ -2083,10 +2115,10 @@ def _settle(container: Any, slug: str, seconds: float, since: float, name: str) 
         final = started >= end
         try:
             problem, seen = _settle_problem(container, slug, since, logs=final), True
-        except _SettleUnreadable:
+        except _SettleUnreadable as exc:
             # Passing needs a look that worked: the last one must have read the
             # container and, when it has signals to look for, its log.
-            problem, seen = None, False
+            problem, seen, unreadable = None, False, exc
         if problem:
             logger.warning("%s failed its check after the update: it %s", name, problem)
             raise ImageUpdateFailed(f"The new {name} {problem} within its {int(seconds)} s check, so it was undone.")
@@ -2094,6 +2126,11 @@ def _settle(container: Any, slug: str, seconds: float, since: float, name: str) 
             return
         now = time.monotonic()
         if now >= end + _SETTLE_GRACE_SECONDS:
+            if isinstance(unreadable, _SettleStarting):
+                raise ImageUpdateFailed(
+                    f"The new {name} had not passed its own health check by the end of its "
+                    f"{int(seconds)} s check, so it was undone."
+                )
             raise ImageUpdateFailed(
                 f"Docker did not describe the new {name} at the end of its {int(seconds)} s check, so it was undone."
             )
@@ -2114,8 +2151,8 @@ def _remove_old_image(client: Any, image_id: str) -> str | None:
     except APIError as exc:
         if proxy_refusal(exc) or getattr(exc, "status_code", None) == 403:
             return "the Docker socket proxy does not let CashPilot delete images"
-        if getattr(exc, "status_code", None) == 409:
-            return "another container still uses it"
+        # A 409 is a container that still uses it, or another tag that names it:
+        # Docker's own reason says which.
         return " ".join(str(exc.explanation or exc).split())[:200]
     except Exception as exc:  # noqa: BLE001 - a leftover image is reported, never fatal
         return str(exc)[:200]
@@ -2173,7 +2210,9 @@ def check_image(slug: str, timeout: float = 900) -> dict[str, Any]:
     except PastDeadline:
         error = f"the pull took longer than {int(timeout)} s"
     if error is not None:
-        reason = " ".join(str(getattr(error, "explanation", None) or error).split())[:300]
+        # Whole, not cut: the worker redacts logins and signed queries first, then
+        # cuts it (worker_api.api_image_check). A cut here could split a login.
+        reason = " ".join(str(getattr(error, "explanation", None) or error).split())
         raise ContainerRuntimeError(f"Could not check {ref}: {reason}", 502)
     latest = client.images.get(ref)
     copies = []
