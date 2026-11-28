@@ -1541,9 +1541,18 @@ cmd_remove() {
       read -r -p "Remove the Secure VM \"$WORKER_NAME\", its disk and its earners? [y/N] " answer </dev/tty
       [[ "$answer" =~ ^[Yy] ]] || die "nothing was changed"
     fi
-    # Ask the UI to forget this worker, with the worker's own key, while it still runs.
+    # Ask the UI to forget this worker, with the worker's own key. The worker
+    # stops first: a heartbeat still on its way would write the worker back
+    # after the UI deleted it. A one-shot copy with the worker's data and
+    # settings then sends the request.
     if guest_pid >/dev/null && tap_up; then
-      if guest_ssh "sudo docker exec cashpilot-worker python -m app.worker_retire" >/dev/null 2>&1; then
+      # shellcheck disable=SC2016 # expands in the guest
+      if guest_ssh 'set -e; e=$(mktemp); trap "rm -f $e" EXIT
+        sudo docker inspect -f "{{range .Config.Env}}{{println .}}{{end}}" cashpilot-worker >"$e"
+        img=$(sudo docker inspect -f "{{.Config.Image}}" cashpilot-worker)
+        sudo docker stop -t 20 cashpilot-worker >/dev/null
+        sudo docker run --rm --network host --volumes-from cashpilot-worker --env-file "$e" \
+          --entrypoint python "$img" -m app.worker_retire' >/dev/null 2>&1; then
         say "The UI forgot the worker \"$WORKER_NAME\"."
       else
         say "Could not ask the UI to forget \"$WORKER_NAME\": delete it on the Fleet page."
