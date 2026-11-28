@@ -137,7 +137,7 @@ _apply_lock = asyncio.Lock()
 
 
 def _already_saved(saved: list[str]) -> str:
-    return f" Already saved: {', '.join(saved)}." if saved else " Nothing was saved."
+    return " " + (t("api.import_already_saved", saved=", ".join(saved)) if saved else t("api.import_nothing_saved"))
 
 
 async def apply(request: Request, set_collector_config: Callable[[dict[str, str]], Awaitable[Any]]) -> dict[str, Any]:

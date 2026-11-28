@@ -7007,6 +7007,8 @@ const CP = (() => {
         loadServicesTable();
         loadUsagePanel();
       }
+      // The catalog's estimates are drawn in the display currency too.
+      if (document.body.dataset.page === 'catalog') filterCatalog();
       // Also sync settings page dropdown if present
       const settingsSelect = document.getElementById('settings-currency');
       if (settingsSelect) settingsSelect.value = select.value;
