@@ -1,5 +1,5 @@
 ---
-source_hash: 1a7f6b462b56
+source_hash: 098dcc2576d9
 ---
 # Overstappen van money4band { #moving-from-money4band }
 
@@ -38,7 +38,7 @@ en het verwijdert zijn `.env` na elke start
 CashPilot kan het versleutelde bestand niet lezen. Voer `m4b config edit` uit in je
 money4band-map: dat opent het ontsleutelde bestand in je editor
 ([CLI-referentie](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
-Kopieer al de tekst ervan, plak die op de importpagina en sluit daarna de editor.
+Kopieer al de tekst ervan, plak die op de pagina **Import from another tool** (Importeren uit een andere tool) en sluit daarna de editor.
 
 Kies bij voorkeur het JSON-bestand. In een `.env` vult Docker Compose `$` in waarden zonder aanhalingstekens in,
 dus een wachtwoord met `$` erin is niet wat het bestand toont. CashPilot gokt

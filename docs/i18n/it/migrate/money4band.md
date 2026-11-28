@@ -1,5 +1,5 @@
 ---
-source_hash: 1a7f6b462b56
+source_hash: 098dcc2576d9
 ---
 # Passare da money4band { #moving-from-money4band }
 
@@ -38,7 +38,7 @@ e cancella il suo `.env` dopo ogni avvio
 CashPilot non può leggere il file cifrato. Esegui `m4b config edit` nella tua
 cartella di money4band: apre il file decifrato nel tuo editor
 ([riferimento della CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
-Copia tutto il suo testo, incollalo nella pagina di importazione, poi chiudi l'editor.
+Copia tutto il suo testo, incollalo nella pagina **Import from another tool** (Importa da un altro strumento), poi chiudi l'editor.
 
 Preferisci il file JSON. In un `.env`, Docker Compose espande `$` nei valori
 senza virgolette, quindi una password che contiene `$` non è quella che mostra il file. CashPilot non

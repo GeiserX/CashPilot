@@ -1,5 +1,5 @@
 ---
-source_hash: 1a7f6b462b56
+source_hash: 098dcc2576d9
 ---
 # money4band'den geçiş { #moving-from-money4band }
 
@@ -39,7 +39,7 @@ ve her başlatmadan sonra `.env` dosyasını siler
 CashPilot şifrelenmiş dosyayı okuyamaz. money4band klasörünüzde `m4b config edit`
 komutunu çalıştırın: komut, şifresi çözülmüş dosyayı düzenleyicinizde açar
 ([CLI başvurusu](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
-Metnin tamamını kopyalayın, içe aktarma sayfasına yapıştırın, ardından düzenleyiciyi kapatın.
+Metnin tamamını kopyalayın, **Import from another tool** (Başka bir araçtan içe aktar) sayfasına yapıştırın, ardından düzenleyiciyi kapatın.
 
 JSON dosyasını tercih edin. Bir `.env` içinde Docker Compose tırnaksız değerlerdeki `$` işaretini
 genişletir, bu yüzden içinde `$` bulunan bir parola dosyada göründüğü gibi değildir. CashPilot

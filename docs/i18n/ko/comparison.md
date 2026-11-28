@@ -1,5 +1,5 @@
 ---
-source_hash: b48a8fc19aa4
+source_hash: 06e0336d2a02
 ---
 # CashPilot 비교 { #how-cashpilot-compares }
 
@@ -57,18 +57,18 @@ CashPilot 열은 v3.0.1을 설명합니다. 이 열의 각 셀은 짧으며, 세
 
 ### CashPilot 열에 대한 참고 사항 { #cashpilot-notes }
 
-- **여러 프록시 또는 IP.** v1.69.0부터 CashPilot은 워커에 이미 배포된 서비스의 추가 사본을 실행하며, 각 사본은 자체 프록시를 거칩니다. SOCKS5와 HTTP CONNECT는 TCP만 전달합니다. 터널은 프록시 포트로 가는 TCP만 내보내므로 SOCKS5 UDP 릴레이는 버려집니다. Tailscale 출구 노드는 UDP도 전달합니다. 수익 앱은 터널 컨테이너의 네트워크 네임스페이스를 공유합니다([코드][cp-proxy-deploy]). 그 네임스페이스는 루프백, 터널, 그리고 터널 자신의 프록시 연결만 내보냅니다. 즉 프록시 주소와 포트로 가는 TCP, 또는 tailscaled가 표시한 패킷입니다([터널 방화벽][cp-tunnel-fw]). 따라서 프록시가 죽으면 트래픽이 새지 않고 수익 앱이 멈춥니다([작동 방식](proxies.md#how-it-works)). 호스트 네트워킹, 게시된 포트, 볼륨, 장치, GPU, 또는 `NET_ADMIN`, `NET_RAW`, `SYS_ADMIN`이 필요한 서비스나, 약관이 프록시를 금지하는 서비스는 프록시를 거쳐 실행할 수 없습니다. 따라서 <!-- n:docker -->21<!-- /n -->개 중 <!-- n:noproxy -->10<!-- /n -->개는 서버 자체 IP로만 수익을 냅니다([실행할 수 없는 경우](proxies.md#what-cannot-run-through-a-proxy)).
+- **여러 프록시 또는 IP.** v1.69.0부터 CashPilot은 워커에 이미 배포된 서비스의 추가 사본을 실행하며, 각 사본은 자체 프록시를 거칩니다. SOCKS5와 HTTP CONNECT는 TCP만 전달합니다. 터널은 프록시 포트로 가는 TCP만 내보내므로 SOCKS5 UDP 릴레이는 버려집니다. Tailscale 출구 노드는 UDP도 전달합니다. 수익 앱은 터널 컨테이너의 네트워크 네임스페이스를 공유합니다([코드][cp-proxy-deploy]). 그 네임스페이스는 루프백, 터널, 그리고 터널 자신의 프록시 연결만 내보냅니다. 즉 프록시 주소와 포트로 가는 TCP, 또는 tailscaled가 표시한 패킷입니다([터널 방화벽][cp-tunnel-fw]). 따라서 프록시가 죽으면 트래픽이 새지 않고 수익 앱이 멈춥니다([작동 방식](proxies.md#how-it-works)). 호스트 네트워킹, 게시된 포트, 볼륨, 장치, GPU, 또는 `NET_ADMIN`, `NET_RAW`, `SYS_ADMIN`이 필요한 서비스나, 약관이 프록시를 금지하는 서비스는 프록시를 거쳐 실행할 수 없습니다. 따라서 수익 앱 <!-- n:docker -->21<!-- /n -->개 중 <!-- n:noproxy -->10<!-- /n -->개는 서버 자체 IP로만 수익을 냅니다([실행할 수 없는 경우](proxies.md#what-cannot-run-through-a-proxy)).
 - **수익.** 일부 수집기는 브라우저에서 복사한 쿠키나 토큰이 필요하며, 그중 일부는 만료됩니다. 어느 것이 그런지는 각 서비스의 가이드에 나와 있습니다.
 - **저장된 자격 증명.** UI는 암호화 키 파일을 데이터베이스와 같은 데이터 볼륨에 둡니다([코드][cp-fernet]). 수익 앱 자격 증명은 컨테이너 환경 변수로 각 워커에 전달되므로, 그 워커의 Docker 설정(`docker inspect`)에 평문으로 남습니다.
 - **수익 앱 컨테이너 설정.** 워커는 모든 capability를 제거한 다음, 카탈로그가 그 서비스에 대해 나열한 것을 다시 추가합니다. `no-new-privileges`와 pids 제한을 설정하고, 특권 컨테이너를 거부합니다([코드][cp-hardening], [코드][cp-privileged], [보안 기본값](security-defaults.md)). Mysterium은 차단벽이 쳐진 브리지 위의 자체 네트워크 네임스페이스에서 `NET_ADMIN`, `SETUID`, `SETGID`와 함께, 다이제스트로 고정된 이미지로 실행됩니다([카탈로그][cp-myst]). 선택 사항인 gVisor 런타임은 사용자 공간 커널을 추가할 수 있습니다([런타임](security-defaults.md#container-runtimes-gvisor-where-it-works)).
-- **Docker 소켓.** v1.71.0부터 소켓은 소켓 프록시만 마운트합니다. sockguard 2.4.7이며, 다이제스트로 고정되고 읽기 전용입니다([compose][cp-sock]). 워커는 특권 컨테이너, `/`나 소켓의 바인드, 카탈로그 밖의 capability나 장치를 거부하는 필터링된 사본을 받습니다([소켓 프록시](security-defaults.md#docker-socket-proxy)). 한 번만 실행되는 `cashpilot-migrate` 컨테이너도 소켓을 마운트합니다. 이 컨테이너는 이전 릴리스가 만든 것에 프록시의 소유자 격리를 위한 레이블을 붙이고, 프록시가 시작되기 전에 종료합니다([compose][cp-migrate]). 수익 앱은 소켓을 절대 받지 않습니다([코드][cp-mounts]). 이 프록시는 아직 root 경계가 아닙니다. `CASHPILOT_COMPOSE_DIR` 또는 `CASHPILOT_PROXY_BIND_MOUNTS`를 설정하면, 허용된 폴더에 심어 둔 심볼릭 링크가 배포 두 번 만에 호스트의 `/`에 닿습니다([세부 정보](security-defaults.md#docker-socket-proxy)). Unraid와 TrueNAS 등록판은 여전히 워커에 원시 소켓을 마운트합니다([앱 스토어](app-stores.md)).
+- **Docker 소켓.** v1.71.0부터 워커에는 소켓이 없습니다. 소켓은 소켓 프록시가 가집니다. sockguard 2.4.7이며, 다이제스트로 고정되고 읽기 전용입니다([compose][cp-sock]). 워커는 특권 컨테이너, `/`나 소켓의 바인드, 카탈로그 밖의 capability나 장치를 거부하는 필터링된 사본을 받습니다([소켓 프록시](security-defaults.md#docker-socket-proxy)). 한 번만 실행되는 `cashpilot-migrate` 컨테이너도 소켓을 마운트합니다. 이 컨테이너는 이전 릴리스가 만든 볼륨과 차단벽 네트워크에 소유자 레이블을 붙이고, 그 위에 해당 컨테이너를 다시 만들어 프록시의 소유자 격리가 이들에도 적용되게 합니다. 이 컨테이너는 프록시가 시작되기 전에 종료합니다([compose][cp-migrate]). 수익 앱은 소켓을 절대 받지 않습니다([코드][cp-mounts]). 이 프록시는 아직 root 경계가 아닙니다. `CASHPILOT_COMPOSE_DIR` 또는 `CASHPILOT_PROXY_BIND_MOUNTS`를 설정하면, 침해된 워커가 컨테이너 하나로 허용된 폴더에 심볼릭 링크를 심고, 두 번째 컨테이너로 호스트의 `/`에 닿을 수 있습니다([세부 정보](security-defaults.md#docker-socket-proxy)). Unraid와 TrueNAS 등록판은 여전히 워커에 원시 소켓을 마운트합니다([앱 스토어](app-stores.md)).
 - **LAN 격리.** v1.70.0부터 새 설치와, Docker 기본 브리지에 수익 앱이 없는 업그레이드 설치에서 기본으로 켜집니다. 워커는 수익 앱을 자체 브리지에 두고, 그 브리지용 방화벽 테이블을 작성합니다([코드][cp-fence]). 이 테이블은 사설 대역, tailnet 대역, 클라우드 메타데이터, 호스트에 연결된 서브넷, 호스트 자체를 차단합니다. 공인 IP 감지가 켜져 있으면 집의 공인 IP도 차단합니다([격리](isolation.md#lan-isolation-by-default)). 수익 앱이 이미 기본 브리지에 있는 업그레이드 설치는 **Turn on isolation** (격리 켜기)을 누를 때까지 그대로 있습니다. `CASHPILOT_ISOLATION=off`는 격리를 끕니다. `CASHPILOT_CONTAINER_NETWORK`를 설정하면 CashPilot은 그 네트워크에 차단벽을 작성하지 않으며, 방화벽 규칙은 사용자가 관리합니다. Podman에서는 차단벽이 없으며, 플릿 페이지에 그렇게 표시됩니다([모드](isolation.md#modes), [코드][cp-fence-mode]). 2.0.7부터 Mysterium에도 차단벽이 쳐집니다. 2.0.6까지 배포된 노드는 재배포할 때까지 호스트 네트워크에 남습니다([차단벽 뒤의 Mysterium](mysterium-fence.md)). 점검 도구가 수익 앱이 닿을 수 있는 곳을 보여 줍니다([점검](isolation-check.md)).
 - **외부 호출.** 앱 자체 외에 CashPilot은 다음을 호출합니다.
     - GitHub 릴리스. 하루에 한 번, 업데이트 확인용입니다(`CASHPILOT_UPDATE_CHECK=off`로 중지, [코드][cp-update]).
     - `api.ipify.org`, `ifconfig.me` 또는 `icanhazip.com`. 각 워커가 한 시간에 한 번, 공인 IP 확인용으로 호출합니다(`CASHPILOT_EGRESS_DETECT=off`로 중지, [코드][cp-egress]).
     - CoinGecko와 Frankfurter. 환율용입니다([코드][cp-rates]).
     - mempool.space, api.kaspa.org, 공개 Ethereum, Ethereum Classic, Polygon, Solana RPC 노드. [온체인 잔액](onchain.md)용입니다.
-    - iptoasn.com. 네트워크 이름 테이블용이며, 최대 일주일에 한 번, 그리고 [활동](activity.md#network-names-and-countries)을 켠 워커가 있을 때만 호출합니다([코드][cp-ipgeo]).
+    - iptoasn.com. CashPilot의 네트워크 이름 테이블용이며, 최대 일주일에 한 번, 그리고 [활동](activity.md#network-names-and-countries)을 켠 워커가 있을 때만 호출합니다([코드][cp-ipgeo]).
     - 각 제공업체. 수집기용입니다.
 
     브라우저는 Google Fonts ([템플릿][cp-cdn])와 jsDelivr의 Chart.js ([템플릿][cp-chartjs])를 불러옵니다.

@@ -1,5 +1,5 @@
 ---
-source_hash: 1a7f6b462b56
+source_hash: 098dcc2576d9
 ---
 
 # ย้ายมาจาก money4band { #moving-from-money4band }
@@ -39,7 +39,7 @@ money4band 5.0 เข้ารหัส `config/user-config.json` บนดิ�
 CashPilot อ่านไฟล์ที่เข้ารหัสไม่ได้ ให้รัน `m4b config edit` ในโฟลเดอร์
 money4band คำสั่งนี้จะเปิดไฟล์ที่ถอดรหัสแล้วในโปรแกรมแก้ไขข้อความของคุณ
 ([ข้อมูลอ้างอิง CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit))
-คัดลอกข้อความทั้งหมด วางลงในหน้านำเข้า แล้วปิดโปรแกรมแก้ไข
+คัดลอกข้อความทั้งหมด วางลงในหน้า **Import from another tool** (นำเข้าจากเครื่องมืออื่น) แล้วปิดโปรแกรมแก้ไข
 
 ควรใช้ไฟล์ JSON ใน `.env` นั้น Docker Compose จะขยาย `$` ในค่าที่ไม่มีเครื่องหมายคำพูด
 รหัสผ่านที่มี `$` จึงไม่ใช่สิ่งที่ไฟล์แสดง CashPilot ไม่เดา

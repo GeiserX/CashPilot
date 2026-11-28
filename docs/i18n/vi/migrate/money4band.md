@@ -1,5 +1,5 @@
 ---
-source_hash: 1a7f6b462b56
+source_hash: 098dcc2576d9
 ---
 # Chuyển từ money4band { #moving-from-money4band }
 
@@ -38,7 +38,7 @@ và xóa file `.env` của nó sau mỗi lần khởi động
 CashPilot không đọc được file đã mã hóa. Chạy `m4b config edit` trong thư mục
 money4band của bạn: lệnh này mở file đã giải mã trong trình soạn thảo của bạn
 ([tài liệu tham khảo CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
-Sao chép toàn bộ nội dung của nó, dán vào trang nhập, rồi đóng trình soạn thảo.
+Sao chép toàn bộ nội dung của nó, dán vào trang **Import from another tool** (Nhập từ công cụ khác), rồi đóng trình soạn thảo.
 
 Nên dùng file JSON. Trong một `.env`, Docker Compose khai triển `$` trong các giá trị
 không có dấu ngoặc kép, nên một mật khẩu có `$` sẽ không giống những gì file hiển thị. CashPilot

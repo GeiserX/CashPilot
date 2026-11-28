@@ -1,5 +1,5 @@
 ---
-source_hash: 1a7f6b462b56
+source_hash: 098dcc2576d9
 ---
 # الانتقال من money4band { #moving-from-money4band }
 
@@ -37,7 +37,7 @@ CashPilot على إصدار money4band لديك.
 لا يستطيع CashPilot قراءة الملف المشفّر. شغّل `m4b config edit` في مجلد money4band
 الخاص بك: يفتح هذا الأمر الملف بعد فك تشفيره في محرّرك
 ([مرجع CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
-انسخ نصه كله، والصقه في صفحة الاستيراد، ثم أغلق المحرّر.
+انسخ نصه كله، والصقه في صفحة **Import from another tool** (الاستيراد من أداة أخرى)، ثم أغلق المحرّر.
 
 فضّل ملف JSON. ففي ملف `.env`، يوسّع Docker Compose الرمز `$` في القيم غير المحاطة بعلامات اقتباس،
 لذلك فإن كلمة المرور التي تحتوي على `$` ليست كما يعرضها الملف. لا يخمّن CashPilot:

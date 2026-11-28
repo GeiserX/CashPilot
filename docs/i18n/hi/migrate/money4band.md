@@ -1,5 +1,5 @@
 ---
-source_hash: 1a7f6b462b56
+source_hash: 098dcc2576d9
 ---
 # money4band से आना { #moving-from-money4band }
 
@@ -38,7 +38,7 @@ money4band 5.0 डिस्क पर `config/user-config.json` को एन्
 CashPilot एन्क्रिप्ट की गई फ़ाइल नहीं पढ़ सकता। अपने money4band फ़ोल्डर में
 `m4b config edit` चलाएँ: यह डिक्रिप्ट की गई फ़ाइल को आपके editor में खोलता है
 ([CLI reference](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit))।
-उसका पूरा टेक्स्ट कॉपी करें, उसे import पेज पर पेस्ट करें, फिर editor बंद करें।
+उसका पूरा टेक्स्ट कॉपी करें, उसे **Import from another tool** (किसी दूसरे टूल से import करें) पेज पर पेस्ट करें, फिर editor बंद करें।
 
 JSON फ़ाइल को प्राथमिकता दें। `.env` में Docker Compose बिना quotes वाले मानों में `$` को
 expand करता है, इसलिए जिस पासवर्ड में `$` है, वह वैसा नहीं होता जैसा फ़ाइल दिखाती है। CashPilot
