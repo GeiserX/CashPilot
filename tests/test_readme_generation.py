@@ -27,6 +27,9 @@ import generate_readme_tables as gen  # noqa: E402  (a script, not a package mod
 
 from app import catalog  # noqa: E402
 
+# The counts are the real catalog's, Honeygain's terms included (tests/conftest.py).
+pytestmark = pytest.mark.real_honeygain_terms
+
 README = ROOT / "README.md"
 REFERRAL_HINT = re.compile(r"(ref|psr=|aff=|/i/|\?r=|code=)")
 URL = re.compile(r"https://[^\s)\]]+")

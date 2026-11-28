@@ -28,6 +28,14 @@ ROLE_TUNNEL = "tunnel"
 # output hook, and SYS_ADMIN covers both. The worker refuses them
 # (worker_api._validate_proxied) and the UI explains why (proxies.refusal).
 PROXIED_FORBIDDEN_CAPS = frozenset({"NET_ADMIN", "NET_RAW", "SYS_ADMIN", "ALL"})
+# The two of them a copy may still hold, when its owner acknowledges the
+# reduced isolation: it then never shares a tunnel's namespace. It gets a
+# namespace of its own whose only way out is a gate container that holds the
+# firewall (proxy_tunnel "Isolated tunnels", docs/proxies.md). SYS_ADMIN and
+# ALL stay refused: they reach past the namespace.
+PROXIED_ISOLATED_CAPS = frozenset({"NET_ADMIN", "NET_RAW"})
+# The one host device an isolated copy may hold (Mysterium's WireGuard tunnels).
+PROXIED_ISOLATED_DEVICES = frozenset({"/dev/net/tun"})
 # The most copies of one service a worker will run. A ceiling against a typo,
 # not a recommendation: on one connection most providers pay for one.
 MAX_INSTANCES = 10

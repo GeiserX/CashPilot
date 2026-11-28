@@ -21,10 +21,12 @@ its first and every later start is inside it.
 
 - **Only services that can run through a proxy get the choice.** The catalog
   decides, by the rules in
-  [What cannot run through a proxy](#what-cannot-run-through-a-proxy). A
-  service that publishes a port, keeps a volume, needs a device or extra
-  capabilities, or whose terms forbid proxies has no Route box, and the form
-  says why.
+  [What runs through a proxy](#what-runs-through-a-proxy). A service that
+  uses the host's network, publishes a port or needs a GPU, or whose terms
+  forbid proxies, has no Route box, and the form says why. A service that
+  lowers its isolation behind a proxy (`NET_ADMIN`, `NET_RAW`,
+  `/dev/net/tun`, inbound UDP) shows one checkbox for each of those needs.
+  The deploy is refused until you tick all of them.
 - **It runs with the settings you deploy it with,** under the device name you
   give it. There is no second device: the routed service is the only copy of
   it on that box.
@@ -251,8 +253,10 @@ current tunnel image, proves its exit first. Then each copy is recreated
 inside it under its own name, with its settings and its volumes, and starts
 again only once the new tunnel is ready. Host devices and the capabilities
 that reach a tunnel's firewall (`NET_ADMIN`, `NET_RAW`, `SYS_ADMIN`) are never
-carried: a proxied copy gets none, so a copy that has one was not made by
-CashPilot. Its move is refused before a new tunnel is built, and the error
+carried into a shared tunnel: a copy in one gets none, so a copy there that has
+one was not made by CashPilot. Into an
+[isolated tunnel](#copies-that-need-net_admin-or-net_raw), only `NET_ADMIN`,
+`NET_RAW` and `/dev/net/tun` are carried. Its move is refused before a new tunnel is built, and the error
 names that copy. The other copies in its tunnel stay as they were too, because
 they move only together. To unblock them, remove the copy the error names,
 then deploy it again from CashPilot if you want it. The new container gets
@@ -326,10 +330,14 @@ cannot reach it.
 
 The earner keeps the hardening every deploy gets. The worker API refuses
 `network_mode: container:` from any caller; only the worker itself sets it for
-a proxied copy. A proxied earner may never hold `NET_ADMIN`, `NET_RAW` or
-`SYS_ADMIN`, or any host device: inside the tunnel's namespace those would let
-it rewrite the firewall or send packets past it. The worker refuses them
-whatever the catalog says.
+a proxied copy. An earner in a tunnel's namespace never holds `NET_ADMIN`,
+`NET_RAW` or `SYS_ADMIN`, or any host device: those would let it rewrite the
+firewall or send packets past it. An earner that needs `NET_ADMIN`, `NET_RAW`
+or `/dev/net/tun` runs in a namespace of its own instead, behind a gate (see
+[Copies that need NET_ADMIN or NET_RAW](#copies-that-need-net_admin-or-net_raw)).
+It runs there only when its owner acknowledged each of them. `SYS_ADMIN`, `ALL` and any
+other host device are refused everywhere. The worker checks all of this
+itself, whatever the catalog or the UI says.
 
 tun2proxy runs at the `warn` log level, so the tunnel's log holds errors and
 never the sites the earner's sessions reach. The log is capped at two files of
@@ -362,7 +370,8 @@ hardening of both containers and everything you set up. What changes:
 - **Copies in one tunnel share a network namespace.** Each can see the other
   copies' sockets in `/proc/net` and reach anything another copy listens on at
   `127.0.0.1`. None of them can read another's traffic or change the firewall:
-  no proxied earner gets `NET_ADMIN`, `NET_RAW` or `SYS_ADMIN`. If you do not
+  no earner in a shared tunnel gets `NET_ADMIN`, `NET_RAW` or `SYS_ADMIN`. A
+  copy that needs one gets a tunnel of its own and shares nothing. If you do not
   want two providers' software side by side like that, run them through
   different proxies.
 - **One tunnel failure stops every copy on that proxy on that box.** It fails
@@ -457,22 +466,117 @@ own session to a proxy that trusts the box's IP and ask for the proxy's own
 network. A host without cgroup v2, or a kernel that cannot match on it, keeps
 the older rule and the tunnel's log says so.
 
-## What cannot run through a proxy
+<a id="what-cannot-run-through-a-proxy"></a>
 
-A service is refused when its catalog entry needs the host:
+## What runs through a proxy
 
-- host networking;
-- published ports;
-- volumes or host directories;
-- devices (Mysterium needs `/dev/net/tun` and UDP);
-- the capabilities `NET_ADMIN`, `NET_RAW` or `SYS_ADMIN` (Bitping asks for
-  `NET_RAW`);
-- terms that forbid proxies or VPNs: `requirements.proxy_prohibited` in the
-  catalog, with a link to the provider's own terms.
+A copy, or a routed service, runs in a tunnel's network namespace. Some needs
+follow it there. Others cannot, and the form says why before anything starts.
 
-Services that need UDP do not work through SOCKS5 or HTTP CONNECT: the
-tunnel lets out only TCP to the proxy's address and port. A Tailscale exit
-node carries UDP.
+| The service needs | Behind a proxy |
+| --- | --- |
+| Terms that forbid proxies or VPNs (`requirements.proxy_prohibited`), or forbid Docker, VMs or hosting (`requirements.container_prohibited`) | Refused. The form shows the reason and a link to the provider's terms. |
+| The host's own network | Refused. The form offers the closest option: run it directly on the box. |
+| A published port (inbound connections) | Refused. Those connections reach the box, never the proxy's address. Run it directly on the box. |
+| A GPU, or a host device other than `/dev/net/tun` | Refused. |
+| `SYS_ADMIN` or `ALL` | Refused. They reach past any network namespace. |
+| UDP | Refused through SOCKS5 or HTTP CONNECT: the tunnel lets out only TCP to the proxy. A Tailscale exit node carries it. |
+| A named volume | Runs. A copy gets a fresh volume of its own (below). |
+| A host folder | A copy is refused: it would share the folder with the original. A routed service keeps its folder, as it is the same service. |
+| `NET_ADMIN`, `NET_RAW` or `/dev/net/tun` | Runs in an isolated tunnel, after you tick each one (below). |
+| Inbound UDP ports (Mysterium) | Runs through a Tailscale exit node, after you tick that nobody can reach it there. It can earn less or nothing. The worker refuses it through any other proxy, or without the tick. |
+
+What this means for each Docker earner the catalog had refused before:
+
+| Service | Behind a proxy |
+| --- | --- |
+| URnetwork, ProxyBase | Runs. Each copy gets its own data volume. |
+| Bitping | Runs after you tick `NET_RAW`. |
+| Mysterium | Runs through a Tailscale exit node only, after you tick `NET_ADMIN`, `/dev/net/tun` and no inbound connections. |
+| Storj, Sia, Anyone Protocol | Refused: each needs a published port for inbound connections. |
+| SRBMiner-Multi, Kryptex Pool (Pearl) | Refused: they need the GPU. |
+| EarnApp | Refused: its terms forbid running it in Docker, a VM or hosting. |
+
+Honeygain stays refused too: its help centre forbids VPNs.
+
+### Volumes of its own
+
+A volume holds the device's identity: a key, a wallet, a session. A copy that
+shared the original's volume would be the same device on two addresses. So
+each named volume of a copy gets its own name, `<volume>-p<proxy id>`. The new
+volume starts empty, so the provider sees a new device, as it does for the
+copy's new device name. The deploy form lists those names. The worker refuses a copy
+whose volume is not named that way.
+
+Removing a copy keeps its volumes, so the copy has the same identity if you
+add it again. Delete them by hand (`docker volume rm`) when you are done with
+the copy for good. A copy's volume of a service that marks it critical (a
+wallet, a node identity) is protected from deletion like the original's. Its
+name says whose it is, so no other service can mount it, also once the copy is
+gone. It is not in the state backups: those read the service's own container only. Write
+down what it holds (Mysterium's beneficiary wallet, for example) before you
+rely on the copy.
+
+### Copies that need NET_ADMIN or NET_RAW
+
+An earner with `NET_ADMIN` can rewrite the firewall of its namespace. One with
+`NET_RAW` can send raw packets past it. In a shared tunnel, that firewall is
+the only thing that keeps traffic in the proxy. So such an earner never joins
+a namespace that holds a tunnel's firewall. It gets an **isolated tunnel** of
+its own, made of two containers:
+
+- **The tunnel the copy joins** (`cashpilot-tunnel-p<id>-<service>.own`). It
+  runs `cp-inner` and sits only on an internal Docker network with no parent
+  interface. Docker gives that network a dummy interface, which drops
+  everything sent to it, so the network reaches neither the host, nor your
+  LAN, nor any other container. Its only route is to the gate.
+- **The gate** (`cashpilot-tunnel-gate-<tag>`). A normal `cp-tunnel` with the
+  proxy's settings, on the box's bridge and on that internal network. Its
+  firewall forwards what comes from the copy into the tunnel and nowhere
+  else: never to the box's real interface, never to a private or tailnet
+  range. Replies come back only for connections the copy opened. The copy
+  cannot open a connection to the gate itself.
+
+The copy can do what it likes to its own namespace: flush its rules, change
+its routes, send raw frames. Every packet still reaches the gate or nothing,
+and the gate's firewall is in the gate's namespace, out of the copy's reach.
+The gate is made new, from the tunnel's settings, every time the tunnel
+starts, and is removed with it. If the gate goes down, the worker stops the
+tunnel, and the next heartbeat starts both again.
+
+What you accept when you tick these:
+
+- `NET_ADMIN`: the copy can change the network of its own namespace.
+- `NET_RAW`: the copy can send raw packets. They reach only its gate.
+- `/dev/net/tun`: the copy gets the box's tun device, to build tunnels inside
+  its own namespace.
+
+Each is less contained than a copy without it, even with the gate. A kernel
+bug reachable with `NET_ADMIN` or `NET_RAW` is still reachable. The ticks are
+stored with the copy (or with the routed service's route) and sent again on
+every rebuild. If the catalog later asks for one more, the rebuild is refused
+until you add the copy again and tick it. The copy row on the Fleet page shows
+a **reduced isolation** badge with the reasons. **Withdraw** removes the copy,
+and its volumes stay. For a routed service, deploy it again with the box's own
+IP as its route.
+
+An older worker cannot run these copies. The UI sends a copy that needs a tick,
+or any copy with a volume, only to a worker that reports `proxied_isolation`.
+For any other worker, it asks you to update the worker first.
+
+### The tunnel watchdog
+
+Every tunnel and every gate runs `cp-watch` for as long as it runs:
+
+- Every 5 seconds, it compares the tunnel's firewall with the one it loaded.
+- Every 10 minutes, it sends a probe through the tunnel and checks that the
+  probe does not leave from the box's own IP.
+
+When either check fails, it stops the tunnel with exit status 86. The worker
+reads that status on the next heartbeat. It stops every copy in that tunnel
+and records each one as stopped, so nothing starts them again. The Fleet page
+says the watchdog stopped the copy, and the gate stops with it. It runs again
+only when you start it, on a fresh tunnel and a fresh gate.
 
 ### Commercial proxy services
 
@@ -727,10 +831,10 @@ It makes sense when:
 What changes:
 
 - **Only services that can run as a proxied copy move.** Anything that needs
-  published ports, volumes, devices or extra capabilities stays where it runs
-  ([What cannot run through a proxy](#what-cannot-run-through-a-proxy)).
-  That rules out Mysterium and the storage nodes, for example. Earners whose
-  terms forbid proxies or VPNs are refused too.
+  published ports, the host's network, a host folder or a GPU stays where it
+  runs ([What runs through a proxy](#what-runs-through-a-proxy)). That rules
+  out the storage nodes, for example. Mysterium moves only after you tick what
+  it lowers. Earners whose terms forbid proxies or VPNs are refused too.
 - **The per-IP limits move with the IP.** A copy through the exit node counts
   against that site's public IP. If the box there still runs a service with a
   limit of one device per IP, a copy of the same service through its exit

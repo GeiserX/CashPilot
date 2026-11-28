@@ -2191,6 +2191,14 @@ const CP = (() => {
       ? `<option value="">${t('app.route.keep')}</option>
           <option value="0">${t('app.route.direct')}</option>`
       : `<option value="">${t('app.route.direct')}</option>`;
+    // What lowers its isolation behind a proxy: one checkbox each, shown once a
+    // proxy is chosen. The server refuses the route without every one of them.
+    const needs = svc.route_needs || [];
+    const acks = needs.length ? `
+        <div class="route-acks" data-slug="${slug}" style="display:none;">
+          <div class="form-hint">${t('app.route.ack_title')}</div>
+          ${needs.map((key) => `<label class="form-hint" style="display:block;"><input type="checkbox" data-route-ack="${escapeHtml(key)}"> ${escapeHtml(routeAckText(key))}</label>`).join('')}
+        </div>` : '';
     return `
       <div class="form-group route-choice">
         <label class="form-label" for="route-select-${slug}">${t('app.route.label')}</label>
@@ -2198,7 +2206,25 @@ const CP = (() => {
           ${choices}
         </select>
         <div class="form-hint">${t('app.route.hint')}</div>
+        ${svc.route_udp ? `<div class="form-hint">${t('app.route.udp_hint')}</div>` : ''}
+        ${acks}
       </div>`;
+  }
+
+  function routeAckText(key) {
+    return {
+      net_admin: t('app.route.ack.net_admin'),
+      net_raw: t('app.route.ack.net_raw'),
+      tun_device: t('app.route.ack.tun_device'),
+      no_inbound: t('app.route.ack.no_inbound'),
+    }[key] || key;
+  }
+
+  // The acknowledgements ticked in ``slug``'s Route box, sent with a route to a proxy.
+  function _routeAcks(root, slug) {
+    const select = _routeSelect(root, slug);
+    const box = select && select.closest('.route-choice');
+    return box ? [...box.querySelectorAll('input[data-route-ack]:checked')].map((el) => el.dataset.routeAck) : [];
   }
 
   // The Route box of ``slug`` inside ``root``, the form that owns it. The setup
@@ -2236,6 +2262,8 @@ const CP = (() => {
   function _routeSwitchBoxes(select) {
     const scope = (select.closest && select.closest('.route-choice') || {}).parentElement || document;
     const switching = select.value === '0';
+    const acks = select.closest && select.closest('.route-choice') && select.closest('.route-choice').querySelector('.route-acks');
+    if (acks) acks.style.display = parseInt(select.value, 10) > 0 ? '' : 'none';
     for (const cb of scope.querySelectorAll(`input[data-routed="1"][data-slug="${select.dataset.slug}"]`)) {
       cb.disabled = !switching;
       cb.checked = !switching;
@@ -4346,6 +4374,7 @@ const CP = (() => {
     // Read once, before anything waits: a Route box changed while the first
     // box deploys must not send another route (or none) to the next one.
     const route = _routeChoice(routeRoot, slug);
+    const routeAcks = route > 0 ? _routeAcks(routeRoot, slug) : [];
     if (workerIds.length === 0) {
       toast(t('app.dep.pick_worker'), 'warning');
       if (statusEl) statusEl.textContent = t('app.dep.pick_node');
@@ -4424,6 +4453,7 @@ const CP = (() => {
         const instances = _instancesFor(slug, wid);
         if (instances !== undefined) body.instances = instances;
         if (route !== undefined) body.route = route;
+        if (route > 0) body.route_acknowledged = routeAcks;
         const res = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body });
         ok++;
         if (res && res.wallet && res.wallet.phrase) newWallets.push({ wid, wallet: res.wallet });

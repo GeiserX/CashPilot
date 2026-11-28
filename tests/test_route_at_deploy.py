@@ -460,7 +460,7 @@ class TestTheWorkerProxiedRoutes:
                 raise outcome
             return outcome
 
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(proxy_tunnel, "_deploy", deploy)
         monkeypatch.setattr(proxy_tunnel, "_require_running", lambda slug, pid: seen.update(only_if_running=True))
@@ -1340,7 +1340,51 @@ class TestTheUiDeploysARoute:
             return exc.value
 
         error = _run(go)
-        assert error.status_code == 400 and "keeps data in a volume" in str(error.detail)
+        assert error.status_code == 400 and "terms forbid running it in Docker" in str(error.detail)
+        assert ui.calls == []
+
+    def test_a_service_that_lowers_its_isolation_is_routed_only_with_its_tick(self, db):
+        ui = _Ui(_worker_row(features=("proxy_tunnel", "route_at_deploy", "proxied_isolation")))
+        env = {"BITPING_EMAIL": "a@b.c", "BITPING_PASSWORD": "pw"}
+
+        async def go():
+            pid = await ui.proxy()
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(main.DeployRequest(env=env, route=pid), slug="bitping")
+            refused = exc.value
+            assert ui.calls == []
+            await ui.deploy(main.DeployRequest(env=env, route=pid, route_acknowledged=["net_raw"]), slug="bitping")
+            sent = ui.calls[-1][2]
+            # A redeploy that sends no ticks keeps the recorded ones.
+            await ui.deploy(main.DeployRequest(env={}), slug="bitping")
+            again = ui.calls[-1][2]
+            return pid, refused, sent, again, await database.get_deployment_spec("bitping", worker_id=1)
+
+        pid, refused, sent, again, record = _run(go)
+        assert refused.status_code == 400 and refused.detail["needs"] == ["net_raw"]
+        assert sent["routed"] is True and sent["acknowledged"] == ["net_raw"]
+        assert sent["earner"]["cap_add"] == ["NET_RAW"]
+        assert again["acknowledged"] == ["net_raw"]
+        assert record["route"]["acknowledged"] == ["net_raw"] and proxies.route_of(record) == pid
+
+    def test_a_worker_too_old_for_isolation_gets_no_routed_service_that_needs_it(self, db):
+        ui = _Ui()
+
+        async def go():
+            pid = await ui.proxy()
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(
+                    main.DeployRequest(
+                        env={"BITPING_EMAIL": "a@b.c", "BITPING_PASSWORD": "pw"},
+                        route=pid,
+                        route_acknowledged=["net_raw"],
+                    ),
+                    slug="bitping",
+                )
+            return exc.value
+
+        error = _run(go)
+        assert error.status_code == 409 and "too old" in error.detail
         assert ui.calls == []
 
     def test_a_service_already_running_from_the_boxs_ip_is_not_routed_beside_it(self, db):
@@ -1469,7 +1513,7 @@ class TestARemovalAfterTheUiGaveUpOnTheDeploy:
                 service_lock.release()
 
         monkeypatch.setattr(route_gate, "deploying", lambda slug: Watched())
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(worker_api.proxy_tunnel, "routed_copies", lambda slug, marked: [])
         monkeypatch.setattr(
@@ -1507,7 +1551,7 @@ class TestARemovalAfterTheUiGaveUpOnTheDeploy:
 
     def test_a_deploy_that_arrives_during_the_removal_is_refused(self, worker, monkeypatch):
         """Counted but never made: an earner it made after the removal answered would run with no record in the UI."""
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         created, during = [], []
         monkeypatch.setattr(
@@ -1573,7 +1617,7 @@ class TestARemovalAfterTheUiGaveUpOnTheDeploy:
 
     def test_a_copy_deploy_that_starts_and_ends_during_the_removal_still_keeps_the_records(self, worker, monkeypatch):
         """In neither the set read before the removal nor the one read after it: its start is counted."""
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(worker_api.proxy_tunnel, "deploy", lambda *a, **k: {"container_id": "e"})
         monkeypatch.setattr(worker_api.orchestrator, "remove_extra_instances", lambda slug: [])
@@ -2854,7 +2898,7 @@ class TestLabelsNeverHideADirectEarner:
         direct = _labelled_direct({"cashpilot.proxy": "3"})
         worker.docker.containers.list.return_value = [direct]
         monkeypatch.setattr(worker_api.orchestrator, "service_instances", _SERVICE_INSTANCES)
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(
             worker_api.proxy_tunnel, "deploy", MagicMock(side_effect=AssertionError("deployed beside it"))
@@ -3243,7 +3287,7 @@ class TestARoutedDeployEndsByTheDeadlineCountedAtItsArrival:
     """
 
     def _routed_deploy(self, worker, monkeypatch, sidecar=None):
-        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec, *_: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(proxy_tunnel, "secret_files", lambda *a, **k: {"settings": "s"})
         monkeypatch.setattr(proxy_tunnel, "tunnel_image", lambda: "drumsergio/cashpilot-tunnel:1.64.0")
