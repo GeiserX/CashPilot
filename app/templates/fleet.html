@@ -1380,7 +1380,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
     ws.innerHTML = _workers.filter((w) => (w.system_info && (w.system_info.features || []).includes('proxy_tunnel')))
       .map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('') || `<option value="">${t('fleet.copy.no_box')}</option>`;
     if (keep) ws.value = keep;
+    // The 60 s refresh keeps what the owner chose (and fillNeeds their ticks).
+    const keepProxy = ps.value;
     ps.innerHTML = _proxies.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    if (keepProxy && _proxies.some((p) => String(p.id) === keepProxy)) ps.value = keepProxy;
     fillSlugs();
   }
 
@@ -1388,7 +1391,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const id = Number(document.getElementById('copy-worker').value);
     const w = _workers.find((x) => x.id === id);
     const slugs = [...new Set(((w && w.containers) || []).map((c) => c.slug).filter(Boolean))].sort();
-    document.getElementById('copy-slug').innerHTML = slugs.map((s) => `<option>${esc(s)}</option>`).join('');
+    const select = document.getElementById('copy-slug');
+    const keep = select.value;
+    select.innerHTML = slugs.map((s) => `<option>${esc(s)}</option>`).join('');
+    if (keep && slugs.includes(keep)) select.value = keep;
     fillNeeds();
   }
 
@@ -1405,20 +1411,40 @@ CASHPILOT_WORKER_NAME=server-name</code>
   // or one checkbox per thing that lowers its isolation. The server refuses
   // the copy without every one of them (api_add_proxied_copy).
   let _needsAsked = 0;
+  let _needsFor = '';
   async function fillNeeds() {
     const box = document.getElementById('copy-needs');
     const run = document.getElementById('copy-run');
     const slug = document.getElementById('copy-slug').value;
     const proxyId = document.getElementById('copy-proxy').value;
-    box.innerHTML = '';
-    run.disabled = false;
-    if (!slug || !proxyId) return;
+    // A refresh of the same service and proxy keeps the ticks; another one
+    // clears them, since they answer that one's needs.
+    const key = `${slug}|${proxyId}`;
+    const same = key === _needsFor;
+    const ticked = same
+      ? new Set([...box.querySelectorAll('input[data-ack]:checked')].map((el) => el.dataset.ack))
+      : new Set();
+    _needsFor = key;
+    if (!same) box.innerHTML = '';
+    if (!slug || !proxyId) {
+      box.innerHTML = '';
+      run.disabled = false;
+      return;
+    }
+    // Off until the needs are known: without them the copy would go out unticked.
+    run.disabled = true;
     const asked = ++_needsAsked;
     let out;
     try {
       out = await CP.api(`/api/proxies/${proxyId}/copies/needs?slug=${encodeURIComponent(slug)}`);
-    } catch (err) { return; }
+    } catch (err) {
+      if (asked !== _needsAsked) return;
+      box.innerHTML = `<p class="text-warn">${esc(t('fleet.copy.needs_failed', { error: err.message }))} <button type="button" class="btn btn-sm" id="copy-needs-retry">${t('app.retry')}</button></p>`;
+      document.getElementById('copy-needs-retry').addEventListener('click', fillNeeds);
+      return;
+    }
     if (asked !== _needsAsked) return;
+    run.disabled = false;
     if (out.refusal) {
       box.innerHTML = `<p class="text-warn">${esc(out.refusal)}</p>`;
       run.disabled = true;
@@ -1428,7 +1454,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     if ((out.volumes || []).length) parts.push(`<p class="muted">${esc(t('fleet.copy.own_volume', { names: out.volumes.join(', ') }))}</p>`);
     if ((out.needs || []).length) {
       parts.push(`<p class="form-label">${t('app.route.ack_title')}</p>`);
-      out.needs.forEach((key) => parts.push(`<label class="form-label" style="display:block;font-weight:normal;"><input type="checkbox" data-ack="${esc(key)}"> ${esc(ackText(key))}</label>`));
+      out.needs.forEach((need) => parts.push(`<label class="form-label" style="display:block;font-weight:normal;"><input type="checkbox" data-ack="${esc(need)}"${ticked.has(need) ? ' checked' : ''}> ${esc(ackText(need))}</label>`));
     }
     box.innerHTML = parts.join('');
   }

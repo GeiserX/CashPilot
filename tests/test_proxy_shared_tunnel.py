@@ -226,6 +226,10 @@ class FakeNetworks:
         net = self.by_name[name] = FakeNetwork(self._d, name, kw)
         return net
 
+    def list(self, filters=None):
+        keys = [f.partition("=")[0] for f in (filters or {}).get("label", [])]
+        return [n for n in self.by_name.values() if all(k in n.attrs["Labels"] for k in keys)]
+
 
 class FakeDocker:
     def __init__(self):
@@ -6044,6 +6048,145 @@ class TestIsolatedTunnel:
         gate.attrs["Created"] = (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z")
         _heartbeat()
         assert gate.id not in docker.by_id and name not in docker.networks.by_name
+
+    def test_the_heartbeat_sweeps_a_gate_network_left_with_no_tunnel_or_gate(self, docker):
+        """A worker that died after creating the network and before the tunnel leaves only the network."""
+        net = proxy_tunnel._gate_network(docker, "a" * 12)
+        _heartbeat()
+        assert net.name in docker.networks.by_name, "a young network may belong to a deploy still running"
+        net.attrs["Created"] = (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z")
+        _deploy_isolated()  # a live isolated copy: its own network stays
+        live = proxy_tunnel.gate_name(docker.named(OWN_TUNNEL).labels[proxy_tunnel.LABEL_GATE])
+        docker.networks.by_name[live].attrs["Created"] = net.attrs["Created"]
+        _heartbeat()
+        assert net.name not in docker.networks.by_name
+        assert live in docker.networks.by_name
+
+    def test_a_gate_that_fails_a_settings_change_puts_the_old_settings_back(self, docker):
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        earner = docker.named("cashpilot-bitping-p3")
+        old_auth = tunnel.files["proxy_auth"]
+        real = proxy_tunnel._gate_up
+        calls = []
+
+        def gate_up(client, t):
+            if proxy_tunnel.is_isolated(t):  # not the trial tunnel the new settings are proved on
+                calls.append(t.files.get("proxy_auth"))
+                if len(calls) == 1:
+                    raise proxy_tunnel.ProxyTunnelError("The gate could not start: no exit")
+            return real(client, t)
+
+        with (
+            patch.object(proxy_tunnel, "_gate_up", gate_up),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="The gate could not start"),
+        ):
+            _deploy_isolated(proxy=_socks(password="An0ther-P4ss-21"))
+        # The new settings failed in the gate; the old ones went back, with a gate, and the copy runs again.
+        assert calls[0] != old_auth and calls[1] == old_auth
+        assert tunnel.files["proxy_auth"] == old_auth
+        assert tunnel.status == "running" and _gate(docker, tunnel).status == "running"
+        assert earner.status == "running"
+
+    def test_a_running_tunnel_whose_gate_is_down_is_not_reused_as_ready(self, docker):
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        gate = _gate(docker, tunnel)
+        gate.status = "exited"
+        gate.attrs["State"]["ExitCode"] = 137
+        # The same settings again: its /run/ready is still there, but it has no way out.
+        _deploy_isolated()
+        new_gate = _gate(docker, tunnel)
+        assert new_gate.id != gate.id and new_gate.status == "running"
+        assert ("stop", tunnel.name) in docker.events
+
+    def test_a_failed_gate_lookup_reads_as_no_exit_for_that_tunnel_only(self, docker):
+        _deploy("earnfm")
+        _deploy_isolated()
+        real = proxy_tunnel._gate_running
+
+        def flaky(client, tunnel):
+            raise APIError("timeout reading the gate")
+
+        with patch.object(proxy_tunnel, "_gate_running", flaky):
+            assert proxy_tunnel._read_exit(docker.named(OWN_TUNNEL)) is None
+            assert proxy_tunnel._read_exit(docker.named("cashpilot-tunnel-p3")) == EXIT
+        assert real(docker, docker.named(OWN_TUNNEL)) is True
+
+    def test_a_trip_its_owner_already_restarted_is_not_held(self, docker):
+        """The heartbeat read the trip; the owner's Start finished before the beat took the lock."""
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        earner = docker.named("cashpilot-bitping-p3")
+        stale = copy.copy(tunnel)
+        stale.attrs = copy.deepcopy(tunnel.attrs)
+        stale.status = "exited"
+        stale.attrs["State"]["ExitCode"] = proxy_tunnel.TRIP_EXIT
+        stale.reload = lambda: (setattr(stale, "status", tunnel.status), setattr(stale, "attrs", tunnel.attrs))
+        assert proxy_tunnel._hold_tripped(stale, earner, "3") is False
+        assert earner.status == "running" and earner.name not in proxy_tunnel.held()
+        assert tunnel.status == "running"
+
+    def test_stopping_an_isolated_copy_stops_its_gate_and_keeps_its_network(self, docker):
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        gate = _gate(docker, tunnel)
+        name = proxy_tunnel.gate_name(tunnel.labels[proxy_tunnel.LABEL_GATE])
+        proxy_tunnel.stop("bitping", 3)
+        assert tunnel.status == "exited" and gate.status == "exited"
+        assert name in docker.networks.by_name
+        proxy_tunnel.start("bitping", 3, _socks(), None)
+        assert tunnel.status == "running" and _gate(docker, tunnel).status == "running"
+
+    def test_a_tripped_inner_has_its_gate_stopped_too(self, docker):
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        gate = _gate(docker, tunnel)
+        _tripped(tunnel)
+        _heartbeat()
+        assert gate.status == "exited"
+
+    def test_a_staged_isolated_tunnel_that_tripped_is_not_revived_by_recovery(self, docker):
+        """A worker died mid-move; then the staged tunnel's watchdog tripped. Recovery keeps the trip."""
+        _deploy_isolated()
+        current = docker.named(OWN_TUNNEL)
+        staged = docker.create(
+            name=OWN_TUNNEL + "-next",
+            image=IMAGE,
+            labels={**current.labels, proxy_tunnel.LABEL_GATE: "b" * 12},
+        )
+        staged.files = dict(current.files)
+        staged.status = "running"
+        moved = proxy_tunnel._clone_into(docker, docker.named("cashpilot-bitping-p3"), staged)
+        moved.status = "running"
+        assert _member_ids(docker, staged) == ["cashpilot-bitping-p3"]
+        _tripped(staged)
+        assert proxy_tunnel._finish_staged(docker, staged, current, OWN_TUNNEL) is current
+        earner = docker.named("cashpilot-bitping-p3")
+        assert _member_ids(docker, current) == ["cashpilot-bitping-p3"]
+        assert earner.status != "running" and earner.name in proxy_tunnel.held()
+        assert staged.id not in docker.by_id
+        assert docker.named(proxy_tunnel.gate_name("b" * 12)) is None, "no new gate was made for it"
+
+    def test_the_heartbeat_waits_for_no_gate(self, docker):
+        """A down isolated tunnel is started in the background: its gate's readiness wait holds no beat."""
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        _gate(docker, tunnel).status = "exited"
+        tunnel.status = "exited"
+        tunnel.attrs["State"]["ExitCode"] = 0
+        later = []
+        with patch.object(proxy_tunnel, "_in_background", later.append):
+            try:
+                _heartbeat()
+                assert tunnel.status == "exited", "nothing was started inside the beat"
+                assert proxy_tunnel._deploy_lock(3).locked(), "the start holds the proxy's lock until it is done"
+                assert any("_start_down_tunnel" in work.__qualname__ for work in later)
+            finally:
+                for work in later:  # each releases what it holds
+                    work()
+        assert not proxy_tunnel._deploy_lock(3).locked()
+        assert tunnel.status == "running" and _gate(docker, tunnel).status == "running"
 
     def test_a_gate_with_no_address_fails_the_deploy_and_leaves_nothing(self, docker):
         docker.gate_gets_no_address = True

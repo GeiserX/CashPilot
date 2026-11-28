@@ -3,7 +3,7 @@
 # be trusted (docs/proxies.md "The tunnel watchdog").
 #
 #   cp-watch <pid> firewall    cp-tunnel: also the firewall it loaded
-#   cp-watch <pid> egress      cp-inner: only the exit address
+#   cp-watch 0 egress          cp-inner: only the exit address; nothing to kill
 #
 # Every 5 s the firewall (table inet cashpilot, counters left out) must be the
 # one this run loaded; every 10 minutes a probe through the tunnel must not
@@ -29,7 +29,9 @@ trip() {
     if [ -S /run/ts/ts.sock ]; then
         timeout 5 tailscale --socket=/run/ts/ts.sock logout >/dev/null 2>&1 || true
     fi
-    kill "$PID" 2>/dev/null
+    # cp-inner passes 0 and waits for this exit instead: a kill of 0 would
+    # signal its whole process group, cp-inner too, before it reads the marker.
+    [ "$PID" -gt 0 ] && kill "$PID" 2>/dev/null
     exit 86
 }
 

@@ -66,7 +66,9 @@ until [ "$i" -ge 40 ]; do
     fi
     sleep 1
 done
-[ -f /run/ready ] || echo "cp-inner: no working exit through the gate after 40 probe attempts" >&2
+# No exit: stopped, so the worker starts it again with a new gate (an exit
+# code but 86, which is the watchdog's).
+[ -f /run/ready ] || die "no working exit through the gate after 40 probe attempts"
 
 trap 'exit 0' TERM INT
 cp-watch 0 egress &

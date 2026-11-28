@@ -1038,6 +1038,7 @@
   "fleet.copy.device_retrying": "New device {id}: CashPilot keeps trying to add it to your account for a day and tells you if it cannot.",
   "fleet.copy.device_steps": "New device {id}: {steps}",
   "fleet.copy.limits": "A service that uses the host's network, publishes ports, keeps data in a host folder or needs a GPU cannot run through a proxy. Each copy gets data volumes of its own.",
+  "fleet.copy.needs_failed": "CashPilot could not read what this service needs behind this proxy ({error}). The copy cannot run until it can.",
   "fleet.copy.no_box": "No box can run proxied copies yet",
   "fleet.copy.own_volume": "This copy gets data volumes of its own ({names}). The provider sees a new device, not the original.",
   "fleet.copy.proxy": "Proxy",

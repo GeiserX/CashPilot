@@ -974,6 +974,26 @@ def _sweep_gates(client: Any) -> None:
         tag = _labels(gate).get(LABEL_GATE_OF)
         if tag and tag not in tags and _age_seconds(gate) >= STAGED_STALE_SECONDS:
             _drop_gate(client, tag)
+    # A gate network whose tunnel and gate are both gone (a worker that died
+    # between creating it and creating the tunnel). Not a young one, which a
+    # deploy may be filling.
+    gated = {_labels(g).get(LABEL_GATE_OF) for g in gates}
+    try:
+        networks = client.networks.list(filters={"label": [LABEL_GATE_OF]})
+    except Exception:  # noqa: BLE001 - the next heartbeat looks again
+        return
+    for net in networks:
+        attrs = getattr(net, "attrs", None) or {}
+        tag = (attrs.get("Labels") or {}).get(LABEL_GATE_OF)
+        if (
+            tag
+            and tag not in tags
+            and tag not in gated
+            and net.name == gate_name(tag)
+            and _age_seconds(net) >= STAGED_STALE_SECONDS
+        ):
+            with contextlib.suppress(Exception):
+                net.remove()
 
 
 def _get(client: Any, name: str) -> Any | None:
@@ -1780,9 +1800,13 @@ def _in_place(
         not files.get("own_ip") or _read_secret_file(current, "own_ip") == files["own_ip"]
     )
     if running and same:
-        with contextlib.suppress(ProxyTunnelError):
-            return current, _wait_ready(current)
-        logger.warning("The tunnel %s runs but has no exit; restarting it", current.name)
+        # An isolated tunnel's /run/ready outlives its gate: reused only while the gate runs.
+        if not is_isolated(current) or _gate_running(client, current):
+            with contextlib.suppress(ProxyTunnelError):
+                return current, _wait_ready(current)
+            logger.warning("The tunnel %s runs but has no exit; restarting it", current.name)
+        else:
+            logger.warning("The gate of %s is down; restarting the tunnel with a new gate", current.name)
         previous = None
     elif running:
         _prove(client, proxy, own_ip, files, deadline=deadline)
@@ -1807,13 +1831,20 @@ def _in_place(
     # Replacing the tunnel recreates every copy in it (a new device to each
     # provider), so a Docker error gets a second try first: only a container
     # Docker refuses twice is taken for broken.
+    gate_failed: ProxyTunnelError | None = None
     for attempt in (1, 2):
         try:
             # An own_ip _carry_own_ip left out could not be read: its file stays as it is.
             written = {key: files.get(key, "") for key in SECRET_KEYS if key != "own_ip" or "own_ip" in files}
             if not current.put_archive(SECRET_DIR, _secret_tar(written)):
                 raise _Broken("Docker did not take the settings files")
-            _gate_up(client, current)
+            try:
+                _gate_up(client, current)
+            except ProxyTunnelError as exc:
+                # Not Docker refusing the tunnel: the new settings failed in the
+                # gate, so the old ones go back, as for a tunnel with no exit.
+                gate_failed = exc
+                break
             current.start()
             break
         except (APIError, _Broken) as exc:
@@ -1824,6 +1855,8 @@ def _in_place(
             )
             time.sleep(2)
     try:
+        if gate_failed is not None:
+            raise gate_failed
         exit_info = _wait_ready(current)
     except ProxyTunnelError as exc:
         try:
@@ -1996,6 +2029,16 @@ def _finish_staged(
         )
     members = _members(client, current) if current is not None else []
     _check_move_targets(client, members, target)
+    if current is not None and tripped(client, staged):
+        # Its watchdog (or its gate's) stopped it: a new gate here would clear
+        # that. Its copies are held, as the heartbeat holds a tripped tunnel's,
+        # and go back into the current tunnel stopped, for their owner's Start.
+        for member in _members(client, staged):
+            _set_held(str(member.name), True, strict=True)
+            if getattr(member, "status", "") in _LIVE:
+                member.stop(timeout=orchestrator._get_stop_timeout(_labels(member).get(LABEL_SERVICE) or ""))
+                member.reload()
+        return _undo_staged(client, staged, current, f"The new tunnel of {final} tripped its watchdog")
     run = getattr(staged, "status", "") == "running"
     if current is not None and (
         getattr(current, "status", "") in _LIVE or any(getattr(m, "status", "") in _LIVE for m in members)
@@ -2678,6 +2721,7 @@ def _halt(
                 half_failure = half_failure or exc
     if tunnel is not None and not _is_shared(tunnel):
         tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
+        _stop_gate(client, tunnel)
         if earner is not None:
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
         if live_failure is not None:
@@ -2698,6 +2742,7 @@ def _halt(
             stopped = None  # the tunnel keeps running: safe, and the next stop tries again
         if stopped is not None and not any(str(m.name) not in stopped for m in _members(client, tunnel)):
             tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
+            _stop_gate(client, tunnel)
     if failure is not None:
         raise failure
     return was_running, half_failure
@@ -3499,10 +3544,11 @@ def _started_at(container: Any) -> str:
 def _read_exit(sidecar: Any) -> dict[str, Any] | None:
     if sidecar.status != "running":
         return None
-    # An isolated tunnel's /run/ready stays after its gate is gone: no exit then.
-    if is_isolated(sidecar) and not _gate_running(orchestrator._get_client(), sidecar):
-        return None
     try:
+        # An isolated tunnel's /run/ready stays after its gate is gone: no exit
+        # then, nor when the gate cannot be read.
+        if is_isolated(sidecar) and not _gate_running(orchestrator._get_client(), sidecar):
+            return None
         code, out = sidecar.exec_run(["cat", "/run/ready"], demux=False)
     except Exception:  # noqa: BLE001 - unknown is the honest answer
         return None
@@ -3811,9 +3857,8 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
         if sidecar is None or key in unproven:
             continue
         try:
-            if tripped(client, sidecar):
+            if tripped(client, sidecar) and _hold_tripped(sidecar, earner, key[1]):
                 trips.add(sidecar.id)
-                _hold_tripped(sidecar, earner, key[1])
             elif is_isolated(sidecar) and sidecar.status == "running" and not _gate_running(client, sidecar):
                 _stop_gateless(sidecar, key[1])
         except Exception as exc:  # noqa: BLE001 - the next beat looks again
@@ -3925,12 +3970,20 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
     return out
 
 
-def _hold_tripped(tunnel: Any, earner: Any | None, proxy_id: str) -> None:
-    """Hold the copy of a tripped tunnel stopped, and stop what still runs of both. Under the proxy's lock."""
+def _hold_tripped(tunnel: Any, earner: Any | None, proxy_id: str) -> bool:
+    """Hold the copy of a tripped tunnel stopped, and stop what still runs of both. Under the proxy's lock.
+
+    False when the tunnel, read again under the lock, is no longer tripped (its
+    owner's Start got there first). True otherwise, also when the lock is busy
+    and nothing was done this beat."""
     lock = _deploy_lock(int(proxy_id)) if proxy_id.isdigit() else None
     if lock is None or not lock.acquire(blocking=False):
-        return
+        return True
     try:
+        tunnel.reload()
+        client = orchestrator._get_client()
+        if not tripped(client, tunnel):
+            return False
         if earner is not None:
             name = str(earner.name)
             if name not in held():
@@ -3950,8 +4003,20 @@ def _hold_tripped(tunnel: Any, earner: Any | None, proxy_id: str) -> None:
         if tunnel.status in _LIVE:
             tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
             tunnel.reload()
+        _stop_gate(client, tunnel)
+        return True
     finally:
         lock.release()
+
+
+def _stop_gate(client: Any, tunnel: Any) -> None:
+    """Stop the gate of an isolated ``tunnel``, so it holds no proxy session while the tunnel is down.
+
+    Its network stays: the next start makes a new gate on it (_gate_up)."""
+    gate = _gate_of(client, tunnel) if is_isolated(tunnel) else None
+    if gate is not None and getattr(gate, "status", "") in _LIVE:
+        with contextlib.suppress(Exception):
+            gate.stop(timeout=SIDECAR_STOP_SECONDS)
 
 
 def _stop_gateless(tunnel: Any, proxy_id: str) -> None:
@@ -4234,7 +4299,7 @@ def _start_down_tunnel(tunnel: Any, proxy_id: str, name: str) -> None:
     lock = _deploy_lock(int(proxy_id)) if str(proxy_id).isdigit() else None
     if lock is None or not lock.acquire(blocking=False):
         return
-    started = False
+    handed = False
     try:
         try:
             if name in held():
@@ -4249,19 +4314,35 @@ def _start_down_tunnel(tunnel: Any, proxy_id: str, name: str) -> None:
         # Tripped: only its owner's Start brings it back (_hold_tripped).
         if tripped(client, tunnel):
             return
-        refresh_proxy_ip(tunnel)
-        _gate_up(client, tunnel)
-        tunnel.start()
-        started = True
-        logger.info("Started %s, which was down while a copy in it should run", tunnel.name)
+
+        # In the background, holding the lock until done: an isolated tunnel's
+        # gate is waited for (_gate_up, up to READY_TIMEOUT), which would hold
+        # the heartbeat's status pass past its interval.
+        def work() -> None:
+            started = False
+            try:
+                refresh_proxy_ip(tunnel)
+                _gate_up(client, tunnel)
+                tunnel.start()
+                started = True
+                logger.info("Started %s, which was down while a copy in it should run", tunnel.name)
+            except Exception as exc:  # noqa: BLE001 - the next beat tries again
+                logger.warning("Could not start %s: %s", tunnel.name, redact(str(exc)))
+            finally:
+                lock.release()
+            if started:
+                # Its bridge address is new: give it its exception to an exit node or
+                # proxy on one of the owner's lines now, as _wait_ready does for a deploy.
+                lan_fence.tunnel_started()
+
+        # The work releases the lock; a thread that did not start never ran it.
+        _in_background(work)
+        handed = True
     except Exception as exc:  # noqa: BLE001 - the next beat tries again
         logger.warning("Could not start %s: %s", tunnel.name, redact(str(exc)))
     finally:
-        lock.release()
-    if started:
-        # Its bridge address is new: give it its exception to an exit node or
-        # proxy on one of the owner's lines now, as _wait_ready does for a deploy.
-        lan_fence.tunnel_started()
+        if not handed:
+            lock.release()
 
 
 def test(proxy: dict[str, Any], own_ip: str | None) -> dict[str, Any]:

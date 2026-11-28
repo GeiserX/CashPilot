@@ -484,7 +484,7 @@ follow it there. Others cannot, and the form says why before anything starts.
 | A named volume | Runs. A copy gets a fresh volume of its own (below). |
 | A host folder | A copy is refused: it would share the folder with the original. A routed service keeps its folder, as it is the same service. |
 | `NET_ADMIN`, `NET_RAW` or `/dev/net/tun` | Runs in an isolated tunnel, after you tick each one (below). |
-| Inbound UDP ports (Mysterium) | Runs through a Tailscale exit node, after you tick that nobody can reach it there. It can earn less or nothing. |
+| Inbound UDP ports (Mysterium) | Runs through a Tailscale exit node, after you tick that nobody can reach it there. It can earn less or nothing. The worker refuses it through any other proxy, or without the tick. |
 
 What this means for each Docker earner the catalog had refused before:
 
@@ -511,8 +511,9 @@ whose volume is not named that way.
 Removing a copy keeps its volumes, so the copy has the same identity if you
 add it again. Delete them by hand (`docker volume rm`) when you are done with
 the copy for good. A copy's volume of a service that marks it critical (a
-wallet, a node identity) is protected from deletion like the original's. It is
-not in the state backups: those read the service's own container only. Write
+wallet, a node identity) is protected from deletion like the original's. Its
+name says whose it is, so no other service can mount it, also once the copy is
+gone. It is not in the state backups: those read the service's own container only. Write
 down what it holds (Mysterium's beneficiary wallet, for example) before you
 rely on the copy.
 
@@ -574,8 +575,8 @@ Every tunnel and every gate runs `cp-watch` for as long as it runs:
 When either check fails, it stops the tunnel with exit status 86. The worker
 reads that status on the next heartbeat. It stops every copy in that tunnel
 and records each one as stopped, so nothing starts them again. The Fleet page
-says the watchdog stopped the copy. It runs again only when you start it, on
-a fresh tunnel and a fresh gate.
+says the watchdog stopped the copy, and the gate stops with it. It runs again
+only when you start it, on a fresh tunnel and a fresh gate.
 
 ### Commercial proxy services
 

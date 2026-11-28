@@ -203,7 +203,10 @@ class TestEarner:
         for slug in ("earnapp", "honeygain"):
             why = proxies.refusal(catalog.get_service(slug))
             assert why and "terms forbid" in why, slug
-        assert "support.honeygain.com" in proxies.refusal(catalog.get_service("honeygain"))
+        honeygain = catalog.get_service("honeygain")
+        source = honeygain["requirements"]["proxy_prohibited"]["source"]
+        assert urllib.parse.urlparse(source).hostname == "support.honeygain.com"
+        assert proxies.refusal(honeygain).endswith(f"({source}).")
 
     @pytest.mark.parametrize("cap", ["NET_ADMIN", "NET_RAW", "cap_net_admin"])
     def test_net_admin_and_net_raw_need_an_acknowledgement_not_a_refusal(self, cap):
@@ -2567,13 +2570,18 @@ class TestWorkerChecksTheAcknowledgements:
     """The worker refuses on its own, whatever the UI sent (worker_api._validate_proxied)."""
 
     @staticmethod
-    def _spec(slug, *, cap_add=None, devices=None, volumes=None, acknowledged=(), routed=False):
+    def _spec(slug, *, cap_add=None, devices=None, volumes=None, acknowledged=(), routed=False, kind="socks5"):
         from app import catalog, worker_api
 
         image = catalog.get_service(slug)["docker"]["image"]
+        proxy = (
+            worker_api.ProxySpec(kind="tailscale", auth_key="tskey-auth-test", exit_node="100.64.0.7")
+            if kind == "tailscale"
+            else worker_api.ProxySpec(kind=kind, host="proxy.example", port=1080)
+        )
         return worker_api.ProxiedDeploySpec(
             earner=worker_api.DeploySpec(image=image, cap_add=cap_add, devices=devices, volumes=volumes or {}),
-            proxy=worker_api.ProxySpec(kind="socks5", host="proxy.example", port=1080),
+            proxy=proxy,
             acknowledged=list(acknowledged),
             routed=routed,
         )
@@ -2593,15 +2601,35 @@ class TestWorkerChecksTheAcknowledgements:
         assert refused.detail["error"] == "acknowledge_reduced_isolation" and refused.detail["needs"] == ["net_raw"]
         assert self._check("bitping", self._spec("bitping", cap_add=["NET_RAW"], acknowledged=["net_raw"])) is None
 
-    def test_mysterium_needs_both_net_admin_and_the_tun_device_ticked(self):
-        def spec(acks):
+    def test_mysterium_needs_net_admin_the_tun_device_and_no_inbound_ticked(self):
+        def spec(acks, kind="tailscale"):
             return self._spec(
-                "mysterium", cap_add=["NET_ADMIN", "SETUID", "SETGID"], devices=["/dev/net/tun"], acknowledged=acks
+                "mysterium",
+                cap_add=["NET_ADMIN", "SETUID", "SETGID"],
+                devices=["/dev/net/tun"],
+                acknowledged=acks,
+                kind=kind,
             )
 
         assert self._check("mysterium", spec([])).detail["needs"] == ["net_admin"]
         assert self._check("mysterium", spec(["net_admin"])).detail["needs"] == ["tun_device"]
-        assert self._check("mysterium", spec(["net_admin", "tun_device"])) is None
+        assert self._check("mysterium", spec(["net_admin", "tun_device"])).detail["needs"] == ["no_inbound"]
+        assert self._check("mysterium", spec(["net_admin", "tun_device", "no_inbound"])) is None
+
+    @pytest.mark.parametrize("kind", ["socks5", "http"])
+    def test_a_udp_service_runs_only_through_an_exit_node_even_with_every_tick(self, kind):
+        acks = ["net_admin", "tun_device", "no_inbound"]
+        refused = self._check(
+            "mysterium",
+            self._spec(
+                "mysterium",
+                cap_add=["NET_ADMIN", "SETUID", "SETGID"],
+                devices=["/dev/net/tun"],
+                acknowledged=acks,
+                kind=kind,
+            ),
+        )
+        assert refused.status_code == 400 and "Use a Tailscale exit node instead" in refused.detail
 
     @pytest.mark.parametrize("cap", ["SYS_ADMIN", "ALL"])
     def test_sys_admin_and_all_are_never_taken_even_ticked(self, cap):

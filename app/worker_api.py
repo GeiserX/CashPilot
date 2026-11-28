@@ -2380,8 +2380,35 @@ def _validate_proxied(slug: str, spec: ProxiedDeploySpec, proxy_id: int | None =
         )
     if gpu.grant(slug):
         raise HTTPException(status_code=400, detail="A proxied copy gets no GPU")
+    if _catalog_wants_udp(slug):
+        # Its traffic is UDP (Mysterium's VPN range): a SOCKS5 or HTTP proxy does
+        # not carry it, and behind any proxy nobody reaches its inbound ports.
+        if spec.proxy.kind != "tailscale":
+            raise HTTPException(
+                status_code=400,
+                detail="This service carries its traffic over UDP, which a SOCKS5 or HTTP proxy does not pass. "
+                "Use a Tailscale exit node instead.",
+            )
+        if "no_inbound" not in acked:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "acknowledge_reduced_isolation",
+                    "needs": ["no_inbound"],
+                    "message": "Behind a proxy nobody reaches this service's inbound ports; its owner must "
+                    "acknowledge that first",
+                },
+            )
     _validate_deploy_spec(spec.earner, slug)
     _validate_proxy(spec.proxy)
+
+
+def _catalog_wants_udp(slug: str) -> bool:
+    """Whether the catalog gives ``slug`` an inbound UDP port range (docker.udp_port_range)."""
+    for svc in _catalog_get_services() if _catalog_get_services else []:
+        if svc.get("slug") == slug:
+            return bool((svc.get("docker") or {}).get("udp_port_range"))
+    return False
 
 
 async def _own_egress_ip() -> str | None:
