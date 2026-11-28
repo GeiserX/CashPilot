@@ -1388,7 +1388,7 @@ def _ensure_tunnel(
     # one can belong to a deploy another worker on this daemon is running.
     if (leftover := _get(client, staged)) is not None:
         if not _is_tunnel_for(leftover, proxy_id, slug):
-            raise ProxyTunnelError(t("err.proxy_tunnel.container_named_cashpilot_did_not_3", staged=staged))
+            raise ProxyTunnelError(t("err.proxy_tunnel.container_named_cashpilot_did_not", final=staged))
         if _age_seconds(leftover) < STAGED_STALE_SECONDS:
             raise ProxyTunnelError(
                 t("err.proxy_tunnel.another_change_proxy_s_tunnel", leftover=int(_age_seconds(leftover)))

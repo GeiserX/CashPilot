@@ -2308,11 +2308,7 @@ class FailedMarksUnreadable(ContainerRuntimeError):
     """The failed marks are there but cannot be read: any fence-gated container may be one a failed deploy left."""
 
     def __init__(self) -> None:
-        super().__init__(
-            "the worker could not read its record of failed deploys, so any fence-gated node may be one a failed "
-            "deploy or an unfinished restore left, and none is started. The worker's log says why",
-            503,
-        )
+        super().__init__(t("err.orchestrator.failed_marks_unreadable"), 503)
 
 
 def deploy_failed() -> set[str]:
@@ -3403,11 +3399,7 @@ class RestoreRecordUnreadable(ContainerRuntimeError):
     """The record of restores that did not finish is there but cannot be read: every slug counts as held."""
 
     def __init__(self) -> None:
-        super().__init__(
-            "the worker could not read its record of restores that did not finish, so any service may hold "
-            "a half-written restore. The worker's log says why",
-            503,
-        )
+        super().__init__(t("err.orchestrator.restore_record_unreadable"), 503)
 
 
 def _restore_marks_on_disk() -> dict[str, list[str]]:
@@ -3936,9 +3928,7 @@ def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any])
                     route_gate.check(slug, str(deploy.get("network_mode") or ""), client)
                 except route_gate.RouteRefused as exc:
                     # Before anything is made, so nothing needs undoing.
-                    raise RestoreError(
-                        t("err.orchestrator.nothing_restored", value=str(exc).rstrip(".")), 403
-                    ) from None
+                    raise RestoreError(t("err.orchestrator.nothing_restored", value=str(exc)), 403) from None
                 with lock:
                     return _restore_locked(client, slug, name, gated, targets, expected, payloads, deploy)
         finally:
@@ -3972,7 +3962,7 @@ def _restore_locked(
             t("err.orchestrator.nothing_restored_docker_refused_show", refusal=refusal or _docker_answer_in_log())
         ) from None
     if why:
-        raise RestoreError(t("err.orchestrator.nothing_restored", value=why.rstrip(".")))
+        raise RestoreError(t("err.orchestrator.nothing_restored", value=why))
     before = set(_named_volumes(deploy.get("volumes")))
     # Each volume this restore made, with the nonce it was created with.
     made: dict[str, str] = {}
@@ -4064,36 +4054,23 @@ def _restore_locked(
             # A free name with nothing written left gets its mark back as it was.
             half_written = bool(replaced) or any(v in kept for v in written)
             _mark_failed(name, failed_before or half_written or taken)
-        note = f" Could not remove {', '.join(left)}: remove it by hand." if left else ""
+        # Each note is a whole sentence of its own, put after the message with a space.
+        note = " " + t("err.orchestrator.restore_note.left", names=", ".join(left), n=len(left)) if left else ""
         if kept:
-            note += (
-                f" The volume(s) {', '.join(kept)} it made stay on this box, so {slug} stays held: Docker deletes a "
-                "volume by name only, so the worker cannot prove at the delete that it is still the one this "
-                "restore made. Remove the service with its data (Remove from this box, in the service's dashboard "
-                "panel, offers it), then restore the backup again."
-            )
+            note += " " + t("err.orchestrator.restore_note.kept", names=", ".join(kept), n=len(kept), slug=slug)
             left = [*left, *(v for v in kept if v in written)]
         if replaced:
             # Possibly written: the dashboard must hold the identity here, never
             # settle it as not restored.
-            note += (
-                f" Another client replaced the volume(s) {', '.join(replaced)} while this restore wrote, so the "
-                f"backup may be in it and {slug} stays held. It is not this restore's, so the worker never deletes "
-                "it: check it, and remove it yourself if it holds nothing you need."
+            note += " " + t(
+                "err.orchestrator.restore_note.replaced", names=", ".join(replaced), n=len(replaced), slug=slug
             )
             left = [*left, *replaced]
         if held and present:
-            note += (
-                f" {name} is on this box now and may mount a volume this restore made, so {slug} stays held: "
-                "remove it with its data before you deploy or restore it again."
-            )
+            note += " " + t("err.orchestrator.restore_note.present", name=name, slug=slug)
             left = [*left, name]
         elif held:
-            note += (
-                f" The worker could not read whether a container holds the name {name}, so {slug} stays held: "
-                "open the service to see what is on this box, and remove it with its data before you deploy or "
-                "restore it again."
-            )
+            note += " " + t("err.orchestrator.restore_note.unread", name=name, slug=slug)
             left = [*left, name]
         if isinstance(exc, RestoreError):
             raise RestoreError(

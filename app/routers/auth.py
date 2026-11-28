@@ -65,7 +65,7 @@ async def _rearm_setup_token() -> None:
     if owner_exists:
         setup_token_module.clear()
         await database.delete_config_keys(["_setup_token"])
-        raise HTTPException(status_code=409, detail=i18n.t("auth.error.exists_api"))
+        raise HTTPException(status_code=409, detail=i18n.t("auth.error.exists"))
     logger.warning(
         "FIRST-RUN SETUP: no account exists. Open /register and enter this one-time setup token to create the owner account: %s",
         tok,

@@ -30,6 +30,7 @@ import threading
 from typing import Any
 
 from app.constants import LABEL_MANAGED, LABEL_ROLE, LABEL_VERSION, ROLE_TUNNEL
+from app.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -147,13 +148,12 @@ def check(slug: str, network_mode: str | None, client: Any, *, leave_route: bool
         # deploy_raw sets LABEL_VERSION on every earner it makes and no tunnel
         # has it: a direct earner given a tunnel's labels is not a tunnel.
         if labels.get(LABEL_MANAGED) != "true" or labels.get(LABEL_ROLE) != ROLE_TUNNEL or LABEL_VERSION in labels:
-            raise RouteRefused("route_not_tunnel", f"{slug} may share a network only with one of this worker's tunnels")
+            raise RouteRefused("route_not_tunnel", t("err.route_gate.not_tunnel", slug=slug))
         return
     if proxied_only():
         raise RouteRefused(
             "proxied_only",
-            f"This worker runs services only through a proxy ({PROXIED_ONLY_ENV} is set on it), so {slug} was "
-            "not started from its own IP. Deploy it with a route through one of your proxies.",
+            t("err.route_gate.proxied_only", env=PROXIED_ONLY_ENV, slug=slug),
         )
     if leave_route:
         return
@@ -162,12 +162,10 @@ def check(slug: str, network_mode: str | None, client: Any, *, leave_route: bool
     except (OSError, ValueError) as exc:
         raise RouteRefused(
             "route_unknown",
-            f"Could not read which services are routed on this worker ({exc}), so {slug} was not started from "
-            "its own IP.",
+            t("err.route_gate.unknown", exc=exc, slug=slug),
         ) from None
     if slug in lock:
         raise RouteRefused(
             "route_locked",
-            f"{slug} runs through a proxy on this worker. Running it from the worker's own IP needs the owner's "
-            "password. Nothing was deployed.",
+            t("err.route_gate.locked", slug=slug),
         )

@@ -2424,7 +2424,7 @@ class TestARestoreAndTheRoute:
 
     def test_a_proxied_only_box_refuses_the_restore_and_nothing_is_made(self, docker, monkeypatch):
         monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "1")
-        with pytest.raises(orchestrator.RestoreError, match="Nothing was restored: This worker runs") as exc:
+        with pytest.raises(orchestrator.RestoreError, match="Nothing was restored. This worker runs") as exc:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert exc.value.status_code == 403
         assert docker.volume_map == {} and docker.creates == [] and docker.started == []
@@ -3138,7 +3138,7 @@ class TestARestoreAnswerHoldsNoDockerText:
             pytest.raises(orchestrator.RestoreError) as caught,
         ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert "the volume mysterium-data could not be checked" in caught.value.detail
+        assert "The volume mysterium-data could not be checked" in caught.value.detail
         assert INTERNAL not in caught.value.detail
 
     def test_a_listing_docker_refused(self, docker):

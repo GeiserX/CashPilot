@@ -331,15 +331,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const be = m.break_even_tariff;
       if (!be || be.price_per_kwh == null) return '';
       const paid = economics.tariff_price_per_kwh;
-      const yours = paid != null && economics.tariff_currency === be.currency
-        ? t('fleet.econ.you_pay', { price: Number(paid).toFixed(3) }) : '';
+      // One message with selects, so a language can order the clauses: "none" leaves one out.
+      const yours = paid != null && economics.tariff_currency === be.currency ? Number(paid).toFixed(3) : 'none';
       const bh = m.break_even_tariff_heating;
       const heating = m.heat_covers_all_in_season
-        ? t('fleet.econ.heat_covers_all')
-        : bh && bh.price_per_kwh != null
-          ? t('fleet.econ.heat_below_html', { price: Number(bh.price_per_kwh).toFixed(3), currency: esc(bh.currency) })
-          : '';
-      return `<div class="economics-summary econ-break-even">${t('fleet.econ.break_even_html', { price: Number(be.price_per_kwh).toFixed(3), currency: esc(be.currency), yours, heating })}</div>`;
+        ? 'all'
+        : bh && bh.price_per_kwh != null ? Number(bh.price_per_kwh).toFixed(3) : 'none';
+      return `<div class="economics-summary econ-break-even">${t('fleet.econ.break_even_html', { price: Number(be.price_per_kwh).toFixed(3), currency: esc(be.currency), paid: yours, heating, heat_currency: esc(bh ? bh.currency : '') })}</div>`;
     };
 
     // Heat credit. Months are never prefilled: users are worldwide, and the

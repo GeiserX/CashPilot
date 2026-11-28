@@ -442,7 +442,7 @@ class TestCap:
         assert [c.args[2] for c in call.call_args_list] == ["/api/proxied/a/1/stop", "/api/proxied/b/1/stop"]
         assert all(c.args[3] is True for c in mark.call_args_list) and mark.call_count == 2
         assert alert.call_args.args[:2] == ("proxy_cap", "1")
-        assert alert.call_args.args[2] == "Stopped: P reached 90%."
+        assert alert.call_args.args[2] == "P reached 90%. CashPilot stopped every copy that runs through this proxy."
         main._drop_proxy_cap_bell(1)
 
     def test_a_copy_the_owner_had_stopped_is_not_marked_by_the_cap(self):
@@ -477,7 +477,7 @@ class TestCap:
         ):
             asyncio.run(main._stop_capped_proxy(proxy, {(7, "a")}))
         assert [c.args[:4] for c in mark.call_args_list] == [(1, 7, "a", True)]
-        assert alert.call_args.args[2] == "Stopped: P reached 90%."
+        assert alert.call_args.args[2] == "P reached 90%. CashPilot stopped every copy that runs through this proxy."
         assert "a stopped, but maybe not" in caplog.text
         main._drop_proxy_cap_bell(1)
 
@@ -571,7 +571,7 @@ class TestCapEnforcement:
         asyncio.run(go())
         stops = [(c.args[0], c.args[2]) for c in call.call_args_list]
         assert stops == [(7, "/api/proxied/a/1/stop"), (8, "/api/proxied/a/1/stop"), (8, "/api/proxied/a/1/stop")]
-        assert rig.alerts[-1][2].startswith("Stopped: ")
+        assert rig.alerts[-1][2].endswith(". CashPilot stopped every copy that runs through this proxy.")
         assert len(rig.pushed) == 1 and rig.pushed[0][0] == "proxy_cap"
 
     def test_a_running_copy_with_no_record_is_stopped_too(self):
@@ -756,7 +756,14 @@ class TestCapEnforcement:
         ):
             asyncio.run(main._warm_collector_alerts())
         caps = [a for a in main._collector_alerts if a.get("kind") == "proxy_cap"]
-        assert caps == [{"kind": "proxy_cap", "platform": "Oxy", "proxy_id": 3, "error": "Stopped: Oxy reached 90%."}]
+        assert caps == [
+            {
+                "kind": "proxy_cap",
+                "platform": "Oxy",
+                "proxy_id": 3,
+                "error": "Oxy reached 90%. CashPilot stopped every copy that runs through this proxy.",
+            }
+        ]
         main._drop_proxy_cap_bell(3)
         assert not [a for a in main._collector_alerts if a.get("kind") == "proxy_cap"]
 
@@ -1801,7 +1808,7 @@ class TestStorageAndRoutes:
             asyncio.run(main._stop_capped_proxy(proxy, {(7, "a")}))
         main._drop_proxy_cap_bell(1)
         main._proxy_cap_unstopped.pop(1, None)
-        assert alert.call_args.args[2] == "Stopped: P reached 90%."
+        assert alert.call_args.args[2] == "P reached 90%. CashPilot stopped every copy that runs through this proxy."
 
 
 def _worker_answer(status, body=None):

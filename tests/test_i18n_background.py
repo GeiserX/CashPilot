@@ -34,7 +34,10 @@ async def _noop_lifespan(a):
     yield
 
 
-app.router.lifespan_context = _noop_lifespan
+@pytest.fixture(autouse=True)
+def _no_startup(monkeypatch):
+    """These tests need no scheduler or database startup, and other modules keep theirs."""
+    monkeypatch.setattr(app.router, "lifespan_context", _noop_lifespan)
 
 
 @pytest.fixture

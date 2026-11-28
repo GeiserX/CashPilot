@@ -519,3 +519,83 @@ def test_the_dashboard_asks_the_worker_in_the_language_of_the_page(monkeypatch):
     contextvars.copy_context().run(call, "en")
     assert [h["Accept-Language"] for h in sent] == ["es", "en"]
     assert all(h["Authorization"] == "Bearer k" for h in sent)
+
+
+# ---------------------------------------------------------------------------
+# Lists, decimals and the worker's own refusals
+# ---------------------------------------------------------------------------
+
+
+def test_a_list_uses_the_separator_then_and_for_the_last_item(locales):
+    assert i18n.join_and([]) == ""
+    assert i18n.join_and(["a"]) == "a"
+    assert i18n.join_and(["a", "b"]) == "a and b"
+    assert i18n.join_and(["a", "b", "c", "d"]) == "a, b, c and d"
+    locales({"zh-Hans": {"i18n.list_sep": "{first}、{next}", "i18n.list_and": "{first}和{last}"}})
+    i18n.use("zh-Hans")
+    try:
+        assert i18n.join_and(["甲", "乙", "丙"]) == "甲、乙和丙"
+    finally:
+        i18n.use("en")
+
+
+def test_a_decimal_takes_the_locale_mark_and_no_grouping():
+    assert i18n.decimal(1234.56, 2, "en") == "1234.56"
+    assert i18n.decimal(1234.56, 2, "es") == "1234,56"
+    assert i18n.decimal(0.05, 1, "ja") == "0.1"
+
+
+def test_the_route_gate_and_the_unreadable_records_speak_the_locale(locales, monkeypatch):
+    from app import orchestrator, route_gate
+
+    locales(
+        {
+            "es": {
+                "err.route_gate.proxied_only": "Solo por proxy: {slug} ({env}).",
+                "err.orchestrator.restore_record_unreadable": "Registro de restauraciones ilegible.",
+                "err.orchestrator.failed_marks_unreadable": "Registro de despliegues fallidos ilegible.",
+            }
+        }
+    )
+    monkeypatch.setattr(route_gate, "proxied_only", lambda: True)
+    i18n.use("es")
+    try:
+        with pytest.raises(route_gate.RouteRefused) as caught:
+            route_gate.check("honeygain", "bridge", object())
+        assert str(caught.value) == f"Solo por proxy: honeygain ({route_gate.PROXIED_ONLY_ENV})."
+        assert str(orchestrator.RestoreRecordUnreadable()) == "Registro de restauraciones ilegible."
+        assert str(orchestrator.FailedMarksUnreadable()) == "Registro de despliegues fallidos ilegible."
+    finally:
+        i18n.use("en")
+
+
+def test_every_restore_refusal_is_a_whole_sentence():
+    """The refusals go after "Nothing was restored." as sentences of their own."""
+    keys = [
+        "err.orchestrator.restore_has_container",
+        "err.orchestrator.restore_unfinished_volume",
+        "err.orchestrator.restore_leftover_not_removed",
+        "err.orchestrator.restore_name_taken",
+        "err.orchestrator.restore_volume_unchecked",
+        "err.orchestrator.restore_volume_exists",
+        "err.orchestrator.restore_record_unreadable",
+    ]
+    for key in keys:
+        text = SOURCE[key]
+        assert text[0].isupper() or text.startswith("{"), key
+        assert text.endswith((".", "}")), key
+    assert SOURCE["err.orchestrator.nothing_restored"] == "Nothing was restored. {value}"
+
+
+@pytest.mark.parametrize(
+    ("key", "params", "said"),
+    [
+        ("alert.flatline.span", {"days": 1}, "(1 day)"),
+        ("alert.stall", {"name": "a", "box": "b", "sent": "c", "hours": 1, "peers": "d"}, "for 1 hour;"),
+        ("alert.worker.offline", {"name": "alpha", "minutes": 1}, "for over 1 minute."),
+        ("alert.worker.offline", {"name": "alpha", "minutes": 5}, "for over 5 minutes."),
+    ],
+)
+def test_english_counts_say_one_in_the_singular(key, params, said):
+    """No "(s)" and no "1 hours": a count of one has its own English form."""
+    assert said in i18n.format_message(SOURCE[key], params, "en")
