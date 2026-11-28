@@ -13781,9 +13781,12 @@ async def _custom_values_unsaved(slug: str, recorded: dict[str, Any], worker_id:
     if set(saved) != set(deployed):
         return True
     if any("{hostname}" in value for value in saved.values()):
-        # Filled in as the blank redeploy fills it (_deploy), then compared.
-        name, _ = await _device_names(slug, docker_conf, DeployRequest(env={}), worker_id, recorded)
+        # Filled in as the blank redeploy fills it (_deploy), then compared: a
+        # device that still has the old shared name keeps it, since a blank
+        # redeploy never renames.
+        name, renames = await _device_names(slug, docker_conf, DeployRequest(env={}), worker_id, recorded)
         saved = {key: value.replace("{hostname}", name) for key, value in saved.items()}
+        saved.update({r["key"]: r["old"] for r in renames})
     return any(deployed[key] != value for key, value in saved.items())
 
 
@@ -13900,6 +13903,7 @@ def _image_update_alert_text(row: dict[str, Any], worker_name: str) -> str:
     return f"A new build is out for {worker_name}. Update it from the Fleet page."
 
 
+@i18n.owner_text
 async def _refresh_image_update_bell(outcomes: dict[int, dict[str, str]] | None = None) -> None:
     """Rebuild the bell's image update entries from the newest row of each service on each box. Never raises."""
     global _collector_alerts, _image_update_bell_loaded

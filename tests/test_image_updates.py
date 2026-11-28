@@ -989,6 +989,17 @@ class TestCustomServiceBlocker:
         why = await self._blocker(monkeypatch, saved, made, deployed_env={"NAME": f"node-{own}"})
         assert "not deployed yet" in why
 
+    async def test_a_device_with_the_old_shared_name_keeps_it_as_the_redeploy_does(self, monkeypatch):
+        from app import main
+
+        made = {"image": "example/mine:latest", "command": "", "data_path": ""}
+        saved = {"name": "Mine", "image": "example/mine:latest", "env": [{"key": "NAME", "value": "box-{hostname}"}]}
+        legacy = f"box-{main.HOSTNAME_PREFIX}"
+        assert await self._blocker(monkeypatch, saved, made, deployed_env={"NAME": legacy}) == ""
+        # Control: an edited template is still a saved value not deployed yet.
+        edited = {**saved, "env": [{"key": "NAME", "value": "node-{hostname}"}]}
+        assert "not deployed yet" in await self._blocker(monkeypatch, edited, made, deployed_env={"NAME": legacy})
+
     async def test_data_in_an_image_volume_outside_the_data_path_is_left_to_the_owner(self, monkeypatch):
         # The new container would get an empty anonymous volume, and the old one
         # goes with the old container.

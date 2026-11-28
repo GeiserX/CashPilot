@@ -43,9 +43,11 @@ function makePage() {
     settings: {mode: 'auto', hour: 4, workers: {}, services: {}},
     settle_seconds: 120, workers: [], services: [], history: [], running: false,
   };
+  // The fleet choice, a control whose value a check can change.
+  const modeEl = {value: 'auto'};
   const context = {
     document: {
-      getElementById: (id) => (id === 'updates-body' ? root : null),
+      getElementById: (id) => (id === 'updates-body' ? root : id === 'updates-mode' ? modeEl : null),
       addEventListener: (type, fn) => { listeners.doc[type] = fn; },
     },
     window: {CPI18N: globalThis.CPI18N},
@@ -59,6 +61,8 @@ function makePage() {
     root,
     calls,
     change: () => listeners.root.change(),
+    // Pick a fleet choice on the page, as the owner does, without saving it.
+    pickMode: (value) => { modeEl.value = value; listeners.root.change(); },
     click: (action) => listeners.doc.click({target: {closest: () => ({dataset: {updatesAction: action}})}}),
     tick: () => context.tick(),
     // Answer the oldest open request, then let the script run on.
@@ -162,13 +166,15 @@ p = makePage();
 await p.answer();
 p.change();
 p.click('save');
-p.change();
+p.pickMode('off');
 p.click('save');
-p.change();
+p.pickMode('auto');
 await p.answer({});
 await p.answer();
 await p.answer({});
 await p.answer();
+const queuedPut = p.calls.filter((c) => c.method === 'PUT')[1];
+check('a queued save sends the page as it was when asked for', queuedPut && queuedPut.body.mode === 'off', JSON.stringify(queuedPut && queuedPut.body));
 check('a change made after a queued save stays unsaved', p.root.renders === 1, `drawn ${p.root.renders} times`);
 
 // 7. A reload that fails keeps the controls and a change not saved, and says so.
