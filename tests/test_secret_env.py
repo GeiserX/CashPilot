@@ -104,6 +104,18 @@ class TestThePlan:
         on.unlink()
         assert _plan() is None
 
+    def test_an_unreadable_shim_keeps_the_environment_and_never_raises(self, on, monkeypatch):
+        """The deploy plans after stopping the old earner, before its rollback: a raise would leave it down."""
+
+        def refuse(self):
+            raise PermissionError(13, "Permission denied", str(self))
+
+        monkeypatch.setattr(type(on), "read_bytes", refuse)
+        assert _plan() is None
+
+    def test_a_command_that_cannot_be_split_keeps_the_environment_and_never_raises(self, on):
+        assert _plan(command="-pass 'hunter2") is None
+
     def test_a_command_with_the_placeholder_already_is_left_alone(self, on):
         assert _plan(command="-pass ${HONEYGAIN_PASSWORD}") is None
 
