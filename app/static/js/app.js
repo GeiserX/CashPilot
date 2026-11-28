@@ -344,11 +344,19 @@ const CP = (() => {
 
   let _ratesLoaded = false;
 
+  // The catalog and an open service detail may have drawn their estimates
+  // before the first rates came. Only the detail's estimate is redrawn:
+  // redrawing the modal would throw away the deploy form.
+  function redrawEstimates() {
+    if (document.body.dataset.page === 'catalog' && catalogServices.length) filterCatalog();
+    const openEstimate = document.getElementById('sd-estimate');
+    if (openEstimate && _detailSvc) openEstimate.innerHTML = detailEstimate(_detailSvc);
+  }
+
   async function loadExchangeRates() {
     try {
       _exchangeRates = await api('/api/exchange-rates');
-      // The catalog may have drawn its estimates before the first rates came.
-      if (!_ratesLoaded && document.body.dataset.page === 'catalog' && catalogServices.length) filterCatalog();
+      if (!_ratesLoaded) redrawEstimates();
       _ratesLoaded = true;
     } catch (err) {
       console.warn('Could not refresh exchange rates, keeping previous values:', err);
@@ -4612,7 +4620,7 @@ const CP = (() => {
 
   // A catalog estimate is in whole dollars; a bound under a dollar keeps its cents.
   function estimateAmount(usd) {
-    return formatCurrency(usd, 'USD', Number.isInteger(Number(usd)) ? 0 : 2);
+    return formatCurrency(usd, 'USD', 'whole');
   }
 
   function renderCatalogCard(svc) {
@@ -4739,13 +4747,15 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Cached workers for detail modal
   let _detailWorkers = [];
+  let _detailSvc = null;
 
   async function openServiceDetail(slug) {
     openModal('service-detail-modal');
     const body = document.getElementById('service-detail-body');
     const title = document.getElementById('service-detail-title');
     if (body) body.innerHTML = '<div class="spinner spinner-block"></div>';
-    if (title) title.textContent = 'Loading...';
+    if (title) title.textContent = t('app.detail.loading');
+    _detailSvc = null;
 
     try {
       const [svc, workers] = await Promise.all([
@@ -4753,6 +4763,7 @@ const CP = (() => {
         api('/api/workers').catch(() => []),
       ]);
       _detailWorkers = workers;
+      _detailSvc = svc;
       if (title) title.textContent = svc.name;
       if (body) body.innerHTML = renderServiceDetail(svc, workers);
       // After the markup is in the DOM, not before: the container it fills is
@@ -4963,10 +4974,14 @@ const CP = (() => {
     }
   }
 
-  function renderServiceDetail(svc, workers) {
-    const earning = svc.earnings
+  function detailEstimate(svc) {
+    return svc.earnings
       ? t('app.detail.estimate', { low: estimateAmount(svc.earnings.monthly_low), high: estimateAmount(svc.earnings.monthly_high), per: svc.earnings.per || t('app.cat.month') })
       : t('app.detail.varies');
+  }
+
+  function renderServiceDetail(svc, workers) {
+    const earning = detailEstimate(svc);
 
     const isDeployed = svc.deployed || false;
     const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
@@ -5000,7 +5015,7 @@ const CP = (() => {
       </div>
       <div class="detail-item">
         <div class="detail-label">${t('app.detail.estimated')}</div>
-        <div class="detail-value num">${earning}</div>
+        <div class="detail-value num" id="sd-estimate">${earning}</div>
       </div>
       <div class="detail-item">
         <div class="detail-label">${t('app.detail.payout')}</div>
@@ -6504,9 +6519,10 @@ const CP = (() => {
     return 'USD';
   }
 
+  // digits 'whole' drops the cents only when the shown amount has none: $5 is
+  // "$5", and the same bound in euros at 0.86 is "€4.30", never "€4".
   function formatCurrency(val, nativeCurrency, digits) {
     nativeCurrency = nativeCurrency || 'USD';
-    const fractionDigits = digits ?? 2;
     const amount = parseFloat(val || 0);
 
     // Convert to USD first
@@ -6541,6 +6557,9 @@ const CP = (() => {
     }
     // else: no rate, so the value stays in USD and says so.
 
+    const fractionDigits = digits === 'whole'
+      ? (Number.isInteger(Math.round(displayAmount * 100) / 100) ? 0 : 2)
+      : (digits ?? 2);
     try {
       return new Intl.NumberFormat(undefined, {
         style: 'currency',

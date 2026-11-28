@@ -79,5 +79,28 @@ for (const [label, rates, disp, expectNotice, mustMention] of staleCases) {
   console.log(`${label} notice=${String(Boolean(notice)).padEnd(5)} expected=${String(expectNotice).padEnd(5)} ${ok?'ok':'MISMATCH'}   ${notice ? '"'+notice+'"' : ''}`);
 }
 
+// The catalog's estimates ('whole' digits) drop the cents only when the amount
+// SHOWN has none. Deciding on the USD input showed a $1 bound as "€1" at 0.8
+// EUR per USD, where it is €0.80.
+const money = (n, currency, digits) => new Intl.NumberFormat(undefined, {
+  style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits,
+}).format(n);
+const wholeCases = [
+  ['$1 bound, EUR at 0.8                ', 1, 'EUR', {USD:1, EUR:0.8}, money(0.8, 'EUR', 2)],
+  ['$5 bound, EUR at 0.86               ', 5, 'EUR', {USD:1, EUR:0.86}, money(4.3, 'EUR', 2)],
+  ['$10 bound, EUR at 0.8               ', 10, 'EUR', {USD:1, EUR:0.8}, money(8, 'EUR', 0)],
+  ['$5 bound, USD                       ', 5, 'USD', {USD:1}, money(5, 'USD', 0)],
+  ['$2.5 bound, USD                     ', 2.5, 'USD', {USD:1}, money(2.5, 'USD', 2)],
+  ['$5 bound, EUR with no rate yet      ', 5, 'EUR', {USD:1}, money(5, 'USD', 0)],
+];
+for (const [label, usd, disp, fiat, want] of wholeCases) {
+  const fmt = new Function('_displayCurrency','_exchangeRates',
+    `${fns}; return formatCurrency;`)(disp, {fiat, crypto_usd: {}});
+  const got = fmt(usd, 'USD', 'whole');
+  const ok = got === want;
+  if (!ok) bad++;
+  console.log(`${label} got=${got.padEnd(8)} expected=${want.padEnd(8)} ${ok?'ok':'MISMATCH'}`);
+}
+
 console.log(bad ? '\nRESULT: FAIL' : '\nRESULT: PASS');
 process.exit(bad ? 1 : 0);
