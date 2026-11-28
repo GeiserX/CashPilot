@@ -5390,7 +5390,11 @@ async def _deploy(
     # No sweep of the other copies' rows here: running_copies comes from the last
     # heartbeat, which may predate a copy, so only a confirmed removal retires one.
     if device_renames and body.rename_devices:
-        divergence.extend(await _refresh_proxied_copies(slug, worker_id, svc, docker_conf, spec, expected=expected))
+        divergence.extend(
+            await _refresh_proxied_copies(
+                slug, worker_id, svc, docker_conf, spec, expected=expected, approve=bool(options.get("approve"))
+            )
+        )
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
@@ -5567,6 +5571,7 @@ async def _copies_to_rename(slug: str, worker_id: int) -> list[str]:
 
 @app.post("/api/deploy/{slug}/device-names/copies")
 async def api_rename_proxied_copies(
+    request: Request,
     slug: str,
     body: DeployRequest | None = None,
     worker_id: int | None = None,
@@ -5589,6 +5594,11 @@ async def api_rename_proxied_copies(
     if body and body.replace_existing and body.expected_containers is None:
         keys = await _proxied_rebuild_targets(slug, worker_id, proxies.route_of(recorded), pending_only=True)
         await _confirm_deploy_targets(worker_id, slug, keys)
+    # Each copy keeps its own wallet or node identity: on another image it is
+    # rebuilt only with the owner's password, as its copy-add asked.
+    approve = await _step_up_critical(
+        request, slug, svc, recorded.get("custom_image") or "", body.step_up_password if body else None
+    )
     notes = await _refresh_proxied_copies(
         slug,
         worker_id,
@@ -5597,6 +5607,7 @@ async def api_rename_proxied_copies(
         recorded,
         pending_only=True,
         expected=body.expected_containers if body else None,
+        approve=approve,
     )
     return {"status": "renamed", "kept_from_previous_deployment": notes}
 
@@ -5827,7 +5838,9 @@ async def _deploy_routed(
         # A confirmed rename reaches its plain copies through other proxies too,
         # as on the direct path: rebuilt, or marked for the retry. The routed
         # copy itself was just built from the new names.
-        divergence.extend(await _refresh_proxied_copies(slug, worker_id, svc, docker_conf, record, expected=expected))
+        divergence.extend(
+            await _refresh_proxied_copies(slug, worker_id, svc, docker_conf, record, expected=expected, approve=approve)
+        )
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     exit_info = result.get("exit") if isinstance(result.get("exit"), dict) else {}
@@ -8443,6 +8456,9 @@ class ProxyCopyRequest(BaseModel):
     expected_containers: dict[str, str] | None = None
     # What the owner acknowledged lowers this copy's isolation (proxies.ACK_KEYS).
     acknowledged: list[str] = []
+    # The owner's password, re-entered for a copy of a wallet or node-identity
+    # service the worker would refuse without a signed approval (_step_up_critical).
+    step_up_password: str | None = None
 
 
 async def _proxy_or_404(proxy_id: int) -> dict[str, Any]:
@@ -8722,8 +8738,13 @@ async def _refresh_proxied_copies(
     *,
     pending_only: bool = False,
     expected: dict[str, str] | None = None,
+    approve: bool = False,
 ) -> list[str]:
     """Redeploy this worker's proxied copies of ``slug`` after a confirmed device rename.
+
+    ``approve``: the caller checked the owner's password for this service
+    (_step_up_critical), so each copy goes out with its own signed approval, as
+    the worker asks of a wallet or node-identity service on another image.
 
     Each copy is named from its original (``<name>-p<proxy id>``), so a renamed
     original leaves its copies on the old shared name until they are rebuilt
@@ -8792,6 +8813,8 @@ async def _refresh_proxied_copies(
             if "proxied_if_running" not in await _worker_features(worker_id):
                 raise ValueError(t("api.worker_too_old_rebuild_without"))
             earner = await _proxied_earner(recorded, docker_conf, worker_id, pid)
+            if approve:
+                earner = await _approve_spec(worker_id, slug, earner)
             # Its new ids are held from the shared-id check until the ledger row is
             # written, and taken before the copy lock, as a deploy takes them.
             async with _device_id_claim(slug, svc, earner["env"]), _proxy_copy_lock(pid, worker_id, slug):
@@ -8882,7 +8905,7 @@ async def api_proxied_copy_needs(
 
 @app.post("/api/proxies/{proxy_id}/copies")
 async def api_add_proxied_copy(
-    proxy_id: int, body: ProxyCopyRequest, _auth: dict[str, Any] = Depends(_require_owner)
+    request: Request, proxy_id: int, body: ProxyCopyRequest, _auth: dict[str, Any] = Depends(_require_owner)
 ) -> dict[str, Any]:
     """Run a copy of a service already deployed on a worker through this proxy.
 
@@ -8925,6 +8948,11 @@ async def api_add_proxied_copy(
         earner = await _proxied_earner(recorded, docker_conf, worker_id, proxy_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug}: {exc}") from exc
+    # A copy keeps its own wallet or node identity once it has run, so the worker
+    # checks it as a direct deploy (_validate_critical_spec): on another image it
+    # runs only with the owner's password, asked here before anything is recorded.
+    if await _step_up_critical(request, slug, svc, recorded.get("custom_image") or "", body.step_up_password):
+        earner = await _approve_spec(worker_id, slug, earner)
     # The record goes in before the worker is asked, under the proxy's lock: a
     # deploy that times out may still finish on the worker, and a copy with no
     # record would be outside the cap and the delete guard.
@@ -14462,9 +14490,20 @@ async def api_identity_change(request: Request, identity_id: int) -> dict[str, A
     # now. The new id already runs, so a failure here is a note, never an error.
     try:
         fresh = await database.get_deployment_spec(slug, worker_id=worker_id)
+        # _deploy checked the password of a wallet or node-identity service
+        # (_step_up_critical), so its copies go out signed too.
+        approve = (
+            bool(deploy.step_up_password) and not svc.get("custom") and bool(catalog.critical_volume_targets(slug))
+        )
         notes = (
             await _refresh_proxied_copies(
-                slug, worker_id, svc, svc.get("docker") or {}, fresh, expected=deploy.expected_containers
+                slug,
+                worker_id,
+                svc,
+                svc.get("docker") or {},
+                fresh,
+                expected=deploy.expected_containers,
+                approve=approve,
             )
             if fresh
             else []

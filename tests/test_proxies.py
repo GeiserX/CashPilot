@@ -1009,7 +1009,9 @@ class TestStorageAndRoutes:
                 patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
                 pytest.raises(HTTPException) as err,
             ):
-                await main.api_add_proxied_copy(created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                )
             return err.value.status_code
 
         assert _run(go) == 409
@@ -1025,7 +1027,9 @@ class TestStorageAndRoutes:
                 patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"instances"}),
                 pytest.raises(HTTPException) as err,
             ):
-                await main.api_add_proxied_copy(created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                )
             return err.value.status_code, err.value.detail
 
         status, detail = _run(go)
@@ -1058,7 +1062,9 @@ class TestStorageAndRoutes:
                 patch.object(main, "_proxy_to_worker", call),
                 patch.object(main.database, "record_identities", record),
             ):
-                await main.api_add_proxied_copy(created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                )
 
         _run(go)
         assert held == [True]
@@ -1084,7 +1090,7 @@ class TestStorageAndRoutes:
                 patch.object(main, "_proxy_to_worker", call),
             ):
                 result = await main.api_add_proxied_copy(
-                    created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
                 )
             return created["id"], result, await database.list_proxied_copies()
 
@@ -1133,7 +1139,7 @@ class TestStorageAndRoutes:
                     patch.object(main, "_proxy_to_worker", call),
                     pytest.raises(HTTPException) if call is failing else contextlib.nullcontext(),
                 ):
-                    await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                    await main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
                 marks.append([c["rename_pending"] for c in await database.list_proxied_copies(pid)])
             return marks
 
@@ -1167,7 +1173,7 @@ class TestStorageAndRoutes:
                 patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
                 patch.object(main, "_proxy_to_worker", side_effect=rename_lands),
             ):
-                await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
             return [c["rename_pending"] for c in await database.list_proxied_copies(pid)]
 
         assert _run(go) == [1], "built from the older record, so it is still on the old name"
@@ -1365,7 +1371,7 @@ class TestStorageAndRoutes:
                 patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
                 patch.object(main, "_proxy_to_worker", deploy),
             ):
-                await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
             return [c["rename_pending"] for c in await database.list_proxied_copies(pid)]
 
         marks = _run(go)
@@ -1438,6 +1444,7 @@ class TestStorageAndRoutes:
                     await _within(in_rebuild.wait(), "the rebuild to reach the worker")
                     add = asyncio.create_task(
                         main.api_add_proxied_copy(
+                            None,
                             pid,
                             main.ProxyCopyRequest(
                                 worker_id=7, slug="honeygain", expected_containers={f"p{pid}": "b" * 64}
@@ -1541,6 +1548,7 @@ class TestStorageAndRoutes:
                     tasks.append(
                         asyncio.create_task(
                             main.api_add_proxied_copy(
+                                None,
                                 pid,
                                 main.ProxyCopyRequest(
                                     worker_id=7, slug="honeygain", expected_containers={f"p{pid}": "b" * 64}
@@ -1608,7 +1616,9 @@ class TestStorageAndRoutes:
                     await _within(in_delete.wait(), "the removal to reach the worker")
                     tasks.append(
                         asyncio.create_task(
-                            main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                            main.api_add_proxied_copy(
+                                None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                            )
                         )
                     )
                     await _within(saved.wait(), "the add to save its record")
@@ -1667,7 +1677,7 @@ class TestStorageAndRoutes:
                 await lock.acquire()
                 held = True
                 add = asyncio.create_task(
-                    main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                    main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
                 )
                 try:
                     await _within(saved.wait(), "the add to save its record")
@@ -1729,7 +1739,7 @@ class TestStorageAndRoutes:
                 patch.object(main, "_register_device", register),
             ):
                 return await main.api_add_proxied_copy(
-                    created["id"], main.ProxyCopyRequest(worker_id=7, slug="proxyrack"), user
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="proxyrack"), user
                 )
 
         result = _run(go)
@@ -2187,7 +2197,9 @@ class TestReviewFollowUps:
             created = await main.api_create_proxy(_Req(_socks()), {})
             a, b, c, d, e, f = self._add(created["id"], call)
             with a, b, c, d, e, f, pytest.raises(HTTPException):
-                await main.api_add_proxied_copy(created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(
+                    None, created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {}
+                )
             return await database.list_proxied_copies()
 
         assert bool(_run(go)) is kept
@@ -2204,7 +2216,7 @@ class TestReviewFollowUps:
 
             a, b, c, d, e, f = self._add(pid, AsyncMock(side_effect=slow_deploy))
             with a, b, c, d, e, f:
-                await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                await main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
             return await database.get_proxy(pid)
 
         assert _run(go) is not None
@@ -2463,6 +2475,7 @@ def _add_copy(acknowledged, features=ISOLATING, svc=BITPING, record=BITPING_RECO
         ):
             try:
                 result = await main.api_add_proxied_copy(
+                    None,
                     created["id"],
                     main.ProxyCopyRequest(worker_id=7, slug=svc["slug"], acknowledged=acknowledged),
                     {},

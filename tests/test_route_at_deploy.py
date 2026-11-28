@@ -1346,6 +1346,45 @@ class TestTheUiDeploysARoute:
         )
         step_up.check(WORKER_KEY, earner["approval"], step_up.ACTION_CUSTOM_IMAGE, target)
 
+    def test_a_copy_of_a_wallet_service_on_another_image_goes_out_only_with_the_owners_signed_approval(self, db):
+        """The worker checks a copy as a direct deploy (_validate_critical_spec), so its add asks for the password."""
+        ui = _Ui(_worker_row(features=("proxy_tunnel", "route_at_deploy", "proxied_isolation")))
+        checked = AsyncMock()
+
+        async def go():
+            with patch.object(main, "require_step_up", checked):
+                await ui.deploy(
+                    main.DeployRequest(image="custom/proxybase:1", step_up_password="pw"), slug="proxybase-xyz"
+                )
+            pid = await ui.proxy()
+            ui.calls.clear()
+            with ui.active(), pytest.raises(HTTPException) as refused:
+                await main.api_add_proxied_copy(
+                    _request(), pid, main.ProxyCopyRequest(worker_id=1, slug="proxybase-xyz"), {}
+                )
+            nothing = (list(ui.calls), await database.list_proxied_copies(pid))
+            with ui.active(), patch.object(main, "require_step_up", checked):
+                await main.api_add_proxied_copy(
+                    _request(),
+                    pid,
+                    main.ProxyCopyRequest(worker_id=1, slug="proxybase-xyz", step_up_password="pw"),
+                    {},
+                )
+            return refused.value, nothing, pid
+
+        refused, nothing, pid = _run(go)
+        assert refused.status_code == 403 and refused.detail["error"] == "step_up_required"
+        assert nothing == ([], []), "a refused copy reaches no worker and leaves no record"
+        assert checked.await_count == 2
+        method, path, sent = ui.calls[-1]
+        assert (method, path) == ("POST", f"/api/proxied/proxybase-xyz/{pid}/deploy")
+        earner = sent["earner"]
+        assert earner["image"] == "custom/proxybase:1"
+        target = step_up.deploy_target(
+            "proxybase-xyz", earner["image"], earner.get("command"), earner.get("env"), earner.get("volumes")
+        )
+        step_up.check(WORKER_KEY, earner["approval"], step_up.ACTION_CUSTOM_IMAGE, target)
+
     def test_a_redeploy_keeps_the_route_without_being_asked(self, db):
         ui = _Ui()
 
@@ -2528,7 +2567,7 @@ class TestTheUiManagesARoutedService:
         async def go():
             pid = await setup()
             with ui.active(), pytest.raises(HTTPException) as exc:
-                await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=1, slug="honeygain"), {})
+                await main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=1, slug="honeygain"), {})
             return exc.value
 
         error = _run(go)
@@ -2559,7 +2598,7 @@ class TestTheUiManagesARoutedService:
                 ui.calls.clear()
                 # Reads the record before the routed one is saved, then waits for the copy's lock.
                 copy = asyncio.create_task(
-                    main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=1, slug="honeygain"), {})
+                    main.api_add_proxied_copy(None, pid, main.ProxyCopyRequest(worker_id=1, slug="honeygain"), {})
                 )
                 lock = main._proxy_copy_lock(pid, 1, "honeygain")
                 while not getattr(lock, "_waiters", None):
