@@ -563,10 +563,32 @@ check('an online worker shows the proxy and the fence on', onlineLayers.includes
 check('an offline worker shows its stale proxy, fence and gVisor as unknown, never ok',
   !offlineLayers.includes('flag-ok') && offlineLayers.includes('Socket proxy: unknown')
   && offlineLayers.includes('LAN fence: unknown'), offlineLayers);
+check('an offline worker shows each earner\'s fence as unknown, not its last report',
+  onlineLayers.includes('Honeygain</strong>: fenced') && !offlineLayers.includes('Honeygain</strong>: fenced')
+  && offlineLayers.includes('Honeygain</strong>: fence unknown'), offlineLayers);
+const vmView = {workers: {'7': {...layersView.workers['7'], secure_vm: {host: 'big-box', state: 'ok', reason: ''},
+  earners: [{...layersView.workers['7'].earners[0], vm: true}]}}, commands: layersView.commands};
+const vmOffline = buildLayers(esc, CP, vmView, true)({id: 7}, layerInfo, false);
+check('an offline worker inside a Secure VM shows its fence as unknown, never ok',
+  !vmOffline.includes('flag-ok') && !vmOffline.includes('· in the Secure VM')
+  && vmOffline.includes('· Secure VM fence unknown'), vmOffline);
+const vmOnline = buildLayers(esc, CP, vmView, true)({id: 7}, layerInfo, true);
+check('an online worker inside a Secure VM shows a fresh fence as ok', vmOnline.includes('· in the Secure VM'), vmOnline);
 check('a saved choice still on the old runtime offers it again',
   onlineLayers.includes('data-choice="gvisor"') && onlineLayers.includes('Run under gVisor again')
   && onlineLayers.includes('data-choice="runc"'), onlineLayers);
 
+// Two default changes in a row: the second waits for the first, so the older
+// value cannot be the one saved last.
+const defaultPosts = [];
+const releaseDefault = [];
+const defaultCP = {api: (url, opts) => { defaultPosts.push(opts.body.choice); return new Promise(r => { releaseDefault.push(r); }); }};
+const setLayerDefault = new Function('CP', 't', 'loadFleet', '_layerBusy',
+  ['async ' + extract('setLayerDefault'), 'return setLayerDefault;'].join('\n'))(defaultCP, k => k, () => {}, {});
+const saves = [setLayerDefault(7, 'gvisor'), setLayerDefault(7, 'runc')];
+releaseDefault.forEach(r => r({}));
+await Promise.all(saves);
+check('a second default change while one saves sends nothing', defaultPosts.join() === 'gvisor', JSON.stringify(defaultPosts));
 if (failures.length) {
   console.error('fleet staleness check FAILED:');
   for (const f of failures) console.error(`  - ${f}`);

@@ -343,6 +343,26 @@ class TestTheDeploySendsTheChoice:
         assert err.value.status_code == 409
         assert "Nothing was deployed" in err.value.detail
 
+    def test_a_stored_gvisor_choice_without_gvisor_is_refused_before_anything_moves(self):
+        # Caught here, before a deploy that leaves a route removes the routed copy.
+        w = _worker(_layers(runtimes=["runc"]))
+        with (
+            patch.object(database, "get_worker", AsyncMock(return_value=w)),
+            patch.object(layers_ui, "for_new_deploy", AsyncMock(return_value="gvisor")),
+            pytest.raises(HTTPException) as err,
+        ):
+            _run(main._runtime_choice_for(7, "honeygain"))
+        assert err.value.status_code == 409
+        assert "Nothing was deployed" in err.value.detail
+
+    def test_a_stored_runc_choice_without_gvisor_still_deploys(self):
+        w = _worker(_layers(runtimes=["runc"]))
+        with (
+            patch.object(database, "get_worker", AsyncMock(return_value=w)),
+            patch.object(layers_ui, "for_new_deploy", AsyncMock(return_value="runc")),
+        ):
+            assert _run(main._runtime_choice_for(7, "honeygain")) == "runc"
+
     def test_the_choice_reaches_the_worker_in_the_deploy_body(self):
         sent = {}
 
@@ -447,6 +467,10 @@ class TestTheSecureVm:
     def test_an_old_ok_is_stale_never_ok(self):
         vm = layers_ui.secure_vm(self._info({"state": "ok", "checked_at": self.NOW - 3600}), now=self.NOW)
         assert vm["state"] == "stale"
+
+    def test_a_check_from_the_future_is_unknown_never_ok(self):
+        vm = layers_ui.secure_vm(self._info({"state": "ok", "checked_at": self.NOW + 600}), now=self.NOW)
+        assert vm["state"] == "unknown"
 
     def test_no_state_yet_is_unknown_never_ok(self):
         assert layers_ui.secure_vm(self._info(None), now=self.NOW)["state"] == "unknown"

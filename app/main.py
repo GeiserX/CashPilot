@@ -8257,6 +8257,13 @@ async def _runtime_choice_for(worker_id: int, slug: str) -> str | None:
             "and the worker is too old to take a runtime choice. Update the worker, or set the earner "
             "back to Standard on the Fleet page. Nothing was deployed.",
         )
+    if choice == layers_ui.GVISOR and (why := layers_ui.locked(slug, info, choice)):
+        raise HTTPException(
+            status_code=409,
+            detail=f"This earner is set to run under gVisor on {worker.get('name') or 'this worker'}, "
+            f"and it cannot: {why} Set it back to Standard on the Fleet page, or fix that first. "
+            "Nothing was deployed.",
+        )
     return choice
 
 
