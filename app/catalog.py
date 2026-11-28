@@ -201,6 +201,9 @@ def _validate_network_shape(docker: dict[str, Any], name: str) -> list[str]:
     runtime = docker.get("runtime")
     if runtime is not None and (not isinstance(runtime, str) or not runtime.strip()):
         errors.append(f"{name}: docker.runtime must be a runtime name")
+    reason = docker.get("runtime_reason")
+    if reason is not None and (runtime is None or not isinstance(reason, str) or not reason.strip()):
+        errors.append(f"{name}: docker.runtime_reason must be a sentence, next to docker.runtime")
     caps = {str(c).upper().removeprefix("CAP_") for c in docker.get("cap_add") or []}
     if held := sorted(caps & NETNS_CAPABILITIES):
         # The threat class this rule closes: a container with these in the host's
@@ -1039,6 +1042,7 @@ I18N_FIELDS = (
     "docker.env[key].label",
     "docker.env[key].description",
     "docker.setup",
+    "docker.runtime_reason",
     "docker.critical_volumes[].holds",
     "docker.health_signals[].means",
     "docker.health_probe.checks[].means",

@@ -892,6 +892,9 @@ kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
 kryptex-pearl.docker.env.WORKER_NAME.description:
   text: "在你的 Kryptex 账户中为每台机器取一个不同的名称。"
   source: "277ed1b0adb3"
+kryptex-pearl.docker.runtime_reason:
+  text: "gVisor 无法将 GPU 直通给它。"
+  source: "302a2b5c988f"
 kryptex-pearl.payment.minimum_payout:
   text: "通过 Lightning 为 0.00001 BTC（其他方式各不相同）"
   source: "134616d8ae98"
@@ -961,6 +964,9 @@ mysterium.docker.env.UI_ADDRESS.description:
 mysterium.docker.env.UDP_PORTS.description:
   text: "节点用于 VPN 会话的 UDP 端口，格式为 起始:结束。请在路由器上转发同样的范围。每个会话约占两个端口，所以默认的 30 个端口可同时承载约 15 个会话，比家用节点实际获得的还多。更大的范围解决不了任何问题，反而代价更高：每个发布的端口都会拖慢节点的启动和移除（300 个端口约需 12 s 启动），CashPilot 最多接受 300 个，而在 Docker 默认的 userland proxy 下，每个端口还会占用约 2.5 MB 内存。如果所有会话都失败，那是路由器的问题，而不是端口太少：请参阅 Mysterium 指南中的 \"Routers that rewrite UDP source ports\"。请保持在 32768 以下：32768-60999 是 Linux 的临时端口范围，主机上的任何程序都可能短暂占用其中某个端口，只要有一个端口被占用，节点就会启动失败。已有端口范围的节点会保留原范围。"
   source: "530524e2e718"
+mysterium.docker.runtime_reason:
+  text: "gVisor 不提供 iptables-nft 和内核 WireGuard，而它需要这两者来传输流量。"
+  source: "d8a72a275579"
 mysterium.docker.critical_volumes.0.holds:
   text: "节点身份密钥库。销毁它会生成一个全新的身份：节点会失去信誉，以及旧身份下仍被暂扣的所有收益。"
   source: "97272764fec0"
@@ -1834,6 +1840,9 @@ srbminer-multi.docker.env.WALLET.description:
 srbminer-multi.docker.env.ALGO.description:
   text: "Pearl 用 pearlhash，Zano 用 progpow_zano，Ravencoin 用 kawpow。"
   source: "31c8ee0aa660"
+srbminer-multi.docker.runtime_reason:
+  text: "gVisor 无法将 GPU 直通给它。"
+  source: "302a2b5c988f"
 srbminer-multi.earnings.notes:
   text: "未扣电费的毛收益估算。2026-11-25，hashrate.no 估计一张功耗约 142 W 的 RTX 4070 挖 Pearl 每天约 $2.45。我们没有实测。Pearl 是一种新币，其价格和难度变化很快。请核对你的 GPU 功耗和电价，看看是否划算。"
   source: "e7b856e43825"

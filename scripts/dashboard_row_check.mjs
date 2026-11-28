@@ -19,6 +19,9 @@ import './i18n_stub.mjs';
 import {readFileSync} from 'node:fs';
 
 const src = readFileSync('app/static/js/app.js', 'utf8');
+// The UI's English strings, as the page's t() reads them (app/static/js/i18n.js).
+const strings = JSON.parse(readFileSync('app/i18n/en.json', 'utf8'));
+const en = (key, params = {}) => (strings[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => params[k] ?? `{${k}}`);
 
 function grab(name) {
   const i = src.indexOf(`  function ${name}(`);
@@ -90,15 +93,16 @@ check('sorting by Payout puts the closest to its minimum first', order === 'clos
 // copy's own row once there are several. docs/proxies.md promises it.
 const routedRows = new Function(
   'escapeHtml', 'formatCurrency', 'formatNative', 'diskCell', 'gpuCell', 'diskCellForHosts', 'gpuCellForHosts',
-  'hostForWorker', 'fmtNetBytes', '_isOwner', '_canWrite', 'ICON_RESTART', 'ICON_STOP', 'ICON_LOGS',
+  'hostForWorker', 'fmtNetBytes', '_isOwner', '_canWrite', 'ICON_RESTART', 'ICON_STOP', 'ICON_LOGS', 't',
   `${grab('instanceState')}
    ${grab('routeBadge')}
+   ${grab('layersBadge')}
    ${src.includes('  function cashoutFor(') ? grab('cashoutFor') : ''}
    const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
    ${grab('statusLabelOf')}
    ${grab('renderServiceRow')}
    return renderServiceRow;`,
-)(escapeHtml, formatCurrency, () => '', () => '', () => '', () => '', () => '', () => [], () => '', true, true, '', '', '');
+)(escapeHtml, formatCurrency, () => '', () => '', () => '', () => '', () => '', () => [], () => '', true, true, '', '', '', en);
 const copy = (node, workerId, route) => ({
   node, worker_id: workerId, status: 'running', cpu: '1.00', memory: '10.0 MB', container_name: '',
   has_docker: true, can_command: true, is_android: false, instance: 1, ...(route ? {route} : {}),
@@ -122,6 +126,19 @@ check('a direct service shows no route', !/badge-routed/.test(direct), 'rendered
 
 const hostile = routedRows(routedSvc([copy('box', 1, {proxy_id: 3, exit_ip: '<img src=x onerror=alert(1)>', exit_country: '"><b>'})]), undefined);
 check('the exit is escaped', !/<img|<b>/.test(hostile) && /&lt;img/.test(hostile), 'an exit IP reached the row as HTML');
+
+// ---------------------------------------------------------------- layers
+// Each copy shows the layers it really got (app/layers_ui.py), from the
+// heartbeat. A worker that reports neither shows nothing, never "not fenced".
+const layered = (layers) => ({...copy('box', 1), layers});
+const gv = routedRows(routedSvc([layered({fence: true, runtime: 'gvisor'})]), undefined);
+check('a fenced copy under gVisor says so on the row', /badge-layers-plain[^>]*>fenced · gVisor</.test(gv), gv.match(/<span class="badge badge-layers[^<]*<\/span>/)?.[0] || 'no layers badge');
+const open = routedRows(routedSvc([layered({fence: false, runtime: 'runc'})]), undefined);
+check('an unfenced copy is marked as a warning', /badge-layers-warn[^>]*>not fenced · Standard \(runc\)</.test(open), open.match(/<span class="badge badge-layers[^<]*<\/span>/)?.[0] || 'no layers badge');
+const blind = routedRows(routedSvc([layered({fence: null, runtime: null})]), undefined);
+check('a copy with no layer report shows no badge', !/badge-layers/.test(blind), 'rendered a layers badge with nothing reported');
+const multiLayers = routedRows(routedSvc([layered({fence: true, runtime: 'gvisor'}), {...copy('other', 2), layers: {fence: false, runtime: 'runc'}}]), undefined).split('class="instance-row"').slice(1);
+check('each copy row shows its own layers', /fenced · gVisor/.test(multiLayers[0] || '') && /not fenced/.test(multiLayers[1] || ''), multiLayers.join('|') || 'no instance rows');
 
 // ---------------------------------------------------------------- joined Desktop
 // A joined Desktop never reports docker_available, so has_docker is false on its

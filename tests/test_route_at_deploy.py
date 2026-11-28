@@ -1919,6 +1919,28 @@ class TestTheUiLeavesARouteOnlyWithThePassword:
         assert ui.paths() == [("DELETE", f"/api/proxied/honeygain/{pid}"), ("POST", "/api/containers/honeygain/deploy")]
         assert proxies.route_of(record) is None
 
+    def test_a_runtime_choice_the_worker_cannot_take_refuses_before_the_routed_copy_goes(self, db, monkeypatch):
+        """A stored gVisor choice on a worker too old for it refuses the deploy: the copy and the route stay."""
+        ui = _Ui(worker_reply=self._locked)
+
+        async def refuse(worker_id, slug):
+            raise HTTPException(status_code=409, detail="the worker is too old to take a runtime choice")
+
+        async def go():
+            uid = await database.create_user("owner", auth.hash_password("right one!"), "owner")
+            pid = await ui.proxy()
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            ui.calls.clear()
+            monkeypatch.setattr(main, "_runtime_choice_for", refuse)
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(main.DeployRequest(env=ENV, route=0, step_up_password="right one!"), owner_uid=uid)
+            return pid, exc.value, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, error, record = _run(go)
+        assert error.status_code == 409
+        assert ui.calls == [], "nothing is removed or deployed"
+        assert proxies.route_of(record) == pid
+
     def test_a_proxied_only_box_refuses_leaving_the_route_before_anything_is_removed(self, db):
         """Its worker refuses the direct deploy anyway: the copy and the route stay."""
         row = _worker_row()

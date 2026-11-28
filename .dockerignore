@@ -11,6 +11,9 @@ venv
 node_modules
 docs/
 scripts/
+# The UI image carries the host helpers it pins (app/layer_scripts.py).
+!scripts/cashpilot-gvisor
+!scripts/cashpilot-vm
 *.md
 !requirements.txt
 .DS_Store

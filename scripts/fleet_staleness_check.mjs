@@ -447,7 +447,7 @@ const workerSaveSource = html.slice(
 );
 const buildWorkerPower = new Function(
   'document', 'CP', 'esc', 'brk', 'CSS', '_isOwner', '_isolation', 'loadFleetEconomics', 'loadPowerSettings',
-  [fleetSource, extract('countWorkerNames'), extract('renderWorkers'), extract('renderMiners'), workerSaveSource, 'return loadFleet;'].join('\n'),
+  [fleetSource, extract('countWorkerNames'), extract('renderWorkers'), extract('renderMiners'), extract('renderLayers'), workerSaveSource, 'return loadFleet;'].join('\n'),
 );
 
 function workerPowerFixture(owner = true) {
@@ -541,6 +541,60 @@ check('viewers cannot save power settings', !viewerPower.button() || viewerPower
 await viewerPower.save();
 check('viewer clicks cannot post settings', viewerPower.posts.length === 0, JSON.stringify(viewerPower.posts));
 
+// The Security layers row: an offline worker's last report is stale, so its
+// chips must not say "on" in green, and a choice whose redeploy failed must
+// stay one click away.
+const buildLayers = new Function(
+  'esc', 'CP', '_layers', '_isOwner',
+  ['const _layerBusy = {}; const _gvisorCheck = {}; const _layersOpen = new Set();',
+    extract('layerChip'), extract('runtimeLabel'), extract('renderCheck'), extract('commandBox'), extract('renderLayers'),
+    'return renderLayers;'].join('\n'),
+);
+const layersView = {workers: {'7': {
+  gvisor: {state: 'installed', why: ''}, kvm: true, default: null, default_locked: null, can_check: false, check: null,
+  earners: [{slug: 'honeygain', service: 'Honeygain', fence: true, runtime: 'runc', choice: 'gvisor', status: 'running', locked: null}],
+}}, commands: {install: 'i', undo: 'u', status: 's'}};
+const renderLayers = buildLayers(esc, CP, layersView, true);
+const layerInfo = {docker_access: 'proxy', isolation: {mode: 'on', fence: {state: 'applied'}}};
+const onlineLayers = renderLayers({id: 7}, layerInfo, true);
+const offlineLayers = renderLayers({id: 7}, layerInfo, false);
+check('an online worker shows the proxy and the fence on', onlineLayers.includes('flag-ok">Socket proxy: on')
+  && onlineLayers.includes('flag-ok">LAN fence: on'), onlineLayers);
+check('an offline worker shows its stale proxy, fence and gVisor as unknown, never ok',
+  !offlineLayers.includes('flag-ok') && offlineLayers.includes('Socket proxy: unknown')
+  && offlineLayers.includes('LAN fence: unknown') && offlineLayers.includes('gVisor: unknown')
+  && onlineLayers.includes('gVisor: installed'), offlineLayers);
+check('an offline worker shows each earner\'s fence as unknown, not its last report',
+  onlineLayers.includes('Honeygain</strong>: fenced') && !offlineLayers.includes('Honeygain</strong>: fenced')
+  && offlineLayers.includes('Honeygain</strong>: fence unknown'), offlineLayers);
+const vmView = {workers: {'7': {...layersView.workers['7'], secure_vm: {host: 'big-box', state: 'ok', reason: ''},
+  earners: [{...layersView.workers['7'].earners[0], vm: true}]}}, commands: layersView.commands};
+const vmOffline = buildLayers(esc, CP, vmView, true)({id: 7}, layerInfo, false);
+check('an offline worker inside a Secure VM shows its fence as unknown, never ok',
+  !vmOffline.includes('flag-ok') && !vmOffline.includes('· in the Secure VM')
+  && vmOffline.includes('· Secure VM fence unknown') && vmOffline.includes('Secure VM: unknown'), vmOffline);
+const vmOnline = buildLayers(esc, CP, vmView, true)({id: 7}, layerInfo, true);
+check('an online worker inside a Secure VM shows a fresh fence as ok', vmOnline.includes('· in the Secure VM'), vmOnline);
+const stoppedView = {workers: {'7': {...layersView.workers['7'],
+  earners: [{...layersView.workers['7'].earners[0], status: 'exited'}]}}, commands: layersView.commands};
+const stoppedLayers = buildLayers(esc, CP, stoppedView, true)({id: 7}, layerInfo, true);
+check('a stopped earner keeps its choice for its next deploy, with no retry that would do nothing',
+  stoppedLayers.includes('gVisor on its next deploy') && !stoppedLayers.includes('Run under gVisor again'), stoppedLayers);
+check('a saved choice still on the old runtime offers it again',
+  onlineLayers.includes('data-choice="gvisor"') && onlineLayers.includes('Run under gVisor again')
+  && onlineLayers.includes('data-choice="runc"'), onlineLayers);
+
+// Two default changes in a row: the second waits for the first, so the older
+// value cannot be the one saved last.
+const defaultPosts = [];
+const releaseDefault = [];
+const defaultCP = {api: (url, opts) => { defaultPosts.push(opts.body.choice); return new Promise(r => { releaseDefault.push(r); }); }};
+const setLayerDefault = new Function('CP', 't', 'loadFleet', '_layerBusy',
+  ['async ' + extract('setLayerDefault'), 'return setLayerDefault;'].join('\n'))(defaultCP, k => k, () => {}, {});
+const saves = [setLayerDefault(7, 'gvisor'), setLayerDefault(7, 'runc')];
+releaseDefault.forEach(r => r({}));
+await Promise.all(saves);
+check('a second default change while one saves sends nothing', defaultPosts.join() === 'gvisor', JSON.stringify(defaultPosts));
 if (failures.length) {
   console.error('fleet staleness check FAILED:');
   for (const f of failures) console.error(`  - ${f}`);

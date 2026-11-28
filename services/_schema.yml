@@ -210,6 +210,8 @@
 #     Never a /dev/dri node or /dev/kfd here: a GPU comes only through gpu below.
 #   runtime: runc (optional) the one runtime the service works under. Neither the
 #     deploy request nor the operator's default can change it.
+#   runtime_reason: "..." (optional) why, in one sentence. The Fleet page shows it
+#     where the runtime choice is locked.
 #   gpu: (optional) the GPU the worker passes in (app/gpu.py, docs/gpu.md). Read by
 #     the worker from its own catalog, never from a deploy request; a custom
 #     service or a proxied copy never gets one.

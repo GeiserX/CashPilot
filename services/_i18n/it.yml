@@ -892,6 +892,9 @@ kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
 kryptex-pearl.docker.env.WORKER_NAME.description:
   text: "Dai a ogni macchina un nome diverso nel tuo account Kryptex."
   source: "277ed1b0adb3"
+kryptex-pearl.docker.runtime_reason:
+  text: "gVisor non può passargli la GPU."
+  source: "302a2b5c988f"
 kryptex-pearl.payment.minimum_payout:
   text: "0.00001 BTC tramite Lightning (gli altri metodi variano)"
   source: "134616d8ae98"
@@ -961,6 +964,9 @@ mysterium.docker.env.UI_ADDRESS.description:
 mysterium.docker.env.UDP_PORTS.description:
   text: "Le porte UDP che il nodo usa per le sessioni VPN, nel formato inizio:fine. Inoltra questo stesso intervallo sul tuo router. Ogni sessione occupa circa due porte, quindi le 30 predefinite gestiscono circa 15 sessioni contemporanee, più di quante ne riceva un nodo domestico. Un intervallo più ampio non risolve nulla e costa di più: ogni porta pubblicata rallenta l'avvio e la rimozione del nodo (con 300 porte l'avvio richiede circa 12 s), CashPilot ne accetta al massimo 300, e con il proxy userland predefinito di Docker ogni porta occupa anche circa 2.5 MB di memoria. Se tutte le sessioni falliscono, il problema è il router, non il numero di porte: vedi \"Routers that rewrite UDP source ports\" nella guida di Mysterium. Resta sotto 32768: le porte 32768-60999 sono l'intervallo effimero di Linux, dove qualsiasi programma sulla macchina può occuparne una per un momento, e una sola porta occupata fa fallire l'avvio del nodo. Un nodo che ha già un intervallo lo mantiene."
   source: "530524e2e718"
+mysterium.docker.runtime_reason:
+  text: "gVisor non gli fornisce né iptables-nft né il WireGuard del kernel, che gli servono per trasportare il traffico."
+  source: "d8a72a275579"
 mysterium.docker.critical_volumes.0.holds:
   text: "Keystore dell'identità del nodo. Se lo distruggi, viene creata un'identità completamente nuova: il nodo perde la sua reputazione e tutti i guadagni ancora legati a quella vecchia."
   source: "97272764fec0"
@@ -1834,6 +1840,9 @@ srbminer-multi.docker.env.WALLET.description:
 srbminer-multi.docker.env.ALGO.description:
   text: "pearlhash per Pearl, progpow_zano per Zano, kawpow per Ravencoin."
   source: "31c8ee0aa660"
+srbminer-multi.docker.runtime_reason:
+  text: "gVisor non può passargli la GPU."
+  source: "302a2b5c988f"
 srbminer-multi.earnings.notes:
   text: "Stima lorda prima dell'elettricità. Il 2026-11-25 hashrate.no stimava circa $2.45 al giorno su Pearl per una RTX 4070 che assorbe circa 142 W. Non l'abbiamo misurato. Pearl è una moneta nuova, e il suo prezzo e la difficoltà cambiano rapidamente. Controlla il consumo della tua GPU e il prezzo della tua elettricità per capire se conviene."
   source: "e7b856e43825"

@@ -892,6 +892,9 @@ kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
 kryptex-pearl.docker.env.WORKER_NAME.description:
   text: "अपने Kryptex खाते में हर मशीन को एक अलग नाम दें।"
   source: "277ed1b0adb3"
+kryptex-pearl.docker.runtime_reason:
+  text: "gVisor इसे GPU तक पहुँच नहीं दे सकता।"
+  source: "302a2b5c988f"
 kryptex-pearl.payment.minimum_payout:
   text: "Lightning से 0.00001 BTC (दूसरे तरीकों में अलग-अलग)"
   source: "134616d8ae98"
@@ -961,6 +964,9 @@ mysterium.docker.env.UI_ADDRESS.description:
 mysterium.docker.env.UDP_PORTS.description:
   text: "VPN सेशन के लिए नोड जो UDP पोर्ट इस्तेमाल करता है, start:end के रूप में। अपने राउटर पर यही रेंज फ़ॉरवर्ड करें। हर सेशन लगभग दो पोर्ट लेता है, इसलिए डिफ़ॉल्ट 30 पोर्ट एक साथ लगभग 15 सेशन संभालते हैं, जो किसी घरेलू नोड को मिलने वाले सेशन से ज़्यादा है। चौड़ी रेंज कुछ ठीक नहीं करती और ज़्यादा खर्चीली है: हर प्रकाशित पोर्ट नोड के शुरू होने और हटने को धीमा करता है (300 पोर्ट शुरू होने में लगभग 12 s लेते हैं), CashPilot अधिकतम 300 स्वीकार करता है, और Docker के डिफ़ॉल्ट userland proxy के साथ हर पोर्ट लगभग 2.5 MB मेमोरी भी लेता है। अगर सारे सेशन विफल हों, तो यह राउटर की समस्या है, कम पोर्ट की नहीं: Mysterium गाइड में \"Routers that rewrite UDP source ports\" देखें। इसे 32768 से नीचे रखें: पोर्ट 32768-60999 Linux की ephemeral रेंज हैं, जहाँ होस्ट का कोई भी प्रोग्राम एक पल के लिए कोई पोर्ट पकड़ सकता है, और एक भी पोर्ट व्यस्त होने पर नोड शुरू नहीं होता। जिस नोड की पहले से कोई रेंज है, वह उसे बनाए रखता है।"
   source: "530524e2e718"
+mysterium.docker.runtime_reason:
+  text: "gVisor इसे iptables-nft और कर्नेल WireGuard नहीं देता, जिनकी इसे ट्रैफ़िक ले जाने के लिए ज़रूरत है।"
+  source: "d8a72a275579"
 mysterium.docker.critical_volumes.0.holds:
   text: "नोड की पहचान का कीस्टोर। इसे मिटाने से एक बिल्कुल नई पहचान बनती है: नोड अपनी साख खो देता है और पुरानी पहचान पर अब भी रुकी हुई कोई भी कमाई भी।"
   source: "97272764fec0"
@@ -1834,6 +1840,9 @@ srbminer-multi.docker.env.WALLET.description:
 srbminer-multi.docker.env.ALGO.description:
   text: "Pearl के लिए pearlhash, Zano के लिए progpow_zano, Ravencoin के लिए kawpow।"
   source: "31c8ee0aa660"
+srbminer-multi.docker.runtime_reason:
+  text: "gVisor इसे GPU तक पहुँच नहीं दे सकता।"
+  source: "302a2b5c988f"
 srbminer-multi.earnings.notes:
   text: "बिजली से पहले का कुल अनुमान। 2026-11-25 को hashrate.no ने लगभग 142 W खींचने वाले RTX 4070 के लिए Pearl पर लगभग $2.45 प्रति दिन का अनुमान लगाया। हमने इसे मापा नहीं है। Pearl एक नया कॉइन है, और इसकी कीमत और कठिनाई तेज़ी से बदलती है। यह फ़ायदेमंद है या नहीं, यह देखने के लिए अपने GPU की बिजली खपत और अपनी बिजली की कीमत जाँचें।"
   source: "e7b856e43825"
