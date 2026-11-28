@@ -35,7 +35,10 @@
     return ((sysInfo || {}).features || []).includes('secure_vm') && b && typeof b === 'object' ? b : null;
   }
 
-  function fenceState(vm) {
+  // online: whether the VM's worker is online. An offline VM's last report is
+  // old news, so its fence is unknown, never OK.
+  function fenceState(vm, online) {
+    if (!online) return 'unknown';
     const f = vm.fence;
     if (!f || typeof f !== 'object') return 'unknown';
     if (f.state === 'failed') return 'failed';
@@ -62,7 +65,7 @@
   function flag(w, sysInfo) {
     const vm = vmBlock(sysInfo);
     if (!vm) return '';
-    const state = fenceState(vm);
+    const state = fenceState(vm, w.status === 'online');
     const tip = [t('secure_vm.flag_tip', { host: vm.host }), t(`layers.vm.fence_${state}`), (vm.fence || {}).reason || ''].filter(Boolean).join(' · ');  // i18n-keys: layers.vm.fence_ok, layers.vm.fence_failed, layers.vm.fence_stale, layers.vm.fence_unknown
     return chip(state, t('secure_vm.flag', { host: vm.host }), tip);
   }
@@ -113,12 +116,12 @@
     let body = '';
     if (vmWorker) {
       const vm = vmBlock(vmWorker.system_info);
-      const state = fenceState(vm);
+      const state = fenceState(vm, vmWorker.status === 'online');
       summary = `<strong>${esc(vmWorker.name)}</strong> ${chip(state, `${t('layers.vm')}: ${t(`layers.vm.fence_${state}`)}`, (vm.fence || {}).reason || '')}`;  // i18n-keys: layers.vm.fence_ok, layers.vm.fence_failed, layers.vm.fence_stale, layers.vm.fence_unknown
       body += renderSelftest(vm);
       if (isOwner && vmWorker.status === 'online') {
-        // The guard runs at most one self-test every 5 minutes and drops an
-        // ask that comes sooner, so the button waits that long too.
+        // The guard runs at most one self-test every 5 minutes. An ask that
+        // comes sooner waits for the gap, so the button waits that long too.
         const recent = Date.now() / 1000 - Number((vm.selftest || {}).checked_at || 0) < SELFTEST_GAP_S;
         const note = asked[vmWorker.id] || (recent ? t('secure_vm.selftest.recent') : '');
         body += `<div class="iso-line"><button class="btn btn-primary btn-sm btn-cpvm-selftest" data-vm-id="${vmWorker.id}" title="${esc(t('secure_vm.selftest.tip'))}"${note ? ' disabled' : ''}>${esc(t('secure_vm.selftest.button'))}</button>`

@@ -34,6 +34,7 @@ def _ui_url(raw: str) -> str:
     try:
         parts = urlsplit(raw.strip())
         hostname = parts.hostname
+        port = parts.port  # ValueError unless a number from 0 to 65535
     except ValueError:
         raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.bad_ui_url")) from None
     if (
@@ -41,10 +42,15 @@ def _ui_url(raw: str) -> str:
         or not hostname
         or parts.username
         or parts.password
+        or port == 0
+        or parts.netloc.endswith(":")
         or len(raw) > 300
         or any(c.isspace() for c in raw)
     ):
         raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.bad_ui_url"))
+    # The installer reaches the UI over IPv4 and refuses an IPv6 literal.
+    if ":" in hostname:
+        raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.ipv6_ui"))
     return f"{parts.scheme}://{parts.netloc}"
 
 

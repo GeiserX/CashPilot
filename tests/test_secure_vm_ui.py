@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -170,6 +173,16 @@ class TestWhatTheInstallerWouldRefuse:
     def test_an_unparseable_ui_address_is_a_400(self, url):
         assert _get([_worker(7, "box")], ui_url=url).status_code == 400
 
+    @pytest.mark.parametrize("url", ["http://ui.lan:port", "http://ui.lan:70000", "http://ui.lan:0", "http://ui.lan:"])
+    def test_a_port_the_installer_refuses_is_a_400(self, url):
+        assert _get([_worker(7, "box")], ui_url=url).status_code == 400
+
+    def test_an_ipv6_literal_is_refused_because_the_installer_needs_ipv4(self):
+        resp = _get([_worker(7, "box")], ui_url="https://[2001:db8::1]:8080")
+        assert resp.status_code == 400
+        assert "IPv4" in resp.json()["detail"]
+        assert _get([_worker(7, "box")], ui_url="https://ui.example:8443").status_code == 200
+
     def test_a_public_http_ui_is_refused_before_the_install(self):
         # The guest's worker never sends its key over http to a public host.
         resp = _get([_worker(7, "box")], ui_url="http://203.0.113.9:8080")
@@ -190,3 +203,48 @@ class TestWhatTheInstallerWouldRefuse:
         assert resp.status_code == 200
         assert "install" not in resp.json()
         assert "Rename the worker" in resp.json()["error"]
+
+
+_PANEL_HARNESS = r"""
+const fs = require('fs');
+let src = fs.readFileSync(process.argv[1], 'utf8');
+src = src.slice(src.indexOf('>', src.indexOf('<script')) + 1, src.lastIndexOf('</script>'));
+src = src.replace(/\{\{[^}]*\}\}/g, 'true');
+globalThis.document = { addEventListener() {}, querySelector() { return null; } };
+globalThis.t = (k, v) => k + (v ? ' ' + JSON.stringify(v) : '');
+new Function(src)();
+const [w, info] = JSON.parse(process.argv[2]);
+console.log(globalThis.CPSecureVM.flag(w, info));
+"""
+
+
+class TestAnOfflineSecureVm:
+    # An offline VM's last report is old news: its fence shows unknown, never OK.
+
+    def _flag(self, status):
+        node = shutil.which("node")
+        if not node:
+            pytest.skip("node is not installed")
+        now = int(time.time())
+        info = {"features": ["secure_vm"], "secure_vm": {"host": "box", "fence": {"state": "ok", "checked_at": now}}}
+        out = subprocess.run(
+            [
+                node,
+                "-e",
+                _PANEL_HARNESS,
+                str(ROOT / "app/templates/_secure_vm.html"),
+                json.dumps([{"status": status}, info]),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return out.stdout
+
+    def test_an_online_vm_with_a_fresh_fence_shows_ok(self):
+        out = self._flag("online")
+        assert "flag-ok" in out and "layers.vm.fence_ok" in out
+
+    def test_an_offline_vm_shows_its_fence_as_unknown(self):
+        out = self._flag("offline")
+        assert "flag-ok" not in out and "layers.vm.fence_unknown" in out
