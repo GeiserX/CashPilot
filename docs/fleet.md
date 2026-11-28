@@ -399,7 +399,7 @@ environment:
   - CASHPILOT_ALLOWED_VOLUME_ROOTS=/mnt/user/storj
 ```
 
-Multiple paths are colon-separated. An entry must clear two gates:
+Multiple paths are colon-separated. Behind the [Docker socket proxy](security-defaults.md#docker-socket-proxy), the proxy has to allow the path too: list it in `CASHPILOT_PROXY_BIND_MOUNTS` instead, which counts for both. That list is exact: it opens each path it names, never a folder under one. An entry must clear two gates:
 
 - **Never a system path.** Anything resolving under `/etc`, `/root`, `/proc`, `/sys`, `/dev`, `/boot`, `/usr`, `/bin`, `/sbin`, `/lib`, `/run` or `/var` is refused **at any depth**, so `/run/docker.sock`, `/var/lib/docker/...` and `/etc/shadow` cannot be opted in.
 - **Specific enough to be a service directory.** It must sit at least two components below the root it belongs to, so `/mnt/user/storj` is accepted while `/mnt` and `/mnt/user` (the entire Unraid array) are not.
