@@ -317,12 +317,12 @@ class TestAHeldNodeSaysWhy:
         orchestrator._mark_failed("cashpilot-mysterium", True)
         node = _node(status="exited")
         _guard([node])
-        assert orchestrator._held_entry(node) == {"held": lan_fence.FAILED_DEPLOY}
+        assert orchestrator._held_entries(node)["held"] == lan_fence.FAILED_DEPLOY
 
     def test_control_a_node_the_guard_does_not_hold_carries_nothing(self, markers):
         node = _node(status="running")
         _guard([node])
-        assert orchestrator._held_entry(node) == {}
+        assert orchestrator._held_entries(node) == {}
 
     def test_the_container_down_alert_says_why_and_what_to_do(self):
         from app import main

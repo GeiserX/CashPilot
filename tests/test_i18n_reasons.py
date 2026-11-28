@@ -106,16 +106,39 @@ class TestTheHeartbeatCarriesIt:
         node = MagicMock()
         node.name = "cashpilot-mysterium"
         monkeypatch.setitem(lan_fence._state, "guard", {node.name: lan_fence.FAILED_DEPLOY})
-        assert orchestrator._held_entry(node) == {"held": lan_fence.FAILED_DEPLOY}
-        assert orchestrator._held_reason_entry(node) == {
-            "held_reason": {"code": "reason.held.failed_deploy", "params": {}}
+        assert orchestrator._held_entries(node) == {
+            "held": lan_fence.FAILED_DEPLOY,
+            "held_reason": {"code": "reason.held.failed_deploy", "params": {}},
         }
 
     def test_a_held_node_without_a_key_sends_only_its_english(self, monkeypatch):
         node = MagicMock()
         node.name = "cashpilot-mysterium"
         monkeypatch.setitem(lan_fence._state, "guard", {node.name: "an older reason"})
-        assert orchestrator._held_reason_entry(node) == {}
+        assert orchestrator._held_entries(node) == {"held": "an older reason"}
+
+    def test_both_fields_come_from_one_read_of_the_guard(self, monkeypatch):
+        """A guard pass between two reads must not pair one pass's English with the next pass's key."""
+        node = MagicMock()
+        node.name = "cashpilot-mysterium"
+        passes = iter([lan_fence.FAILED_DEPLOY, "an older reason"])
+
+        class _Moving(dict):
+            def get(self, key, default=None):
+                return next(passes)
+
+        monkeypatch.setitem(lan_fence._state, "guard", _Moving({node.name: None}))
+        entry = orchestrator._held_entries(node)
+        assert entry == {
+            "held": lan_fence.FAILED_DEPLOY,
+            "held_reason": {"code": "reason.held.failed_deploy", "params": {}},
+        }
+
+    def test_a_node_the_guard_does_not_hold_carries_nothing(self, monkeypatch):
+        node = MagicMock()
+        node.name = "cashpilot-mysterium"
+        monkeypatch.setitem(lan_fence._state, "guard", {})
+        assert orchestrator._held_entries(node) == {}
 
     def test_an_identity_record_read_back_carries_its_two_identities(self, tmp_path, monkeypatch):
         monkeypatch.setattr(orchestrator, "IDENTITY_DIR", str(tmp_path))
