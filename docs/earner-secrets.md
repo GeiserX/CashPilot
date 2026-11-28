@@ -83,9 +83,18 @@ Not covered:
 - **Sia's wallet seed.** It already lives in a file in hostd's own volume, not
   in a variable.
 
-If an earner cannot be started this way (the worker image has no
-`cashpilot-env`, a value holds a NUL byte, or the command already holds
-`${NAME}` text), the worker logs why and starts that earner the old way.
+Some earners cannot be started this way. The worker then logs a warning that
+says why, and starts that earner the old way, with its credentials in plain
+text in `docker inspect`. This happens when:
+
+- the worker image has no `cashpilot-env`, or it cannot be read
+- a credential holds a NUL byte
+- another variable holds a credential's value, for example a login built from
+  the password
+- the entrypoint holds a credential
+- the command already holds `${NAME}` text, or cannot be split into arguments
+
+Check the worker log after you turn the setting on.
 
 ## What it does not protect against
 

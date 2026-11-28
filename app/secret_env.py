@@ -77,7 +77,11 @@ def mode() -> str:
 
 
 def shim_available() -> bool:
-    return SHIM_BINARY.is_file()
+    """Whether the start program is there; a path that cannot be checked counts as missing."""
+    try:
+        return SHIM_BINARY.is_file()
+    except OSError:
+        return False
 
 
 @dataclass
@@ -191,8 +195,16 @@ def plan(
         if "\0" in value:
             logger.warning("A credential of %s holds a NUL byte; it keeps its credentials in its environment", slug)
             return None
+    for key, other in env.items():
+        if key not in values and any(value in str(other) for value in values.values()):
+            # Another variable carries the secret: Docker would keep it after all.
+            logger.warning("A variable of %s holds a credential; it keeps its credentials in its environment", slug)
+            return None
 
     base = [str(p) for p in entrypoint] if entrypoint else [str(p) for p in image_config.get("Entrypoint") or []]
+    if entrypoint and base == [""]:
+        # [""] clears the image's entrypoint, so nothing precedes the command.
+        base = []
     # Docker drops the image's CMD when the entrypoint is set on create.
     image_cmd = [] if entrypoint else [str(p) for p in image_config.get("Cmd") or []]
     try:
@@ -288,7 +300,7 @@ def remove_volume(client: Any, name: str | None) -> None:
     try:
         client.volumes.get(name).remove()
     except Exception as exc:  # noqa: BLE001 - in use by a clone, or already gone
-        logger.info("Left a credentials volume behind: %s", exc)
+        logger.info("Left a credentials volume behind: %s", type(exc).__name__)
 
 
 def is_shimmed(attrs: dict[str, Any]) -> bool:
