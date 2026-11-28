@@ -28,19 +28,23 @@ def _pin(name: str) -> str:
     return match.group(1)
 
 
-def _run(body: str) -> str:
-    """Source the script with stubbed host facts, then run ``body``."""
-    prelude = f"""
+def _run(body: str, *args: str) -> str:
+    """Source the script with stubbed host facts, then run ``body`` with ``args`` as $1, $2..."""
+    prelude = """
 set -euo pipefail
-source {SCRIPT}
+source "$1"; shift
+# The real egress_ip, for the tests of its own rules.
+eval "orig_$(declare -f egress_ip)"
 NET_BASE=10.213.0; derive_net
 UI_IP=192.168.1.50; UI_PORT=8080; HOST_PORT=18081
 STATE=$(mktemp -d)/cashpilot-vm; mkdir -p "$STATE"
-host_addrs() {{ printf '%s\\n' 192.168.1.10 100.101.102.103; }}
-host_connected_public() {{ echo 203.0.113.0/24; }}
-egress_ip() {{ echo 198.51.100.7; }}
+host_addrs() { printf '%s\\n' 192.168.1.10 100.101.102.103; }
+host_connected_public() { echo 203.0.113.0/24; }
+egress_ip() { echo 198.51.100.7; }
 """
-    out = subprocess.run(["bash", "-c", prelude + body], capture_output=True, text=True, check=False)
+    out = subprocess.run(
+        ["bash", "-c", prelude + body, "bash", str(SCRIPT), *args], capture_output=True, text=True, check=False
+    )
     assert out.returncode == 0, out.stderr
     return out.stdout
 
@@ -188,16 +192,17 @@ def test_the_guests_first_boot_script_is_valid_bash(tmp_path):
     # backslash runs a command on the host or breaks the guest's first boot.
     out = tmp_path / "seed"
     out.mkdir()
-    body = f"""
+    body = """
+OUT=$1
 UI_HOST=192.168.1.50; UI_URL=http://192.168.1.50:8080; WORKER_NAME=nas-secure-vm; HOST_WORKER=nas
 WORKER_URL=http://192.168.1.10:18081; REF=v1.2.3
-ssh-keygen -q -t ed25519 -N "" -f "$STATE/ssh/id_ed25519" 2>/dev/null || {{ mkdir -p "$STATE/ssh"; ssh-keygen -q -t ed25519 -N "" -f "$STATE/ssh/id_ed25519"; }}
+ssh-keygen -q -t ed25519 -N "" -f "$STATE/ssh/id_ed25519" 2>/dev/null || { mkdir -p "$STATE/ssh"; ssh-keygen -q -t ed25519 -N "" -f "$STATE/ssh/id_ed25519"; }
 ssh-keygen -q -t ed25519 -N "" -f "$STATE/ssh/guest_host_ed25519"
-mkfs.vfat() {{ touch "${{@: -2:1}}"; }}; chown() {{ :; }}
-mcopy() {{ shift 2; for f in "$@"; do [ "$f" = :: ] || cp "$f" {out}/; done; }}
+mkfs.vfat() { touch "${@: -2:1}"; }; chown() { :; }
+mcopy() { shift 2; for f in "$@"; do [ "$f" = :: ] || cp "$f" "$OUT"/; done; }
 write_seed 0123456789abcdef0123
 """
-    _run(body)
+    _run(body, str(out))
     import yaml
 
     data = yaml.safe_load((out / "user-data").read_text().split("\n", 1)[1])
@@ -233,8 +238,159 @@ def test_the_guest_disk_on_unraid_follows_the_domains_share(tmp_path, use, pool_
     cfg = tmp_path / "domains.cfg"
     # Unraid writes its .cfg files with CRLF line ends.
     cfg.write_bytes(f'shareUseCache="{use}"\r\nshareCachePool="cache"\r\nshareCachePool2=""\r\n'.encode())
-    assert _run(f"unraid_home {cfg} {tmp_path}").strip() == f"{tmp_path}/{want}"
+    assert _run('unraid_home "$1" "$2"', str(cfg), str(tmp_path)).strip() == f"{tmp_path}/{want}"
 
 
 def test_no_domains_share_on_unraid_means_no_disk(tmp_path):
-    assert _run(f"unraid_home {tmp_path}/missing.cfg {tmp_path}").strip() == ""
+    assert _run('unraid_home "$1" "$2"', str(tmp_path / "missing.cfg"), str(tmp_path)).strip() == ""
+
+
+def test_the_config_reads_back_exactly_what_install_wrote(tmp_path):
+    # load_conf sources the config as bash, so every value must come back as
+    # written, and none may run as a command.
+    conf = tmp_path / "config"
+    out = _run(
+        """
+CPVM_HOME="/srv/a b/cashpilot-vm" UI_URL='http://ui.lan:8080/$(touch "$2/pwned")' UI_IP=192.168.1.50 UI_PORT=8080 \\
+  UI_LOCAL=0 HOST_WORKER="nas 1" WORKER_NAME="nas 1-secure-vm" HOST_PORT=18081 NET_BASE=10.213.0 \\
+  VM_RAM_MB=2048 VM_CPUS=2 VM_DISK_GB=20 REF='v1.2.3;id' write_conf >"$1"
+unset CPVM_HOME UI_URL HOST_WORKER REF
+CONF=$1 load_conf
+printf '%s|%s|%s|%s|%s\\n' "$CPVM_HOME" "$STATE" "$UI_URL" "$HOST_WORKER" "$REF"
+""",
+        str(conf),
+        str(tmp_path),
+    )
+    assert out.strip() == (
+        '/srv/a b/cashpilot-vm|/srv/a b/cashpilot-vm|http://ui.lan:8080/$(touch "$2/pwned")|nas 1|v1.2.3;id'
+    )
+    assert not (tmp_path / "pwned").exists()
+
+
+def test_state_on_unraid_without_a_domains_share_is_empty():
+    # The root file system is in RAM on Unraid: no share and no CPVM_HOME
+    # means no disk, never /var/lib.
+    out = _run(
+        'is_unraid() { true; }; unset CPVM_HOME; set_state; echo "[$STATE]";'
+        'is_unraid() { false; }; set_state; echo "[$STATE]";'
+        'CPVM_HOME=/srv/x/cashpilot-vm; set_state; echo "[$STATE]"'
+    )
+    assert out.split() == ["[]", "[/var/lib/cashpilot-vm]", "[/srv/x/cashpilot-vm]"]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="GNU stat")
+@pytest.mark.parametrize(
+    ("cache_age", "want"),
+    [
+        (None, "refused"),  # no lookup ever worked: no drop for the home's IP
+        (60, "198.51.100.9"),  # fresh
+        (1800, "198.51.100.9"),  # every lookup fails: the last address, for an hour
+        (7200, "refused"),  # older than that
+    ],
+)
+def test_the_fence_is_not_written_without_a_current_public_ip(cache_age, want):
+    setup = (
+        ""
+        if cache_age is None
+        else f'echo 198.51.100.9 >"$STATE/egress"; touch -d "@$(($(date +%s) - {cache_age}))" "$STATE/egress";'
+    )
+    out = _run(
+        setup
+        + "curl() { return 7; }; egress_ip() { orig_egress_ip; };"
+        + 'if r=$(render_ns_rules); then grep -o "egress-[0-9.]*" <<<"$r" | cut -d- -f2; else echo refused; fi'
+    )
+    assert out.strip() == want
+
+
+def _selftest(guest: str, controls: str, layers_rc: int = 0) -> tuple[int, str]:
+    body = f"""
+probe_targets() {{ printf '%s\\n' "lan-gateway 192.168.1.1 53" "lan-device 192.168.1.20 22"; }}
+run_controls() {{ cat >/dev/null; printf '%b' '{controls}'; }}
+run_probes_from_guest() {{
+  if [ "$(cat)" = "192.168.1.50 8080" ]; then echo "192.168.1.50 8080 reached"; else printf '%b' '{guest}'; fi
+}}
+guest_ssh() {{ true; }}
+guest_layers() {{ echo "ok    gVisor"; return {layers_rc}; }}
+rc=0; selftest_once quiet || rc=1
+printf '%s\\n%s' "$rc" "$SELFTEST_LINES"
+"""
+    rc, lines = _run(body).split("\n", 1)
+    return int(rc), lines
+
+
+def test_selftest_passes_only_on_explicit_blocks():
+    live = "192.168.1.1 53 live\\n192.168.1.20 22 live\\n"
+    rc, lines = _selftest("192.168.1.1 53 blocked\\n192.168.1.20 22 blocked\\n", live)
+    assert rc == 0, lines
+    # A target the guest got no result for fails, never passes by default.
+    rc, lines = _selftest("192.168.1.1 53 blocked\\n", live)
+    assert rc == 1 and "FAIL  lan-device 192.168.1.20:22 no result" in lines
+    # The fence drops silently, so a refusal came from past it.
+    rc, lines = _selftest("192.168.1.1 53 refused\\n192.168.1.20 22 blocked\\n", live)
+    assert rc == 1 and "FAIL  lan-gateway 192.168.1.1:53 answered the guest (refused)" in lines
+
+
+def test_a_block_without_a_live_control_proves_nothing():
+    rc, lines = _selftest(
+        "192.168.1.1 53 blocked\\n192.168.1.20 22 blocked\\n", "192.168.1.1 53 live\\n192.168.1.20 22 blocked\\n"
+    )
+    assert rc == 0
+    assert "skip  lan-device 192.168.1.20:22 blocked, but proves nothing" in lines
+    assert "ok    lan-device" not in lines
+
+
+def test_the_saved_selftest_includes_the_layers():
+    live = "192.168.1.1 53 live\\n192.168.1.20 22 live\\n"
+    rc, lines = _selftest("192.168.1.1 53 blocked\\n192.168.1.20 22 blocked\\n", live, layers_rc=1)
+    assert rc == 1 and "ok    gVisor" in lines
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+def test_an_abandoned_red_test_hold_is_not_live():
+    out = _run(
+        "RUN_DIR=$(mktemp -d); now=$(date +%s);"
+        'echo "$$ $now" >"$RUN_DIR/hold"; hold_is_live && echo live || echo gone;'
+        'echo "$$ $((now - 3600))" >"$RUN_DIR/hold"; hold_is_live && echo live || echo gone;'
+        'sleep 0 & dead=$!; wait; echo "$dead $now" >"$RUN_DIR/hold"; hold_is_live && echo live || echo gone;'
+        'echo junk >"$RUN_DIR/hold"; hold_is_live && echo live || echo gone'
+    )
+    assert out.split() == ["live", "gone", "gone", "gone"]
+
+
+def test_an_explicit_port_in_use_is_refused():
+    out = _run(
+        'ss() { echo "LISTEN 0 4096 0.0.0.0:18081 0.0.0.0:*"; };'
+        "HOST_PORT=18081; if (pick_host_port) 2>/dev/null; then echo took; else echo refused; fi;"
+        'ss() { :; }; HOST_PORT=18555; pick_host_port; echo "$HOST_PORT"'
+    )
+    assert out.split() == ["refused", "18555"]
+
+
+@pytest.mark.parametrize(
+    ("links", "up", "ok"),
+    [
+        ("cpvm-ns cpvm-tap lo", "lo cpvm-ns", True),
+        # Unraid loads ipip, so every new namespace gets tunl0. Down, it carries nothing.
+        ("cpvm-ns cpvm-tap lo tunl0", "lo cpvm-ns", True),
+        ("cpvm-ns cpvm-tap lo tunl0", "lo cpvm-ns tunl0", False),
+        ("cpvm-ns cpvm-tap eth9 lo", "lo cpvm-ns", False),
+        ("cpvm-ns lo", "lo cpvm-ns", False),
+    ],
+)
+def test_the_first_fence_write_checks_the_namespace_links(links, up, ok):
+    out = _run(
+        """
+nsx() {
+  case "$*" in
+    "ip -o link show up") for l in $UP; do echo "1: $l: <UP>"; done ;;
+    "ip -4 rule show") printf '0:\\tfrom all lookup local\\n32766:\\tfrom all lookup main\\n32767:\\tfrom all lookup default\\n' ;;
+  esac
+}
+links=$1; UP=$2
+live=$(printf '## links\\n'; printf '%s\\n' $links; printf '## sysctl\\nnet.ipv4.ip_forward=1\\n## iptables\\n')
+ns_base_ok "$live" && echo yes || echo no
+""",
+        links,
+        up,
+    )
+    assert out.strip() == ("yes" if ok else "no")
