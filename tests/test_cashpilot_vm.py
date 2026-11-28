@@ -8,6 +8,7 @@ guest that cannot reach the LAN, red then green) is in docs/secure-vm.md.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -439,3 +440,104 @@ cat "$CALLS"
         "yes" if installed else "no",
     )
     assert out.split() == ["STOPPED", "CONF-KEPT"]
+
+
+@pytest.mark.parametrize("fail", ["mkfs.vfat", "mcopy", "none"])
+def test_the_seed_folder_with_the_fleet_key_never_stays_behind(fail):
+    # write_seed stages the fleet key in plain text before it copies it onto
+    # the seed disk. The folder must go when a step fails, too.
+    out = _run(
+        """
+FAIL=$1
+UI_HOST=192.168.1.50; UI_URL=http://192.168.1.50:8080; WORKER_NAME=nas-secure-vm; HOST_WORKER=nas
+WORKER_URL=http://192.168.1.10:18081; REF=v1.2.3
+mkdir -p "$STATE/ssh"
+ssh-keygen -q -t ed25519 -N "" -f "$STATE/ssh/id_ed25519"
+ssh-keygen -q -t ed25519 -N "" -f "$STATE/ssh/guest_host_ed25519"
+mkfs.vfat() { [ "$FAIL" != mkfs.vfat ] && touch "${@: -2:1}"; }
+mcopy() { [ "$FAIL" != mcopy ]; }
+chown() { :; }
+SEED_DIR=$(command mktemp -d)/seed
+mktemp() { mkdir "$SEED_DIR" && echo "$SEED_DIR"; }
+# A background job keeps set -e on inside, as at the real call; an if would turn it off.
+write_seed 0123456789abcdef0123 2>/dev/null &
+if wait $!; then echo WROTE; else echo FAILED; fi
+[ -e "$SEED_DIR" ] || echo NOTHING-LEFT
+""",
+        fail,
+    )
+    assert out.split() == ["WROTE" if fail == "none" else "FAILED", "NOTHING-LEFT"]
+
+
+@pytest.mark.parametrize("broken", ["host_addrs", "host_connected_public"])
+def test_the_fence_is_not_rendered_when_a_host_list_cannot_be_read(broken):
+    # A drop missing from the fence would open that address to the guest.
+    out = _run(
+        """
+eval "$1() { return 1; }"
+if render_ns_rules >/dev/null; then echo RENDERED; else echo REFUSED; fi
+host_addrs() { :; }; host_connected_public() { :; }
+render_ns_rules >/dev/null && echo EMPTY-LISTS-OK
+""",
+        broken,
+    )
+    assert out.split() == ["REFUSED", "EMPTY-LISTS-OK"]
+
+
+@pytest.mark.parametrize(("age", "ran"), [(60, False), (400, True)])
+def test_a_selftest_request_waits_out_the_gap_instead_of_vanishing(age, ran):
+    # The UI accepted the request, so it must run on the first pass after
+    # the 5-minute gap, not be deleted unrun.
+    out = _run(
+        """
+AGE=$1; CALLS=$(mktemp)
+load_conf() { :; }; tap_up() { :; }
+RUN_DIR=$(mktemp -d); echo provisioned >"$STATE/provisioned"
+echo $(( $(date +%s) - AGE )) >"$RUN_DIR/selftest.last"
+guest_ssh() { echo "ssh $*" >>"$CALLS"; }
+selftest_once() { echo selftest >>"$CALLS"; SELFTEST_LINES="ok x"; }
+save_selftest() { :; }; log() { :; }
+selftest_if_asked
+grep -c 'rm -f /run/cashpilot-vm-ask/selftest' "$CALLS" || true
+grep -c '^selftest$' "$CALLS" || true
+""",
+        str(age),
+    )
+    assert out.split() == (["1", "1"] if ran else ["0", "0"])
+
+
+def test_the_red_tests_host_exception_is_only_for_the_vms_link():
+    # Without -i, the ACCEPT would let every interface skip the host's INPUT rules.
+    text = SCRIPT.read_text()
+    rule = next(line for line in text.splitlines() if "CPVM-IN 1" in line and "cpvm:red-test" in line)
+    assert '-i "$VETH_HOST"' in rule
+
+
+@pytest.mark.parametrize(("answered", "ok"), [(True, True), (False, False)])
+def test_verify_json_prove_red_prints_only_json_and_counts_the_red_run(answered, ok):
+    out = _run(
+        """
+ANSWERED=$1; N=0
+need_root() { :; }; load_conf() { :; }; guest_pid() { echo 1; }; tap_up() { :; }
+nsx() { :; }; iptables() { :; }; flock() { :; }; guard_pass() { :; }; save_selftest() { :; }
+RUN_DIR=$(mktemp -d)
+selftest_once() {
+  N=$((N + 1))
+  if [ "$N" = 1 ] && [ "$ANSWERED" = yes ]; then
+    SELFTEST_LINES="FAIL lan 192.168.1.1:80 answered the guest (reached)"
+  elif [ "$N" = 1 ]; then
+    SELFTEST_LINES="FAIL lan 192.168.1.1:80 missing result"
+  else
+    SELFTEST_LINES="ok lan 192.168.1.1:80 blocked"
+  fi
+  [ "$1" = loud ] && echo "probe line $N"
+  return 0
+}
+cmd_verify --json --prove-red 2>/dev/null && echo RC=0 || echo RC=1
+""",
+        "yes" if answered else "no",
+    )
+    lines = out.strip().splitlines()
+    assert len(lines) == 2, out
+    assert json.loads(lines[0])["ok"] is ok
+    assert lines[1] == ("RC=0" if ok else "RC=1")

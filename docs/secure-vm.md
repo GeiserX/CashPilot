@@ -175,11 +175,15 @@ connection, a refusal or an error) fails the test, and so does a target with no
 result.
 
 The Fleet page's self-test button runs the same checks, and the page shows the
-result.
+result. The guard runs at most one self-test every 5 minutes. A request that
+comes sooner waits, and the first guard pass after the gap runs it.
 
 `--json` prints the result for scripts. `--prove-red` is for a throwaway test
 host only. It opens the fence for one probe run, so you can see every target
-turn red. Then it lets the guard put the fence back and runs again green.
+turn red. Then it lets the guard put the fence back and runs again green. If
+no forbidden target answers during the open run, the probes prove nothing, and
+the check fails even when the green run passes. With `--json`, the open run's
+lines go to stderr, so stdout holds only the JSON result.
 
 ## Status and remove
 
