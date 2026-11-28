@@ -211,3 +211,14 @@ def test_a_count_is_a_plural_and_never_an_s_in_parentheses():
     """ "{n} service(s)" reads wrong in English and cannot be translated: a count takes a plural."""
     found = sorted(k for k, v in EN.items() if re.search(r"\w\((?:s|es)\)", v))
     assert not found, f"use {{n, plural, one {{...}} other {{...}}}} instead of (s): {found}"
+
+
+def test_the_page_holds_an_unconfirmed_id_as_long_as_the_server():
+    """The forget hint names the hours; the page's constant mirrors database.PENDING_IDENTITY_SECONDS."""
+    from app import database
+
+    found = re.search(
+        r"const PENDING_IDENTITY_HOURS = (\d+);", (ROOT / "app/static/js/app.js").read_text(encoding="utf-8")
+    )
+    assert found, "app.js no longer defines PENDING_IDENTITY_HOURS"
+    assert int(found.group(1)) * 3600 == database.PENDING_IDENTITY_SECONDS
