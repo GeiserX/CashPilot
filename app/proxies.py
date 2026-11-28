@@ -331,12 +331,17 @@ def copy_volumes(recorded: dict[str, Any], proxy_id: int) -> dict[str, dict[str,
     A volume holds the device's identity (a key, a wallet), so a copy that
     shared the original's would be the same device on two addresses. A fresh
     one makes the copy a new device, as its renamed device id does. Raises
-    ValueError for a host folder, which refusal() turns away before."""
+    ValueError for a host folder, which refusal() turns away before, and for
+    a name the original already mounts: the two would share that volume."""
+    recorded_volumes = recorded.get("volumes") or {}
     out: dict[str, dict[str, str]] = {}
-    for source, mount in (recorded.get("volumes") or {}).items():
+    for source, mount in recorded_volumes.items():
         if _host_folder(str(source)):
-            raise ValueError("it keeps data in a folder on the host, which a copy would share")
-        out[f"{source}-p{proxy_id}"] = dict(mount)
+            raise ValueError(t("err.proxies.copy_host_folder"))
+        name = f"{source}-p{proxy_id}"
+        if name in recorded_volumes:
+            raise ValueError(t("err.proxies.copy_volume_taken", volume=name))
+        out[name] = dict(mount)
     return out
 
 
@@ -456,6 +461,10 @@ def routed_spec(spec: dict[str, Any]) -> dict[str, Any]:
         out["resources"] = spec["resources"]
     if spec.get("command"):
         out["command"] = spec["command"]
+    # The mounts the operator moved on this deploy: the worker takes them from
+    # the spec, never from the container it replaces (orchestrator._keep_live_mounts).
+    if spec.get("moved_mounts"):
+        out["moved_mounts"] = list(spec["moved_mounts"])
     return out
 
 

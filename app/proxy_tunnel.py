@@ -1546,6 +1546,7 @@ def _ensure_tunnel(
     expected_container: str | None = None,
     move_target: _StartApproval | None = None,
     isolated: bool | None = None,
+    starting: str | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """The proxy's shared tunnel, running on the given settings and ready; with
     ``slug``, the routed service's own tunnel through the proxy instead (or a
@@ -1609,10 +1610,12 @@ def _ensure_tunnel(
     # A tunnel its watchdog stopped holds its copies until their owner starts
     # each one (_hold_tripped), and the heartbeat may not have seen the trip
     # yet. A deploy of one copy is no Start of the others: their holds go in
-    # before this tunnel runs again.
-    if keep is not None and current is not None and tripped(client, current):
+    # before this tunnel runs again. ``starting`` is the copy the owner's Start
+    # is for, which is no Start of the others either.
+    chosen = keep or starting
+    if chosen is not None and current is not None and tripped(client, current):
         for member in _members(client, current):
-            if str(member.name) != keep:
+            if str(member.name) != chosen:
                 _set_held(str(member.name), True, strict=True)
                 if getattr(member, "status", "") in _LIVE:
                     member.stop(timeout=orchestrator._get_stop_timeout(_labels(member).get(LABEL_SERVICE) or ""))
@@ -1890,8 +1893,10 @@ def _in_place(
                 _restart_members(client, current)
             elif not running:
                 # Down, not leaking: its earners have no way out. Stopped so it
-                # does not hold a tailnet device or a proxy session for nothing.
+                # does not hold a tailnet device or a proxy session for nothing,
+                # and its gate with it.
                 current.stop(timeout=SIDECAR_STOP_SECONDS)
+                _stop_gate(client, current)
         except Exception as undo:  # noqa: BLE001 - the tunnel stays down, failing closed
             logger.warning("Could not put the old settings back into %s: %s", current.name, redact(str(undo), secrets))
         raise ProxyTunnelError(redact(str(exc), secrets), exc.status_code) from None
@@ -2073,6 +2078,9 @@ def _finish_staged(
                 _gate_up(client, staged)
                 staged.start()
             _wait_ready(staged)
+            # An inner's /run/ready outlives its gate: with the gate down it has no way out.
+            if is_isolated(staged) and not _gate_running(client, staged):
+                raise RuntimeError("the staged tunnel's gate is down")
         except Exception:  # noqa: BLE001 - the detail may hold the proxy's secrets
             # Stopped, so it holds no proxy login while nothing can use it.
             with contextlib.suppress(Exception):
@@ -2331,6 +2339,7 @@ def _deploy(
             network_mode=f"container:{tunnel.id}",
             # Named volumes only, each the copy's own (app/proxies.earner_spec).
             volumes=earner.get("volumes") or None,
+            moved_mounts=earner.get("moved_mounts") or None,
             cap_add=earner.get("cap_add"),
             devices=earner.get("devices"),
             command=earner.get("command"),
@@ -2904,6 +2913,7 @@ def _start(
                 deadline=_pull_deadline(),
                 move_target=target,
                 isolated=isolated,
+                starting=name,
             )
     else:
         if tunnel is None:
@@ -3993,6 +4003,17 @@ def _hold_tripped(tunnel: Any, earner: Any | None, proxy_id: str) -> bool:
         client = orchestrator._get_client()
         if not tripped(client, tunnel):
             return False
+        # The beat listed this earner before the lock: a deploy may have
+        # replaced it since, under the same name, in another tunnel. The hold
+        # is for this container in this tunnel only.
+        if earner is not None:
+            try:
+                earner.reload()
+            except NotFound:
+                earner = None
+            else:
+                if _tunnel_id_of(earner) != tunnel.id:
+                    earner = None
         if earner is not None:
             name = str(earner.name)
             if name not in held():
