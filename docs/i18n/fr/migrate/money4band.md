@@ -1,5 +1,5 @@
 ---
-source_hash: 05d0f97e7d36
+source_hash: 5a764f1d0f5a
 ---
 # Migrer depuis money4band { #moving-from-money4band }
 
@@ -36,10 +36,10 @@ money4band 5.0 chiffre `config/user-config.json` sur le disque
 et il supprime son `.env` après chaque démarrage
 ([générateur du env](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
 CashPilot ne peut pas lire le fichier chiffré. Dans votre dossier money4band, lancez
-sa commande `config edit` : `./Money4Band-<os>-<arch> config edit` pour le binaire
-publié, ou `python main.py config edit` depuis les sources. La commande ouvre le
-fichier déchiffré dans votre éditeur
-([référence de la CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+sa commande `config edit`. Pour le binaire publié, utilisez le fichier de votre système, par exemple `./Money4Band-linux-amd64 config edit`, ou `.\Money4Band-windows-amd64.exe config edit` sous Windows.
+Depuis les sources, lancez `python run.py config edit`.
+Il exécute money4band avec uv, ou avec un environnement pip si uv est absent ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69)).
+La commande ouvre le fichier déchiffré dans votre éditeur ([référence de la CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Copiez tout son texte, collez-le sur la page **Import from another tool** (Importer depuis un autre outil), puis fermez l'éditeur.
 
 Préférez le fichier JSON. Dans un `.env`, Docker Compose développe `$` dans les valeurs sans guillemets,

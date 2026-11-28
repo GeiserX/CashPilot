@@ -1,5 +1,5 @@
 ---
-source_hash: 05d0f97e7d36
+source_hash: 5a764f1d0f5a
 ---
 # money4band'den geçiş { #moving-from-money4band }
 
@@ -37,10 +37,10 @@ money4band 5.0, `config/user-config.json` dosyasını diskte şifreler
 ve her başlatmadan sonra `.env` dosyasını siler
 ([env oluşturucu](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
 CashPilot şifrelenmiş dosyayı okuyamaz. money4band klasörünüzde `config edit`
-komutunu çalıştırın: yayımlanan ikili dosya için `./Money4Band-<os>-<arch> config edit`,
-kaynak koddan çalıştırıyorsanız `python main.py config edit`. Komut, şifresi çözülmüş
-dosyayı düzenleyicinizde açar
-([CLI başvurusu](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+komutunu çalıştırın. Yayımlanan ikili dosya için sisteminize uygun dosyayı kullanın, örneğin `./Money4Band-linux-amd64 config edit` ya da Windows'ta `.\Money4Band-windows-amd64.exe config edit`.
+Kaynak koddan çalıştırıyorsanız `python run.py config edit` komutunu çalıştırın.
+Bu komut money4band'i uv ile, uv yoksa bir pip ortamıyla çalıştırır ([run.py](https://github.com/MRColorR/money4band/blob/eebbdd410131e4b0fd4c9f9d49f84dc60e6a0e3d/run.py#L48-L69)).
+`config edit` komutu, şifresi çözülmüş dosyayı düzenleyicinizde açar ([CLI başvurusu](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Metnin tamamını kopyalayın, **Import from another tool** (Başka bir araçtan içe aktar) sayfasına yapıştırın, ardından düzenleyiciyi kapatın.
 
 JSON dosyasını tercih edin. Bir `.env` içinde Docker Compose tırnaksız değerlerdeki `$` işaretini
