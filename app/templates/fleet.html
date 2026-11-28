@@ -839,12 +839,12 @@ CASHPILOT_WORKER_NAME=server-name</code>
       : iso.mode ? false : null;
     const g = view.gvisor || {};
     const gState = !isOnline ? null : g.state === 'installed' ? true : g.state === 'missing' ? false : null;
-    const gText = g.state === 'installed' ? t('layers.gvisor.installed') : g.state === 'missing' ? t('layers.gvisor.missing')
+    const gText = !isOnline ? t('layers.unknown') : g.state === 'installed' ? t('layers.gvisor.installed') : g.state === 'missing' ? t('layers.gvisor.missing')
       : g.state === 'unsupported' ? t('layers.gvisor.unsupported') : t('layers.unknown');
     // A worker inside a Secure VM shows the VM's fence; any other shows whether its host has KVM.
     const vm = view.secure_vm;
     const vmState = vm && isOnline ? (vm.state === 'ok' ? true : vm.state === 'failed' ? false : null) : null;
-    const vmText = vm ? t(`layers.vm.fence_${vm.state}`) // i18n-keys: layers.vm.fence_ok, layers.vm.fence_failed, layers.vm.fence_stale, layers.vm.fence_unknown
+    const vmText = !isOnline ? t('layers.unknown') : vm ? t(`layers.vm.fence_${vm.state}`) // i18n-keys: layers.vm.fence_ok, layers.vm.fence_failed, layers.vm.fence_stale, layers.vm.fence_unknown
       : view.kvm === true ? t('layers.vm.kvm') : view.kvm === false ? t('layers.vm.no_kvm') : t('layers.unknown');
     const vmTip = vm ? [t('layers.vm.inside', { host: vm.host }), vm.reason].filter(Boolean).join(' ') : t('layers.vm.tip');
     const summary = [
@@ -871,7 +871,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const pending = e.choice && e.runtime && e.choice !== e.runtime
         ? ` <span class="text-warn">${esc(t('layers.earner.pending', { runtime: runtimeLabel(e.choice) }))}</span>` : '';
       // A redeploy that failed leaves the choice saved and the old runtime running: offer it again.
-      const retry = owner && pending && !e.locked
+      // A stopped earner takes its choice when it is next deployed, as the pending note says.
+      const retry = owner && pending && !e.locked && (e.status === 'running' || e.status === 'restarting')
         ? ` <button class="btn btn-ghost btn-sm btn-layer-runtime" data-worker-id="${w.id}" data-slug="${esc(e.slug)}" data-service="${esc(e.service)}" data-choice="${esc(e.choice)}" data-running="${e.status === 'running' || e.status === 'restarting' ? 1 : 0}"${working ? ' disabled' : ''}>${esc(t('layers.earner.retry', { runtime: runtimeLabel(e.choice) }))}</button>` : '';
       const inVm = vm ? ` · ${esc(!isOnline ? t('layers.earner.vm_unknown') : e.vm === true ? t('layers.earner.vm_ok') : e.vm === false ? t('layers.earner.vm_failed') : t('layers.earner.vm_unknown'))}` : '';
       return `<li><strong>${esc(e.service)}</strong>: ${esc(fence)} · ${esc(runtimeLabel(e.runtime))}${inVm}${pending}${retry} ${button}${e.locked ? ` <span class="muted">${esc(e.locked)}</span>` : ''}</li>`;
