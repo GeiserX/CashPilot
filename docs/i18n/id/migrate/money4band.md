@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # Pindah dari money4band { #moving-from-money4band }
 
@@ -35,8 +35,10 @@ money4band 5.0 mengenkripsi `config/user-config.json` di disk
 ([catatan keamanan](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
 dan menghapus `.env` miliknya setelah setiap kali dijalankan
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
-CashPilot tidak dapat membaca file terenkripsi itu. Jalankan `m4b config edit` di folder
-money4band Anda: perintah itu membuka file yang sudah didekripsi di editor Anda
+CashPilot tidak dapat membaca file terenkripsi itu. Di folder money4band Anda, jalankan
+perintah `config edit`: `./Money4Band-<os>-<arch> config edit` untuk binary
+rilis, atau `python main.py config edit` dari kode sumber. Perintah itu membuka file yang
+sudah didekripsi di editor Anda
 ([referensi CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Salin seluruh teksnya, tempelkan di halaman **Import from another tool** (Impor dari alat lain), lalu tutup editornya.
 

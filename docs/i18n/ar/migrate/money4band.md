@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # الانتقال من money4band { #moving-from-money4band }
 
@@ -34,8 +34,10 @@ CashPilot على إصدار money4band لديك.
 ([ملاحظات الأمان](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption))،
 ويحذف ملف `.env` الخاص به بعد كل تشغيل
 ([مُنشئ env](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
-لا يستطيع CashPilot قراءة الملف المشفّر. شغّل `m4b config edit` في مجلد money4band
-الخاص بك: يفتح هذا الأمر الملف بعد فك تشفيره في محرّرك
+لا يستطيع CashPilot قراءة الملف المشفّر. في مجلد money4band الخاص بك، شغّل أمره
+`config edit`: `./Money4Band-<os>-<arch> config edit` للملف التنفيذي المنشور،
+أو `python main.py config edit` عند التشغيل من الشيفرة المصدرية. يفتح هذا الأمر
+الملف بعد فك تشفيره في محرّرك
 ([مرجع CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 انسخ نصه كله، والصقه في صفحة **Import from another tool** (الاستيراد من أداة أخرى)، ثم أغلق المحرّر.
 

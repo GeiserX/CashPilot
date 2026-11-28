@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # Chuyển từ money4band { #moving-from-money4band }
 
@@ -35,8 +35,10 @@ money4band 5.0 mã hóa `config/user-config.json` trên đĩa
 ([ghi chú bảo mật](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
 và xóa file `.env` của nó sau mỗi lần khởi động
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
-CashPilot không đọc được file đã mã hóa. Chạy `m4b config edit` trong thư mục
-money4band của bạn: lệnh này mở file đã giải mã trong trình soạn thảo của bạn
+CashPilot không đọc được file đã mã hóa. Trong thư mục money4band của bạn, chạy
+lệnh `config edit` của nó: `./Money4Band-<os>-<arch> config edit` cho file binary
+bản phát hành, hoặc `python main.py config edit` khi chạy từ mã nguồn. Lệnh này mở
+file đã giải mã trong trình soạn thảo của bạn
 ([tài liệu tham khảo CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Sao chép toàn bộ nội dung của nó, dán vào trang **Import from another tool** (Nhập từ công cụ khác), rồi đóng trình soạn thảo.
 

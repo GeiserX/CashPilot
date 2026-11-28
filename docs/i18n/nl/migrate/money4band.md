@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # Overstappen van money4band { #moving-from-money4band }
 
@@ -35,8 +35,10 @@ money4band 5.0 versleutelt `config/user-config.json` op de schijf
 ([beveiligingsnotities](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
 en het verwijdert zijn `.env` na elke start
 ([env-builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
-CashPilot kan het versleutelde bestand niet lezen. Voer `m4b config edit` uit in je
-money4band-map: dat opent het ontsleutelde bestand in je editor
+CashPilot kan het versleutelde bestand niet lezen. Voer in je money4band-map het
+commando `config edit` uit: `./Money4Band-<os>-<arch> config edit` voor de
+release-binary, of `python main.py config edit` vanuit de broncode. Dat opent het
+ontsleutelde bestand in je editor
 ([CLI-referentie](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Kopieer al de tekst ervan, plak die op de pagina **Import from another tool** (Importeren uit een andere tool) en sluit daarna de editor.
 

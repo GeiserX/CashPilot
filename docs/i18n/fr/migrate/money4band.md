@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # Migrer depuis money4band { #moving-from-money4band }
 
@@ -35,8 +35,10 @@ money4band 5.0 chiffre `config/user-config.json` sur le disque
 ([notes de sécurité](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
 et il supprime son `.env` après chaque démarrage
 ([générateur du env](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
-CashPilot ne peut pas lire le fichier chiffré. Lancez `m4b config edit` dans votre
-dossier money4band : la commande ouvre le fichier déchiffré dans votre éditeur
+CashPilot ne peut pas lire le fichier chiffré. Dans votre dossier money4band, lancez
+sa commande `config edit` : `./Money4Band-<os>-<arch> config edit` pour le binaire
+publié, ou `python main.py config edit` depuis les sources. La commande ouvre le
+fichier déchiffré dans votre éditeur
 ([référence de la CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Copiez tout son texte, collez-le sur la page **Import from another tool** (Importer depuis un autre outil), puis fermez l'éditeur.
 

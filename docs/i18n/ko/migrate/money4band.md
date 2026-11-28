@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # money4band에서 옮겨 오기 { #moving-from-money4band }
 
@@ -35,8 +35,9 @@ money4band 5.0은 디스크에 있는 `config/user-config.json`을 암호화하�
 ([보안 참고 사항](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
 시작할 때마다 자신의 `.env`를 삭제합니다
 ([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
-CashPilot은 암호화된 파일을 읽을 수 없습니다. money4band 폴더에서 `m4b config edit`를
-실행하십시오. 복호화된 파일이 편집기에서 열립니다
+CashPilot은 암호화된 파일을 읽을 수 없습니다. money4band 폴더에서 해당 `config edit`
+명령을 실행하십시오. 릴리스 바이너리는 `./Money4Band-<os>-<arch> config edit`,
+소스에서 실행할 때는 `python main.py config edit`입니다. 복호화된 파일이 편집기에서 열립니다
 ([CLI 참조](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 그 텍스트를 모두 복사해 **Import from another tool** (다른 도구에서 가져오기) 페이지에 붙여 넣은 다음, 편집기를 닫으십시오.
 

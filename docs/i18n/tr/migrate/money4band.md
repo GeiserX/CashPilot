@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # money4band'den geçiş { #moving-from-money4band }
 
@@ -36,8 +36,10 @@ money4band 5.0, `config/user-config.json` dosyasını diskte şifreler
 ([güvenlik notları](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption))
 ve her başlatmadan sonra `.env` dosyasını siler
 ([env oluşturucu](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
-CashPilot şifrelenmiş dosyayı okuyamaz. money4band klasörünüzde `m4b config edit`
-komutunu çalıştırın: komut, şifresi çözülmüş dosyayı düzenleyicinizde açar
+CashPilot şifrelenmiş dosyayı okuyamaz. money4band klasörünüzde `config edit`
+komutunu çalıştırın: yayımlanan ikili dosya için `./Money4Band-<os>-<arch> config edit`,
+kaynak koddan çalıştırıyorsanız `python main.py config edit`. Komut, şifresi çözülmüş
+dosyayı düzenleyicinizde açar
 ([CLI başvurusu](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Metnin tamamını kopyalayın, **Import from another tool** (Başka bir araçtan içe aktar) sayfasına yapıştırın, ardından düzenleyiciyi kapatın.
 

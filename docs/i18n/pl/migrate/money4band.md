@@ -1,5 +1,5 @@
 ---
-source_hash: 098dcc2576d9
+source_hash: 05d0f97e7d36
 ---
 # Przejście z money4band { #moving-from-money4band }
 
@@ -35,8 +35,10 @@ money4band 5.0 szyfruje `config/user-config.json` na dysku
 ([uwagi o bezpieczeństwie](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption))
 i usuwa swój `.env` po każdym uruchomieniu
 ([generator env](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
-CashPilot nie potrafi odczytać zaszyfrowanego pliku. Uruchom `m4b config edit` w swoim
-folderze money4band: otwiera on odszyfrowany plik w twoim edytorze
+CashPilot nie potrafi odczytać zaszyfrowanego pliku. W swoim folderze money4band uruchom
+jego polecenie `config edit`: `./Money4Band-<os>-<arch> config edit` dla pliku
+binarnego z wydania albo `python main.py config edit` przy uruchamianiu ze źródeł. Otwiera ono
+odszyfrowany plik w twoim edytorze
 ([dokumentacja CLI](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
 Skopiuj cały jego tekst, wklej go na stronie **Import from another tool** (Import z innego narzędzia), a potem zamknij edytor.
 
