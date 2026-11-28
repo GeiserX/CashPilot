@@ -896,3 +896,14 @@ def test_the_report_on_nested_selects_stays_small():
 def test_a_message_nested_too_deep_is_broken():
     found = ic.check_target({"k": _nested_selects(40, "{a}")}, {"k": _nested_selects(40, "{a}")}, None)
     assert found["placeholder"] == [("k", "unbalanced or malformed braces")]
+
+
+def test_a_placeholder_moved_between_two_selects_keywords_fails(tmp_path):
+    src = "{a, select, x {{b, select, x {{p}} other {{q}}}} other {{b, select, x {{q}} other {{p}}}}}"
+    swapped = "{a, select, x {{b, select, x {{q}} other {{p}}}} other {{b, select, x {{p}} other {{q}}}}}"
+    en = write(tmp_path / "en.json", json.dumps({"k": src}))
+    es = write(tmp_path / "es.json", json.dumps({"k": swapped}))
+    code, out = run(en, es)
+    assert code == 1 and "a = x, b = x" in out
+    write(es, json.dumps({"k": src}))
+    assert run(en, es)[0] == 0

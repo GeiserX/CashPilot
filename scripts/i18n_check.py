@@ -118,7 +118,9 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import itertools
 import json
+import math
 import os
 import pathlib
 import re
@@ -672,12 +674,13 @@ class IcuError(Exception):
     pass
 
 
-def _icu_scan(s: str, i: int, plural: str | None, out: set, depth: int, pick: tuple | None = None) -> int:
+def _icu_scan(s: str, i: int, plural: str | None, out: set, depth: int, pick: dict | None = None) -> int:
     """Scan message text from i until an unmatched '}' (returned) or the end.
 
-    `plural` names the plural whose branch this is, for "#". With `pick` set
-    to (name, keyword), a select of that name adds only the placeholders of
+    `plural` names the plural whose branch this is, for "#". With `pick` set,
+    a select it names adds only the placeholders of
     the branch that keyword chooses (or "other"): what renders for it.
+    `pick` maps each chosen select's name to its keyword.
     """
     n = len(s)
     while i < n:
@@ -719,9 +722,10 @@ _ICU_OPTION = re.compile(r"\s*(offset:\s*\d+|=?[\w\-]+)\s*")
 # Real messages nest two or three levels; a deeper one is treated as broken,
 # which keeps the scan and its description small for any input.
 _ICU_MAX_DEPTH = 16
+_SELECT_COMBOS = 64
 
 
-def _icu_argument(s: str, i: int, out: set, depth: int, pick: tuple | None = None) -> int:
+def _icu_argument(s: str, i: int, out: set, depth: int, pick: dict | None = None) -> int:
     """Parse one argument starting just after its '{'; return the index after its '}'."""
     if depth >= _ICU_MAX_DEPTH:
         raise IcuError(f"nested more than {_ICU_MAX_DEPTH} levels deep")
@@ -764,8 +768,8 @@ def _icu_argument(s: str, i: int, out: set, depth: int, pick: tuple | None = Non
             else:
                 j = _icu_scan(s, j + 1, name, out, depth + 1, pick) + 1
         if kind == "select":
-            if pick and pick[0] == name:
-                out.update(branches.get(pick[1], branches.get("other", set())))
+            if pick and name in pick:
+                out.update(branches.get(pick[name], branches.get("other", set())))
             else:
                 for inner in branches.values():
                     out.update(inner)
@@ -851,11 +855,26 @@ def placeholders(text: str) -> frozenset:
             # English. A select may wrap more of the sentence in another
             # language, so compare what renders for the keyword, not the
             # branch alone: {name} moved from one keyword to another fails.
-            for sel in [t for t in out if t[0] == "select"]:
-                for key in sel[2]:
-                    shown: set = set()
-                    _icu_scan(body, 0, None, shown, 0, (sel[1], key))
-                    out.add(("select-branch", sel[1], key, frozenset(shown)))
+            # Every combination of keywords is compared, so a placeholder
+            # moved between combinations of two selects fails too. Past
+            # _SELECT_COMBOS combinations each select is compared on its own,
+            # which keeps the scan small.
+            selects: dict = {}
+            for t in sorted(t for t in out if t[0] == "select"):
+                selects.setdefault(t[1], t[2])
+            names = sorted(selects)
+            if not names:
+                picks = []
+            elif math.prod(len(selects[n]) for n in names) <= _SELECT_COMBOS:
+                picks = [
+                    dict(zip(names, keys, strict=True)) for keys in itertools.product(*(selects[n] for n in names))
+                ]
+            else:
+                picks = [{n: k} for n in names for k in selects[n]]
+            for pick in picks:
+                shown: set = set()
+                _icu_scan(body, 0, None, shown, 0, pick)
+                out.add(("select-branch", tuple(sorted(pick.items())), frozenset(shown)))
         except IcuError:
             out.add(("broken-braces",))
             out.update(("arg", n) for n in re.findall(r"\{\s*([\w.\-]+)\s*\}", body))
@@ -895,7 +914,8 @@ def _describe(sig: frozenset) -> str:
         if kind == "broken-braces":
             return "(unbalanced braces)"
         if kind == "select-branch":
-            return f"({t[1]} = {t[2]}: " + (_describe(t[3]) if t[3] else "no placeholder") + ")"
+            when = ", ".join(f"{n} = {k}" for n, k in t[1])
+            return f"({when}: " + (_describe(t[2]) if t[2] else "no placeholder") + ")"
         if kind == "link":
             return f"(link {t[1]} #{t[2]})"
         if kind == "plural-number":
