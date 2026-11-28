@@ -1565,6 +1565,7 @@
   "secure_vm.add_intro": "Runs earners inside a fenced VM on this host. Run this on the host as root. It asks for your fleet key and shows what it will do first.",
   "secure_vm.cmd.bad_ui_url": "The UI address must be a plain http:// or https:// address.",
   "secure_vm.cmd.not_a_host": "This worker cannot host a Secure VM.",
+  "secure_vm.cmd.same_name": "Two workers are called {name}. Rename one, so that a Secure VM can tell which computer is its host.",
   "secure_vm.docs": "How the Secure VM works",
   "secure_vm.flag": "Secure VM on {host}",
   "secure_vm.flag_tip": "This worker runs inside a Secure VM on {host}. Its earners cannot reach that host, its LAN or your tailnet.",

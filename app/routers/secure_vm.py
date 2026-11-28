@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app import database, deps, i18n, layer_scripts, placement
+from app import database, deps, i18n, layer_scripts, placement, version
 
 router = APIRouter()
 
@@ -43,9 +43,29 @@ def commands(host_name: str, ui_url: str, has_vm: bool) -> dict[str, str]:
     try:
         if has_vm:
             return {action: layer_scripts.command(SCRIPT, action) for action in ("status", "verify", "remove")}
-        return {"install": layer_scripts.command(SCRIPT, "install", ["--ui", ui_url, "--host-worker", host_name])}
+        # --ref: the guest takes its compose file from the same release as the
+        # script, which checks it against its own pin.
+        ref = "v" + version.current().removeprefix("v")
+        return {
+            "install": layer_scripts.command(
+                SCRIPT, "install", ["--ui", ui_url, "--host-worker", host_name, "--ref", ref]
+            )
+        }
     except layer_scripts.Unavailable as exc:
         return {"error": str(exc)}
+
+
+def vm_host(vm_info: dict[str, Any], workers: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The one worker a Secure VM names as its host, or None.
+
+    A VM names its host by worker name, and two workers can share a name (an
+    old offline worker and its replacement, say). Then the VM belongs to
+    neither: showing it under both could put its status and its controls
+    under the wrong computer.
+    """
+    name = (vm_info.get("secure_vm") or {}).get("host")
+    hosts = [w for w in workers if w["name"] == name and not is_secure_vm(placement.system_info(w))]
+    return hosts[0] if len(hosts) == 1 else None
 
 
 def is_secure_vm(info: dict[str, Any]) -> bool:
@@ -64,8 +84,10 @@ async def api_secure_vm_commands(request: Request, worker_id: int, ui_url: str =
     info = placement.system_info(host)
     if placement.is_android(info) or placement.is_desktop(info) or is_secure_vm(info):
         raise HTTPException(status_code=400, detail=i18n.t("secure_vm.cmd.not_a_host"))
+    if sum(1 for w in workers if w["name"] == host["name"] and not is_secure_vm(placement.system_info(w))) > 1:
+        raise HTTPException(status_code=409, detail=i18n.t("secure_vm.cmd.same_name", name=host["name"]))
     has_vm = any(
-        is_secure_vm(vi) and vi["secure_vm"].get("host") == host["name"]
+        is_secure_vm(vi) and (h := vm_host(vi, workers)) is not None and h["id"] == host["id"]
         for vi in (placement.system_info(w) for w in workers)
     )
     return commands(host["name"], url, has_vm)
