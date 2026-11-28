@@ -32,7 +32,9 @@ docker exec cashpilot-ui cat /data/.fernet_key
 CASHPILOT_ENCRYPTION_KEY=<the value you saved> docker compose up -d
 ```
 
-The file always takes precedence over the environment variable, so setting `CASHPILOT_ENCRYPTION_KEY` on an instance that already has a key changes nothing and is safe. It is adopted only when no key file exists, which is exactly the restore case.
+The file always takes precedence over the environment variable, so setting `CASHPILOT_ENCRYPTION_KEY` on an instance that already has a key changes nothing and is safe. It is used only when no key file exists, which is exactly the restore case, and it is not written into `/data`. A key that decrypts none of the stored credentials stops the start, so a wrong value cannot slip through.
+
+To keep the key out of the data folder for good, see [Encryption key outside the data folder](encryption-key.md).
 
 If CashPilot cannot write the key to disk at all, because `/data` is unwritable or unmounted, it refuses to start rather than encrypting your credentials under a key that disappears on the next restart. Set `CASHPILOT_ALLOW_EPHEMERAL_KEY=true` if that is genuinely what you want.
 
