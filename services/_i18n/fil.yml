@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "Itinatakda bilang ContactInfo sa anonrc, na may prefix na '@anon:0x...'."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "Mga relay fingerprint na pinaghihiwalay ng kuwit. Wala ito sa web dashboard: patakbuhin ang <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> sa host na nagpapatakbo ng relay.\n"
-  source: "9b5c068c9636"
+  text: "Mga relay fingerprint na pinaghihiwalay ng kuwit. Walang online dashboard na nagpapakita ng mga ito. Para sa relay na pinapatakbo ng CashPilot, patakbuhin ang <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> sa host na nagpapatakbo nito. Para sa hardware relay, buksan ang Relay Control Panel nito sa <b>http://relayup.local</b> at basahin ang Fingerprint sa Home page.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"
@@ -1148,8 +1148,8 @@ nodle.cashout.notes:
   text: "Nasa sariling wallet ng app sa ZKsync Era ang NODL; tingnan ito sa app o sa isang ZKsync Era block explorer. Umalis ang Nodle sa Polkadot parachain nito, at nagsara ang Polkadot-to-ZKsync bridge noong 31 Disyembre 2025, kaya hindi na maililipat sa ZKsync ang NODL na nasa panig pa ng Polkadot."
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "Hindi pa natutukoy: hindi pa nasusuri ng CashPilot kung saan itinatago ng serbisyong ito ang kita mo."
-  source: "8d61a71de590"
+  text: "Nasa sariling wallet ng Nodle app sa ZKsync Era ang iyong NODL. Hindi nakikita ng CashPilot ang address ng wallet na iyon."
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "Isang NODL reward para sa bawat bagong aktibong user na sasali gamit ang invite (hindi inilalathala ng Nodle ang halaga)"
   source: "03308fe33661"
@@ -1508,8 +1508,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "Madaling tandaang pangalan para sa device sa dashboard"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "Hindi na-download ang client ng Proxyrack nang mag-start ang container, kaya tumatakbo ang container pero walang kinikita. Ida-download itong muli ng restart; kung nandiyan pa rin ito pagkatapos ng restart, tingnan kung naaabot ng makinang ito ang internet."
-  source: "b5143d72ce35"
+  text: "Hindi makatakbo ang client ng ProxyRack sa kopyang ito, kaya wala itong kinikita. Kadalasan, hindi sumasagot ang update server ng ProxyRack, at hindi makapagsimula ang client kung wala ito. Sinusubukan ulit ng kopya kada 5 minuto at kusa itong magsisimula kapag sumagot na ang server. Wala kang kailangang ayusin."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "Hindi na-download ang client ng ProxyRack noong nagsimula ang kopyang ito, dahil hindi maabot ang update server ng ProxyRack, kaya tumatakbo ang kopya pero walang kinikita. Nire-restart ito ng CashPilot kada 6 na oras para subukan ulit. I-redeploy ito para makuha nito ang sariling start ng CashPilot, na nagtatabi ng client at kusang sumusubok ulit kada 5 minuto."
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "Mag-sign in sa ProxyRack, buksan ang Devices, piliin ang Add device at i-paste ang UUID na ito. Hangga't wala sa account mo ang device, wala itong kinikita para sa kahit sino. Kung naglagay ka ng API key, kusang magrerehistro ang container: tingnan kung nakalista roon ang device."
   source: "54c4041903b5"

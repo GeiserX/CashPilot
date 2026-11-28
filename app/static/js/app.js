@@ -5591,6 +5591,8 @@ const CP = (() => {
     // Same for the device ids: they do not need the config, and loadIdentities
     // writes its own error into its panel.
     loadIdentities();
+    loadEncryptionKey();
+    loadEarnerSecrets();
     try {
       const [config, envInfo, collectorsMeta] = await Promise.all([
         api('/api/config'),
@@ -5867,6 +5869,139 @@ const CP = (() => {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast(t('app.ids.exported', { name }), 'success');
+  }
+
+  // --- Credential encryption key (docs/encryption-key.md) --------------------
+
+  // What the status says, as HTML. Pure, so a test can run it: the status never
+  // carries the key, only where it comes from.
+  function encryptionKeyStatusHtml(st) {
+    if (!st || typeof st !== 'object') return '';
+    const lines = [];
+    if (st.source === 'file' && st.file_inside) {
+      lines.push(t('app.key.status.data', { path: st.file || '' }));
+    } else if (st.source === 'file') {
+      lines.push(t('app.key.status.file', { path: st.file || '' }));
+    } else if (st.source === 'env') {
+      lines.push(t('app.key.status.env'));
+    } else {
+      lines.push(t('app.key.status.data', { path: st.data_file || '' }));
+      if (st.env_same) lines.push(t('app.key.env_same'));
+    }
+    if (st.source === 'file' && !st.file_inside && st.data_copy === 'same') lines.push(t('app.key.copy_same', { path: st.data_file || '' }));
+    if (st.source !== 'data' && st.data_copy === 'different') lines.push(t('app.key.copy_different', { path: st.data_file || '' }));
+    if (st.outside) lines.push(t('app.key.outside'));
+    return lines.map(line => `<p>${escapeHtml(line)}</p>`).join('');
+  }
+
+  async function loadEncryptionKey() {
+    const box = document.getElementById('key-status');
+    const actions = document.getElementById('key-actions');
+    const move = document.getElementById('key-move');
+    if (!box || !actions) return;
+    let st;
+    try {
+      st = await api('/api/settings/encryption-key');
+    } catch (err) {
+      box.innerHTML = `<p class="muted">${escapeHtml(t('app.key.load_failed', { error: err.message }))}</p>`;
+      return;
+    }
+    box.innerHTML = encryptionKeyStatusHtml(st);
+    const buttons = [];
+    if (st.removable) {
+      buttons.push(`<button type="button" class="btn btn-primary btn-sm" data-action="removeEncryptionKeyCopy">${escapeHtml(t('app.key.remove_copy'))}</button>`);
+    }
+    if (!st.outside && !st.removable) {
+      buttons.push(`<button type="button" class="btn btn-secondary btn-sm" data-action="toggleEncryptionKeyMove">${escapeHtml(t('app.key.move'))}</button>`);
+    }
+    actions.innerHTML = buttons.join('');
+    if (move && st.outside) move.hidden = true;
+  }
+
+  function toggleEncryptionKeyMove() {
+    const move = document.getElementById('key-move');
+    if (move) move.hidden = !move.hidden;
+  }
+
+  // The server asks for the password first (api() shows the prompt) and writes
+  // the reveal to the audit log before it answers. The key stays on screen
+  // until Hide, a reload or leaving the page; nothing keeps it.
+  async function revealEncryptionKey() {
+    let res;
+    try {
+      res = await api('/api/settings/encryption-key/reveal', { method: 'POST', body: {} });
+    } catch (err) {
+      toast(t('app.key.reveal_failed', { error: err.message }), 'error');
+      return;
+    }
+    const input = document.getElementById('key-value');
+    const box = document.getElementById('key-revealed');
+    if (!input || !box || !res || !res.key) return;
+    input.value = res.key;
+    box.hidden = false;
+    input.focus();
+    input.select();
+  }
+
+  async function copyEncryptionKey() {
+    const input = document.getElementById('key-value');
+    if (!input || !input.value) return;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      toast(t('app.key.copied'), 'success');
+    } catch (err) {
+      input.select();
+      toast(t('app.key.copy_failed'), 'warning');
+    }
+  }
+
+  function hideEncryptionKey() {
+    const input = document.getElementById('key-value');
+    const box = document.getElementById('key-revealed');
+    if (input) input.value = '';
+    if (box) box.hidden = true;
+  }
+
+  async function removeEncryptionKeyCopy() {
+    if (!window.confirm(t('app.key.remove_confirm'))) return;
+    try {
+      await api('/api/settings/encryption-key/remove-data-copy', { method: 'POST', body: {} });
+    } catch (err) {
+      toast(t('app.key.remove_failed', { error: err.message }), 'error');
+      return;
+    }
+    hideEncryptionKey();
+    toast(t('app.key.removed'), 'success');
+    loadEncryptionKey();
+  }
+
+  // One line per worker: its setting and how many earners keep their credentials in a file.
+  function earnerSecretsHtml(rows) {
+    if (!Array.isArray(rows) || !rows.length) return `<p class="muted">${escapeHtml(t('app.earner_secrets.no_workers'))}</p>`;
+    return rows.map((row) => {
+      const mode = row.mode || 'old';
+      // A worker that reports no container shapes (CashPilot-Desktop) has no counts.
+      if (row.in_file == null || row.in_config == null) {
+        return `<p>${escapeHtml(t('app.earner_secrets.row_mode', { worker: row.worker || '', mode }))}</p>`;
+      }
+      const line = t('app.earner_secrets.row', {
+        worker: row.worker || '',
+        mode,
+        in_file: Number(row.in_file) || 0,
+        in_config: Number(row.in_config) || 0,
+      });
+      return `<p>${escapeHtml(line)}</p>`;
+    }).join('');
+  }
+
+  async function loadEarnerSecrets() {
+    const box = document.getElementById('earner-secrets-container');
+    if (!box) return;
+    try {
+      box.innerHTML = earnerSecretsHtml(await api('/api/settings/earner-secrets'));
+    } catch (err) {
+      box.innerHTML = `<p class="muted">${escapeHtml(t('app.key.load_failed', { error: err.message }))}</p>`;
+    }
   }
 
   // Every reveal is written to the audit log by the server before it answers.
@@ -7198,6 +7333,15 @@ const CP = (() => {
     closeIdentityForm,
     addIdentity,
     exportIdentities,
+    loadEncryptionKey,
+    toggleEncryptionKeyMove,
+    revealEncryptionKey,
+    copyEncryptionKey,
+    hideEncryptionKey,
+    removeEncryptionKeyCopy,
+    encryptionKeyStatusHtml,
+    loadEarnerSecrets,
+    earnerSecretsHtml,
     checkRestoreFile,
     submitRestore,
     pickPreviousIdentity,

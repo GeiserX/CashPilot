@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "anonrc の ContactInfo に、先頭に '@anon:0x...' を付けて設定します。"
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "カンマ区切りのリレーフィンガープリントです。この値はウェブのダッシュボードにはありません。リレーを動かしているホストで <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> を実行してください。\n"
-  source: "9b5c068c9636"
+  text: "カンマ区切りのリレーフィンガープリントです。オンラインのダッシュボードには表示されません。CashPilot が動かすリレーの場合は、それを動かしているホストで <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> を実行してください。ハードウェアリレーの場合は、<b>http://relayup.local</b> で Relay Control Panel を開き、Home ページの Fingerprint を確認してください。\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"
@@ -1148,8 +1148,8 @@ nodle.cashout.notes:
   text: "NODL は ZKsync Era 上のアプリ自身のウォレットにあります。アプリ内、または ZKsync Era のブロックエクスプローラーで確認してください。Nodle は Polkadot のパラチェーンを離れ、Polkadot から ZKsync へのブリッジは 2025 年 12 月 31 日に閉鎖されました。そのため、Polkadot 側に残っている NODL は ZKsync に移せなくなっています。"
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "まだ確定していません。このサービスが収益をどこで保管しているかを、CashPilot はまだ確認していません。"
-  source: "8d61a71de590"
+  text: "NODL は ZKsync Era 上の Nodle アプリ独自のウォレットにあります。CashPilot はそのウォレットのアドレスを確認できません。"
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "招待から参加した新しいアクティブユーザー 1 人ごとに NODL の報酬(Nodle は金額を公表していません)"
   source: "03308fe33661"
@@ -1508,8 +1508,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "ダッシュボードに表示するデバイスのわかりやすい名前"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "コンテナの起動時に Proxyrack のクライアントがダウンロードされなかったため、コンテナは動作していますが何も稼いでいません。再起動すると再びダウンロードされます。再起動後もこの表示が続く場合は、このマシンがインターネットに接続できるか確認してください。"
-  source: "b5143d72ce35"
+  text: "ProxyRack のクライアントがこのコピーで動作できないため、収益はありません。よくある原因は ProxyRack の更新サーバーが応答していないことで、クライアントはこのサーバーなしでは起動できません。コピーは 5 分ごとに再試行し、サーバーが応答するとすぐに自動で起動します。修正の必要はありません。"
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "このコピーの起動時に、ProxyRack の更新サーバーに接続できなかったため、ProxyRack のクライアントがダウンロードされませんでした。そのため、コピーは動作していますが収益はありません。CashPilot は再試行のため 6 時間ごとにこのコピーを再起動します。再デプロイすると CashPilot 独自の起動方式になり、クライアントを保持したまま 5 分ごとに自動で再試行します。"
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "ProxyRack にサインインし、Devices を開いて Add device を選び、この UUID を貼り付けてください。デバイスがアカウントに追加されるまで、誰の収益にもなりません。API キーを入力した場合はコンテナが自分で登録するので、デバイスが一覧に表示されているか確認してください。"
   source: "54c4041903b5"

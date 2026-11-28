@@ -15,6 +15,8 @@ import json
 import statistics
 from typing import Any
 
+from app.i18n import t
+
 PAYLOAD_VERSION = 1
 MAX_PAYLOAD_BYTES = 256 * 1024
 MAX_SAMPLES = 64
@@ -54,15 +56,6 @@ SPIKE_MIN_HOURS = 72
 SPIKE_RATIO = 10
 SPIKE_BYTES_FLOOR = 1024**3
 SPIKE_OPENS_FLOOR = 2000
-
-CLASS_LABELS = {
-    "lan": "your local network",
-    "tailnet": "your tailnet",
-    "docker_host": "the Docker host itself",
-    "docker_peer": "another container on its Docker network (not an earner)",
-    "metadata": "a cloud metadata address",
-    "link_local": "a link-local address",
-}
 
 
 def _int(value: Any, low: int = 0, high: int = 2**62) -> int | None:
@@ -196,10 +189,11 @@ def alert_findings(window: dict[str, Any]) -> list[dict[str, Any]]:
                     "kind": "activity_mail",
                     "container": s["container"],
                     "detail": "",
-                    "message": (
-                        f"{s['container']} opened mail connections to {len(mail)} destination(s) on the internet "
-                        f"(port {', '.join(str(p) for p in ports)}). Earners have no reason to send mail; "
-                        "this is how an exit node gets your address listed as a spam source."
+                    "message": t(
+                        "alert.activity.mail",
+                        container=s["container"],
+                        n=len(mail),
+                        ports=", ".join(str(p) for p in ports),
                     ),
                 }
             )
@@ -211,17 +205,17 @@ def alert_findings(window: dict[str, Any]) -> list[dict[str, Any]]:
             pending = any(d["states"].get("syn_sent") for d in rows)
             ports = sorted({d["port"] for d in rows})[:5]
             if cls == "metadata":
-                message = (
-                    f"{s['container']} tried to reach a cloud metadata address (port {', '.join(map(str, ports))}). "
-                    "On a cloud server that address can hand out credentials for the whole account."
-                )
+                message = t("alert.activity.metadata", container=s["container"], ports=", ".join(map(str, ports)))
             else:
-                message = (
-                    f"{s['container']} tried to reach {CLASS_LABELS[cls]}: {len(rows)} destination(s), "
-                    f"port {', '.join(map(str, ports))}."
+                message = t(
+                    "alert.activity.reached",
+                    container=s["container"],
+                    where=cls,
+                    n=len(rows),
+                    ports=", ".join(map(str, ports)),
                 )
             if pending:
-                message += " Some were still pending (no answer yet), which usually means a firewall dropped them."
+                message += " " + t("alert.activity.pending")
             found.append({"kind": "activity_lan", "container": s["container"], "detail": cls, "message": message})
     return found
 

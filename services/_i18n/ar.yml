@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "يُضبط في ContactInfo داخل anonrc، مسبوقًا بـ '@anon:0x...'."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "بصمات عقد الترحيل مفصولة بفواصل. هذه القيمة غير موجودة في أي لوحة تحكم على الويب: شغّل <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> على الجهاز المضيف الذي يشغّل عقدة الترحيل.\n"
-  source: "9b5c068c9636"
+  text: "بصمات عقد الترحيل مفصولة بفواصل. لا تعرضها أي لوحة تحكم على الإنترنت. لعقدة الترحيل التي يشغّلها CashPilot، شغّل <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> على الجهاز المضيف الذي يشغّلها. أما عقدة الترحيل المادية، فافتح لوحة Relay Control Panel الخاصة بها على <b>http://relayup.local</b> واقرأ Fingerprint في صفحة Home.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"
@@ -1148,8 +1148,8 @@ nodle.cashout.notes:
   text: "توجد NODL في محفظة التطبيق نفسه على ZKsync Era؛ تحقّق منها في التطبيق أو في مستكشف كتل ZKsync Era. غادرت Nodle سلسلة parachain الخاصة بها على Polkadot، وأُغلق الجسر من Polkadot إلى ZKsync في 31 ديسمبر 2025، لذا لم يعد بالإمكان نقل NODL الباقية على جانب Polkadot إلى ZKsync."
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "لم يُحدَّد بعد: لم يتحقق CashPilot بعد من المكان الذي تحتفظ فيه هذه الخدمة بأرباحك."
-  source: "8d61a71de590"
+  text: "توجد عملات NODL في المحفظة الخاصة بتطبيق Nodle على ZKsync Era. لا يستطيع CashPilot رؤية عنوان تلك المحفظة."
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "مكافأة NODL عن كل مستخدم نشط جديد ينضم عبر الدعوة (لا تنشر Nodle المبلغ)"
   source: "03308fe33661"
@@ -1508,8 +1508,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "اسم سهل التمييز للجهاز في لوحة التحكم"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "لم يُنزَّل عميل Proxyrack عند بدء تشغيل الحاوية، لذا تعمل الحاوية لكنها لا تكسب شيئًا. تُعيد إعادة التشغيل تنزيله؛ وإذا استمر هذا بعد إعادة التشغيل، فتحقق من أن هذا الجهاز يستطيع الوصول إلى الإنترنت."
-  source: "b5143d72ce35"
+  text: "لا يستطيع عميل ProxyRack العمل على هذه النسخة، لذا لا تربح شيئًا. السبب المعتاد هو أن خادم التحديثات لدى ProxyRack لا يستجيب، ولا يمكن للعميل أن يبدأ من دونه. تعيد النسخة المحاولة كل 5 دقائق وتبدأ تلقائيًا فور استجابة الخادم. لا حاجة إلى إصلاح أي شيء."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "لم يُنزَّل عميل ProxyRack عند بدء هذه النسخة، لأن خادم التحديثات لدى ProxyRack لم يكن متاحًا، لذا تعمل النسخة لكنها لا تربح شيئًا. يعيد CashPilot تشغيلها كل 6 ساعات ليحاول مجددًا. أعد نشرها لتحصل على بدء التشغيل الخاص بـ CashPilot، الذي يحتفظ بالعميل ويعيد المحاولة تلقائيًا كل 5 دقائق."
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "سجّل الدخول في ProxyRack، وافتح Devices، واختر Add device والصق معرّف UUID هذا. وإلى أن يُضاف الجهاز إلى حسابك فإنه لا يكسب لأحد. إذا أدخلت مفتاح API، فإن الحاوية تسجّل نفسها: تحقّق من أن الجهاز مُدرج هناك."
   source: "54c4041903b5"

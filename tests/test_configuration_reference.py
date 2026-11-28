@@ -92,10 +92,23 @@ class TestThePrecedenceMatchesTheCode:
     """The whole point of the page. If the code flips, this must fail."""
 
     def test_the_encryption_key_file_still_wins(self):
+        """KEY_FILE, then /data/.fernet_key, then the env var: the order the page states.
+
+        tests/test_encryption_key.py proves the behaviour; this ties the page to it.
+        """
         source = (ROOT / "app" / "database.py").read_text(encoding="utf-8")
-        assert "An existing key file always wins" in source, (
+        body = source[source.index("def _load_or_create_fernet") :]
+        doc = body[: body.index('"""', body.index('"""') + 3)]
+        order = [
+            doc.index("1. ``CASHPILOT_ENCRYPTION_KEY_FILE``"),
+            doc.index("2. ``<data>/.fernet_key``"),
+            doc.index("3. ``CASHPILOT_ENCRYPTION_KEY``"),
+        ]
+        assert order == sorted(order), (
             "the credential-encryption precedence changed; docs/configuration.md says the FILE wins"
         )
+        page = (ROOT / "docs" / "configuration.md").read_text(encoding="utf-8")
+        assert "`CASHPILOT_ENCRYPTION_KEY_FILE` beats `/data/.fernet_key`" in page
 
     def test_the_session_key_env_still_wins(self):
         """auth.py resolves the env var before the persisted file."""

@@ -234,6 +234,11 @@
 #     image's ENTRYPOINT. Read by the worker from its own catalog, never from a
 #     deploy request. Keep it a thin wrapper that ends by exec-ing the image's
 #     own entrypoint, and make it degrade to exactly that if its tweak fails.
+#   secrets_in_file: true (optional, default true) whether a worker with
+#     CASHPILOT_EARNER_SECRETS=file may keep this service's secret variables in
+#     a file instead of Docker's container config (app/secret_env.py). Set it to
+#     false for an image that reads a secret anywhere the entrypoint shim cannot
+#     reach, such as a HEALTHCHECK that uses the variable.
 #   setup: "" (optional, one-time setup instructions/commands to run before first deploy)
 
 # disclosure: (optional but strongly encouraged) what this service does with the

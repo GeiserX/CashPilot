@@ -49,6 +49,17 @@ def _no_pending_worker_key():
 
 
 @pytest.fixture(autouse=True)
+def _alerts_in_english():
+    """A test that renders an owner's page in another language moves the alerts' language; put it back."""
+    yield
+    import sys
+
+    i18n = sys.modules.get("app.i18n")
+    if i18n is not None:
+        i18n.set_background(i18n.SOURCE)
+
+
+@pytest.fixture(autouse=True)
 def _worker_deploy_inventory(request, monkeypatch):
     """Most controller tests mock the deploy transport and have no live worker inventory."""
     if request.node.get_closest_marker("real_worker_deploy_inventory"):

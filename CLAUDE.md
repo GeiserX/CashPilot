@@ -102,7 +102,7 @@ cashpilot/
 - **YAML is the source of truth.** Every service lives in `services/{category}/{slug}.yml`. The web UI, container deployment, earnings collection, and documentation ALL derive from these files. Never hardcode service-specific logic in `app/`.
 - **Container naming:** All managed containers are `cashpilot-{slug}` with labels `cashpilot.managed=true` and `cashpilot.service={slug}`.
 - **Data directory:** `/data` volume holds SQLite DB and persistent config. Never write outside `/data` at runtime.
-- **Credentials:** Encrypted at rest with Fernet using a key at `/data/.fernet_key`, auto-generated when absent and overridable via `CASHPILOT_ENCRYPTION_KEY` (the file wins; the env var is adopted whenever no key file exists, which covers both a fresh install and a restore). This is NOT `CASHPILOT_SECRET_KEY`, which signs sessions (`/data/.secret_key`).
+- **Credentials:** Encrypted at rest with Fernet using a key at `/data/.fernet_key`, auto-generated when absent and overridable via `CASHPILOT_ENCRYPTION_KEY_FILE` (wins over everything, never falls back) and `CASHPILOT_ENCRYPTION_KEY` (the data file wins over it; the env key is used when no key file exists and is never persisted). Startup refuses a key that decrypts none of the stored credentials (`verify_encryption_key_matches`, override `CASHPILOT_ACCEPT_UNREADABLE_CREDENTIALS`). Earner secrets reach the container through `app/secret_env.py` when the worker runs with `CASHPILOT_EARNER_SECRETS=file`. This is NOT `CASHPILOT_SECRET_KEY`, which signs sessions (`/data/.secret_key`).
 - **README lists and doc counts are generated.** Never type a service count by hand: write `<!-- n:docker -->17<!-- /n -->` and `scripts/generate_readme_tables.py` fills it in (CI runs it with `--check`).
 
 ## UI + Worker Architecture
@@ -164,6 +164,7 @@ Two separate Docker images:
 | `CASHPILOT_FENCE_EXITS` | No | -- | Public IPv4s and DDNS names of the owner's other lines; the fence drops them as it drops this box's own IP. The other workers' egress IPs come from the UI's heartbeat reply (`fleet_exits`) with no setting |
 | `CASHPILOT_PROXIED_ONLY` | No | `false` | `true` = refuse any earner not inside one of this worker's tunnels (app/route_gate.py, checked in `orchestrator.deploy_raw`, `start_service` and `restart_service`; running direct earners are stopped by `orchestrator.hold_direct_earners` at worker start and on each guard pass). The UI cannot change it |
 | `CASHPILOT_CONTAINER_NETWORK` | No | -- | A bridge you created; bridge-networked containers join it instead of Docker's default, so host firewall rules can confine them (docs/home-network-security.md). Missing = deploy refused |
+| `CASHPILOT_EARNER_SECRETS` | No | `env` | `file` = catalog earners with a `secret: true` variable are created without its value in Docker's config: a `cashpilot-secret-<id>` volume at `/run/cashpilot-secret` gets the env file and the static shim (`app/shim/cashpilot-env.c`) by put_archive before start (app/secret_env.py, docs/earner-secrets.md). Opt-out per service: `docker.secrets_in_file: false`; custom services never |
 | `CASHPILOT_CONTAINER_DNS` | No | `1.1.1.1,9.9.9.9` | Resolvers for containers on that bridge only, so their lookups skip a LAN/tailnet resolver the firewall rejects. Empty = the daemon's list |
 
 ### Egress IP awareness (CashPilot-5qc)

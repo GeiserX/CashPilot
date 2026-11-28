@@ -23,7 +23,9 @@ from app import database as _database
 _MANAGED_VARS = (
     "CASHPILOT_DATA_DIR",
     "CASHPILOT_ENCRYPTION_KEY",
+    "CASHPILOT_ENCRYPTION_KEY_FILE",
     "CASHPILOT_ALLOW_EPHEMERAL_KEY",
+    "CASHPILOT_ACCEPT_UNREADABLE_CREDENTIALS",
 )
 
 
@@ -78,8 +80,10 @@ def test_supplied_key_is_adopted_and_restores_existing_values(tmp_path: Path):
     assert db.decrypt_value(ciphertext) == "my-api-token", (
         "a supplied key must decrypt values encrypted by the previous deployment"
     )
-    # It is persisted, so the next restart does not depend on the env var.
-    assert (tmp_path / ".fernet_key").read_text().strip() == key
+    # Never copied into the data folder: a copy of the folder must not be
+    # enough to decrypt. The variable is read again on every start.
+    assert not (tmp_path / ".fernet_key").exists()
+    assert db.encryption_key_status()["source"] == "env"
     db.verify_encryption_key_persisted()
 
 
@@ -227,3 +231,295 @@ def test_malformed_env_key_is_ignored_when_a_valid_file_key_exists(tmp_path: Pat
     db.verify_encryption_key_persisted()  # must not raise
     assert db.decrypt_value(ciphertext) == "kept"
     assert any("Ignoring it" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# CASHPILOT_ENCRYPTION_KEY_FILE: the key in a file outside the data folder
+# ---------------------------------------------------------------------------
+
+
+def _secret(tmp_path: Path, key: str, name: str = "secret") -> Path:
+    path = tmp_path / name
+    path.write_text(key + "\n")
+    return path
+
+
+def test_key_file_wins_over_the_data_folder_and_the_variable(tmp_path: Path, caplog):
+    data = tmp_path / "data"
+    data.mkdir()
+    outside = Fernet.generate_key().decode()
+    (data / ".fernet_key").write_text(Fernet.generate_key().decode())
+    with caplog.at_level("WARNING"):
+        db = _reload(
+            {
+                "CASHPILOT_DATA_DIR": str(data),
+                "CASHPILOT_ENCRYPTION_KEY_FILE": str(_secret(tmp_path, outside)),
+                "CASHPILOT_ENCRYPTION_KEY": Fernet.generate_key().decode(),
+            }
+        )
+    db.verify_encryption_key_persisted()
+    ciphertext = "enc:" + Fernet(outside.encode()).encrypt(b"from-outside").decode()
+    assert db.decrypt_value(ciphertext) == "from-outside"
+    assert db.encryption_key_status()["source"] == "file"
+    assert any("The file wins" in r.message for r in caplog.records)
+
+
+def test_key_file_is_never_copied_into_the_data_folder(tmp_path: Path):
+    data = tmp_path / "data"
+    key = Fernet.generate_key().decode()
+    db = _reload({"CASHPILOT_DATA_DIR": str(data), "CASHPILOT_ENCRYPTION_KEY_FILE": str(_secret(tmp_path, key))})
+    db.verify_encryption_key_persisted()
+    assert not (data / ".fernet_key").exists()
+    status = db.encryption_key_status()
+    assert status == {
+        "source": "file",
+        "file": str(tmp_path / "secret"),
+        "file_inside": False,
+        "data_file": str(data / ".fernet_key"),
+        "data_copy": "none",
+        "env_same": False,
+        "outside": True,
+        "removable": False,
+    }
+
+
+@pytest.mark.parametrize(
+    ("content", "reason"),
+    [(None, "could not be read"), ("", "the file is empty"), ("not-a-key", "does not hold a valid Fernet key")],
+)
+def test_a_broken_key_file_stops_the_start_and_never_falls_back(tmp_path: Path, content, reason):
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / ".fernet_key").write_text(Fernet.generate_key().decode())
+    secret = tmp_path / "secret"
+    if content is not None:
+        secret.write_text(content)
+    db = _reload({"CASHPILOT_DATA_DIR": str(data), "CASHPILOT_ENCRYPTION_KEY_FILE": str(secret)})
+    with pytest.raises(RuntimeError, match=reason):
+        db.verify_encryption_key_persisted()
+
+
+def test_no_key_file_is_created_when_the_named_one_is_missing(tmp_path: Path):
+    data = tmp_path / "data"
+    db = _reload({"CASHPILOT_DATA_DIR": str(data), "CASHPILOT_ENCRYPTION_KEY_FILE": str(tmp_path / "gone")})
+    with pytest.raises(RuntimeError):
+        db.verify_encryption_key_persisted()
+    assert not (data / ".fernet_key").exists()
+
+
+# ---------------------------------------------------------------------------
+# The key must read the credentials already stored
+# ---------------------------------------------------------------------------
+
+
+def _database_with(data: Path, *keys: str) -> None:
+    """A cashpilot.db holding one credential encrypted under each key, as the app stores them."""
+    import sqlite3
+
+    data.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(data / "cashpilot.db")
+    conn.execute("CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT)")
+    conn.execute("CREATE TABLE workers (client_id TEXT, api_key_enc TEXT)")
+    conn.execute("INSERT INTO config VALUES ('honeygain_email', 'me@example.com')")
+    for n, key in enumerate(keys):
+        token = "enc:" + Fernet(key.encode()).encrypt(b"secret").decode()
+        conn.execute("INSERT INTO workers VALUES (?, ?)", (f"w{n}", token))
+    conn.commit()
+    conn.close()
+
+
+def test_the_right_key_starts(tmp_path: Path):
+    key = Fernet.generate_key().decode()
+    _database_with(tmp_path, key)
+    (tmp_path / ".fernet_key").write_text(key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
+    db.verify_encryption_key_matches()
+
+
+def test_a_wrong_key_file_in_the_data_folder_is_refused(tmp_path: Path):
+    _database_with(tmp_path, Fernet.generate_key().decode())
+    (tmp_path / ".fernet_key").write_text(Fernet.generate_key().decode())
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
+    with pytest.raises(RuntimeError, match="decrypts none of the 1 stored credentials"):
+        db.verify_encryption_key_matches()
+
+
+def test_a_wrong_secret_file_is_refused(tmp_path: Path):
+    data = tmp_path / "data"
+    _database_with(data, Fernet.generate_key().decode())
+    db = _reload(
+        {
+            "CASHPILOT_DATA_DIR": str(data),
+            "CASHPILOT_ENCRYPTION_KEY_FILE": str(_secret(tmp_path, Fernet.generate_key().decode())),
+        }
+    )
+    with pytest.raises(RuntimeError, match="CASHPILOT_ENCRYPTION_KEY_FILE"):
+        db.verify_encryption_key_matches()
+
+
+def test_a_wrong_variable_is_refused(tmp_path: Path):
+    _database_with(tmp_path, Fernet.generate_key().decode())
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY": Fernet.generate_key().decode()})
+    with pytest.raises(RuntimeError, match="comes from CASHPILOT_ENCRYPTION_KEY,"):
+        db.verify_encryption_key_matches()
+
+
+def test_a_restore_without_its_key_is_refused_and_the_new_key_is_not_kept(tmp_path: Path):
+    """The restore trap: the database came back, the key did not. A new key used to be minted and kept."""
+    _database_with(tmp_path, Fernet.generate_key().decode())
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
+    assert (tmp_path / ".fernet_key").exists()  # minted at import, as before
+    with pytest.raises(RuntimeError, match="no key was found") as caught:
+        db.verify_encryption_key_matches()
+    assert "The new key was not kept" in str(caught.value)
+    assert not (tmp_path / ".fernet_key").exists()
+
+
+def test_one_value_that_decrypts_is_enough(tmp_path: Path):
+    """Old values next to re-entered ones: the owner chose to start over on a new key."""
+    key = Fernet.generate_key().decode()
+    _database_with(tmp_path, Fernet.generate_key().decode(), key)
+    (tmp_path / ".fernet_key").write_text(key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
+    db.verify_encryption_key_matches()
+
+
+def test_the_one_value_that_decrypts_is_found_past_any_sample(tmp_path: Path):
+    """Many values from an old key before the one re-entered: the check reads them all, never a sample."""
+    key = Fernet.generate_key().decode()
+    _database_with(tmp_path, *[Fernet.generate_key().decode()] * 50, key)
+    (tmp_path / ".fernet_key").write_text(key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
+    db.verify_encryption_key_matches()
+
+
+def test_a_setting_that_only_looks_encrypted_is_not_checked(tmp_path: Path):
+    """set_config stores only secret keys encrypted; another setting may hold "enc:" text as written."""
+    import sqlite3
+
+    _database_with(tmp_path)
+    conn = sqlite3.connect(tmp_path / "cashpilot.db")
+    conn.execute("INSERT INTO config VALUES ('site_name', 'enc:office')")
+    conn.commit()
+    conn.close()
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY": Fernet.generate_key().decode()})
+    db.verify_encryption_key_matches()
+
+
+def test_a_database_with_no_credentials_starts_on_any_key(tmp_path: Path):
+    _database_with(tmp_path)
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
+    db.verify_encryption_key_matches()
+    assert (tmp_path / ".fernet_key").exists()
+
+
+def test_a_fresh_install_starts(tmp_path: Path):
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
+    db.verify_encryption_key_matches()
+
+
+def test_the_owner_can_start_anyway_on_purpose(tmp_path: Path, caplog):
+    _database_with(tmp_path, Fernet.generate_key().decode())
+    with caplog.at_level("WARNING"):
+        db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ACCEPT_UNREADABLE_CREDENTIALS": "true"})
+        db.verify_encryption_key_matches()
+    assert (tmp_path / ".fernet_key").exists()
+    assert any("Starting anyway" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# The data folder's copy, once the key comes from outside
+# ---------------------------------------------------------------------------
+
+
+def test_a_copy_left_in_the_data_folder_can_be_removed(tmp_path: Path):
+    data = tmp_path / "data"
+    data.mkdir()
+    key = Fernet.generate_key().decode()
+    (data / ".fernet_key").write_text(key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(data), "CASHPILOT_ENCRYPTION_KEY_FILE": str(_secret(tmp_path, key))})
+    status = db.encryption_key_status()
+    assert status["data_copy"] == "same" and status["removable"] and not status["outside"]
+    db.remove_data_folder_key()
+    assert not (data / ".fernet_key").exists()
+    assert db.encryption_key_status()["outside"]
+
+
+def test_a_different_key_in_the_data_folder_is_never_removed(tmp_path: Path):
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / ".fernet_key").write_text(Fernet.generate_key().decode())
+    key = Fernet.generate_key().decode()
+    db = _reload({"CASHPILOT_DATA_DIR": str(data), "CASHPILOT_ENCRYPTION_KEY_FILE": str(_secret(tmp_path, key))})
+    assert db.encryption_key_status()["data_copy"] == "different"
+    with pytest.raises(ValueError):
+        db.remove_data_folder_key()
+    assert (data / ".fernet_key").exists()
+
+
+def test_the_only_copy_is_never_removed(tmp_path: Path):
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
+    assert db.encryption_key_status()["source"] == "data"
+    with pytest.raises(ValueError):
+        db.remove_data_folder_key()
+    assert (tmp_path / ".fernet_key").exists()
+
+
+def test_a_variable_with_the_same_key_lets_the_data_folder_copy_go(tmp_path: Path):
+    """The variable loses to the file while the file exists; with the same key, the file can go."""
+    key = Fernet.generate_key().decode()
+    (tmp_path / ".fernet_key").write_text(key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY": key})
+    status = db.encryption_key_status()
+    assert status["source"] == "data" and status["env_same"] and status["removable"]
+    db.remove_data_folder_key()
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY": key})
+    assert db.encryption_key_status()["source"] == "env" and db.encryption_key_status()["outside"]
+    assert not (tmp_path / ".fernet_key").exists()
+
+
+def test_a_key_file_gone_since_the_start_keeps_the_data_folder_copy(tmp_path: Path):
+    """The secret was unmounted after the start: the data folder's copy is the only one left."""
+    data = tmp_path / "data"
+    data.mkdir()
+    key = Fernet.generate_key().decode()
+    (data / ".fernet_key").write_text(key)
+    secret = _secret(tmp_path, key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(data), "CASHPILOT_ENCRYPTION_KEY_FILE": str(secret)})
+    assert db.encryption_key_status()["removable"]  # the positive control
+    secret.unlink()
+    assert not db.encryption_key_status()["removable"]
+    with pytest.raises(ValueError):
+        db.remove_data_folder_key()
+    assert (data / ".fernet_key").exists()
+    secret.write_text(Fernet.generate_key().decode())
+    assert not db.encryption_key_status()["removable"]
+
+
+def test_a_key_file_inside_the_data_folder_is_not_outside_it(tmp_path: Path):
+    """CASHPILOT_ENCRYPTION_KEY_FILE naming the data folder's own file: removing the copy would remove the key."""
+    key = Fernet.generate_key().decode()
+    (tmp_path / ".fernet_key").write_text(key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY_FILE": str(tmp_path / ".fernet_key")})
+    status = db.encryption_key_status()
+    assert status["source"] == "file" and not status["removable"] and not status["outside"]
+    assert status["file_inside"]
+    with pytest.raises(ValueError):
+        db.remove_data_folder_key()
+    assert (tmp_path / ".fernet_key").exists()
+    db = _reload(
+        {"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY_FILE": str(_secret(tmp_path, key, "in-data"))}
+    )
+    assert not db.encryption_key_status()["outside"]
+
+
+def test_a_key_file_that_is_not_text_keeps_the_data_folder_copy(tmp_path: Path):
+    data = tmp_path / "data"
+    data.mkdir()
+    key = Fernet.generate_key().decode()
+    (data / ".fernet_key").write_text(key)
+    secret = _secret(tmp_path, key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(data), "CASHPILOT_ENCRYPTION_KEY_FILE": str(secret)})
+    assert db.encryption_key_status()["removable"]  # the positive control
+    secret.write_bytes(b"\xff\xfe not a key")
+    assert not db.encryption_key_status()["removable"]

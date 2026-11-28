@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "在 anonrc 中设为 ContactInfo，前缀为 '@anon:0x...'。"
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "以逗号分隔的中继指纹。它不在网页仪表板中：请在运行中继的主机上执行 <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b>。\n"
-  source: "9b5c068c9636"
+  text: "以逗号分隔的中继指纹。没有任何在线仪表板会显示它们。对于 CashPilot 运行的中继，请在运行它的主机上执行 <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b>。对于硬件中继，请在 <b>http://relayup.local</b> 打开它的 Relay Control Panel，并在 Home 页面查看 Fingerprint。\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"
@@ -1148,8 +1148,8 @@ nodle.cashout.notes:
   text: "NODL 存放在应用自带的 ZKsync Era 钱包中；可在应用内或 ZKsync Era 区块浏览器上查看。Nodle 已离开其 Polkadot 平行链，Polkadot 到 ZKsync 的跨链桥已于 2025 年 12 月 31 日关闭，因此仍在 Polkadot 一侧的 NODL 已无法再转到 ZKsync。"
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "尚未确定：CashPilot 尚未核实此服务把你的收益存放在哪里。"
-  source: "8d61a71de590"
+  text: "你的 NODL 存放在 Nodle 应用自己的钱包中，位于 ZKsync Era。CashPilot 无法看到该钱包的地址。"
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "每有一位通过邀请加入的新活跃用户，即可获得一笔 NODL 奖励（Nodle 未公布金额）"
   source: "03308fe33661"
@@ -1508,8 +1508,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "设备在仪表板中显示的易记名称"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "容器启动时没有下载到 Proxyrack 的客户端，因此容器虽在运行，却没有收益。重启会重新下载；如果重启后仍然如此，请检查这台机器能否访问互联网。"
-  source: "b5143d72ce35"
+  text: "ProxyRack 的客户端无法在这个副本上运行，所以它没有任何收益。常见原因是 ProxyRack 的更新服务器没有响应，而没有它客户端就无法启动。副本每 5 分钟重试一次，服务器一响应就会自行启动。你无需做任何修复。"
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "这个副本启动时没有下载到 ProxyRack 的客户端，因为无法连接 ProxyRack 的更新服务器，所以副本在运行，但没有任何收益。CashPilot 每 6 小时重启一次副本以便重试。请重新部署它，让它使用 CashPilot 自己的启动方式，这种方式会保留客户端，并每 5 分钟自行重试。"
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "登录 ProxyRack，打开 Devices，选择 Add device 并粘贴此 UUID。设备加入你的账户之前，它不会为任何人产生收益。如果你填写了 API 密钥，容器会自行注册：请确认设备已出现在列表中。"
   source: "54c4041903b5"

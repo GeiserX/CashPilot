@@ -7,6 +7,7 @@ shows English whenever a translation is missing, empty or stale.
 
 import importlib.util
 import pathlib
+import re
 
 import pytest
 
@@ -155,3 +156,22 @@ def test_every_locale_translates_every_catalog_string(capsys):
     files = sorted((catalog.SERVICES_DIR / "_i18n").glob("*.yml"))
     code = i18n_check.main([str(catalog.SERVICES_DIR / "_i18n" / "en.yml"), *map(str, files)])
     assert code == 0, capsys.readouterr().out[-4000:]
+
+
+# Locales that write the decimal mark as a comma, so "1,000" reads as one.
+COMMA_DECIMAL = ("es", "pt-BR", "fr", "de", "it", "nl", "pl", "ru", "uk", "tr", "id", "vi")
+# 1,000 or 12,500 or 300,000: thousands grouped with a comma, not part of an
+# address list such as 127.0.0.1,172.18.0.1.
+ENGLISH_THOUSANDS = re.compile(r"(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d.,]*\d)")
+
+
+@pytest.mark.parametrize("locale", COMMA_DECIMAL)
+def test_numbers_use_the_locales_thousands_separator(locale):
+    entries, _ = i18n_check.load(catalog.SERVICES_DIR / "_i18n" / f"{locale}.yml", "catalog", False)
+    wrong = {key: ENGLISH_THOUSANDS.findall(text) for key, text in entries.items() if isinstance(text, str)}
+    assert not {k: v for k, v in wrong.items() if v}, f"{locale}: write 1000 or 12.500 or 12 500, never 12,500"
+
+
+def test_the_thousands_check_finds_a_comma_and_skips_an_address_list():
+    assert ENGLISH_THOUSANDS.findall("desde $1,000 y 12,500 FLUX") == ["1,000", "12,500"]
+    assert ENGLISH_THOUSANDS.findall("127.0.0.1,172.18.0.1 y 1.000 y 0,5") == []

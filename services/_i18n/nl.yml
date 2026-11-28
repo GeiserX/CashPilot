@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "Ingesteld als ContactInfo in anonrc, met het voorvoegsel '@anon:0x...'."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "Relay-fingerprints, gescheiden door komma's. Deze staat niet in een webdashboard: voer <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> uit op de host waarop de relay draait.\n"
-  source: "9b5c068c9636"
+  text: "Relay-fingerprints, gescheiden door komma's. Geen online dashboard toont ze. Voor de relay die CashPilot draait: voer <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> uit op de host waarop hij draait. Voor een hardware-relay: open het Relay Control Panel op <b>http://relayup.local</b> en lees Fingerprint af op de pagina Home.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"
@@ -173,7 +173,7 @@ bytebenefit.referral.bonus.referrer:
   text: "20% van de inkomsten uit verkeer van doorverwezen gebruikers"
   source: "096a1e669ce2"
 bytebenefit.referral.bonus.referee:
-  text: "Welkomstbonus van $1 (10,000 Coins)"
+  text: "Welkomstbonus van $1 (10.000 Coins)"
   source: "e51d68265bf4"
 bytebenefit.rating.cons.0.text:
   text: "Volgens de Google Play-pagina van de app bedient je verkeer web-intelligence-verzoeken van klanten van Infatica, zonder te zeggen wie dat zijn of hoe ze worden gecontroleerd."
@@ -434,7 +434,7 @@ earnfm.payment.frequency:
   text: "Op aanvraag"
   source: "be820103712e"
 earnfm.cashout.notes:
-  text: "Minimum $15. Methoden: USDT op BEP20 of Polygon ($1 kosten) of TRC20 ($3 kosten), PayPal, cadeaukaarten van Amazon of Starbucks vanaf $15, of een bankoverschrijving vanaf $1,000 waarbij de overboekingskosten worden ingehouden. Vóór de eerste uitbetaling vul je een factuurprofiel in (wettelijke naam en adres), dat wordt gebruikt voor de uitbetalingsbewijzen."
+  text: "Minimum $15. Methoden: USDT op BEP20 of Polygon ($1 kosten) of TRC20 ($3 kosten), PayPal, cadeaukaarten van Amazon of Starbucks vanaf $15, of een bankoverschrijving vanaf $1.000 waarbij de overboekingskosten worden ingehouden. Vóór de eerste uitbetaling vul je een factuurprofiel in (wettelijke naam en adres), dat wordt gebruikt voor de uitbetalingsbewijzen."
   source: "3df5624c8702"
 earnfm.payout.notes:
   text: "Het saldo wordt door Earn.fm aangehouden; opgenomen op aanvraag."
@@ -449,7 +449,7 @@ earnfm.referral.bonus.referee:
   text: "$5 startsaldo"
   source: "fb8d2b82e1e7"
 earnfm.rating.cons.0.text:
-  text: "Een minimum van $15, $1 tot $3 kosten bij USDT, en een bankoverschrijving pas vanaf $1,000."
+  text: "Een minimum van $15, $1 tot $3 kosten bij USDT, en een bankoverschrijving pas vanaf $1.000."
   source: "1e1a5493f40f"
 earnfm.rating.cons.1.text:
   text: "Vóór de eerste uitbetaling vul je een factuurprofiel in met je wettelijke naam en adres."
@@ -491,13 +491,13 @@ ebesucher.rating.pros.2.text:
   text: "Het impressum noemt de exploitant, TurboAd GmbH, ingeschreven in Berlin-Charlottenburg (HRB 160730 B)."
   source: "84cbddd4330b"
 flux.description:
-  text: "Flux is een wereldwijd gespreide rekeninfrastructuur. Node-operators staken FLUX-tokens en leveren serverresources. Drie niveaus: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Officiële Docker-images beschikbaar.\n"
+  text: "Flux is een wereldwijd gespreide rekeninfrastructuur. Node-operators staken FLUX-tokens en leveren serverresources. Drie niveaus: Cumulus (1.000 FLUX), Nimbus (12.500 FLUX), Stratus (40.000 FLUX). Officiële Docker-images beschikbaar.\n"
   source: "02dfc13a22fc"
 flux.short_description:
   text: "Gedecentraliseerde rekenkracht - vereist een inzet van FLUX-tokens"
   source: "ba2bca8449db"
 flux.earnings.notes:
-  text: "Vereist een inzet van 1,000+ FLUX (~$50-500, afhankelijk van de koers). Hogere niveaus vereisen meer onderpand, maar verdienen meer."
+  text: "Vereist een inzet van 1.000+ FLUX (~$50-500, afhankelijk van de koers). Hogere niveaus vereisen meer onderpand, maar verdienen meer."
   source: "a8f6679daf85"
 flux.payment.frequency:
   text: "Blokbeloningen"
@@ -512,7 +512,7 @@ flux.requirements.min_storage:
   text: "220GB"
   source: "fd0df44a57f5"
 flux.rating.cons.0.text:
-  text: "Het kleinste node-niveau vereist 1,000 FLUX die als onderpand worden vastgezet."
+  text: "Het kleinste node-niveau vereist 1.000 FLUX die als onderpand worden vastgezet."
   source: "a69f2d39e25d"
 flux.rating.cons.1.text:
   text: "De blokbeloning daalt elk jaar met 10%, en volgens een handleiding uit 2026 zijn de beloningen op het kleine niveau in dollars gemeten zwak."
@@ -632,7 +632,7 @@ helium.payout.notes:
   text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
   source: "8d61a71de590"
 helium.rating.cons.0.text:
-  text: "HIP 149 heeft de Proof-of-Coverage-beloningen op 6 juli 2026 stopgezet; IoT-hotspots verdienen nu alleen nog voor data die ze doorgeven, en meer dan 114,000 ervan gaven helemaal niets door."
+  text: "HIP 149 heeft de Proof-of-Coverage-beloningen op 6 juli 2026 stopgezet; IoT-hotspots verdienen nu alleen nog voor data die ze doorgeven, en meer dan 114.000 ervan gaven helemaal niets door."
   source: "e05c0111696f"
 helium.rating.cons.1.text:
   text: "Het beloningsmodel van Helium is meerdere keren per stemming gewijzigd, de CEO is afgetreden en HNT is ongeveer 96% gedaald."
@@ -713,7 +713,7 @@ honeygain.payment.frequency:
   text: "Op aanvraag"
   source: "be820103712e"
 honeygain.cashout.notes:
-  text: "Minimum $20 (20,000 credits). Twee opties: PayPal via Tipalti, met ongeveer 15% kosten, of JumpTask-credits zonder kosten, uitbetaald in een JumpTask-wallet. Voor een aanvraag is een 6-cijferige code nodig die per e-mail wordt verstuurd. De eerste PayPal-uitbetaling blijft op \"waiting for details\" staan totdat je je bij Tipalti registreert via de link die ze je mailen. Die link werkt maar één keer, dus open hem wanneer je alles in één keer kunt afronden en je telefoon bij de hand hebt: nadat je een wachtwoord hebt ingesteld, laat Tipalti je een mobiel nummer per sms bevestigen (de codes verlopen binnen enkele minuten), en daarna vraagt het om je naam, adres, land en geboortedatum, en je PayPal-adres. Tipalti rekent $2.02 per betaling; kies USD om de valutaomrekeningskosten van 1.9-3% te vermijden. De betaling volgt binnen 2 werkdagen. Het saldo verdwijnt van je account zodra je de aanvraag doet, ook terwijl de uitbetaling op Tipalti wacht. Bij elke volgende Tipalti-login wordt een nieuwe sms-code verstuurd, tenzij je de optie aanvinkt om het apparaat 30 dagen te onthouden. In oktober 2026 vroeg Tipalti een ontvanger in Spanje niet om een belastingformulier."
+  text: "Minimum $20 (20.000 credits). Twee opties: PayPal via Tipalti, met ongeveer 15% kosten, of JumpTask-credits zonder kosten, uitbetaald in een JumpTask-wallet. Voor een aanvraag is een 6-cijferige code nodig die per e-mail wordt verstuurd. De eerste PayPal-uitbetaling blijft op \"waiting for details\" staan totdat je je bij Tipalti registreert via de link die ze je mailen. Die link werkt maar één keer, dus open hem wanneer je alles in één keer kunt afronden en je telefoon bij de hand hebt: nadat je een wachtwoord hebt ingesteld, laat Tipalti je een mobiel nummer per sms bevestigen (de codes verlopen binnen enkele minuten), en daarna vraagt het om je naam, adres, land en geboortedatum, en je PayPal-adres. Tipalti rekent $2.02 per betaling; kies USD om de valutaomrekeningskosten van 1.9-3% te vermijden. De betaling volgt binnen 2 werkdagen. Het saldo verdwijnt van je account zodra je de aanvraag doet, ook terwijl de uitbetaling op Tipalti wacht. Bij elke volgende Tipalti-login wordt een nieuwe sms-code verstuurd, tenzij je de optie aanvinkt om het apparaat 30 dagen te onthouden. In oktober 2026 vroeg Tipalti een ontvanger in Spanje niet om een belastingformulier."
   source: "553463d96535"
 honeygain.payout.notes:
   text: "Het saldo wordt door Honeygain aangehouden; opgenomen op aanvraag."
@@ -1070,7 +1070,7 @@ nodepay.payout.notes:
   text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
   source: "8d61a71de590"
 nodepay.rating.cons.0.text:
-  text: "Bij de evaluatie van het eerste seizoen verwijderde Nodepay meer dan 300,000 accounts die het als bots beschouwde en schrapte het 17 miljard punten."
+  text: "Bij de evaluatie van het eerste seizoen verwijderde Nodepay meer dan 300.000 accounts die het als bots beschouwde en schrapte het 17 miljard punten."
   source: "d97fddce3502"
 nodepay.rating.cons.1.text:
   text: "Beloningen zijn punten die in de NC-token worden omgezet, dus hun waarde hangt af van de token."
@@ -1148,8 +1148,8 @@ nodle.cashout.notes:
   text: "NODL staat in de eigen wallet van de app op ZKsync Era; controleer het in de app of in een blockexplorer voor ZKsync Era. Nodle heeft zijn Polkadot-parachain verlaten en de bridge van Polkadot naar ZKsync is op 31 december 2025 gesloten, dus NODL die nog aan de Polkadot-kant staat, kan niet meer naar ZKsync."
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "Nog niet vastgesteld: CashPilot heeft nog niet nagekeken waar deze dienst je inkomsten bewaart."
-  source: "8d61a71de590"
+  text: "Je NODL staat in de eigen wallet van de Nodle-app op ZKsync Era. CashPilot kan het adres van die wallet niet zien."
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "Een NODL-beloning voor elke nieuwe actieve gebruiker die via de uitnodiging meedoet (Nodle publiceert het bedrag niet)"
   source: "03308fe33661"
@@ -1508,8 +1508,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "Herkenbare naam voor het apparaat in het dashboard"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "De client van Proxyrack is niet gedownload toen de container startte, dus de container draait wel, maar verdient niets. Bij een herstart wordt hij opnieuw gedownload; blijft dit na een herstart, controleer dan of deze machine het internet kan bereiken."
-  source: "b5143d72ce35"
+  text: "De client van ProxyRack kan niet draaien op deze kopie, dus die verdient niets. Meestal antwoordt de updateserver van ProxyRack niet, en zonder die server kan de client niet starten. De kopie probeert het elke 5 minuten opnieuw en start vanzelf zodra de server antwoordt. Je hoeft niets te herstellen."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "De client van ProxyRack is niet gedownload toen deze kopie startte, omdat de updateserver van ProxyRack niet bereikbaar was. De kopie draait dus, maar verdient niets. CashPilot herstart haar elke 6 uur om het opnieuw te proberen. Rol haar opnieuw uit om haar de eigen start van CashPilot te geven, die de client bewaart en het elke 5 minuten vanzelf opnieuw probeert."
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "Log in bij ProxyRack, open Devices, kies Add device en plak deze UUID. Zolang het apparaat niet op je account staat, verdient het voor niemand. Als je een API-sleutel hebt ingevuld, registreert de container zichzelf: controleer of het apparaat daar in de lijst staat."
   source: "54c4041903b5"
@@ -2168,7 +2171,7 @@ traffmonetizer.payment.frequency:
   text: "Op aanvraag"
   source: "be820103712e"
 traffmonetizer.cashout.notes:
-  text: "Minimum $10. PayPal wordt niet meer aangeboden. Sla eerst één uitbetalingsmethode op in je profiel: USDT op Solana of TON (laagste kosten), Arbitrum (lage kosten) of Tron TRC20 (hoge netwerkkosten), of een bankoverschrijving vanaf $1,000. Het eerste adres dat je opslaat, geldt meteen; het later wijzigen vereist een bevestiging per e-mail. Het dashboard kan vóór de eerste opname om een contact via een messenger vragen (WhatsApp, Telegram of Skype). Een aanvraag betaalt hele dollars uit en de centen blijven in het saldo staan."
+  text: "Minimum $10. PayPal wordt niet meer aangeboden. Sla eerst één uitbetalingsmethode op in je profiel: USDT op Solana of TON (laagste kosten), Arbitrum (lage kosten) of Tron TRC20 (hoge netwerkkosten), of een bankoverschrijving vanaf $1.000. Het eerste adres dat je opslaat, geldt meteen; het later wijzigen vereist een bevestiging per e-mail. Het dashboard kan vóór de eerste opname om een contact via een messenger vragen (WhatsApp, Telegram of Skype). Een aanvraag betaalt hele dollars uit en de centen blijven in het saldo staan."
   source: "0bf13220a706"
 traffmonetizer.payout.notes:
   text: "USDT op de chain die in de uitbetalingsinstellingen van het profiel is opgeslagen (Solana, TON, Arbitrum of Tron), of een bankoverschrijving. Het adres staat in de instellingen van Traffmonetizer, niet in de container."
@@ -2189,7 +2192,7 @@ traffmonetizer.rating.cons.1.text:
   text: "Dezelfde reviewers melden dat support via livechat en e-mail niet reageert, soms wekenlang."
   source: "514323fc7b1f"
 traffmonetizer.rating.cons.2.text:
-  text: "Alleen crypto of een bankoverschrijving vanaf $1,000; PayPal is verdwenen, en een aanvraag betaalt alleen hele dollars uit."
+  text: "Alleen crypto of een bankoverschrijving vanaf $1.000; PayPal is verdwenen, en een aanvraag betaalt alleen hele dollars uit."
   source: "ad8194944e13"
 traffmonetizer.rating.cons.3.text:
   text: "De voorwaarden van Traffmonetizer vereisen een residentieel IP-adres, dus een server op een hostingverbinding valt erbuiten."

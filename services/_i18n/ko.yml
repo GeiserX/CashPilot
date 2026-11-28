@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "anonrc의 ContactInfo에 '@anon:0x...' 접두사를 붙여 설정합니다."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "쉼표로 구분한 릴레이 핑거프린트입니다. 이 값은 웹 대시보드에 없습니다. 릴레이를 실행하는 호스트에서 <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b>를 실행하십시오.\n"
-  source: "9b5c068c9636"
+  text: "쉼표로 구분한 릴레이 핑거프린트입니다. 온라인 대시보드에는 표시되지 않습니다. CashPilot이 실행하는 릴레이는 그 릴레이를 실행하는 호스트에서 <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b>를 실행하십시오. 하드웨어 릴레이는 <b>http://relayup.local</b>에서 Relay Control Panel을 열고 Home 페이지의 Fingerprint를 확인하십시오.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"
@@ -1148,8 +1148,8 @@ nodle.cashout.notes:
   text: "NODL은 ZKsync Era에 있는 앱 자체 지갑에 보관됩니다. 앱이나 ZKsync Era 블록 탐색기에서 확인하십시오. Nodle은 Polkadot 파라체인을 떠났고 Polkadot-ZKsync 브리지는 2025년 12월 31일에 닫혔으므로, 아직 Polkadot 쪽에 있는 NODL은 더 이상 ZKsync로 옮길 수 없습니다."
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "아직 정해지지 않았습니다. CashPilot이 이 서비스가 수익을 어디에 보관하는지 아직 확인하지 않았습니다."
-  source: "8d61a71de590"
+  text: "NODL은 ZKsync Era에 있는 Nodle 앱 자체 지갑에 보관됩니다. CashPilot은 그 지갑의 주소를 볼 수 없습니다."
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "초대로 가입한 새 활성 사용자 한 명당 NODL 보상(Nodle은 금액을 공개하지 않음)"
   source: "03308fe33661"
@@ -1508,8 +1508,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "대시보드에 표시할 기기의 알아보기 쉬운 이름"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "컨테이너가 시작될 때 Proxyrack 클라이언트가 다운로드되지 않아, 컨테이너는 실행되지만 아무것도 벌지 못합니다. 재시작하면 다시 다운로드합니다. 재시작 후에도 계속되면 이 머신이 인터넷에 연결되는지 확인하십시오."
-  source: "b5143d72ce35"
+  text: "ProxyRack 클라이언트가 이 사본에서 실행되지 않아 수익이 없습니다. 보통은 ProxyRack의 업데이트 서버가 응답하지 않는 것이 원인이며, 클라이언트는 이 서버 없이 시작할 수 없습니다. 사본은 5분마다 다시 시도하고 서버가 응답하면 바로 스스로 시작합니다. 직접 고칠 것은 없습니다."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "이 사본이 시작될 때 ProxyRack의 업데이트 서버에 연결할 수 없어 ProxyRack 클라이언트가 다운로드되지 않았습니다. 그래서 사본은 실행 중이지만 수익이 없습니다. CashPilot은 다시 시도하기 위해 6시간마다 사본을 재시작합니다. 사본을 재배포하면 CashPilot 자체 시작 방식을 쓰게 되며, 이 방식은 클라이언트를 유지하고 5분마다 스스로 다시 시도합니다."
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "ProxyRack에 로그인하고 Devices를 연 다음 Add device를 선택하고 이 UUID를 붙여 넣으십시오. 기기가 계정에 추가되기 전까지는 누구를 위해서도 벌지 못합니다. API 키를 입력했다면 컨테이너가 스스로 등록합니다: 기기가 거기에 표시되는지 확인하십시오."
   source: "54c4041903b5"

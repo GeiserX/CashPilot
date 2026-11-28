@@ -207,9 +207,25 @@ def test_a_server_message_is_a_sentence_and_never_a_code():
     assert not codes, f"these server messages look like codes: {codes}"
 
 
+def _outside_plurals(parts) -> str:
+    """The literal text of a parsed message that no plural form holds."""
+    text = ""
+    for part in parts:
+        if isinstance(part, str):
+            text += part
+        elif part[0] == "select":
+            text += "".join(_outside_plurals(option) for option in part[2].values())
+    return text
+
+
 def test_a_count_is_a_plural_and_never_an_s_in_parentheses():
-    """ "{n} service(s)" reads wrong in English and cannot be translated: a count takes a plural."""
-    found = sorted(k for k, v in EN.items() if re.search(r"\w\((?:s|es)\)", v))
+    """ "{n} service(s)" cannot be translated: a count takes a plural, where each language writes its forms.
+
+    Inside a plural form the English may keep "(s)" when a test pins that wording.
+    """
+    from app import i18n
+
+    found = sorted(k for k, v in EN.items() if re.search(r"\w\((?:s|es)\)", _outside_plurals(i18n.parse(v))))
     assert not found, f"use {{n, plural, one {{...}} other {{...}}}} instead of (s): {found}"
 
 
@@ -222,3 +238,38 @@ def test_the_page_holds_an_unconfirmed_id_as_long_as_the_server():
     )
     assert found, "app.js no longer defines PENDING_IDENTITY_HOURS"
     assert int(found.group(1)) * 3600 == database.PENDING_IDENTITY_SECONDS
+
+
+def _shows_count(parts, name) -> bool:
+    for part in parts:
+        if isinstance(part, str):
+            continue
+        if part[0] == "#" or part == ("arg", name):
+            return True
+        if part[0] == "select" and part[2] and all(_shows_count(o, name) for o in part[2].values()):
+            return True
+    return False
+
+
+def _silent_ones(parts, found):
+    for part in parts:
+        if isinstance(part, str) or part[0] in ("#", "arg"):
+            continue
+        kind, name, options = part
+        if kind == "plural" and "one" in options and not _shows_count(options["one"], name):
+            found.append(name)
+        for sub in options.values():
+            _silent_ones(sub, found)
+    return found
+
+
+def test_a_plural_that_hides_its_number_names_exactly_one_with_eq_1():
+    """ "one" also covers 21 in Russian and 0 in French: a form that says "it" or "that box" names exactly one with =1."""
+    from app import i18n
+
+    found = sorted(k for k, v in EN.items() if _silent_ones(i18n.parse(v), []))
+    assert not found, f"use =1, or show the number with #, in the one form of: {found}"
+    assert _silent_ones(i18n.parse("{n, plural, one {it} other {them}}"), []) == ["n"]
+    assert _silent_ones(i18n.parse("{n, plural, =1 {it} other {them}}"), []) == []
+    # =1 takes exactly one, but 21 still picks "one" in Russian.
+    assert _silent_ones(i18n.parse("{n, plural, =1 {it} one {that box} other {# boxes}}"), []) == ["n"]

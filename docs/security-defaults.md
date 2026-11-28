@@ -88,7 +88,9 @@ Your credentials are only as recoverable as `/data/.fernet_key`. Lose it and you
 docker exec cashpilot-ui cat /data/.fernet_key
 ```
 
-Restoring onto a fresh volume: pass the saved value as `CASHPILOT_ENCRYPTION_KEY`. An existing key file always wins over the environment variable, so setting it on a running instance is safe and changes nothing.
+Restoring onto a fresh volume: pass the saved value as `CASHPILOT_ENCRYPTION_KEY`. An existing key file always wins over the environment variable, so setting it on a running instance is safe and changes nothing. A key that decrypts none of the stored credentials stops the start.
+
+The key file sits in the same volume as the database, so a copy of `/data` decrypts everything. To keep the key outside it (a Docker secret, Infisical, Vault, 1Password, Bitwarden), see [Encryption key outside the data folder](encryption-key.md). To keep earner passwords out of `docker inspect`, see [Earner credentials outside Docker](earner-secrets.md).
 
 Note this is a **different key** from `CASHPILOT_SECRET_KEY`, which only signs login sessions.
 
