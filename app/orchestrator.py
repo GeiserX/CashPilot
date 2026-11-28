@@ -1059,7 +1059,9 @@ def container_runtime(
     """
     facts = layers.daemon_runtimes(fresh=True) if choice else None
     if choice and choice not in layers.CHOICES:
-        raise ContainerRuntimeError(f"{choice!r} is not a runtime choice; use one of {', '.join(layers.CHOICES)}.", 400)
+        raise ContainerRuntimeError(
+            t("err.layers.not_a_choice", choice=repr(choice), choices=", ".join(layers.CHOICES)), 400
+        )
     if required := catalog_runtime(slug):
         # The service's own catalog entry names the one runtime it works under
         # (Mysterium: runc, since gVisor has no iptables-nft or kernel WireGuard).
@@ -1094,7 +1096,7 @@ def container_runtime(
                 service=service_name(slug),
             )
         except layers.ChoiceRefused as exc:
-            raise ContainerRuntimeError(f"{exc} The running container was not touched.") from None
+            raise ContainerRuntimeError(t("err.layers.not_touched", reason=str(exc))) from None
     else:
         return None
     _check_choice(slug, choice, runtime, why + " Change or remove it to choose here.", facts)
@@ -1198,23 +1200,27 @@ def _release_slug(registry: dict[str, int], slug: str) -> None:
             del registry[slug]
 
 
-def _claim_slug(registry: dict[str, int], slug: str, what: str) -> None:
+def _claim_slug(registry: dict[str, int], slug: str, action: str) -> None:
     """Count one more call in ``registry`` for ``slug``, or raise 409 while a restore or a removal of it runs."""
     with _SLUG_WORK_LOCK:
         if slug in _restoring:
-            raise ContainerRuntimeError(t("err.orchestrator.restore_running_box_try_again", slug=slug, what=what), 409)
+            raise ContainerRuntimeError(
+                t("err.orchestrator.restore_running_box_try_again", slug=slug, action=action), 409
+            )
         if _removing.get(slug):
-            raise ContainerRuntimeError(t("err.orchestrator.removal_running_box_try_again", slug=slug, what=what), 409)
+            raise ContainerRuntimeError(
+                t("err.orchestrator.removal_running_box_try_again", slug=slug, action=action), 409
+            )
         registry[slug] = registry.get(slug, 0) + 1
 
 
-def _holds_slug(what: str) -> Any:
+def _holds_slug(action: str) -> Any:
     """Start, restart and export hold their slug from their check to their last Docker action."""
 
     def decorate(fn: Any) -> Any:
         @functools.wraps(fn)
         def wrapper(slug: str, *args: Any, **kwargs: Any) -> Any:
-            _claim_slug(_operating, slug, f"it was not {what}")
+            _claim_slug(_operating, slug, action)
             try:
                 return fn(slug, *args, **kwargs)
             finally:
@@ -1229,14 +1235,14 @@ def _holds_gated_lock(fn: Any) -> Any:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         slug = str(kwargs.get("slug", args[0] if args else ""))
-        _claim_slug(_deploying, slug, "nothing was deployed")
+        _claim_slug(_deploying, slug, "deploy")
         try:
             if kwargs.get("start", True):
                 # A restore that did not finish left a half-written volume, which
                 # this deploy would keep and start; _restoring is empty after a
                 # worker restart, so only its record on disk tells. Checked once
                 # this deploy holds the slug, so no restore ends half-way between.
-                _refuse_mid_restore(slug, "deployed")
+                _refuse_mid_restore(slug, "deploy")
             if not fence_gated(slug):
                 return fn(*args, **kwargs)
             with GATED_DEPLOY_LOCK:
@@ -2371,10 +2377,10 @@ def _require_route(container: Any, slug: str) -> None:
     route_gate.check(slug, _network_mode(container), _get_client())
 
 
-@_holds_slug("started")
+@_holds_slug("start")
 def restart_service(slug: str, instance: int = 1) -> None:
     """Restart the container for a service."""
-    _refuse_mid_restore(slug, "started")
+    _refuse_mid_restore(slug, "start")
     container = _find_container(slug, instance)
     _require_route(container, slug)
     if _gated_container(slug, container):
@@ -3195,7 +3201,7 @@ def _state_id_entry(container: Any, slug: str, client: Any) -> dict[str, str]:
     return {"state_id": found} if found else {}
 
 
-@_holds_slug("read for a backup")
+@_holds_slug("backup")
 def read_critical_state(slug: str) -> tuple[bytes, list[str], str | None]:
     """Read a service's irreplaceable state as a deterministic tar archive.
 
@@ -3219,7 +3225,7 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str], str | None]:
     targets = _critical_volume_targets(slug)
     if not targets:
         raise ValueError(t("err.orchestrator.declares_no_critical_volumes_there", slug=slug))
-    _refuse_mid_restore(slug, "read for a backup")
+    _refuse_mid_restore(slug, "backup")
 
     container = _find_container(slug)
     was_running = container.status == "running"
@@ -3614,7 +3620,7 @@ def unfinished_restores() -> list[str]:
     return sorted(slugs)
 
 
-def _refuse_mid_restore(slug: str, what: str) -> None:
+def _refuse_mid_restore(slug: str, action: str) -> None:
     """Raise unless ``slug`` may start: no restore of it runs, and none left a half-written volume.
 
     A fence-gated service is also held by its failed mark on disk; this covers
@@ -3625,17 +3631,17 @@ def _refuse_mid_restore(slug: str, what: str) -> None:
     with _SLUG_WORK_LOCK:
         running = slug in _restoring
     if running:
-        raise ContainerRuntimeError(t("err.orchestrator.restore_running_box_not_try", slug=slug, what=what), 409)
+        raise ContainerRuntimeError(t("err.orchestrator.restore_running_box_not_try", slug=slug, action=action), 409)
     try:
         marked = slug in restore_marks()
     except RestoreRecordUnreadable:
         raise ContainerRuntimeError(
-            t("err.orchestrator.worker_could_not_read_record", slug=slug, what=what),
+            t("err.orchestrator.worker_could_not_read_record", slug=slug, action=action),
             503,
         ) from None
     if marked or _restore_helper(slug) is not None:
         raise ContainerRuntimeError(
-            t("err.orchestrator.restore_did_not_finish_data", slug=slug, what=what),
+            t("err.orchestrator.restore_did_not_finish_data", slug=slug, action=action),
             409,
         )
 
@@ -4377,7 +4383,12 @@ def _remove_service(
             replaced = sorted(v for v in volume_names if nonce_on_record.get(v) and v not in owned)
             if replaced:
                 raise RestoreClearedError(
-                    t("err.orchestrator.volume_s_mounts_not_ones", replaced=", ".join(replaced), slug=slug),
+                    t(
+                        "err.orchestrator.volume_s_mounts_not_ones",
+                        replaced=", ".join(replaced),
+                        n=len(replaced),
+                        slug=slug,
+                    ),
                     409,
                 )
 
@@ -4572,10 +4583,10 @@ def _remove_service(
     }
 
 
-@_holds_slug("started")
+@_holds_slug("start")
 def start_service(slug: str, instance: int = 1) -> None:
     """Start a stopped container for a service."""
-    _refuse_mid_restore(slug, "started")
+    _refuse_mid_restore(slug, "start")
     container = _find_container(slug, instance)
     _require_route(container, slug)
     if _gated_container(slug, container):
@@ -4865,7 +4876,7 @@ def _published_from_container(attrs: dict[str, Any]) -> set[_Binding]:
 
 def _describe(bindings: set[_Binding]) -> str:
     if not bindings:
-        return "no host port"
+        return t("update.no_host_port")
     return ", ".join(
         f"{ip if ':' not in ip else f'[{ip}]'}:{pub or '(random)'}->{target}/{proto}"
         for ip, pub, target, proto in sorted(bindings)
@@ -4878,12 +4889,9 @@ def _port_drift(pairs: list[tuple[str, set[_Binding]]], cfg: dict[str, Any]) -> 
     for service, live in pairs:
         wanted = _published_from_config(cfg, service)
         if wanted is None:
-            lines.append(f"{service} is missing from your compose file as the update reads it")
+            lines.append(t("update.drift.missing", service=service))
         elif wanted != live:
-            lines.append(
-                f"{service} is published on {_describe(live)}, but your compose file as the "
-                f"update reads it would publish {_describe(wanted)}"
-            )
+            lines.append(t("update.drift.ports", service=service, live=_describe(live), wanted=_describe(wanted)))
     return lines
 
 
@@ -5071,7 +5079,7 @@ def _resolve_compose_config(
         err_text = (err or b"").decode("utf-8", "replace").strip()
         if code != 0:
             raise SelfUpdateUnavailable(
-                t("err.orchestrator.not_updating_docker_compose_rejected") + (err_text[-600:] or f"exit {code}")
+                t("err.orchestrator.not_updating_docker_compose_rejected", detail=err_text[-600:] or f"exit {code}")
             )
         try:
             out = _read_file_from_container(check, _PREFLIGHT_OUT)
@@ -5142,37 +5150,32 @@ def _proxy_compose_refusals(cfg: dict[str, Any], services: list[str]) -> list[st
             if isinstance(vol, dict) and vol.get("type") == "bind":
                 source = str(vol.get("source") or "")
                 if source.startswith("/") and not _within_proxy_roots(source, roots):
-                    why.append(f"the host folder {source}")
+                    why.append(t("update.asks.folder", source=source))
         for dev in svc.get("devices") or []:
             if _compose_device_path(dev) not in socket_policy.ALLOWED_DEVICES:
-                why.append(f"the device {_compose_device_path(dev)}")
+                why.append(t("update.asks.device", device=_compose_device_path(dev)))
         reservations = ((svc.get("deploy") or {}).get("resources") or {}).get("reservations") or {}
         if svc.get("gpus") or reservations.get("devices"):
-            why.append("a GPU request")
+            why.append(t("update.asks.gpu"))
         if svc.get("privileged"):
-            why.append("privileged mode")
+            why.append(t("update.asks.privileged"))
         extra_caps = sorted({str(c).upper().removeprefix("CAP_") for c in svc.get("cap_add") or []} - caps)
         if extra_caps:
-            why.append(f"the capabilities {', '.join(extra_caps)}")
-        for key, label in (
-            ("pid", "the PID"),
-            ("ipc", "the IPC"),
-            ("userns_mode", "the user"),
-            ("cgroup", "the cgroup"),
-        ):
+            why.append(t("update.asks.caps", caps=", ".join(extra_caps)))
+        for key in ("pid", "ipc", "userns_mode", "cgroup"):
             if str(svc.get(key) or "").startswith("host"):
-                why.append(f"{label} namespace of the host")
+                why.append(t("update.asks.namespace", namespace=key))
         security_opt = [str(o).replace("=", ":").replace(" ", "") for o in svc.get("security_opt") or []]
         if not any(o in ("no-new-privileges", "no-new-privileges:true") for o in security_opt):
-            why.append("no no-new-privileges")
+            why.append(t("update.asks.no_new_privileges"))
         for opt in security_opt:
             if opt in ("seccomp:unconfined", "apparmor:unconfined", "systempaths:unconfined"):
                 why.append(opt)
         runtime = svc.get("runtime")
         if runtime and runtime not in socket_policy.ALLOWED_RUNTIMES:
-            why.append(f"the {runtime} runtime")
+            why.append(t("update.asks.runtime", runtime=runtime))
         if why:
-            found.append(f"{name}, which asks for {', '.join(why)}")
+            found.append(t("update.asks", name=name, why=", ".join(why)))
     return found
 
 
@@ -5325,26 +5328,27 @@ def spawn_self_update() -> dict[str, Any]:
         refused = _proxy_compose_refusals(cfg, services)
         if refused:
             raise SelfUpdateUnavailable(
-                t("err.orchestrator.not_updating_docker_socket_proxy")
-                + "; ".join(refused)
-                + ". Compose would stop halfway. A host folder can be allowed by adding it to "
-                f"{BIND_MOUNTS_ENV} in the .env next to your compose file; anything else has to go from the "
-                f"CashPilot services in that file, or update by hand: {_MANUAL_UPDATE}"
+                t(
+                    "err.orchestrator.not_updating_docker_socket_proxy",
+                    refused="; ".join(refused),
+                    env=BIND_MOUNTS_ENV,
+                    manual=_MANUAL_UPDATE,
+                )
             )
     drift = _port_drift(live, cfg)
     if drift:
-        source = (
-            "the env file" + ("s " if len(env_files) > 1 else " ") + ", ".join(env_files) + " you started it with"
-            if env_files
-            else "the .env file next to your compose file"
-        )
+        if env_files:
+            raise SelfUpdateUnavailable(
+                t(
+                    "err.orchestrator.not_updating_drift_env_files",
+                    drift="; ".join(drift),
+                    n=len(env_files),
+                    files=", ".join(env_files),
+                    manual=_MANUAL_UPDATE,
+                )
+            )
         raise SelfUpdateUnavailable(
-            t("err.orchestrator.not_updating")
-            + "; ".join(drift)
-            + ". This happens when a port or address was set on the command line "
-            "(for example CASHPILOT_UI_PORT=8088 docker compose up -d). The update "
-            f"cannot see your shell, only {source}. "
-            "Put the values there, or update by hand: " + _MANUAL_UPDATE
+            t("err.orchestrator.not_updating_drift", drift="; ".join(drift), manual=_MANUAL_UPDATE)
         )
 
     if proxied():

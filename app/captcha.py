@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from app.i18n import t
+from app.i18n import join_and, t
 
 logger = logging.getLogger(__name__)
 
@@ -133,9 +133,8 @@ def load_config() -> Config | None:
             t(
                 "err.captcha.cashpilot_captcha_provider_but_not",
                 name=name,
-                missing=" and ".join(missing),
-                value="is" if len(missing) == 1 else "are",
-                value2="it" if len(missing) == 1 else "them",
+                missing=join_and(missing),
+                n=len(missing),
             )
         )
     return Config(provider=provider, site_key=site_key, secret_key=secret_key)

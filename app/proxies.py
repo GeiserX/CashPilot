@@ -21,7 +21,7 @@ from typing import Any
 
 from app import egress, gpu
 from app.constants import PROXIED_FORBIDDEN_CAPS
-from app.i18n import t
+from app.i18n import join_and, t
 
 KINDS = ("socks5", "http", "tailscale")
 SECRET_FIELDS = ("username", "password", "auth_key")
@@ -159,7 +159,12 @@ def _target(definition: dict[str, Any]) -> tuple[str, str, int, str]:
     return ("net", str(definition.get("host") or "").lower(), port, "")
 
 
-_SECRET_LABELS = {"username": "user", "password": "password", "auth_key": "auth key"}
+def _secret_label(field: str) -> str:
+    if field == "username":
+        return t("proxies.secret.user")
+    if field == "password":
+        return t("proxies.secret.password")
+    return t("proxies.secret.auth_key")
 
 
 def _refuse_retargeted_secret(existing: dict[str, Any], out: dict[str, Any], kept: list[str]) -> None:
@@ -168,10 +173,10 @@ def _refuse_retargeted_secret(existing: dict[str, Any], out: dict[str, Any], kep
     carried = [f for f in kept if out.get(f)]
     if not carried or _target(existing) == _target(out):
         return
-    what = " and ".join(_SECRET_LABELS[f] for f in carried)
-    where = "login server" if out["kind"] == "tailscale" else "host or port"
-    clear = "" if out["kind"] == "tailscale" else ", or tick Remove to save without it"
-    raise ProxyInputError(t("err.proxies.changed_type_again_cashpilot_never", where=where, what=what, clear=clear))
+    what = join_and([_secret_label(f) for f in carried])
+    if out["kind"] == "tailscale":
+        raise ProxyInputError(t("err.proxies.login_server_changed_type_again", what=what))
+    raise ProxyInputError(t("err.proxies.host_changed_type_again", what=what))
 
 
 def public_view(proxy: dict[str, Any], copies: list[dict[str, Any]] | None = None) -> dict[str, Any]:
