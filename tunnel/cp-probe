@@ -23,22 +23,25 @@ cap() {
 is_ip() {
     case "$1" in
     *:*:*)
-        # Hex groups of up to 4 between colons, at most one "::" and 8 groups
-        # (7 colons when nothing is compressed); ":::" and a lone edge colon are not.
+        # Hex groups of up to 4 between colons: 8 groups (7 colons), or at most
+        # 7 around one "::", which stands for one or more zero groups (RFC 4291
+        # 2.2), so "1:2:3:4:5:6:7::" is one. ":::" and a lone edge colon are not.
         case "$1" in *[!0-9a-fA-F:]* | *:::* | *::*::* | :[!:]* | *[!:]:) return 1 ;; esac
+        compressed=no
+        case "$1" in *::*) compressed=yes ;; esac
         colons=$(printf '%s' "$1" | tr -cd ':' | wc -c)
-        case "$1" in
-        *::*) [ "$colons" -le 7 ] || return 1 ;;
-        *) [ "$colons" -eq 7 ] || return 1 ;;
-        esac
+        if [ "$compressed" = no ] && [ "$colons" -ne 7 ]; then return 1; fi
         old_ifs=$IFS
         IFS=:
         # shellcheck disable=SC2086 # split on the colons
         set -- $1
         IFS=$old_ifs
+        groups=0
         for group in "$@"; do
             [ "${#group}" -le 4 ] || return 1
+            if [ -n "$group" ]; then groups=$((groups + 1)); fi
         done
+        if [ "$compressed" = yes ] && [ "$groups" -gt 7 ]; then return 1; fi
         ;;
     *.*.*.*)
         case "$1" in *[!0-9.]* | *..* | .* | *.) return 1 ;; esac

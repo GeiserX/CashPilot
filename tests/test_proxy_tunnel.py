@@ -1903,6 +1903,9 @@ class TestTheProbeNeverRunsPastTheWorkersWait:
             "1:2:3",
             "12345::1",
             "1:2:3:4:5:6:7:8:9",
+            "1:2:3:4:5:6:7:8::",
+            "::1:2:3:4:5:6:7:8",
+            "1:2:3:4::5:6:7:8",
         ],
     )
     def test_an_answer_that_is_no_address_gives_the_next_endpoint_its_turn(self, tmp_path, answer):
@@ -1921,7 +1924,19 @@ class TestTheProbeNeverRunsPastTheWorkersWait:
         assert '"ip":"203.0.113.7"' in proc.stdout
 
     @pytest.mark.parametrize(
-        "answer", ["203.0.113.7", "0.0.0.0", "2001:db8::7", "::1", "fe80::", "2001:db8:0:0:0:0:0:7", "::"]
+        "answer",
+        [
+            "203.0.113.7",
+            "0.0.0.0",
+            "2001:db8::7",
+            "::1",
+            "fe80::",
+            "2001:db8:0:0:0:0:0:7",
+            "::",
+            "1:2:3:4:5:6:7::",
+            "::2:3:4:5:6:7:8",
+            "1:2:3::5:6:7:8",
+        ],
     )
     def test_an_address_is_the_answer(self, tmp_path, answer):
         import subprocess
