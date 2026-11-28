@@ -52,6 +52,11 @@ curl -fsSLo cashpilot-vm https://raw.githubusercontent.com/GeiserX/CashPilot/<re
   && sudo bash cashpilot-vm install --ui http://<ui-host>:8080 --host-worker <name> --ref <release>
 ```
 
+With an `http://` UI address, the fleet key and then the worker's own key
+cross the network unencrypted to the UI. The worker refuses a public `http://`
+address and sends nothing to it. Use an `https://` address, or a private
+network you trust.
+
 It shows what it will do, asks once to continue, and asks for your fleet key
 (the `CASHPILOT_API_KEY` your workers use). The key is never on the command
 line, so it is not in your shell history. Then it:
@@ -136,10 +141,9 @@ when it wrote the fence, exactly.
   reads back as written: the rules it wrote and no other rule in any table.
 - When the host's addresses or your public IP change, the guard cuts the link,
   writes the new fence and reconnects. This takes well under a second.
-- The guard looks up your public IP every 2 minutes. If every lookup fails, it
-  keeps the last address for up to an hour. After that, and on an install where
-  no lookup ever worked, the guest stays cut off, because the fence cannot drop
-  an address it does not know.
+- The guard looks up your public IP every 2 minutes. If every lookup fails, the
+  guest stays cut off until one works. The address may have changed, and the
+  fence cannot drop an address it does not know.
 - `verify --prove-red` holds the guard off while the fence is open. If that run
   dies, the next guard pass finds it gone and puts the fence back.
 
