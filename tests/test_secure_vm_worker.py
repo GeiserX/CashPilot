@@ -89,20 +89,30 @@ class TestTheHeartbeatSaysItIsASecureVM:
         assert worker_api._secure_vm_info()["selftest"]["ok"] is False
 
 
+def _enrolled(monkeypatch, tmp_path, vm_of="nas"):
+    monkeypatch.setattr(worker_api, "SECURE_VM_OF", vm_of)
+    monkeypatch.setattr(worker_api, "SECURE_VM_ASK_DIR", tmp_path)
+    monkeypatch.setattr(worker_api, "API_KEY", "shared-key")
+    monkeypatch.setattr(worker_api, "_worker_key", "own-key")
+    monkeypatch.setattr(worker_api, "_key_pending", False)
+
+
+def _ask(token="own-key"):
+    return TestClient(worker_api.app, raise_server_exceptions=False).post(
+        "/api/secure-vm/selftest", headers={"Authorization": f"Bearer {token}"}
+    )
+
+
 class TestTheUICanAskForASelfTest:
     def test_it_leaves_a_request_for_the_host(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(worker_api, "SECURE_VM_OF", "nas")
-        monkeypatch.setattr(worker_api, "SECURE_VM_ASK_DIR", tmp_path)
-        monkeypatch.setattr(worker_api, "_verify_api_key", lambda request: None)
-        resp = TestClient(worker_api.app).post("/api/secure-vm/selftest")
+        _enrolled(monkeypatch, tmp_path)
+        resp = _ask()
         assert resp.status_code == 200
         assert (tmp_path / "selftest").exists()
 
     def test_not_on_a_worker_that_is_not_a_secure_vm(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(worker_api, "SECURE_VM_OF", "")
-        monkeypatch.setattr(worker_api, "SECURE_VM_ASK_DIR", tmp_path)
-        monkeypatch.setattr(worker_api, "_verify_api_key", lambda request: None)
-        resp = TestClient(worker_api.app).post("/api/secure-vm/selftest")
+        _enrolled(monkeypatch, tmp_path, vm_of="")
+        resp = _ask()
         assert resp.status_code == 404
         assert not (tmp_path / "selftest").exists()
 
@@ -114,6 +124,20 @@ class TestTheUICanAskForASelfTest:
             "/api/secure-vm/selftest", headers={"Authorization": "Bearer wrong"}
         )
         assert resp.status_code == 401
+        assert not (tmp_path / "selftest").exists()
+
+    def test_the_shared_key_cannot_ask_while_enrolment_is_pending(self, monkeypatch, tmp_path):
+        # _verify_api_key lets the shared key in until the UI confirms our own.
+        _enrolled(monkeypatch, tmp_path)
+        monkeypatch.setattr(worker_api, "_key_pending", True)
+        assert _ask("shared-key").status_code == 401
+        assert _ask("own-key").status_code == 401
+        assert not (tmp_path / "selftest").exists()
+
+    def test_a_worker_with_no_key_of_its_own_cannot_be_asked(self, monkeypatch, tmp_path):
+        _enrolled(monkeypatch, tmp_path)
+        monkeypatch.setattr(worker_api, "_worker_key", None)
+        assert _ask("shared-key").status_code == 401
         assert not (tmp_path / "selftest").exists()
 
 

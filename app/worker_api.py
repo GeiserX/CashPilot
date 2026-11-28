@@ -2743,6 +2743,12 @@ async def api_secure_vm_selftest(request: Request) -> dict[str, str]:
     heartbeat reports. The guard runs at most one self-test every 5 minutes.
     """
     _verify_api_key(request)
+    # The request reaches the host's guard, so only this worker's own, confirmed
+    # key may send it: never the shared fleet key, which opens the worker until
+    # it enrols.
+    auth = request.headers.get("Authorization", "").encode()
+    if not _worker_key or _key_pending or not hmac.compare_digest(auth, f"Bearer {_worker_key}".encode()):
+        raise HTTPException(status_code=401, detail="Only this worker's own key can ask for a self-test")
     if not SECURE_VM_OF:
         raise HTTPException(status_code=404, detail="This worker is not a Secure VM")
     try:
