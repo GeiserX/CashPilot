@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "ตั้งเป็น ContactInfo ใน anonrc โดยขึ้นต้นด้วย '@anon:0x...'"
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "ลายนิ้วมือ (fingerprint) ของรีเลย์ คั่นด้วยเครื่องหมายจุลภาค ค่านี้ไม่มีในแดชบอร์ดเว็บ ให้รัน <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> บนเครื่องที่เรียกใช้รีเลย์\n"
-  source: "9b5c068c9636"
+  text: "ลายนิ้วมือ (fingerprint) ของรีเลย์ คั่นด้วยเครื่องหมายจุลภาค ไม่มีแดชบอร์ดออนไลน์ใดแสดงค่านี้ สำหรับรีเลย์ที่ CashPilot เรียกใช้ ให้รัน <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> บนเครื่องที่เรียกใช้รีเลย์นั้น สำหรับรีเลย์แบบฮาร์ดแวร์ ให้เปิด Relay Control Panel ที่ <b>http://relayup.local</b> แล้วอ่านค่า Fingerprint ในหน้า Home\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"
@@ -1142,8 +1142,8 @@ nodle.cashout.notes:
   text: "NODL อยู่ในกระเป๋าเงินของแอปบน ZKsync Era ตรวจสอบได้ในแอปหรือใน block explorer ของ ZKsync Era Nodle ออกจาก parachain บน Polkadot แล้ว และบริดจ์จาก Polkadot ไป ZKsync ปิดเมื่อวันที่ 31 ธันวาคม 2025 NODL ที่ยังอยู่ฝั่ง Polkadot จึงย้ายไป ZKsync ไม่ได้อีกต่อไป"
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "ยังไม่ได้ระบุ: CashPilot ยังไม่ได้ตรวจสอบว่าบริการนี้เก็บรายได้ของคุณไว้ที่ใด"
-  source: "8d61a71de590"
+  text: "NODL อยู่ในกระเป๋าเงินของแอป Nodle เองบน ZKsync Era และ CashPilot มองไม่เห็นที่อยู่ของกระเป๋าเงินนั้น"
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "รางวัล NODL สำหรับผู้ใช้ใหม่ที่ใช้งานจริงแต่ละรายที่เข้าร่วมผ่านคำเชิญ (Nodle ไม่ได้เผยแพร่จำนวน)"
   source: "03308fe33661"
@@ -1502,8 +1502,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "ชื่อที่จำง่ายของอุปกรณ์ในแดชบอร์ด"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "ไคลเอนต์ของ Proxyrack ไม่ได้ดาวน์โหลดเมื่อคอนเทนเนอร์เริ่มทำงาน คอนเทนเนอร์จึงทำงานอยู่แต่ไม่มีรายได้ การรีสตาร์ทจะดาวน์โหลดใหม่ หากยังคงอยู่หลังรีสตาร์ท ให้ตรวจสอบว่าเครื่องนี้เข้าถึงอินเทอร์เน็ตได้"
-  source: "b5143d72ce35"
+  text: "ไคลเอนต์ของ ProxyRack ทำงานบนสำเนานี้ไม่ได้ จึงไม่มีรายได้ สาเหตุที่พบบ่อยคือเซิร์ฟเวอร์อัปเดตของ ProxyRack ไม่ตอบสนอง และไคลเอนต์เริ่มทำงานไม่ได้หากไม่มีเซิร์ฟเวอร์นั้น สำเนาจะลองใหม่ทุก 5 นาที และเริ่มทำงานเองทันทีที่เซิร์ฟเวอร์ตอบสนอง ไม่ต้องแก้ไขอะไร"
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "ไคลเอนต์ของ ProxyRack ไม่ได้ดาวน์โหลดตอนที่สำเนานี้เริ่มทำงาน เพราะติดต่อเซิร์ฟเวอร์อัปเดตของ ProxyRack ไม่ได้ สำเนาจึงทำงานอยู่แต่ไม่มีรายได้ CashPilot จะรีสตาร์ตสำเนานี้ทุก 6 ชั่วโมงเพื่อลองใหม่ ติดตั้งใช้งานใหม่เพื่อให้สำเนาได้การเริ่มทำงานแบบของ CashPilot เอง ซึ่งเก็บไคลเอนต์ไว้และลองใหม่เองทุก 5 นาที"
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "เข้าสู่ระบบ ProxyRack เปิด Devices เลือก Add device แล้ววาง UUID นี้ จนกว่าอุปกรณ์จะอยู่ในบัญชี อุปกรณ์จะไม่สร้างรายได้ให้ใครเลย หากใส่คีย์ API ไว้ คอนเทนเนอร์จะลงทะเบียนเอง ให้ตรวจสอบว่าอุปกรณ์ปรากฏอยู่ในรายการ"
   source: "54c4041903b5"

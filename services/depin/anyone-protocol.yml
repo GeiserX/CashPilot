@@ -92,9 +92,11 @@ collector:
   # command against the running container — was the one credential with no
   # guidance on screen.
   credential_hint: >
-    Comma-separated relay fingerprints. This one is not in a web dashboard:
-    run <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> on
-    the host running the relay.
+    Comma-separated relay fingerprints. No online dashboard shows them. For the
+    relay that CashPilot runs, run
+    <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b>
+    on the host running it. For a hardware relay, open its Relay Control Panel at
+    <b>http://relayup.local</b> and read Fingerprint on the Home page.
   notes: "Reads each fingerprint's cumulative reward from the relay-rewards contract's `rewards` view on hb.anyone.tech, in native ANYONE."
 
 # What this service does with the user's machine (CashPilot-66x).

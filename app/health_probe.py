@@ -63,6 +63,8 @@ import threading
 import time
 from typing import Any
 
+from app.i18n import t
+
 logger = logging.getLogger(__name__)
 
 #: Seconds one container's read may take before it is reported as unread.
@@ -194,7 +196,7 @@ def _recv(sock: Any, deadline: float) -> bytes:
     """One chunk from the exec socket, waiting no later than ``deadline``; b"" at its end."""
     left = deadline - time.monotonic()
     if left <= 0 or not select.select([sock], [], [], left)[0]:
-        raise TimeoutError("the exec stream stalled")
+        raise TimeoutError(t("err.health_probe.exec_stream_stalled"))
     if hasattr(sock, "recv"):
         return sock.recv(65536)
     return sock.read(65536) or b""

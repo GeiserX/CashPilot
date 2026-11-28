@@ -93,6 +93,7 @@ from app import (
     wallet_seed,
 )
 from app.collectors.base import REGISTER_PENDING
+from app.i18n import t
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url, plain_http_refusal
 
 logging.basicConfig(
@@ -146,10 +147,10 @@ def _spawn(coro) -> asyncio.Task:
     task = asyncio.create_task(coro)
     _background_tasks.add(task)
 
-    def _on_done(t: asyncio.Task) -> None:
-        _background_tasks.discard(t)
-        if not t.cancelled():
-            exc = t.exception()
+    def _on_done(task: asyncio.Task) -> None:
+        _background_tasks.discard(task)
+        if not task.cancelled():
+            exc = task.exception()
             if exc is not None:
                 logger.error("Background task failed: %s", exc, exc_info=exc)
 
@@ -425,10 +426,10 @@ async def _resolve_worker_id(worker_id: int | None) -> int:
     if len(online) == 1:
         return online[0]["id"]
     if len(online) == 0:
-        raise HTTPException(status_code=503, detail="No workers online that can receive commands")
+        raise HTTPException(status_code=503, detail=t("api.no_workers_online_can_receive"))
     raise HTTPException(
         status_code=400,
-        detail="worker_id is required (multiple workers online)",
+        detail=t("api.worker_id_required_multiple_workers"),
     )
 
 
@@ -3221,6 +3222,9 @@ async def lifespan(app: FastAPI):
     # cannot survive a restart. Continuing would encrypt every credential entered
     # during this run under a key that dies with the process.
     database.verify_encryption_key_persisted()
+    # And refuse a key that reads none of the credentials already stored: a
+    # restore without its key, or a secret file holding another install's key.
+    database.verify_encryption_key_matches()
     # A sign-in CAPTCHA the operator asked for but that cannot work refuses the
     # start the same way, rather than running with sign-in unprotected.
     captcha.check_startup()
@@ -3941,7 +3945,7 @@ async def api_drift_ignore(
     """
     svc = catalog.get_service(slug)
     if not svc:
-        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+        raise HTTPException(status_code=404, detail=t("api.service_not_found", slug=slug))
     async with _drift_ignore_lock:
         cfg = await database.get_config()
         ignored = _drift_ignored(cfg if isinstance(cfg, dict) else {})
@@ -4340,7 +4344,7 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     user = _require_auth_api(request)
     svc = catalog.get_service(slug) or await _custom_service(slug, reveal=False)
     if not svc:
-        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+        raise HTTPException(status_code=404, detail=t("api.service_not_found", slug=slug))
     if svc.get("custom") and not auth.require_role(user, "owner"):
         # Plain-text variables and the command are the owner's, as /api/config is.
         svc = custom_services.redacted(svc)
@@ -4469,7 +4473,7 @@ async def api_update_custom_service(
 ) -> dict[str, Any]:
     previous = await database.get_custom_service(slug) if custom_services.is_custom_slug(slug) else None
     if previous is None:
-        raise HTTPException(status_code=404, detail=f"Custom service '{slug}' not found")
+        raise HTTPException(status_code=404, detail=t("api.custom_service_not_found", slug=slug))
     try:
         definition, warnings = custom_services.validate(body.model_dump(), previous)
     except ValueError as exc:
@@ -4485,10 +4489,7 @@ async def api_update_custom_service(
             if int((recorded or {}).get("instances") or 1) > 1:
                 raise HTTPException(
                     status_code=409,
-                    detail=(
-                        f"{definition['name']} runs several copies on a box, and a service with a data path "
-                        "runs one per box. Scale it to one copy on every box first, then add the data path."
-                    ),
+                    detail=(t("api.runs_several_copies_box_service", name=definition["name"])),
                 )
     await database.save_custom_service(slug, definition)
     logger.info("Custom service %s updated (image %s)", slug, definition["image"])
@@ -4503,16 +4504,16 @@ async def api_delete_custom_service(
     """Delete a definition, refused while any box runs or records it, or a deploy of it is in flight."""
     # Before any await, so no deploy can start between this check and the delete.
     if _custom_deploying.get(slug):
-        raise HTTPException(status_code=409, detail=f"{slug} is being deployed right now. Try again when it is done.")
+        raise HTTPException(status_code=409, detail=t("api.being_deployed_right_now_try", slug=slug))
     _custom_deleting[slug] += 1
     try:
         if not custom_services.is_custom_slug(slug) or await database.get_custom_service(slug) is None:
-            raise HTTPException(status_code=404, detail=f"Custom service '{slug}' not found")
+            raise HTTPException(status_code=404, detail=t("api.custom_service_not_found", slug=slug))
         where = await _custom_deployed_on(slug)
         if where:
             raise HTTPException(
                 status_code=409,
-                detail=f"{slug} is still deployed on {', '.join(where)}. Remove it from every box first.",
+                detail=t("api.still_deployed_remove_every_box", slug=slug, where=", ".join(where)),
             )
         await database.delete_custom_service(slug)
     finally:
@@ -4600,13 +4601,13 @@ def _custom_image(requested: str | None, recorded: dict[str, Any] | None) -> str
         return kept if isinstance(kept, str) else ""
     image = requested.strip()
     if image and (len(image) > custom_services.IMAGE_MAX_LEN or not _IMAGE_REF.fullmatch(image)):
-        raise HTTPException(status_code=400, detail="Image is not a valid image reference (repository[:tag][@digest])")
+        raise HTTPException(status_code=400, detail=t("api.image_not_valid_image_reference"))
     return image
 
 
 def _instance_param(instance: int) -> int:
     if not 1 <= instance <= MAX_INSTANCES:
-        raise HTTPException(status_code=400, detail=f"instance must be between 1 and {MAX_INSTANCES}")
+        raise HTTPException(status_code=400, detail=t("api.instance_must_between_1", max_instances=MAX_INSTANCES))
     return instance
 
 
@@ -4623,13 +4624,13 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
     docker_conf = svc.get("docker") or {}
     name = svc.get("name") or svc.get("slug") or "This service"
     if egress.devices_per_ip_limit(svc) == 1:
-        return 1, f"{name} allows one device per IP address, so a second copy on one machine earns nothing."
+        return 1, t("api.allows_one_device_per_ip", name=name)
     if gpu.spec_of(svc):
-        return 1, f"{name} uses this machine's GPU, which two copies would share."
+        return 1, t("api.uses_machine_s_gpu_which", name=name)
     if docker_conf.get("volumes"):
-        return 1, f"{name} keeps data in a volume or host directory, which two copies would share."
+        return 1, t("api.keeps_data_volume_host_directory", name=name)
     if docker_conf.get("ports"):
-        return 1, f"{name} publishes a port on the host, which two copies cannot share."
+        return 1, t("api.publishes_port_host_which_two", name=name)
     link = svc.get("device_link")
     if isinstance(link, dict) and link.get("id_env"):
         # Copies get the same env, so they would all report one device id.
@@ -4637,7 +4638,7 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
             (v.get("label") or link["id_env"] for v in docker_conf.get("env", []) if v.get("key") == link["id_env"]),
             link["id_env"],
         )
-        return 1, f"{name} knows each device by its {label}, which two copies would share."
+        return 1, t("api.knows_each_device_which_two", name=name, label=label)
     return MAX_INSTANCES, ""
 
 
@@ -4793,7 +4794,7 @@ async def api_deploy(
     # which would leave a container running that no definition describes.
     # Checked and taken with no await in between: one event loop, one UI process.
     if slug in _custom_deleting:
-        raise HTTPException(status_code=409, detail=f"{slug} is being deleted")
+        raise HTTPException(status_code=409, detail=t("api.being_deleted", slug=slug))
     _custom_deploying[slug] += 1
     try:
         return await _deploy(slug, body, worker_id, request=request)
@@ -4831,16 +4832,16 @@ async def _deploy(
     worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug) or await _custom_service(slug, reveal=True)
     if not svc:
-        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+        raise HTTPException(status_code=404, detail=t("api.service_not_found", slug=slug))
     # A custom service is deployed from its stored definition and nothing else:
     # the image and the variables are edited there, so a deploy that tries to
     # change them is refused rather than silently ignored.
     is_custom = bool(svc.get("custom"))
     if is_custom:
         if (body.image or "").strip():
-            raise HTTPException(status_code=400, detail="Change the image by editing the custom service")
+            raise HTTPException(status_code=400, detail=t("api.change_image_editing_custom_service"))
         if any(str(v).strip() for v in (body.env or {}).values()):
-            raise HTTPException(status_code=400, detail="Edit the custom service to change its variables")
+            raise HTTPException(status_code=400, detail=t("api.edit_custom_service_change_variables"))
     status = svc.get("status")
     if status in _UNDEPLOYABLE_STATUSES:
         # 410 for a service that is permanently gone, 409 for one that is merely
@@ -4848,13 +4849,13 @@ async def _deploy(
         # listing, so reaching here means a direct link, a stale page or an API client.
         raise HTTPException(
             status_code=409 if status == "broken" else 410,
-            detail=f"Service '{slug}' is no longer available for deployment ({status})",
+            detail=t("api.service_no_longer_available_deployment", slug=slug, status=status),
         )
 
     docker_conf = svc.get("docker", {})
     image = docker_conf.get("image")
     if not image:
-        raise HTTPException(status_code=400, detail=f"Service '{slug}' has no Docker image")
+        raise HTTPException(status_code=400, detail=t("api.service_has_no_docker_image", slug=slug))
 
     # Build full env: YAML defaults + user overrides + {hostname} substitution.
     #
@@ -4896,7 +4897,7 @@ async def _deploy(
     if not isinstance(asked_route, int) or isinstance(asked_route, bool):
         asked_route = None
     elif asked_route < 0:
-        raise HTTPException(status_code=400, detail="route is a proxy id, or 0 for the worker's own IP")
+        raise HTTPException(status_code=400, detail=t("api.route_proxy_id_0_worker"))
     route = recorded_route if asked_route is None else (asked_route or None)
 
     # What the operator actually TYPED on this deploy. The dashboard has no
@@ -4937,7 +4938,7 @@ async def _deploy(
 
     # Validate required env vars are not blank.
     if missing := _missing_required(required_conf, body.env, recorded_env):
-        raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
+        raise HTTPException(status_code=400, detail=t("api.missing_required_fields", missing=", ".join(missing)))
 
     # How many copies this worker runs, decided before anything is deployed.
     instances = body.instances if body.instances is not None else int((recorded or {}).get("instances") or 1)
@@ -4966,7 +4967,7 @@ async def _deploy(
         if to_desktop:
             raise HTTPException(
                 status_code=409,
-                detail="CashPilot Desktop runs one copy of each service from here. Add more copies on that computer.",
+                detail=t("api.cashpilot_desktop_runs_one_copy"),
             )
         limit, why = scaling_limit(svc)
         if instances > limit:
@@ -4974,19 +4975,18 @@ async def _deploy(
         if "instances" not in await _worker_features(worker_id):
             raise HTTPException(
                 status_code=409,
-                detail="This worker is too old to run a service more than once. Update the worker first.",
+                detail=t("api.worker_too_old_run_service"),
             )
     if grant := gpu.spec_of(svc):
         if custom_image:
-            raise HTTPException(status_code=400, detail=f"{slug} uses a GPU and runs only the catalog image.")
+            raise HTTPException(status_code=400, detail=t("api.uses_gpu_runs_only_catalog", slug=slug))
         worker = _decoded_worker(await database.get_worker(worker_id) or {})
         info = worker.get("system_info")
         grants = info.get("gpu_grants") if isinstance(info, dict) else None
         if not isinstance(grants, dict) or grants.get(slug) != grant:
             raise HTTPException(
                 status_code=409,
-                detail=f"This worker did not report the catalog GPU grant for {svc.get('name') or slug}. "
-                "Update the worker and wait for its next heartbeat.",
+                detail=t("api.worker_did_not_report_catalog", name=svc.get("name") or slug),
             )
 
     # Ports — key is "container_port/protocol" per Docker SDK. A mapping with a
@@ -4999,7 +4999,7 @@ async def _deploy(
             key, binding = catalog.parse_port(mapping)
         except ValueError as exc:
             # The loader rejects these, so only a hand-edited cache gets here.
-            raise HTTPException(status_code=400, detail=f"Invalid catalog port for {slug}: {exc}") from exc
+            raise HTTPException(status_code=400, detail=t("api.invalid_catalog_port", slug=slug, exc=exc)) from exc
         ports[key] = binding
 
     # Volumes: resolve ${VAR} in host paths using env
@@ -5104,7 +5104,7 @@ async def _deploy(
         or (var.get("port_range") and not _is_port_range(str(merged_env.get(var["key"], ""))))
     ]
     if invalid:
-        raise HTTPException(status_code=400, detail=f"Invalid value for: {', '.join(invalid)}")
+        raise HTTPException(status_code=400, detail=t("api.invalid_value", invalid=", ".join(invalid)))
     if catalog.fence_gated(svc):
         spec = await _fence_gated_spec(spec, docker_conf, merged_env, worker_id, slug, divergence, custom_image)
 
@@ -5149,7 +5149,9 @@ async def _deploy(
         try:
             _instance_spec(spec, n, docker_conf)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug} copy {n}: {exc}") from exc
+            raise HTTPException(
+                status_code=400, detail=t("api.copy", name=svc.get("name") or slug, n=n, exc=exc)
+            ) from exc
 
     # Each extra copy runs an id derived from the first's, which another box may
     # already run, or be deploying, as its own.
@@ -5170,7 +5172,7 @@ async def _deploy(
             # the backup into it, checks it and only then starts it. Its own
             # step-up was taken by the caller; a custom image is never restored.
             if custom_image or instances != 1:
-                raise HTTPException(status_code=400, detail="A restore runs one copy of the catalog's image")
+                raise HTTPException(status_code=400, detail=t("api.restore_runs_one_copy_catalog"))
         else:
             # A service that keeps a wallet or node identity runs as the catalog says,
             # or with the owner's password now, not just a session: whatever runs in its
@@ -5399,8 +5401,7 @@ def _desktop_wallet_refusal(svc: dict[str, Any] | None, *, recovery: str = "") -
     name = service.get("name") or service.get("slug") or "This service"
     return HTTPException(
         status_code=409,
-        detail=f"{name} runs only on the machine that holds its wallet. Deploy it from CashPilot Desktop on that machine."
-        + recovery,
+        detail=t("api.runs_only_machine_holds_wallet", name=name) + recovery,
     )
 
 
@@ -5461,8 +5462,7 @@ async def _wallet_choice(
             return key, None
         raise HTTPException(
             status_code=409,
-            detail="This worker is too old to keep the wallet seed out of CashPilot and out of the container's "
-            "settings. Update the worker, then deploy again. Nothing was deployed.",
+            detail=t("api.worker_too_old_keep_wallet"),
         )
     # The owner's own phrase: picked in the form, or posted as the variable by
     # an API client that predates the choice.
@@ -5477,8 +5477,7 @@ async def _wallet_choice(
                 status_code=409,
                 detail={
                     "error": "wallet_exists",
-                    "message": "This node already runs another wallet, and CashPilot does not replace one. "
-                    "To change wallets, remove the service with its data first. Nothing was deployed.",
+                    "message": t("api.node_already_runs_another_wallet"),
                 },
             )
         wanted = {"mode": "migrate", "phrase": legacy}
@@ -5491,7 +5490,7 @@ async def _wallet_choice(
     if wanted["mode"] == "import" and (problem := wallet_seed.phrase_problem(wanted.get("phrase") or "")):
         # Never echoed: the message names word positions, not words.
         raise HTTPException(
-            status_code=400, detail={"error": "wallet_phrase", "message": f"{problem} Nothing was deployed."}
+            status_code=400, detail={"error": "wallet_phrase", "message": t("api.nothing_deployed", problem=problem)}
         )
     return key, wanted
 
@@ -5519,7 +5518,7 @@ async def api_deploy_device_names(
     worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug) or await _custom_service(slug, reveal=True)
     if not svc:
-        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+        raise HTTPException(status_code=404, detail=t("api.service_not_found", slug=slug))
     recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
     docker_conf = svc.get("docker") or {}
     _, renames = await _device_names(slug, docker_conf, body, worker_id, recorded)
@@ -5568,10 +5567,10 @@ async def api_rename_proxied_copies(
     worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug) or await _custom_service(slug, reveal=True)
     if not svc:
-        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+        raise HTTPException(status_code=404, detail=t("api.service_not_found", slug=slug))
     recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
     if not recorded:
-        raise HTTPException(status_code=409, detail=f"{svc.get('name') or slug} is not deployed on this worker")
+        raise HTTPException(status_code=409, detail=t("api.not_deployed_worker", name=svc.get("name") or slug))
     if body and body.replace_existing and body.expected_containers is None:
         keys = await _proxied_rebuild_targets(slug, worker_id, proxies.route_of(recorded), pending_only=True)
         await _confirm_deploy_targets(worker_id, slug, keys)
@@ -5614,27 +5613,24 @@ async def _check_route(
         # make_slug, catalog._validate); a custom service added before that can.
         raise HTTPException(
             status_code=400,
-            detail=f"{name} has an id ending in '-next' or '-moving', which proxy tunnels use for their own "
-            "names, so it cannot be deployed through a proxy. Add it again as a new custom service and route that.",
+            detail=t("api.has_id_ending_next_moving", name=name),
         )
     if instances != 1:
         raise HTTPException(
             status_code=400,
-            detail=f"{name} runs once per worker through a proxy. To run more, add workers or proxies.",
+            detail=t("api.runs_once_per_worker_through", name=name),
         )
     if await _worker_is_desktop(worker_id):
         # A joined Desktop serves no /api/proxied routes: it adds a copy through a
         # proxy only in its own window. It is not too old, so it gets its own answer.
         raise HTTPException(
             status_code=409,
-            detail=f"CashPilot Desktop adds copies that run through a proxy only on that computer. Deploy {name} "
-            "through the proxy from CashPilot Desktop there. Nothing was deployed.",
+            detail=t("api.cashpilot_desktop_adds_copies_run", name=name),
         )
     if recorded_route is not None and recorded_route != route:
         raise HTTPException(
             status_code=409,
-            detail=f"{name} runs through another proxy on this worker. Remove it, then deploy it again "
-            "through this one.",
+            detail=t("api.runs_through_another_proxy_worker", name=name),
         )
     # What the box reports, not the record: a direct deploy that failed after
     # its routed copy went leaves a record without a route and nothing running,
@@ -5643,17 +5639,15 @@ async def _check_route(
     if await _worker_instances(worker_id, slug):
         raise HTTPException(
             status_code=409,
-            detail=f"{name} already runs from this worker's own IP. Remove it there first and deploy it again "
-            "with the route, or keep it and add a copy through the proxy on the Proxies page.",
+            detail=t("api.already_runs_worker_s_own", name=name),
         )
     proxy = await _proxy_or_404(route)
     if proxy["state"].get("capped_at"):
-        raise HTTPException(status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap")
+        raise HTTPException(status_code=409, detail=proxy["state"].get("cap_reason") or t("api.proxy_reached_cap"))
     if "route_at_deploy" not in await _worker_features(worker_id):
         raise HTTPException(
             status_code=409,
-            detail="This worker is too old to deploy a service through a proxy, or has no Docker socket. "
-            "Update it first.",
+            detail=t("api.worker_too_old_deploy_service"),
         )
 
 
@@ -5698,7 +5692,7 @@ async def _deploy_routed(
             fresh = await _proxy_or_404(proxy_id)
             if fresh["state"].get("capped_at"):
                 raise HTTPException(
-                    status_code=409, detail=fresh["state"].get("cap_reason") or "This proxy reached its traffic cap"
+                    status_code=409, detail=fresh["state"].get("cap_reason") or t("api.proxy_reached_traffic_cap")
                 )
             definition = fresh["definition"]
             had_record = any(
@@ -5836,23 +5830,20 @@ async def _refuse_direct_on_proxied_only(svc: dict[str, Any], slug: str, worker_
     except HTTPException as exc:
         raise HTTPException(
             status_code=503,
-            detail=f"Could not ask {box} whether it runs services only through a proxy ({exc.detail}). "
-            f"{name} keeps its route; nothing changed.",
+            detail=t("api.could_not_ask_whether_runs", box=box, detail=exc.detail, name=name),
         ) from None
     proxied_only = status.get("proxied_only") if isinstance(status, dict) else None
     if not isinstance(proxied_only, bool):
         raise HTTPException(
             status_code=503,
-            detail=f"{box} did not say whether it runs services only through a proxy; update it. "
-            f"{name} keeps its route; nothing changed.",
+            detail=t("api.did_not_say_whether_runs", box=box, name=name),
         )
     if proxied_only:
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "proxied_only",
-                "message": f"{box} runs services only through a proxy, so {name} cannot run "
-                "from its own IP. It keeps its route; nothing changed.",
+                "message": t("api.runs_services_only_through_proxy", box=box, name=name),
             },
         )
 
@@ -5873,9 +5864,12 @@ async def _confirm_leave_route(
             status_code=403,
             detail={
                 "error": "step_up_required",
-                "message": f"{svc.get('name') or slug} runs through a proxy on {box}. Running it from {box}'s "
-                f"own IP{f' ({ip})' if ip else ''} shows that address to {svc.get('name') or slug} and to "
-                "everyone its traffic reaches. Confirm with your password.",
+                "message": t(
+                    "api.runs_through_proxy_running_s",
+                    name=svc.get("name") or slug,
+                    box=box,
+                    value=f" ({ip})" if ip else "",
+                ),
             },
         )
     await require_step_up(request, password, action=step_up.ACTION_LEAVE_ROUTE, target=f"{slug}|{worker_id}")
@@ -5905,8 +5899,7 @@ async def _remove_routed_copies(worker_id: int, slug: str, proxy_ids: list[int])
             except HTTPException as exc:
                 raise HTTPException(
                     status_code=409,
-                    detail=f"The copy of {slug} through proxy {proxy_id} could not be removed first ({exc.detail}), "
-                    "so nothing was deployed from the worker's own IP.",
+                    detail=t("api.copy_through_proxy_could_not", slug=slug, proxy_id=proxy_id, detail=exc.detail),
                 ) from None
             await _finish_copy_removal(proxy_id, worker_id, slug, leaving_route=True)
 
@@ -5987,8 +5980,9 @@ async def _refuse_shared_device_ids(slug: str, svc: dict[str, Any], env: dict[st
             status_code=409,
             detail={
                 "error": "identity_in_use",
-                "message": f"The {label} for {svc.get('name') or slug} already runs on {', '.join(names)}. "
-                "Two boxes on one device id look to the provider like one device, which it may merge or ban.",
+                "message": t(
+                    "api.already_runs_two_boxes_one", label=label, name=svc.get("name") or slug, names=", ".join(names)
+                ),
             },
         )
 
@@ -6455,9 +6449,7 @@ async def _reserve_pending_identities(
     except Exception as exc:
         logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
         what = f"copy {copy_note} and the copies after it were not deployed" if copy_note else "nothing was deployed"
-        raise HTTPException(
-            status_code=503, detail=f"The device ids this deploy sends could not be recorded, so {what}"
-        ) from exc
+        raise HTTPException(status_code=503, detail=t("api.device_ids_deploy_sends_could", what=what)) from exc
     return (instance, dict(env)) if instance else None
 
 
@@ -6821,13 +6813,15 @@ async def _step_up_critical(
     if not has_password and not custom_image:
         return False
     if request is None or not has_password:
-        what = "keeps a wallet or node identity" if critical else "runs with a device id the provider pays by"
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "step_up_required",
-                "message": f"{svc.get('name') or slug} {what}, so running another "
-                "image than the catalog's needs your password.",
+                "message": (
+                    t("api.running_another_image_identity", name=svc.get("name") or slug)
+                    if critical
+                    else t("api.running_another_image_device_id", name=svc.get("name") or slug)
+                ),
             },
         )
     image = custom_image or (svc.get("docker") or {}).get("image") or ""
@@ -6855,8 +6849,7 @@ async def _sign_for_worker(worker_id: int, action: str, target: str) -> str:
     if not key:
         raise HTTPException(
             status_code=409,
-            detail="This worker has not finished enrolling, so it cannot check a password confirmation. "
-            "Wait for its next heartbeat and try again.",
+            detail=t("api.worker_has_not_finished_enrolling"),
         )
     return step_up.sign(key, action, target)
 
@@ -6933,15 +6926,12 @@ async def _fence_gated_spec(
     if custom_image:
         raise HTTPException(
             status_code=400,
-            detail=f"{slug} runs only the image the catalog pins, since it holds NET_ADMIN in its own namespace",
+            detail=t("api.runs_only_image_catalog_pins", slug=slug),
         )
     if "fence_gated" not in await _worker_features(worker_id):
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"This worker is too old to run {slug} behind the LAN fence. Update the worker first; the node "
-                "keeps running as it is until then."
-            ),
+            detail=(t("api.worker_too_old_run_behind", slug=slug)),
         )
     try:
         ports = fence_gated_ports(docker_conf, env)
@@ -6950,7 +6940,7 @@ async def _fence_gated_spec(
         # running as it is, whatever range it has.
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid value for {slug}: {exc}. Nothing was deployed; a running {slug} was not touched.",
+            detail=t("api.invalid_value_nothing_deployed_running", slug=slug, exc=exc),
         ) from None
     merged = dict(spec)
     # The record's network mode and ports do not win here, so saying they were kept would be false.
@@ -7188,8 +7178,7 @@ async def _routed_command(worker_id: int, slug: str, command: str, proxy_id: int
         # A redeploy would recreate the copy, which is what this refusal protects.
         raise HTTPException(
             status_code=409,
-            detail=f"Starting {slug} would replace a container the worker cannot match to its saved ID. "
-            "Press Start for this copy under Proxies on the Fleet page to review it. Nothing was changed.",
+            detail=t("api.starting_would_replace_container_worker", slug=slug),
         ) from None
 
 
@@ -7288,8 +7277,7 @@ async def _confirm_critical_delete(request: Request, slug: str, worker_id: int) 
             status_code=403,
             detail={
                 "error": "step_up_required",
-                "message": f"Deleting the data of {slug} on {box} destroys any node identity or wallet in it "
-                "for good. Enter your password to continue.",
+                "message": t("api.deleting_data_destroys_any_node", slug=slug, box=box),
             },
         )
     await require_step_up(request, password, action=step_up.ACTION_DELETE_CRITICAL, target=f"{slug}|{worker_id}")
@@ -7458,16 +7446,18 @@ async def api_forget_deployment(request: Request, slug: str, worker_id: int | No
         names = ", ".join(str(w.get("name") or w.get("id")) for w in blind)
         raise HTTPException(
             status_code=409,
-            detail=f"{names} cannot read Docker right now, so CashPilot cannot tell whether {slug} runs there.",
+            detail=t("api.cannot_read_docker_right_now", names=names, slug=slug),
         )
     if worker_id is None:
         if running:
             names = ", ".join(r["name"] for r in running)
-            raise HTTPException(status_code=409, detail=f"{slug} still runs on {names}. Remove it there instead.")
+            raise HTTPException(
+                status_code=409, detail=t("api.still_runs_remove_there_instead", slug=slug, names=names)
+            )
         await database.forget_deployment(slug)
     else:
         if any(r["worker_id"] == worker_id for r in running):
-            raise HTTPException(status_code=409, detail=f"{slug} still runs on that box. Remove it there instead.")
+            raise HTTPException(status_code=409, detail=t("api.still_runs_box_remove_there", slug=slug))
         await database.remove_deployment(slug, worker_id=worker_id)
     logger.info("Forgot the %s deployment record%s", slug, "" if worker_id is None else f" on worker {worker_id}")
     still_recorded = await database.get_deployment(slug) is not None or any(
@@ -7503,17 +7493,14 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     the DNS-rebinding TOCTOU between validation and the httpx request.
     """
     if not worker:
-        raise HTTPException(status_code=404, detail="Worker not found")
+        raise HTTPException(status_code=404, detail=t("api.worker_not_found"))
     if not worker.get("url"):
         raise HTTPException(
             status_code=503,
-            detail=(
-                "This device only reports to CashPilot, so the server cannot deploy to it or control it. "
-                "Add services in the CashPilot app on that device, or pick a Docker worker."
-            ),
+            detail=(t("api.device_only_reports_cashpilot_server")),
         )
     if worker["status"] != "online":
-        raise HTTPException(status_code=503, detail="Worker is offline")
+        raise HTTPException(status_code=503, detail=t("api.worker_offline"))
     url, pinned_ip = await asyncio.to_thread(_validate_worker_url, worker["url"])
     host_header: str | None = None
     if pinned_ip:
@@ -7536,8 +7523,7 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
         # shared one, so the shared key is not sent to it at all.
         raise HTTPException(
             status_code=503,
-            detail="This Desktop has not finished joining, so it has no key of its own yet. "
-            "Wait for its next heartbeat and try again.",
+            detail=t("api.desktop_has_not_finished_joining"),
         )
     auth_key = auth_key or FLEET_API_KEY
     headers: dict[str, str] = {}
@@ -7720,10 +7706,26 @@ def _worker_failure_text(status: int) -> str:
     return f"Worker request failed (HTTP {status}); the worker's log has the reason"
 
 
-_WORKER_REFUSED_OUR_KEY = (
-    "The worker refused the key this server uses for it. Nothing was done there. "
-    "If it joined in the last minute, try again shortly; otherwise its log says why."
-)
+def _worker_texts(key: str, **params: Any) -> tuple[str, str]:
+    """The message ``key`` as a worker can word it.
+
+    A worker answers in the language it is asked in, but a worker older than
+    its translations answers in English, so both count.
+    """
+    return t(key, **params), i18n.format_message(i18n.source()[key], params)  # i18n-keys: err.proxy_tunnel.no_proxied_copy_through_proxy, err.orchestrator.instance_not_found, err.orchestrator.container_not_found, api.worker_not_found  # fmt: skip
+
+
+def _worker_says(detail: Any, key: str, **params: Any) -> bool:
+    """Whether a worker's answer is the message ``key``."""
+    return detail in _worker_texts(key, **params)
+
+
+def _worker_refused_our_key() -> str:
+    """The 503 detail when the worker refused our key, in the request's language.
+
+    A caller compares a detail with this, so both sides use the same language.
+    """
+    return t("api.worker_refused_our_key")
 
 
 async def _confirmed_worker_key(cid: str) -> str | None:
@@ -7881,9 +7883,9 @@ async def _desktop_deploy_body(path: str, spec: dict[str, Any], desktop_json: di
     # request, and projection can remove fields between two parts of a phrase.
     await _refuse_desktop_wallet_payload(path, spec, desktop_json, body)
     if not deploy_path:
-        raise HTTPException(status_code=409, detail="CashPilot Desktop cannot take this request from the dashboard.")
+        raise HTTPException(status_code=409, detail=t("api.cashpilot_desktop_cannot_take_request"))
     if body is None:
-        raise HTTPException(status_code=422, detail="Invalid CashPilot Desktop deploy request.")
+        raise HTTPException(status_code=422, detail=t("api.invalid_cashpilot_desktop_deploy_request"))
     return body
 
 
@@ -7916,16 +7918,14 @@ async def _proxy_to_worker(
         json = await _desktop_deploy_body(path, json, desktop_json)
     extra = headers
     url, headers = await _get_verified_worker_url(worker)
-    if extra:
-        headers = {**headers, **extra}
+    # The worker words its answers in the language this page shows.
+    headers = {**headers, "Accept-Language": i18n.current(), **(extra or {})}
     if not allow_plain_http and urllib.parse.urlparse(url).scheme.lower() != "https":
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "restore_plain_http",
-                "message": f"{worker.get('name') or 'This worker'} is reached over plain HTTP now, so the "
-                "passphrase would cross your network unencrypted. Nothing was sent. Tick the box that accepts "
-                "this, or give that worker an HTTPS address.",
+                "message": t("api.reached_over_plain_http_now", name=worker.get("name") or t("api.this_worker")),
             },
         )
     # An https worker named by hostname is reached at its pinned IP. httpx takes
@@ -7961,7 +7961,7 @@ async def _proxy_to_worker(
                 if resp.status_code == 401:
                     # The worker refused the key this server signs with for it. Passed on
                     # as a 401, an API client reads it as its own key being wrong.
-                    raise HTTPException(status_code=503, detail=_WORKER_REFUSED_OUR_KEY)
+                    raise HTTPException(status_code=503, detail=_worker_refused_our_key())
                 gateway = resp.status_code in _GATEWAY_NO_ANSWER or resp.status_code == 503
                 unknown = marked and ((gateway and not _worker_restored_nothing(resp)) or _worker_left_restore(resp))
                 err = (_WorkerNoAnswer if unknown else HTTPException)(
@@ -7984,7 +7984,7 @@ async def _proxy_to_worker(
         # The request never reached the worker, so "it may still be working on
         # it" would be wrong.
         logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+        raise HTTPException(status_code=503, detail=t("api.worker_communication_failed"))
     except httpx.TimeoutException as exc:
         logger.warning("worker proxy timeout after %ss: %s", timeout, exc)
         raise _WorkerNoAnswer(
@@ -8003,7 +8003,7 @@ async def _proxy_to_worker(
         )
     except httpx.HTTPError as exc:
         logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+        raise HTTPException(status_code=503, detail=t("api.worker_communication_failed"))
 
 
 async def _proxy_worker_command(
@@ -8116,12 +8116,13 @@ async def _worker_deploy_target(
 
     # Old inventory can be cached. A live existence probe prevents a stale
     # empty inventory (or heartbeat) from being mistaken for a first deploy.
-    missing = (
-        f"No proxied copy of {slug} through proxy {proxy_id} on this worker"
+    # The worker's own words for "not there".
+    missing_key, missing_args = (
+        ("err.proxy_tunnel.no_proxied_copy_through_proxy", {"slug": slug, "proxy_id": proxy_id})
         if proxy_id is not None
-        else f"Instance {instance} of {slug} not found"
+        else ("err.orchestrator.instance_not_found", {"instance": instance, "slug": slug})
         if instance > 1
-        else f"Container for {slug} not found"
+        else ("err.orchestrator.container_not_found", {"slug": slug})
     )
     if not (isinstance(state, dict) and state.get("exists") is True):
         if isinstance(state, dict) and state.get("exists") is False:
@@ -8129,11 +8130,11 @@ async def _worker_deploy_target(
         try:
             await _proxy_to_worker(worker_id, "GET", f"{base}/logs", params={**(params or {}), "lines": "1"})
         except HTTPException as exc:
-            if exc.status_code == 404 and exc.detail == missing:
+            if exc.status_code == 404 and _worker_says(exc.detail, missing_key, **missing_args):
                 return "none", False
             raise HTTPException(
                 status_code=409,
-                detail="This worker could not check the deploy target. Update the worker and try again.",
+                detail=t("api.worker_could_not_check_deploy"),
             ) from None
 
     if proxy_id is None:
@@ -8152,7 +8153,7 @@ async def _worker_deploy_target(
             return target, False
     raise HTTPException(
         status_code=409,
-        detail="A container already exists. Update the worker so CashPilot can identify it before replacing it.",
+        detail=t("api.container_already_exists_update_worker"),
     )
 
 
@@ -8171,19 +8172,22 @@ async def _desktop_needs_checked_route(worker_id: int) -> str:
 
 async def _ask_deploy_confirmation(worker_id: int, slug: str, targets: dict[str, str], *, old: bool) -> None:
     worker = await database.get_worker(worker_id) or {}
-    name = worker.get("name") or f"worker {worker_id}"
+    name = worker.get("name") or t("api.confirm_targets.worker", id=worker_id)
     copies = [
-        f"{'Proxied copy ' + key if key.startswith('p') else 'Instance ' + key} ({target[:12]})"
+        t("api.confirm_targets.proxied", key=key, id=target[:12])
+        if key.startswith("p")
+        else t("api.confirm_targets.instance", key=key, id=target[:12])
         for key, target in targets.items()
         if target != "none"
     ]
-    message = f"Replace these containers for {slug} on {name}?\n\n" + "\n".join(copies)
+    message = t("api.confirm_targets.question", slug=slug, name=name) + "\n\n" + "\n".join(copies)
     if old:
-        product = "CashPilot-Desktop" if placement.is_desktop(placement.system_info(worker)) else "this worker"
-        message += (
-            "\n\nThese are the container IDs this worker last reported. It could replace a different container."
-            f"\n\nUpdate {product} so it can verify the container ID itself."
-        )
+        desktop = placement.is_desktop(placement.system_info(worker))
+        message += "\n\n" + t("api.confirm_targets.old")
+        if desktop:
+            message += "\n\n" + t("api.confirm_targets.update_desktop")
+        else:
+            message += "\n\n" + t("api.confirm_targets.update_worker")
     raise HTTPException(
         status_code=409,
         detail={"error": "confirm_deploy_targets", "message": message, "expected_containers": targets},
@@ -8216,7 +8220,7 @@ async def _send_worker_deploy(
 ) -> dict[str, Any]:
     """Send the exact expectation on every deploy. Serialize the legacy fallback on this dashboard."""
     if not isinstance(expected, str) or not _DEPLOY_TARGET_ID.fullmatch(expected):
-        raise HTTPException(status_code=422, detail="Expected a container ID or 'none'.")
+        raise HTTPException(status_code=422, detail=t("api.expected_container_id_none"))
     instance = _copy_number(spec) or 1
     body = {**spec, "expected_container": expected}
     body.pop("replace_existing", None)
@@ -8249,7 +8253,7 @@ async def _send_worker_deploy(
                 status_code=409,
                 detail={
                     "error": "deploy_target_changed",
-                    "message": f"The deploy target changed. Review it again and update {product}.",
+                    "message": t("api.deploy_target_changed_review_again", product=product),
                     "current_container": current,
                 },
             )
@@ -8332,8 +8336,7 @@ async def _proxy_worker_restore(
     if not key:
         raise HTTPException(
             status_code=409,
-            detail="This worker has not finished enrolling, so it cannot check a password confirmation. "
-            "Wait for its next heartbeat and try again.",
+            detail=t("api.worker_has_not_finished_enrolling"),
         )
     target = step_up.restore_target(slug, client_id, restore["sha256"])
     body = {
@@ -8382,7 +8385,7 @@ class ProxyCopyRequest(BaseModel):
 async def _proxy_or_404(proxy_id: int) -> dict[str, Any]:
     proxy = await database.get_proxy(proxy_id)
     if not proxy:
-        raise HTTPException(status_code=404, detail="No such proxy")
+        raise HTTPException(status_code=404, detail=t("api.no_such_proxy"))
     return proxy
 
 
@@ -8422,7 +8425,9 @@ async def _proxy_worker_call(
         # id this call asked about, our own words. Masked, a short login such as
         # "copy" would hide that it is gone. Any other text is masked.
         asked = _PROXIED_COPY_PATH.match(path)
-        if asked and exc.detail == "No proxied copy of {} through proxy {} on this worker".format(*asked.groups()):
+        if asked and _worker_says(
+            exc.detail, "err.proxy_tunnel.no_proxied_copy_through_proxy", slug=asked.group(1), proxy_id=asked.group(2)
+        ):
             raise
         if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets", "proxied_copy_stopped"):
             raise  # _safe_worker_detail checked the fields and supplies the message.
@@ -8433,7 +8438,7 @@ async def _require_proxy_feature(worker_id: int) -> None:
     if "proxy_tunnel" not in await _worker_features(worker_id):
         raise HTTPException(
             status_code=409,
-            detail="This worker is too old to run copies through a proxy, or has no Docker socket. Update it first.",
+            detail=t("api.worker_too_old_run_copies"),
         )
 
 
@@ -8460,7 +8465,7 @@ async def api_create_proxy(request: Request, _auth: dict[str, Any] = Depends(_re
     except proxies.ProxyInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except ValueError:
-        raise HTTPException(status_code=400, detail="Send the proxy as a JSON object") from None
+        raise HTTPException(status_code=400, detail=t("api.send_proxy_json_object")) from None
     proxy_id = await database.create_proxy(definition)
     if definition.get("reset_day"):
         # The first period starts now; with no start the first hourly sweep
@@ -8477,7 +8482,7 @@ async def api_update_proxy(
     try:
         body = await request.json()
     except ValueError:
-        raise HTTPException(status_code=400, detail="Send the proxy as a JSON object") from None
+        raise HTTPException(status_code=400, detail=t("api.send_proxy_json_object")) from None
     async with _proxy_state_lock(proxy_id):
         # Read again under the lock, so a heartbeat or reset that ran while the
         # body was parsed is neither lost nor allowed to undo this change.
@@ -8510,10 +8515,9 @@ async def api_delete_proxy(proxy_id: int, _auth: dict[str, Any] = Depends(_requi
             if all(c.get("removing_since") for c in copies):
                 raise HTTPException(
                     status_code=409,
-                    detail="The copies through this proxy are still being removed: their worker has not "
-                    "confirmed yet. Try again once they are gone from the list.",
+                    detail=t("api.copies_through_proxy_still_being"),
                 )
-            raise HTTPException(status_code=409, detail="Remove the copies running through this proxy first")
+            raise HTTPException(status_code=409, detail=t("api.remove_copies_running_through_proxy"))
         await database.delete_proxy(proxy_id)
     await _drop_copy_device_links(proxy_id)
     return {"status": "deleted"}
@@ -8719,7 +8723,7 @@ async def _refresh_proxied_copies(
             if why := proxies.refusal(svc):
                 raise ValueError(why)
             if "proxied_if_running" not in await _worker_features(worker_id):
-                raise ValueError("its worker is too old to rebuild it without starting a stopped copy; update it")
+                raise ValueError(t("api.worker_too_old_rebuild_without"))
             earner = await _proxied_earner(recorded, docker_conf, worker_id, pid)
             # Its new ids are held from the shared-id check until the ledger row is
             # written, and taken before the copy lock, as a deploy takes them.
@@ -8737,24 +8741,26 @@ async def _refresh_proxied_copies(
                     None,
                 )
                 if current is None or current.get("removing_since"):
-                    raise ValueError("it was removed meanwhile")
+                    raise ValueError(t("api.removed_meanwhile"))
                 # A routed deploy through this proxy that finished while this
                 # waited made this copy the service's own earner, named from its
                 # own ids: rebuilt as a copy, it would run the copy's ids instead.
                 if proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id)) == pid:
                     continue
                 if proxy["state"].get("capped_at") or current.get("stopped_by_cap"):
-                    raise ValueError("its proxy reached its traffic cap")
+                    raise ValueError(t("api.proxy_reached_traffic_cap_2"))
                 # Its id is made from the original's new one, so it can match an
                 # id another box runs: refused, as a deploy refuses a shared one.
                 for key in _per_device_keys(svc):
                     if others := await database.identity_in_use(
                         slug, key, str(earner["env"].get(key) or ""), except_worker=worker_id
                     ):
-                        raise ValueError(f"its new device id already runs on {', '.join(await _worker_names(others))}")
+                        raise ValueError(
+                            t("api.new_device_id_already_runs", value=", ".join(await _worker_names(others)))
+                        )
                 approved = (expected or {}).get(f"p{pid}", "none")
                 if approved == "none":
-                    raise ValueError("its current container needs replacement approval")
+                    raise ValueError(t("api.current_container_needs_replacement_approval"))
                 await _send_worker_deploy(
                     worker_id,
                     slug,
@@ -8800,13 +8806,13 @@ async def api_add_proxied_copy(
     proxy = await _proxy_or_404(proxy_id)
     definition, state = proxy["definition"], proxy["state"]
     if state.get("capped_at"):
-        raise HTTPException(status_code=409, detail=state.get("cap_reason") or "This proxy reached its traffic cap")
+        raise HTTPException(status_code=409, detail=state.get("cap_reason") or t("api.proxy_reached_traffic_cap"))
     slug = body.slug
     svc = catalog.get_service(slug) or await _custom_service(slug, reveal=True)
     if not svc:
-        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+        raise HTTPException(status_code=404, detail=t("api.service_not_found", slug=slug))
     if svc.get("status") in _UNDEPLOYABLE_STATUSES:
-        raise HTTPException(status_code=409, detail=f"Service '{slug}' is no longer available for deployment")
+        raise HTTPException(status_code=409, detail=t("api.service_no_longer_available_deployment_2", slug=slug))
     if wallet_seed.seed_key(svc) and await _worker_is_desktop(body.worker_id):
         raise _desktop_wallet_refusal(svc)
     if why := proxies.refusal(svc):
@@ -8817,11 +8823,11 @@ async def api_add_proxied_copy(
     if not recorded:
         raise HTTPException(
             status_code=409,
-            detail=f"Deploy {svc.get('name') or slug} on this worker first; the proxied copy runs with its settings.",
+            detail=t("api.deploy_worker_first_proxied_copy", name=svc.get("name") or slug),
         )
     if proxies.route_of(recorded) == proxy_id:
         raise HTTPException(
-            status_code=409, detail=f"{svc.get('name') or slug} already runs through this proxy on this worker."
+            status_code=409, detail=t("api.already_runs_through_proxy_worker", name=svc.get("name") or slug)
         )
     docker_conf = svc.get("docker") or {}
     try:
@@ -8834,10 +8840,10 @@ async def api_add_proxied_copy(
     async with _proxy_state_lock(proxy_id):
         fresh = await database.get_proxy(proxy_id)
         if not fresh:
-            raise HTTPException(status_code=404, detail="No such proxy")
+            raise HTTPException(status_code=404, detail=t("api.no_such_proxy"))
         if fresh["state"].get("capped_at"):
             raise HTTPException(
-                status_code=409, detail=fresh["state"].get("cap_reason") or "This proxy reached its traffic cap"
+                status_code=409, detail=fresh["state"].get("cap_reason") or t("api.proxy_reached_traffic_cap")
             )
         definition = fresh["definition"]
         had_record = any(
@@ -8862,19 +8868,19 @@ async def api_add_proxied_copy(
             None,
         )
         if not fresh or current is None or current.get("removing_since"):
-            raise HTTPException(status_code=409, detail="This copy was removed meanwhile; add it again")
+            raise HTTPException(status_code=409, detail=t("api.copy_removed_meanwhile_add_again"))
         # A routed deploy through this proxy that finished while this waited made
         # this copy its earner, and the copy record is its own now: it stays.
         if proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id)) == proxy_id:
             raise HTTPException(
-                status_code=409, detail=f"{svc.get('name') or slug} already runs through this proxy on this worker."
+                status_code=409, detail=t("api.already_runs_through_proxy_worker", name=svc.get("name") or slug)
             )
         if fresh["state"].get("capped_at") or current.get("stopped_by_cap"):
             # Nothing reached the worker: a new copy's record goes, as on a failed deploy.
             if not had_record:
                 await database.delete_proxied_copy(proxy_id, worker_id, slug)
             raise HTTPException(
-                status_code=409, detail=fresh["state"].get("cap_reason") or "This proxy reached its traffic cap"
+                status_code=409, detail=fresh["state"].get("cap_reason") or t("api.proxy_reached_traffic_cap")
             )
         # An edit made while this waited (a rotated password) is what the copy gets.
         definition = fresh["definition"]
@@ -8945,7 +8951,7 @@ async def api_proxied_copy_command(
     body: ProxiedCopyCommand | None = None,
 ) -> dict[str, Any]:
     if command not in ("start", "stop"):
-        raise HTTPException(status_code=400, detail="The command is start or stop")
+        raise HTTPException(status_code=400, detail=t("api.command_start_stop"))
     return await _proxied_command(
         proxy_id,
         worker_id,
@@ -8970,14 +8976,14 @@ async def _proxied_command(
     """Start or stop one proxied copy, with the proxy's current settings and its cap."""
     proxy = await _proxy_or_404(proxy_id)
     if command == "start" and proxy["state"].get("capped_at"):
-        raise HTTPException(status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap")
+        raise HTTPException(status_code=409, detail=proxy["state"].get("cap_reason") or t("api.proxy_reached_cap"))
     async with _proxy_copy_lock(proxy_id, worker_id, slug):
         if command == "start":
             # Again under the lock: the cap may have stopped the copy while this waited.
             proxy = await _proxy_or_404(proxy_id)
             if proxy["state"].get("capped_at"):
                 raise HTTPException(
-                    status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap"
+                    status_code=409, detail=proxy["state"].get("cap_reason") or t("api.proxy_reached_cap")
                 )
             approval = (
                 {"expected_containers": expected_containers, "group_approval": group_approval}
@@ -9011,7 +9017,7 @@ def _copy_removal_pending(exc: HTTPException) -> bool:
     A refused key comes back as a 503 (_proxy_to_worker), but the worker
     refused before it acted, so that removal is not pending: it failed.
     """
-    return exc.status_code in _COPY_REMOVE_PENDING and exc.detail != _WORKER_REFUSED_OUR_KEY
+    return exc.status_code in _COPY_REMOVE_PENDING and exc.detail != _worker_refused_our_key()
 
 
 #: Copies whose pending removal a heartbeat is finishing right now, so the
@@ -9277,7 +9283,7 @@ async def _start_proxied_copy(
     Start and never compared IDs, so it gets the plain Start it always had."""
     pid = proxy["id"]
     if expected is not None and expected != "none" and not re.fullmatch(r"[0-9a-f]{64}", expected):
-        raise HTTPException(status_code=422, detail="Expected a full Docker container ID or 'none'.")
+        raise HTTPException(status_code=422, detail=t("api.expected_full_docker_container_id"))
     body: dict[str, Any] = {"proxy": proxies.worker_proxy_spec(proxy["definition"]), "expected_container": expected}
     if expected_containers is not None:
         body["expected_containers"] = expected_containers
@@ -9388,9 +9394,9 @@ async def _account_proxy_traffic(worker_id: int, entries: list[Any]) -> None:
             # that were running are marked as stopped by the cap (see
             # _stop_capped_proxy), so one the owner stopped stays stopped.
             targets |= {(c["worker_id"], c["slug"]) for c in await database.list_proxied_copies(proxy_id)}
-        targets = {t for t in targets if t[1] and (proxy_id, *t) not in _proxy_cap_stopping}
+        targets = {pair for pair in targets if pair[1] and (proxy_id, *pair) not in _proxy_cap_stopping}
         if targets or crossed:
-            _proxy_cap_stopping.update((proxy_id, *t) for t in targets)
+            _proxy_cap_stopping.update((proxy_id, *pair) for pair in targets)
             _spawn(_stop_capped_proxy({**proxy, "state": state}, targets))
 
 
@@ -9459,16 +9465,18 @@ async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]
                             await database.set_proxied_copy_capped(pid, worker_id, slug, True)
                             logger.warning("Could not start %s again through proxy %s: %s", slug, pid, exc.detail)
                 except HTTPException as exc:
-                    if exc.status_code == 404 and any(
-                        t in str(exc.detail) for t in ("No proxied copy", "Worker not found")
-                    ):
+                    gone = (
+                        *_worker_texts("err.proxy_tunnel.no_proxied_copy_through_proxy", slug=slug, proxy_id=pid),
+                        *_worker_texts("api.worker_not_found"),
+                    )
+                    if exc.status_code == 404 and any(text in str(exc.detail) for text in gone):
                         # Already gone from that box, or the box itself is gone: nothing left to stop.
                         unstopped.pop((worker_id, slug), None)
                         continue
                     unstopped[(worker_id, slug)] = str(exc.detail)[:200]
                     logger.warning("Could not stop %s at proxy %s's cap: %s", slug, pid, exc.detail)
     finally:
-        _proxy_cap_stopping.difference_update((pid, *t) for t in targets)
+        _proxy_cap_stopping.difference_update((pid, *pair) for pair in targets)
     message = await _proxy_cap_message(proxy)
     if alert_id := await database.record_alert("proxy_cap", str(pid), message):
         name = (proxy.get("definition") or {}).get("name") or f"proxy {pid}"
@@ -9611,7 +9619,7 @@ async def api_compose_single(request: Request, slug: str, arch: str | None = Non
     _require_auth_api(request)
     svc = catalog.get_service(slug)
     if not svc:
-        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+        raise HTTPException(status_code=404, detail=t("api.service_not_found", slug=slug))
     gpu_host = await _compose_gpu_host(worker_id)
     try:
         return compose_generator.generate_compose_single(slug, arch=_compose_arch(arch), gpu_host=gpu_host)
@@ -9634,7 +9642,7 @@ async def _compose_gpu_host(worker_id: int | None) -> dict[str, Any] | None:
         return None
     worker = await database.get_worker(worker_id)
     if not worker:
-        raise HTTPException(status_code=404, detail="Worker not found")
+        raise HTTPException(status_code=404, detail=t("api.worker_not_found"))
     info = _decoded_worker(worker).get("system_info")
     return gpu.host_from_report(info.get("gpu") if isinstance(info, dict) else None)
 
@@ -9647,7 +9655,7 @@ def _compose_arch(value: str | None) -> str | None:
     if fam is None:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown architecture '{value}': use one of {', '.join(sorted(arch.FAMILIES))}",
+            detail=t("api.unknown_architecture_use_one", value=value, families=", ".join(sorted(arch.FAMILIES))),
         )
     return fam
 
@@ -9827,7 +9835,7 @@ async def api_earnings_daily(request: Request, days: int = 7) -> list[dict[str, 
     """Daily earnings for charting."""
     _require_auth_api(request)
     if days < 1 or days > 365:
-        raise HTTPException(status_code=400, detail="days must be between 1 and 365")
+        raise HTTPException(status_code=400, detail=t("api.days_must_between_1_365"))
     return await database.get_daily_earnings(days)
 
 
@@ -9921,7 +9929,7 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
 async def api_earnings_history(request: Request, period: str = "week") -> list[dict[str, Any]]:
     _require_auth_api(request)
     if period not in ("week", "month", "year", "all"):
-        raise HTTPException(status_code=400, detail="period must be week, month, year, or all")
+        raise HTTPException(status_code=400, detail=t("api.period_must_week_month_year"))
     return await database.get_earnings_history(period)
 
 
@@ -9930,7 +9938,7 @@ async def api_health_scores(request: Request, days: int = 7) -> list[dict[str, A
     """Health scores for all services."""
     _require_reader(request)
     if days < 1 or days > 90:
-        raise HTTPException(status_code=400, detail="days must be between 1 and 90")
+        raise HTTPException(status_code=400, detail=t("api.days_must_between_1_90"))
     scores = await database.get_health_scores(days)
     # Enrich with service names
     for s in scores:
@@ -10202,7 +10210,7 @@ async def api_service_preflight(
     _require_auth_api(request)
     service = catalog.get_service(slug)
     if not service:
-        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+        raise HTTPException(status_code=404, detail=t("api.unknown_service", slug=slug))
 
     # What is already running on the SAME machine is what makes a per-IP limit
     # checkable at all, so scope to that worker when we know which one.
@@ -10221,7 +10229,7 @@ async def api_service_preflight(
     workers = [w for w in all_workers if w.get("status") == "online"]
     worker = next((w for w in all_workers if w.get("id") == worker_id), None)
     if worker is None:
-        raise HTTPException(status_code=404, detail=f"Unknown worker {worker_id}")
+        raise HTTPException(status_code=404, detail=t("api.unknown_worker", worker_id=worker_id))
 
     # The other workers receiving this service in the SAME wizard action. The
     # cross-machine check otherwise only sees what is already RUNNING, so
@@ -10685,7 +10693,7 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
     _require_auth_api(request)
     service = catalog.get_service(slug)
     if not service:
-        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+        raise HTTPException(status_code=404, detail=t("api.unknown_service", slug=slug))
 
     from app.collectors import COLLECTOR_MAP
 
@@ -10782,7 +10790,7 @@ async def api_service_disclosure(request: Request, slug: str) -> dict[str, Any]:
     _require_auth_api(request)
     service = catalog.get_service(slug)
     if not service:
-        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+        raise HTTPException(status_code=404, detail=t("api.unknown_service", slug=slug))
     return disclosure.for_service(service)
 
 
@@ -10809,7 +10817,7 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
     _require_owner(request)
     service = catalog.get_service(slug)
     if not service:
-        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+        raise HTTPException(status_code=404, detail=t("api.unknown_service", slug=slug))
     name = service.get("name") or slug
 
     if slug not in COLLECTOR_MAP:
@@ -10934,13 +10942,13 @@ class ManualPayout(BaseModel):
             return None
         value = value.strip()
         if not _ISO_DATE.match(value):
-            raise ValueError("date must be YYYY-MM-DD")
+            raise ValueError(t("api.date_must_yyyy_mm_dd"))
         try:
             day = datetime.strptime(value, "%Y-%m-%d").date()  # noqa: DTZ007 -- a calendar date
         except ValueError as exc:
-            raise ValueError("date must be a real calendar date") from exc
+            raise ValueError(t("api.date_must_real_calendar_date")) from exc
         if day > datetime.now(UTC).date():
-            raise ValueError("date cannot be in the future")
+            raise ValueError(t("api.date_cannot_future"))
         return value
 
 
@@ -10949,7 +10957,7 @@ async def api_add_payout(request: Request, body: ManualPayout) -> dict[str, Any]
     """Record a cash-out CashPilot did not detect, so lifetime earnings keep it."""
     _require_writer(request)
     if not catalog.get_service(body.platform):
-        raise HTTPException(status_code=404, detail=f"Unknown service '{body.platform}'")
+        raise HTTPException(status_code=404, detail=t("api.unknown_service_2", platform=body.platform))
     currency = (body.currency or "").strip().upper()
     if not currency:
         history = await database.get_balance_history(body.platform, days=3650)
@@ -10975,8 +10983,7 @@ async def api_add_payout(request: Request, body: ManualPayout) -> dict[str, Any]
     except database.PendingPayoutError as exc:
         raise HTTPException(
             status_code=409,
-            detail="CashPilot detected a cash-out for this service that is waiting in the alerts. "
-            "Confirm or reject it first, so the same cash-out is not counted twice.",
+            detail=t("api.cashpilot_detected_cash_out_service"),
         ) from exc
     return {"ok": True, "id": payout_id, "currency": currency, "priced": fx is not None}
 
@@ -10986,7 +10993,7 @@ async def api_delete_payout(request: Request, payout_id: int) -> dict[str, Any]:
     """Remove a confirmed payout recorded by mistake."""
     _require_writer(request)
     if not await database.delete_confirmed_payout(payout_id):
-        raise HTTPException(status_code=404, detail="No confirmed payout with that id")
+        raise HTTPException(status_code=404, detail=t("api.no_confirmed_payout_id"))
     return {"ok": True, "id": payout_id, "removed": True}
 
 
@@ -11000,7 +11007,7 @@ async def api_confirm_payout(request: Request, payout_id: int, method: str = "")
     # has always had a column for it, but it was never passed along, so every
     # confirmation recorded an empty method however the caller was paid.
     if not await database.confirm_payout(payout_id, method=method):
-        raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
+        raise HTTPException(status_code=404, detail=t("api.no_unconfirmed_payout_id"))
     # The question has been answered, so retire the prompt. Left behind, the
     # stored alert would be restored on the next restart and ask again about a
     # payout the user already confirmed.
@@ -11016,7 +11023,7 @@ async def api_reject_payout(request: Request, payout_id: int) -> dict[str, Any]:
     _require_writer(request)
     platform = await _payout_platform(payout_id)
     if not await database.reject_payout(payout_id):
-        raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
+        raise HTTPException(status_code=404, detail=t("api.no_unconfirmed_payout_id"))
     await _retire_payout_alert(payout_id, platform=platform)
     return {"ok": True, "id": payout_id, "removed": True}
 
@@ -11028,12 +11035,12 @@ async def _income_fiat_rates(currency: str, start: str, end: str) -> dict[str, f
     except exchange_rates.UnknownFiat:
         raise HTTPException(
             status_code=400,
-            detail=f"No daily ECB rate for {currency} in this date range. Export in USD or choose a supported currency.",
+            detail=t("api.no_daily_ecb_rate_date", currency=currency),
         )
     if fiat is None:
         raise HTTPException(
             status_code=502,
-            detail="Could not get the daily exchange rates. Try again or export in USD.",
+            detail=t("api.could_not_get_daily_exchange"),
         )
     return fiat
 
@@ -11048,20 +11055,20 @@ async def api_income_csv(
     for name, value in (("start", start), ("end", end)):
         if value:
             if not _ISO_DATE.fullmatch(value):
-                raise HTTPException(status_code=400, detail=f"{name} must use YYYY-MM-DD.")
+                raise HTTPException(status_code=400, detail=t("api.must_use_yyyy_mm_dd", name=name))
             try:
                 date.fromisoformat(value)
             except ValueError:
-                raise HTTPException(status_code=400, detail=f"{name} must be a real calendar date.")
+                raise HTTPException(status_code=400, detail=t("api.must_real_calendar_date", name=name))
 
     today = datetime.now(UTC).date().isoformat()
     end = end or today
     if end > today:
-        raise HTTPException(status_code=400, detail="The end date cannot be in the future (UTC).")
+        raise HTTPException(status_code=400, detail=t("api.end_date_cannot_future_utc"))
     if not re.fullmatch(r"[A-Z]{3}", currency):
-        raise HTTPException(status_code=400, detail="Currency must have three uppercase letters, such as USD.")
+        raise HTTPException(status_code=400, detail=t("api.currency_must_have_three_uppercase"))
     if start and start > end:
-        raise HTTPException(status_code=400, detail="The start date must be on or before the end date.")
+        raise HTTPException(status_code=400, detail=t("api.start_date_must_before_end"))
 
     first_day = None
 
@@ -11102,7 +11109,7 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     _require_auth_api(request)
     service = catalog.get_service(slug)
     if not service:
-        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+        raise HTTPException(status_code=404, detail=t("api.unknown_service", slug=slug))
 
     balance = await database.get_latest_balance(slug)
     history = await database.get_balance_history(slug, days=30)
@@ -11562,7 +11569,7 @@ async def api_deploy_risk(request: Request, slug: str) -> dict[str, Any]:
     _require_auth_api(request)
     service = catalog.get_service(slug)
     if not service:
-        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+        raise HTTPException(status_code=404, detail=t("api.unknown_service", slug=slug))
 
     return {
         "slug": slug,
@@ -11624,14 +11631,14 @@ async def _backup_box(slug: str, worker_id: Any) -> dict[str, Any]:
     """
     svc = catalog.get_service(slug)
     if not svc or not payout_registry.critical_state(svc):
-        raise HTTPException(status_code=404, detail="This service keeps no irreplaceable state to back up.")
+        raise HTTPException(status_code=404, detail=t("api.service_keeps_no_irreplaceable_state"))
     if isinstance(worker_id, bool) or not isinstance(worker_id, int):
-        raise HTTPException(status_code=400, detail="worker_id must be a number.")
+        raise HTTPException(status_code=400, detail=t("api.worker_id_must_number"))
     workers = await database.list_workers()
     for row in placement.runs_on(workers).get(slug, []):
         if row["worker_id"] == worker_id and not row["android"]:
             return {"worker_id": worker_id, "name": row["name"], "workers": workers}
-    raise HTTPException(status_code=404, detail="That box does not run this service.")
+    raise HTTPException(status_code=404, detail=t("api.box_does_not_run_service"))
 
 
 async def _json_object(request: Request) -> dict[str, Any]:
@@ -11645,7 +11652,7 @@ async def _json_object(request: Request) -> dict[str, Any]:
     except ValueError:
         body = None
     if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="Expected a JSON object.")
+        raise HTTPException(status_code=400, detail=t("api.expected_json_object"))
     return body
 
 
@@ -11675,7 +11682,7 @@ async def api_backup_unconfirm(slug: str, request: Request) -> dict[str, Any]:
     try:
         worker_id = int(request.query_params.get("worker_id", ""))
     except ValueError:
-        raise HTTPException(status_code=400, detail="worker_id must be a number.") from None
+        raise HTTPException(status_code=400, detail=t("api.worker_id_must_number")) from None
     await database.clear_state_backup(slug, worker_id)
     return {"ok": True}
 
@@ -11698,19 +11705,19 @@ async def api_backup_export(slug: str, request: Request) -> dict[str, Any]:
     passphrase = body.get("passphrase")
     recipient = body.get("recipient_public_key")
     if not isinstance(passphrase, str | None) or not isinstance(recipient, str | None):
-        raise HTTPException(status_code=400, detail="The passphrase and the public key must be text.")
+        raise HTTPException(status_code=400, detail=t("api.passphrase_public_key_must_text"))
     if bool(passphrase) == bool(recipient):
-        raise HTTPException(status_code=400, detail="Give either a passphrase or a recipient public key, not both.")
+        raise HTTPException(status_code=400, detail=t("api.give_either_passphrase_recipient_public"))
     if passphrase:
         # A typo would give a file nobody can open, and the export below marks
         # the box as backed up. Compared, never echoed.
         repeat = body.get("passphrase_repeat")
         if not isinstance(repeat, str) or not secrets.compare_digest(repeat.encode(), passphrase.encode()):
-            raise HTTPException(status_code=400, detail="The two passphrases differ. Type it again.")
+            raise HTTPException(status_code=400, detail=t("api.two_passphrases_differ_type_again"))
     box = await _backup_box(slug, body.get("worker_id"))
     worker_id = box["worker_id"]
 
-    update = "This worker is too old to export backups. Update the worker first."
+    update = t("api.backup_worker_too_old")
     if "state_backup" not in await _worker_features(worker_id):
         raise HTTPException(status_code=409, detail=update)
     try:
@@ -11727,7 +11734,7 @@ async def api_backup_export(slug: str, request: Request) -> dict[str, Any]:
         raise
     bundle = result.get("bundle_b64") if isinstance(result, dict) else None
     if not isinstance(bundle, str) or not bundle:
-        raise HTTPException(status_code=502, detail="The worker answered without a backup.")
+        raise HTTPException(status_code=502, detail=t("api.worker_answered_without_backup"))
 
     archived = result.get("state_id")
     fingerprint = (
@@ -12357,7 +12364,7 @@ def _refuse_heat_without_months(sanitized: dict[str, str], before: dict[str, Any
         if source in ("", "none"):
             continue
         if machine_economics.parse_heat_months(merged.get(f"{prefix}_heat_months")) is None:
-            raise HTTPException(status_code=400, detail="Pick the months you heat.")
+            raise HTTPException(status_code=400, detail=t("api.pick_months_you_heat"))
 
 
 # ---------------------------------------------------------------------------
@@ -12399,16 +12406,16 @@ async def api_set_preferences(
     request: Request, body: PreferencesUpdate, user: dict[str, Any] = Depends(_require_auth_api)
 ) -> dict[str, str]:
     if body.setup_mode is not None and body.setup_mode not in ("fresh", "monitoring", "mixed"):
-        raise HTTPException(status_code=400, detail="setup_mode must be fresh, monitoring, or mixed")
+        raise HTTPException(status_code=400, detail=t("api.setup_mode_must_fresh_monitoring"))
     if body.theme is not None and body.theme not in THEMES:
-        raise HTTPException(status_code=400, detail=f"theme must be one of: {', '.join(THEMES)}")
+        raise HTTPException(status_code=400, detail=t("api.theme_must_one", themes=", ".join(THEMES)))
     if body.language is not None and body.language != "auto" and body.language not in i18n.available():
-        raise HTTPException(status_code=400, detail=f"language must be auto or one of: {', '.join(i18n.available())}")
+        raise HTTPException(status_code=400, detail=t("api.language_must_auto_one", i18n=", ".join(i18n.available())))
 
     # API keys resolve to uid 0, which has no users row, so the save would fail
     # the foreign key and return a 500. Refuse it plainly, as the password route does.
     if user["uid"] == 0:
-        raise HTTPException(status_code=400, detail="API-key sessions have no preferences to save")
+        raise HTTPException(status_code=400, detail=t("api.api_key_sessions_have_no"))
     # Only the fields that were sent are written (one upsert, no read first),
     # so a theme click racing the wizard's POST cannot undo either.
     await database.save_user_preferences(
@@ -12497,7 +12504,7 @@ async def _refuse_desktop_update(worker_id: int) -> None:
     if await _worker_is_desktop(worker_id):
         raise HTTPException(
             status_code=409,
-            detail="CashPilot Desktop updates itself from its own app. Pick a Docker worker here.",
+            detail=t("api.cashpilot_desktop_updates_itself_own"),
         )
 
 
@@ -12715,7 +12722,7 @@ async def api_clear_service_config(request: Request, slug: str) -> dict[str, str
 
     arg_keys = _COLLECTOR_ARGS.get(slug)
     if not arg_keys:
-        raise HTTPException(status_code=404, detail="Unknown service")
+        raise HTTPException(status_code=404, detail=t("api.unknown_service_3"))
 
     config_keys = [f"{slug}_{a.lstrip('?')}" for a in arg_keys]
     config_keys.append(f"{slug}_signup_bonus")
@@ -12760,16 +12767,16 @@ async def api_change_own_password(
     """Change the authenticated user's own password (verifies current password)."""
     uid = user["uid"]
     if uid == 0:
-        raise HTTPException(status_code=400, detail="API-key sessions cannot change a password")
+        raise HTTPException(status_code=400, detail=t("api.api_key_sessions_cannot_change"))
     record = await database.get_user_by_id(uid)
     if not record:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=t("api.user_not_found"))
     if not await auth.verify_password_async(body.current_password, record["password"]):
-        raise HTTPException(status_code=403, detail="Current password is incorrect")
+        raise HTTPException(status_code=403, detail=t("api.current_password_incorrect"))
     if len(body.new_password) < 10:
-        raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
+        raise HTTPException(status_code=400, detail=t("api.password_must_least_10_characters"))
     if body.new_password == body.current_password:
-        raise HTTPException(status_code=400, detail="New password must differ from the current password")
+        raise HTTPException(status_code=400, detail=t("api.new_password_must_differ_current"))
 
     hashed = await auth.hash_password_async(body.new_password)
     await database.update_user_password(uid, hashed)
@@ -12788,23 +12795,23 @@ async def api_admin_set_password(
     """Owner resets another user's password (no current-password check, no re-mint)."""
     target = await database.get_user_by_id(user_id)
     if not target:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=t("api.user_not_found"))
     uid = _auth.get("uid")
     admin_key = not isinstance(uid, int) or uid <= 0
-    owner_refused = HTTPException(status_code=403, detail="Sign in to the dashboard to set an owner's password")
+    owner_refused = HTTPException(status_code=403, detail=t("api.sign_dashboard_set_owner_s"))
     if target.get("role") == "owner" and admin_key:
         # With an owner's new password the admin API key would become an owner
         # session, which reads the claimable device ids and passes the password
         # step-ups the key alone is refused (issue #740).
         raise owner_refused
     if len(body.new_password) < 10:
-        raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
+        raise HTTPException(status_code=400, detail=t("api.password_must_least_10_characters"))
     hashed = await auth.hash_password_async(body.new_password)
     # The check above ran before the bcrypt await; an owner may have promoted the
     # account since. The write itself refuses an owner row for the key (issue #762).
     if not await database.update_user_password(user_id, hashed, unless_owner=admin_key):
         if await database.get_user_by_id(user_id) is None:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise HTTPException(status_code=404, detail=t("api.user_not_found"))
         raise owner_refused
     changed = await database.get_user_by_id(user_id)
     auth.set_user_pwd_epoch(user_id, changed["password_changed_at"])
@@ -12892,7 +12899,7 @@ async def _authenticate_worker_heartbeat(request: Request, cid: str) -> str:
     if not FLEET_API_KEY:
         raise HTTPException(
             status_code=503,
-            detail="Fleet key not configured — set CASHPILOT_API_KEY or mount shared /fleet volume",
+            detail=t("api.fleet_key_not_configured_set"),
         )
     token = _bearer_token(request)
     key, confirmed = await database.get_worker_key_state(cid) if cid else (None, False)
@@ -12900,7 +12907,7 @@ async def _authenticate_worker_heartbeat(request: Request, cid: str) -> str:
     if key is None:
         if shared_ok:
             return "enroll"
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise HTTPException(status_code=401, detail=t("api.invalid_api_key"))
     if token and hmac.compare_digest(token.encode(), key.encode()):
         return "ok"
     if not confirmed and shared_ok:
@@ -12920,13 +12927,9 @@ async def _authenticate_worker_heartbeat(request: Request, cid: str) -> str:
         )
         raise HTTPException(
             status_code=401,
-            detail=(
-                "Enrollment was never completed for this worker and the shared key is no longer "
-                "accepted for it. Upgrade the worker to 1.0.0+ with a writable, persistent /data, "
-                "then remove it in the fleet page so it can enroll again."
-            ),
+            detail=(t("api.enrollment_never_completed_worker_shared")),
         )
-    raise HTTPException(status_code=401, detail="Invalid or missing per-worker key")
+    raise HTTPException(status_code=401, detail=t("api.invalid_missing_per_worker_key"))
 
 
 class WorkerHeartbeat(BaseModel):
@@ -13056,12 +13059,12 @@ class EarningsReading(BaseModel):
     def _iso_date(cls, value: str) -> str:
         value = (value or "").strip()
         if not _ISO_DATE.match(value):
-            raise ValueError("date must be YYYY-MM-DD")
+            raise ValueError(t("api.date_must_yyyy_mm_dd"))
         # Reject 2026-02-30 and friends: the pattern above only proves shape.
         try:
             datetime.strptime(value, "%Y-%m-%d")  # noqa: DTZ007 -- a calendar date, not an instant
         except ValueError as exc:
-            raise ValueError("date must be a real calendar date") from exc
+            raise ValueError(t("api.date_must_real_calendar_date")) from exc
         return value
 
 
@@ -13101,7 +13104,7 @@ async def api_worker_earnings_import(request: Request, body: EarningsImport) -> 
     """
     cid = (body.client_id or "").strip()
     if not cid:
-        raise HTTPException(status_code=400, detail="client_id required")
+        raise HTTPException(status_code=400, detail=t("api.client_id_required"))
 
     state = await _authenticate_worker_heartbeat(request, cid)
     # Only a CONFIRMED worker may import. "enroll" and "reissue" both mean the
@@ -13112,10 +13115,7 @@ async def api_worker_earnings_import(request: Request, body: EarningsImport) -> 
     if state != "ok":
         raise HTTPException(
             status_code=403,
-            detail=(
-                "Importing earnings requires this worker's own key. Send a heartbeat first "
-                "to complete enrollment, then retry."
-            ),
+            detail=(t("api.importing_earnings_requires_worker_s")),
         )
 
     known = {s["slug"] for s in catalog.get_services()}
@@ -13167,7 +13167,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     # Use client_id for identity; fall back to name for backward compat
     cid = body.client_id or body.name
     if not cid:
-        raise HTTPException(status_code=400, detail="Worker name or client_id required")
+        raise HTTPException(status_code=400, detail=t("api.worker_name_client_id_required"))
     state = await _authenticate_worker_heartbeat(request, cid)
     if "miners" in body.system_info:
         body.system_info["miners"] = miner_read.sanitize_snapshot(body.system_info["miners"])
@@ -13574,7 +13574,7 @@ async def api_get_worker(request: Request, worker_id: int) -> dict[str, Any]:
     user = _require_auth_api(request)
     worker = await database.get_worker(worker_id)
     if not worker:
-        raise HTTPException(status_code=404, detail="Worker not found")
+        raise HTTPException(status_code=404, detail=t("api.worker_not_found"))
     _parse_worker_json(worker)
     _public_worker_miners(worker.get("system_info") or {}, show_pool_user=auth.require_role(user, "owner"))
     return worker
@@ -13659,7 +13659,7 @@ async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
     _require_owner(request)
     worker = await database.get_worker(worker_id)
     if not worker:
-        raise HTTPException(status_code=404, detail="Worker not found")
+        raise HTTPException(status_code=404, detail=t("api.worker_not_found"))
     await database.delete_worker(worker_id)
     return {"status": "deleted"}
 
@@ -13718,7 +13718,7 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
         if deploy_status in _UNDEPLOYABLE_STATUSES:
             raise HTTPException(
                 status_code=409 if deploy_status == "broken" else 410,
-                detail=f"Service '{body.slug}' is no longer available for deployment ({deploy_status})",
+                detail=t("api.service_no_longer_available_deployment_3", slug=body.slug, deploy_status=deploy_status),
             )
         # An approval comes only from the password step-up of /api/deploy; one
         # pasted into a raw spec is dropped, so this route can never run another
@@ -13781,7 +13781,7 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             lambda pid: _remove_routed(worker_id, body.slug),
         )
     else:
-        raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
+        raise HTTPException(status_code=400, detail=t("api.unknown_command", command=body.command))
 
     # The primary lifecycle routes (/api/deploy, /api/stop, ...) all run bookkeeping
     # after a successful proxy. Without it a deploy through this raw command route never
@@ -13957,7 +13957,7 @@ def _require_owner_session(request: Request) -> dict[str, Any]:
     """
     user = _require_owner(request)
     if not _signed_in_owner(user):
-        raise HTTPException(status_code=403, detail="Sign in to the dashboard as the owner to see device ids")
+        raise HTTPException(status_code=403, detail=t("api.sign_dashboard_owner_see_device"))
     return user
 
 
@@ -14089,20 +14089,22 @@ async def api_identity_add(request: Request) -> dict[str, Any]:
     slug, worker_id, copy = body.get("slug"), body.get("worker_id"), body.get("copy")
     label, value = body.get("label"), body.get("value")
     if not isinstance(slug, str) or not isinstance(label, str) or not isinstance(value, str):
-        raise HTTPException(status_code=400, detail="Give the service, the field name and the id")
+        raise HTTPException(status_code=400, detail=t("api.give_service_field_name_id"))
     if not isinstance(worker_id, int) or isinstance(worker_id, bool):
-        raise HTTPException(status_code=400, detail="Pick a box")
+        raise HTTPException(status_code=400, detail=t("api.pick_box"))
     if copy in (None, ""):
         copy = 1
     if not isinstance(copy, int) or isinstance(copy, bool) or not 1 <= copy <= database.NODE_IDENTITY_MAX_COPY:
-        raise HTTPException(status_code=400, detail=f"The copy must be 1 to {database.NODE_IDENTITY_MAX_COPY}")
+        raise HTTPException(
+            status_code=400, detail=t("api.copy_must_1", node_identity_max_copy=database.NODE_IDENTITY_MAX_COPY)
+        )
     label, value = label.strip(), value.strip()
     problem = database.manual_identity_error(label, value)
     if problem:
         raise HTTPException(status_code=400, detail=problem)
     svc = catalog.get_service(slug)
     if not (svc or await _custom_service(slug, reveal=False)):
-        raise HTTPException(status_code=404, detail="No such service")
+        raise HTTPException(status_code=404, detail=t("api.no_such_service"))
     # The list and the form name a field by its label ('Node UUID'), the reuse
     # picker by its env key: keep a field the owner names either way, in any
     # letter case, under its key, or "use one this service had before" never finds it.
@@ -14112,10 +14114,10 @@ async def api_identity_add(request: Request) -> dict[str, Any]:
             label = key
             break
     if not await database.get_worker(worker_id):
-        raise HTTPException(status_code=404, detail="No such box")
+        raise HTTPException(status_code=404, detail=t("api.no_such_box"))
     row_id = await database.add_manual_identity(slug, worker_id, str(copy), label, value)
     if row_id is None:
-        raise HTTPException(status_code=409, detail="This id is already in the list for that service, box and copy")
+        raise HTTPException(status_code=409, detail=t("api.id_already_list_service_box"))
     await _audit("identity_add", f"{slug}|{label}|copy {copy}", "added", actor=user, worker_id=worker_id)
     return {"id": row_id}
 
@@ -14135,8 +14137,7 @@ async def api_identity_export(request: Request) -> JSONResponse:
             status_code=403,
             detail={
                 "error": "step_up_required",
-                "message": "The download holds every device id in full, and these ids let whoever has them "
-                "claim the device. Enter your password to continue.",
+                "message": t("api.download_holds_every_device_id"),
             },
         )
     await require_step_up(request, password, action=step_up.ACTION_EXPORT_IDENTITIES, target="device ids")
@@ -14176,7 +14177,7 @@ async def api_identity_reveal(request: Request, identity_id: int) -> dict[str, s
     user = _require_owner_session(request)
     row = await database.get_identity(identity_id)
     if not row or not row.get("value"):
-        raise HTTPException(status_code=404, detail="No such device id")
+        raise HTTPException(status_code=404, detail=t("api.no_such_device_id"))
     # Fail closed, like the fleet-key reveal: no audit row, no value.
     await database.add_audit_event(
         "identity_reveal",
@@ -14210,25 +14211,24 @@ async def api_wallet_seed_reveal(
     """
     user = _require_owner_session(request)
     if wallet_seed.seed_var(catalog.get_service(slug)) is None:
-        raise HTTPException(status_code=404, detail=f"{slug} keeps no wallet seed")
+        raise HTTPException(status_code=404, detail=t("api.keeps_no_wallet_seed", slug=slug))
     worker_id = await _resolve_worker_id(worker_id)
     if wallet_seed.FEATURE not in await _worker_features(worker_id):
         raise HTTPException(
             status_code=409,
-            detail="This worker is too old to keep the seed in the node's own file, so there is nothing to read "
-            "there. Update the worker, then redeploy the service.",
+            detail=t("api.worker_too_old_keep_seed"),
         )
     who = str(user.get("u") or user.get("uid"))
     now = time.time()
-    recent = [t for t in _WALLET_REVEALS.get(who, []) if now - t < WALLET_REVEAL_WINDOW]
+    recent = [when for when in _WALLET_REVEALS.get(who, []) if now - when < WALLET_REVEAL_WINDOW]
     if len(recent) >= WALLET_REVEAL_LIMIT:
-        raise HTTPException(status_code=429, detail="Too many seed reveals. Try again in an hour.")
+        raise HTTPException(status_code=429, detail=t("api.too_many_seed_reveals_try"))
     if not body.step_up_password:
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "step_up_required",
-                "message": "Whoever sees the seed phrase can spend this wallet. Enter your password to see it.",
+                "message": t("api.whoever_sees_seed_phrase_can"),
             },
         )
     await require_step_up(
@@ -14244,7 +14244,7 @@ async def api_wallet_seed_reveal(
     )
     phrase = result.get("phrase") if isinstance(result, dict) else None
     if not isinstance(phrase, str) or not phrase:
-        raise HTTPException(status_code=502, detail="The worker did not return the seed phrase")
+        raise HTTPException(status_code=502, detail=t("api.worker_did_not_return_seed"))
     # Fail closed, like the identity reveal: no audit row, no phrase.
     await database.add_audit_event("wallet_seed_reveal", slug, "revealed", actor=user, worker_id=worker_id)
     return JSONResponse({"phrase": phrase}, headers={"Cache-Control": "no-store"})
@@ -14259,22 +14259,20 @@ async def api_identity_forget(request: Request, identity_id: int) -> dict[str, s
     user = _require_owner_session(request)
     row = await database.get_identity(identity_id)
     if not row:
-        raise HTTPException(status_code=404, detail="No such device id")
+        raise HTTPException(status_code=404, detail=t("api.no_such_device_id"))
     if not await database.delete_identity(identity_id):
         hours = PENDING_IDENTITY_SECONDS // 3600
         if row.get("kind") == "backup" and row.get("source") == "pending":
             raise HTTPException(
                 status_code=409,
-                detail="The worker did not answer this restore, so it may still finish and start this node there. "
-                f"You can forget it {hours} h after the restore.",
+                detail=t("api.worker_did_not_answer_restore", hours=hours),
             )
         if database.pending_copy_number(str(row.get("instance") or "")) is not None:
             raise HTTPException(
                 status_code=409,
-                detail=f"The worker did not confirm this deploy, so the box may still start with this id. "
-                f"You can forget it {hours} h after the deploy.",
+                detail=t("api.worker_did_not_confirm_deploy", hours=hours),
             )
-        raise HTTPException(status_code=409, detail="A box still runs with this id; remove the service there first")
+        raise HTTPException(status_code=409, detail=t("api.box_still_runs_id_remove"))
     await _audit(
         "identity_forget",
         f"{row['slug']}|{row['name']}|copy {row['instance']}",
@@ -14305,12 +14303,12 @@ async def api_identity_change(request: Request, identity_id: int) -> dict[str, A
     body = await _json_body(request)
     row = await database.get_identity(identity_id)
     if not row:
-        raise HTTPException(status_code=404, detail="No such device id")
+        raise HTTPException(status_code=404, detail=t("api.no_such_device_id"))
     _, labels = await _identity_context()
     if not _identity_changeable(row, labels):
         raise HTTPException(
             status_code=409,
-            detail="Only an id a deploy set and the box runs now can be changed; a copy's id follows its box's",
+            detail=t("api.only_id_deploy_set_box"),
         )
     slug, key, worker_id = row["slug"], row["name"], int(row["worker_id"])
     svc = catalog.get_service(slug) or {}
@@ -14328,28 +14326,31 @@ async def api_identity_change(request: Request, identity_id: int) -> dict[str, A
         or (var.get("pattern") and not re.fullmatch(var["pattern"], value))
         or value == str(var.get("default", "")).strip()
     ):
-        raise HTTPException(status_code=400, detail=f"Invalid value for: {label}")
+        raise HTTPException(status_code=400, detail=t("api.invalid_value_2", label=label))
     if value == row.get("value"):
-        raise HTTPException(status_code=400, detail=f"The box already runs with this {label}")
+        raise HTTPException(status_code=400, detail=t("api.box_already_runs", label=label))
     recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
     if not recorded:
-        raise HTTPException(status_code=409, detail=f"{svc.get('name') or slug} is not deployed on this box any more")
+        raise HTTPException(status_code=409, detail=t("api.not_deployed_box_any_more", name=svc.get("name") or slug))
     allow = body.get("allow_shared_identity") is True
     if not allow and (others := await database.identity_in_use(slug, key, value, except_worker=worker_id)):
         raise HTTPException(
             status_code=409,
             detail={
                 "error": "identity_in_use",
-                "message": f"This {label} for {svc.get('name') or slug} already runs on "
-                f"{', '.join(await _worker_names(others))}. Two boxes on one device look to the provider like one "
-                "device, which it may merge or ban.",
+                "message": t(
+                    "api.already_runs_two_boxes_one_2",
+                    label=label,
+                    name=svc.get("name") or slug,
+                    value=", ".join(await _worker_names(others)),
+                ),
             },
         )
     expected = body.get("expected_containers")
     if expected is not None and (
         not isinstance(expected, dict) or any(not isinstance(target, str) for target in expected.values())
     ):
-        raise HTTPException(status_code=422, detail="Expected container IDs indexed by instance.")
+        raise HTTPException(status_code=422, detail=t("api.expected_container_ids_indexed_instance"))
     # The password too: _deploy asks for it before the service leaves a route
     # the worker remembers (route_locked), and api() sends it with the change again.
     password = body.get("step_up_password")
@@ -14396,7 +14397,7 @@ async def api_identity_reuse(
     _require_owner_session(request)
     svc = catalog.get_service(slug)
     if not svc or key not in catalog.identity_keys(svc):
-        raise HTTPException(status_code=404, detail="This field keeps no device ids")
+        raise HTTPException(status_code=404, detail=t("api.field_keeps_no_device_ids"))
     names, labels = await _identity_context()
     seen: set[str] = set()
     offers: list[dict[str, Any]] = []
@@ -14515,7 +14516,7 @@ def _restore_service(slug: Any) -> tuple[dict[str, Any], dict[str, str]]:
     """The catalog service a backup file is for, and its critical target -> volume map. 400 otherwise."""
     svc = catalog.get_service(slug) if isinstance(slug, str) else None
     if not svc or svc.get("custom"):
-        raise HTTPException(status_code=400, detail="This backup is not of a service in this CashPilot's catalog.")
+        raise HTTPException(status_code=400, detail=t("api.backup_not_service_cashpilot_s"))
     docker_conf = svc.get("docker") or {}
     targets = state_backup.restore_volumes(docker_conf)
     if not targets:
@@ -14523,10 +14524,9 @@ def _restore_service(slug: Any) -> tuple[dict[str, Any], dict[str, str]]:
         if docker_conf.get("critical_volumes"):
             raise HTTPException(
                 status_code=400,
-                detail=f"{name} keeps its state in a host folder (or more than an export can hold), so the "
-                "dashboard cannot restore it. Use the command line steps in the backup guide.",
+                detail=t("api.keeps_state_host_folder_more", name=name),
             )
-        raise HTTPException(status_code=400, detail=f"{name} keeps nothing a backup restores.")
+        raise HTTPException(status_code=400, detail=t("api.keeps_nothing_backup_restores", name=name))
     return svc, targets
 
 
@@ -14536,7 +14536,7 @@ def _read_bundle_header(path: str) -> dict[str, Any]:
         start = fh.read(4)
         length = int.from_bytes(start, "big") if len(start) == 4 else 0
         if not 0 < length <= _RESTORE_HEADER_MAX:
-            raise state_backup.BackupError("Not a CashPilot backup bundle.")
+            raise state_backup.BackupError(t("api.not_cashpilot_backup_bundle"))
         return state_backup.read_header(start + fh.read(length))
 
 
@@ -14662,7 +14662,7 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
         # this CashPilot does not know, which may be a backup of one of them.
         "runs_on": sorted(names[w] for w in running),
         "container": f"{constants.CONTAINER_PREFIX}{slug}",
-        "creates": [{"target": t, "volume": v} for t, v in sorted(targets.items())],
+        "creates": [{"target": path, "volume": v} for path, v in sorted(targets.items())],
         "workers": boxes,
     }
 
@@ -14681,9 +14681,7 @@ class _RestoreStream:
             async with asyncio.timeout(RESTORE_UPLOAD_IDLE):
                 return await anext(self._chunks)
         except TimeoutError:
-            raise HTTPException(
-                status_code=408, detail="The file stopped arriving, so it was not kept. Check the file again."
-            ) from None
+            raise HTTPException(status_code=408, detail=t("api.file_stopped_arriving_not_kept")) from None
 
 
 @app.post("/api/restore/upload")
@@ -14702,10 +14700,10 @@ async def api_restore_upload(request: Request) -> dict[str, Any]:
     # below, nor between its release and the add to _restore_uploads, so on
     # the one event loop the count is never passed.
     if len(_restore_uploads) + len(_restore_receiving) >= RESTORE_UPLOAD_MAX_PENDING:
-        raise HTTPException(status_code=429, detail="Too many backup files are waiting. Try again in a few minutes.")
+        raise HTTPException(status_code=429, detail=t("api.too_many_backup_files_waiting"))
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > RESTORE_UPLOAD_MAX:
-        raise HTTPException(status_code=413, detail="This file is larger than any backup CashPilot makes.")
+        raise HTTPException(status_code=413, detail=t("api.file_larger_than_any_backup"))
     os.makedirs(_restore_dir(), mode=0o700, exist_ok=True)
     upload_id = secrets.token_urlsafe(18)
     path = os.path.join(_restore_dir(), upload_id)
@@ -14718,15 +14716,14 @@ async def api_restore_upload(request: Request) -> dict[str, Any]:
             async for chunk in _RestoreStream(request):
                 size += len(chunk)
                 if size > RESTORE_UPLOAD_MAX:
-                    raise HTTPException(status_code=413, detail="This file is larger than any backup CashPilot makes.")
+                    raise HTTPException(status_code=413, detail=t("api.file_larger_than_any_backup"))
                 digest.update(chunk)
                 fh.write(chunk)
         header = _read_bundle_header(path)
         if header.get("mode") != state_backup.MODE_PASSPHRASE:
             raise HTTPException(
                 status_code=400,
-                detail="This file is sealed to a key, not a passphrase. Its private key never goes through the "
-                "dashboard: restore it with the command line steps in the backup guide.",
+                detail=t("api.file_sealed_key_not_passphrase"),
             )
         slug = (header.get("metadata") or {}).get("slug")
         made_on = (header.get("metadata") or {}).get("worker")
@@ -14783,7 +14780,7 @@ async def api_restore(request: Request) -> dict[str, Any]:
     upload_id = body.get("upload_id")
     entry = _restore_uploads.get(upload_id) if isinstance(upload_id, str) else None
     if not entry or entry["uid"] != user.get("uid"):
-        raise HTTPException(status_code=404, detail="That backup file is no longer here. Choose it again.")
+        raise HTTPException(status_code=404, detail=t("api.backup_file_no_longer_here"))
     sha = entry["sha256"]
     if _restore_inflight:
         worker_id = body.get("worker_id")
@@ -14796,7 +14793,7 @@ async def api_restore(request: Request) -> dict[str, Any]:
             worker_id=worker_id if isinstance(worker_id, int) and not isinstance(worker_id, bool) else None,
             detail=detail,
         )
-        raise HTTPException(status_code=409, detail=detail)
+        raise HTTPException(status_code=409, detail=t("api.restore_in_flight"))
     _restore_inflight.add(sha)
     try:
         return await _restore_upload(request, user, body, entry)
@@ -14814,29 +14811,25 @@ async def _restore_upload(
     consumed = False
     try:
         if isinstance(worker_id, bool) or not isinstance(worker_id, int):
-            raise HTTPException(status_code=400, detail="worker_id must be a number.")
+            raise HTTPException(status_code=400, detail=t("api.worker_id_must_number"))
         preview = await _restore_preview(entry)
         box = next((w for w in preview["workers"] if w["id"] == worker_id), None)
         if box is None:
-            raise HTTPException(status_code=404, detail="No such worker, or it cannot run containers.")
+            raise HTTPException(status_code=404, detail=t("api.no_such_worker_cannot_run"))
         elsewhere = [n for i, n in zip(preview["live_ids"], preview["live_on"], strict=True) if i != worker_id]
         if elsewhere:
             raise HTTPException(
                 status_code=409,
-                detail=f"This backup's identity already runs on {', '.join(elsewhere)}. Two boxes on one "
-                "identity look to the provider like one node, which it may merge or ban. Remove the service "
-                "there first; if that box is gone for good, delete it on the Fleet page. If you know it runs "
-                "another node now, Forget this backup's rows for it under Settings, Device ids.",
+                detail=t("api.backup_s_identity_already_runs", elsewhere=", ".join(elsewhere)),
             )
         if not box["ok"]:
-            raise HTTPException(status_code=409, detail=f"Cannot restore on {box['name']}: {box['why']}.")
+            raise HTTPException(status_code=409, detail=t("api.cannot_restore", name=box["name"], why=box["why"]))
         if box["plain_http"] and body.get("allow_plain_http") is not True:
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": "restore_plain_http",
-                    "message": f"{box['name']} is reached over plain HTTP, so the passphrase would cross your "
-                    "network unencrypted. Tick the box that accepts this, or give that worker an HTTPS address.",
+                    "message": t("api.reached_over_plain_http_passphrase", name=box["name"]),
                 },
             )
         if not preview["known"]:
@@ -14846,21 +14839,21 @@ async def _restore_upload(
                     status_code=400,
                     detail={
                         "error": "restore_confirm_required",
-                        "message": "This CashPilot did not make this file, so it cannot tell whose identity or "
-                        f"wallet is inside. Type {preview['service']} to restore it anyway.",
+                        "message": t("api.cashpilot_did_not_make_file", service=preview["service"]),
                     },
                 )
         passphrase = body.get("passphrase")
         if not isinstance(passphrase, str) or not passphrase:
-            raise HTTPException(status_code=400, detail="Enter the passphrase the backup was made with.")
+            raise HTTPException(status_code=400, detail=t("api.enter_passphrase_backup_made"))
         password = body.get("step_up_password")
         if not isinstance(password, str) or not password:
             raise HTTPException(
                 status_code=403,
                 detail={
                     "error": "step_up_required",
-                    "message": f"Restoring {preview['service']} on {box['name']} puts a node identity or wallet "
-                    "there. Enter your password to continue.",
+                    "message": t(
+                        "api.restoring_puts_node_identity_wallet", service=preview["service"], name=box["name"]
+                    ),
                 },
             )
         await require_step_up(request, password, action=step_up.ACTION_RESTORE, target=target)
@@ -14868,7 +14861,7 @@ async def _restore_upload(
         with open(entry["path"], "rb") as fh:
             bundle = fh.read(RESTORE_UPLOAD_MAX + 1)
         if hashlib.sha256(bundle).hexdigest() != sha:
-            raise HTTPException(status_code=409, detail="The uploaded file changed on disk. Choose it again.")
+            raise HTTPException(status_code=409, detail=t("api.uploaded_file_changed_disk_choose"))
         # Written before anything is sent, and kept unless the restore surely did
         # not happen there: a worker that gets it may finish it whatever the
         # dashboard sees (no answer, a dropped connection, this process gone),
@@ -14953,6 +14946,7 @@ async def _restore_upload(
 # ---------------------------------------------------------------------------
 from app.routers import activity as activity_router  # noqa: E402
 from app.routers import auth as auth_router  # noqa: E402
+from app.routers import credential_storage as credential_storage_router  # noqa: E402
 from app.routers import importers as importers_router  # noqa: E402
 from app.routers import obligations as obligations_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
@@ -14964,6 +14958,7 @@ app.include_router(pages_router.router)
 app.include_router(users_router.router)
 app.include_router(importers_router.router)
 app.include_router(obligations_router.router)
+app.include_router(credential_storage_router.router)
 # The router may not import main (tests/test_login_rate_limit.py), so main
 # hands in the evaluation, which reads main's worker and alert state. Looked
 # up at call time, so a test that patches app.main._evaluate_obligations lands.

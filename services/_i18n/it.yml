@@ -62,8 +62,8 @@ anyone-protocol.payout.notes:
   text: "Impostato come ContactInfo in anonrc, con il prefisso '@anon:0x...'."
   source: "c1a9df600b29"
 anyone-protocol.collector.credential_hint:
-  text: "Impronte dei relay separate da virgole. Questo dato non si trova in una dashboard web: esegui <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> sulla macchina che esegue il relay.\n"
-  source: "9b5c068c9636"
+  text: "Impronte dei relay separate da virgole. Nessuna dashboard online le mostra. Per il relay che CashPilot esegue, esegui <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> sulla macchina dove gira. Per un relay hardware, apri il suo Relay Control Panel su <b>http://relayup.local</b> e leggi Fingerprint nella pagina Home.\n"
+  source: "ffa5be0d4953"
 anyone-protocol.requirements.min_bandwidth:
   text: "10 Mbps"
   source: "9941480e122c"
@@ -173,7 +173,7 @@ bytebenefit.referral.bonus.referrer:
   text: "20% dei guadagni dal traffico dei referral"
   source: "096a1e669ce2"
 bytebenefit.referral.bonus.referee:
-  text: "Bonus di benvenuto di $1 (10,000 Coins)"
+  text: "Bonus di benvenuto di $1 (10.000 Coins)"
   source: "e51d68265bf4"
 bytebenefit.rating.cons.0.text:
   text: "La scheda dell'app su Google Play dice che il tuo traffico serve richieste di web intelligence dei clienti di Infatica, senza dire chi siano né come vengano verificati."
@@ -434,7 +434,7 @@ earnfm.payment.frequency:
   text: "Su richiesta"
   source: "be820103712e"
 earnfm.cashout.notes:
-  text: "Minimo $15. Metodi: USDT su BEP20 o Polygon (commissione $1) o TRC20 (commissione $3), PayPal, buoni regalo Amazon o Starbucks da $15, oppure un bonifico bancario da $1,000 con le spese di trasferimento detratte. Prima del primo pagamento compili un profilo di fatturazione (nome legale e indirizzo), usato per le ricevute dei pagamenti."
+  text: "Minimo $15. Metodi: USDT su BEP20 o Polygon (commissione $1) o TRC20 (commissione $3), PayPal, buoni regalo Amazon o Starbucks da $15, oppure un bonifico bancario da $1.000 con le spese di trasferimento detratte. Prima del primo pagamento compili un profilo di fatturazione (nome legale e indirizzo), usato per le ricevute dei pagamenti."
   source: "3df5624c8702"
 earnfm.payout.notes:
   text: "Saldo conservato da Earn.fm; prelevato su richiesta."
@@ -449,7 +449,7 @@ earnfm.referral.bonus.referee:
   text: "Saldo iniziale di $5"
   source: "fb8d2b82e1e7"
 earnfm.rating.cons.0.text:
-  text: "Un minimo di $15, una commissione da $1 a $3 su USDT, e il bonifico bancario solo da $1,000."
+  text: "Un minimo di $15, una commissione da $1 a $3 su USDT, e il bonifico bancario solo da $1.000."
   source: "1e1a5493f40f"
 earnfm.rating.cons.1.text:
   text: "Prima del primo pagamento compili un profilo di fatturazione con il tuo nome legale e indirizzo."
@@ -491,13 +491,13 @@ ebesucher.rating.pros.2.text:
   text: "Le note legali indicano il gestore, TurboAd GmbH, registrata a Berlin-Charlottenburg (HRB 160730 B)."
   source: "84cbddd4330b"
 flux.description:
-  text: "Flux è un'infrastruttura di calcolo distribuita a livello globale. Chi gestisce un nodo fa staking di token FLUX e fornisce risorse server. Tre livelli: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Sono disponibili immagini Docker ufficiali.\n"
+  text: "Flux è un'infrastruttura di calcolo distribuita a livello globale. Chi gestisce un nodo fa staking di token FLUX e fornisce risorse server. Tre livelli: Cumulus (1.000 FLUX), Nimbus (12.500 FLUX), Stratus (40.000 FLUX). Sono disponibili immagini Docker ufficiali.\n"
   source: "02dfc13a22fc"
 flux.short_description:
   text: "Calcolo decentralizzato - richiede uno stake di token FLUX"
   source: "ba2bca8449db"
 flux.earnings.notes:
-  text: "Richiede uno stake di almeno 1,000 FLUX (~$50-500 a seconda del prezzo). I livelli più alti richiedono più garanzie ma guadagnano di più."
+  text: "Richiede uno stake di almeno 1.000 FLUX (~$50-500 a seconda del prezzo). I livelli più alti richiedono più garanzie ma guadagnano di più."
   source: "a8f6679daf85"
 flux.payment.frequency:
   text: "Ricompense di blocco"
@@ -512,7 +512,7 @@ flux.requirements.min_storage:
   text: "220GB"
   source: "fd0df44a57f5"
 flux.rating.cons.0.text:
-  text: "Il livello di nodo più piccolo richiede 1,000 FLUX bloccati come garanzia."
+  text: "Il livello di nodo più piccolo richiede 1.000 FLUX bloccati come garanzia."
   source: "a69f2d39e25d"
 flux.rating.cons.1.text:
   text: "La ricompensa di blocco cala del 10% ogni anno, e una guida del 2026 ha giudicato deboli in dollari le ricompense del livello piccolo."
@@ -632,7 +632,7 @@ helium.payout.notes:
   text: "Non ancora determinato: CashPilot non ha ancora verificato dove questo servizio conserva i tuoi guadagni."
   source: "8d61a71de590"
 helium.rating.cons.0.text:
-  text: "La HIP 149 ha eliminato le ricompense Proof-of-Coverage il 6 luglio 2026; ora gli hotspot IoT guadagnano solo per i dati che trasportano, e più di 114,000 di loro non ne hanno trasportato nessuno."
+  text: "La HIP 149 ha eliminato le ricompense Proof-of-Coverage il 6 luglio 2026; ora gli hotspot IoT guadagnano solo per i dati che trasportano, e più di 114.000 di loro non ne hanno trasportato nessuno."
   source: "e05c0111696f"
 helium.rating.cons.1.text:
   text: "Il modello di ricompense di Helium è cambiato più volte tramite votazione, il suo CEO si è dimesso e HNT ha perso circa il 96%."
@@ -713,7 +713,7 @@ honeygain.payment.frequency:
   text: "Su richiesta"
   source: "be820103712e"
 honeygain.cashout.notes:
-  text: "Minimo $20 (20,000 crediti). Due opzioni: PayPal tramite Tipalti, con circa il 15% di commissione, oppure crediti JumpTask senza commissione, versati in un wallet JumpTask. Una richiesta richiede un codice di 6 cifre inviato via email. Il primo pagamento PayPal resta in stato \"waiting for details\" finché non ti registri su Tipalti dal link che ti inviano via email. Quel link funziona una sola volta, quindi aprilo quando puoi finire tutto in una volta e hai il telefono a portata di mano: dopo aver impostato una password, Tipalti ti fa confermare un numero di cellulare via SMS (i codici scadono in pochi minuti), poi chiede nome, indirizzo, paese e data di nascita, e il tuo indirizzo PayPal. Tipalti addebita $2.02 per ogni pagamento; scegli USD per evitare la sua commissione di conversione valuta dell'1.9-3%. Il pagamento arriva entro 2 giorni lavorativi. Il saldo esce dal tuo account appena fai la richiesta, anche mentre il pagamento aspetta Tipalti. Ogni accesso successivo a Tipalti invia un nuovo codice SMS, a meno che non spunti l'opzione per ricordare il dispositivo per 30 giorni. A ottobre 2026 Tipalti non ha chiesto un modulo fiscale a un beneficiario in Spagna."
+  text: "Minimo $20 (20.000 crediti). Due opzioni: PayPal tramite Tipalti, con circa il 15% di commissione, oppure crediti JumpTask senza commissione, versati in un wallet JumpTask. Una richiesta richiede un codice di 6 cifre inviato via email. Il primo pagamento PayPal resta in stato \"waiting for details\" finché non ti registri su Tipalti dal link che ti inviano via email. Quel link funziona una sola volta, quindi aprilo quando puoi finire tutto in una volta e hai il telefono a portata di mano: dopo aver impostato una password, Tipalti ti fa confermare un numero di cellulare via SMS (i codici scadono in pochi minuti), poi chiede nome, indirizzo, paese e data di nascita, e il tuo indirizzo PayPal. Tipalti addebita $2.02 per ogni pagamento; scegli USD per evitare la sua commissione di conversione valuta dell'1.9-3%. Il pagamento arriva entro 2 giorni lavorativi. Il saldo esce dal tuo account appena fai la richiesta, anche mentre il pagamento aspetta Tipalti. Ogni accesso successivo a Tipalti invia un nuovo codice SMS, a meno che non spunti l'opzione per ricordare il dispositivo per 30 giorni. A ottobre 2026 Tipalti non ha chiesto un modulo fiscale a un beneficiario in Spagna."
   source: "553463d96535"
 honeygain.payout.notes:
   text: "Saldo conservato da Honeygain; prelevato su richiesta."
@@ -1064,7 +1064,7 @@ nodepay.payout.notes:
   text: "Non ancora determinato: CashPilot non ha ancora verificato dove questo servizio conserva i tuoi guadagni."
   source: "8d61a71de590"
 nodepay.rating.cons.0.text:
-  text: "Nella revisione della prima stagione Nodepay ha rimosso più di 300,000 account che ha giudicato bot e ha annullato 17 miliardi di punti."
+  text: "Nella revisione della prima stagione Nodepay ha rimosso più di 300.000 account che ha giudicato bot e ha annullato 17 miliardi di punti."
   source: "d97fddce3502"
 nodepay.rating.cons.1.text:
   text: "Le ricompense sono punti convertiti nel token NC, quindi il loro valore dipende dal token."
@@ -1142,8 +1142,8 @@ nodle.cashout.notes:
   text: "I NODL si trovano nel wallet dell'app su ZKsync Era; controllali nell'app o su un block explorer di ZKsync Era. Nodle ha lasciato la sua parachain Polkadot, e il bridge da Polkadot a ZKsync ha chiuso il 31 dicembre 2025, quindi i NODL rimasti sul lato Polkadot non possono più passare a ZKsync."
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "Non ancora determinato: CashPilot non ha ancora verificato dove questo servizio conserva i tuoi guadagni."
-  source: "8d61a71de590"
+  text: "I tuoi NODL si trovano nel wallet proprio dell'app Nodle, su ZKsync Era. CashPilot non può vedere l'indirizzo di quel wallet."
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "Una ricompensa in NODL per ogni nuovo utente attivo che si unisce tramite l'invito (Nodle non pubblica l'importo)"
   source: "03308fe33661"
@@ -1502,8 +1502,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "Nome descrittivo del dispositivo nella dashboard"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "Il client di Proxyrack non è stato scaricato all'avvio del container, quindi il container gira ma non guadagna nulla. Un riavvio lo scarica di nuovo; se l'avviso resta dopo il riavvio, controlla che questa macchina riesca a raggiungere internet."
-  source: "b5143d72ce35"
+  text: "Il client di ProxyRack non riesce a funzionare su questa copia, quindi non guadagna nulla. Di solito il server degli aggiornamenti di ProxyRack non risponde, e il client non può avviarsi senza. La copia riprova ogni 5 minuti e si avvia da sola appena il server risponde. Non devi correggere nulla."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "Il client di ProxyRack non è stato scaricato all'avvio di questa copia, perché il server degli aggiornamenti di ProxyRack non era raggiungibile, quindi la copia è in esecuzione ma non guadagna nulla. CashPilot la riavvia ogni 6 ore per riprovare. Ridistribuiscila per darle l'avvio proprio di CashPilot, che conserva il client e riprova da solo ogni 5 minuti."
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "Accedi a ProxyRack, apri Devices, scegli Add device e incolla questo UUID. Finché il dispositivo non è nel tuo account, non guadagna per nessuno. Se hai inserito una chiave API, il container si registra da solo: controlla che il dispositivo sia elencato lì."
   source: "54c4041903b5"
@@ -2159,7 +2162,7 @@ traffmonetizer.payment.frequency:
   text: "Su richiesta"
   source: "be820103712e"
 traffmonetizer.cashout.notes:
-  text: "Minimo $10. PayPal non è più disponibile. Prima salva un metodo di pagamento nel profilo: USDT su Solana o TON (commissioni più basse), Arbitrum (commissioni basse) o Tron TRC20 (commissioni di rete alte), oppure un bonifico bancario da $1,000. Il primo indirizzo che salvi vale subito; cambiarlo in seguito richiede una conferma via email. Prima del primo prelievo la dashboard può chiedere un contatto di messaggistica (WhatsApp, Telegram o Skype). Una richiesta paga solo dollari interi e i centesimi restano nel saldo."
+  text: "Minimo $10. PayPal non è più disponibile. Prima salva un metodo di pagamento nel profilo: USDT su Solana o TON (commissioni più basse), Arbitrum (commissioni basse) o Tron TRC20 (commissioni di rete alte), oppure un bonifico bancario da $1.000. Il primo indirizzo che salvi vale subito; cambiarlo in seguito richiede una conferma via email. Prima del primo prelievo la dashboard può chiedere un contatto di messaggistica (WhatsApp, Telegram o Skype). Una richiesta paga solo dollari interi e i centesimi restano nel saldo."
   source: "0bf13220a706"
 traffmonetizer.payout.notes:
   text: "USDT sulla chain salvata nelle impostazioni di pagamento del profilo (Solana, TON, Arbitrum o Tron), oppure un bonifico bancario. L'indirizzo si trova nelle impostazioni di Traffmonetizer, non nel container."
@@ -2180,7 +2183,7 @@ traffmonetizer.rating.cons.1.text:
   text: "Gli stessi recensori segnalano che la chat dal vivo e l'assistenza via email non rispondono, a volte per settimane."
   source: "514323fc7b1f"
 traffmonetizer.rating.cons.2.text:
-  text: "Solo criptovalute o un bonifico bancario da $1,000; PayPal non c'è più, e una richiesta paga solo dollari interi."
+  text: "Solo criptovalute o un bonifico bancario da $1.000; PayPal non c'è più, e una richiesta paga solo dollari interi."
   source: "ad8194944e13"
 traffmonetizer.rating.cons.3.text:
   text: "I termini di Traffmonetizer richiedono un IP residenziale, quindi un server su una connessione di hosting ne è escluso."

@@ -28,6 +28,8 @@ from typing import Any
 
 import yaml
 
+from app.i18n import t
+
 RULES_PATH = Path(__file__).resolve().parent.parent / "services" / "_ratings.yml"
 
 #: The keys a rating block may hold. Anything else (grade, override, sponsored,
@@ -44,7 +46,7 @@ def load_rules(path: Path | None = None) -> dict[str, Any]:
     """The published method, read once."""
     data = yaml.safe_load((path or RULES_PATH).read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError(f"{path or RULES_PATH}: expected a mapping")
+        raise ValueError(t("err.ratings.expected_mapping", path=path or RULES_PATH))
     return data
 
 
@@ -197,7 +199,7 @@ def _cap_holds(cap: dict[str, Any], service: dict[str, Any], verdicts: dict[str,
         return verdicts.get("payout_record") == "poor" or verdicts.get("account_safety") == "poor"
     if key == "thin_evidence":
         return unknowns >= cap["min_unknown"]
-    raise ValueError(f"unknown cap {key!r} in the ratings rules")
+    raise ValueError(t("err.ratings.unknown_cap_ratings_rules", key=repr(key)))
 
 
 def for_service(service: dict[str, Any] | None, *, rules: dict[str, Any] | None = None) -> dict[str, Any]:

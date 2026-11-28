@@ -20,6 +20,11 @@ RUN uv sync --frozen --no-dev --no-install-project \
        find .venv -type d -name "tests" -exec rm -rf {} + 2>/dev/null; \
        find .venv -type d -name "test" -exec rm -rf {} + 2>/dev/null; true
 
+# The entrypoint shim of CASHPILOT_EARNER_SECRETS=file (app/secret_env.py).
+# Static, so it runs in any earner image, one with no shell or libc included.
+COPY app/shim/cashpilot-env.c /build/shim/
+RUN gcc -static -Os -s -Wall -Werror -o /build/shim/cashpilot-env /build/shim/cashpilot-env.c
+
 # -- Runtime stage --
 FROM python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
 
@@ -57,6 +62,8 @@ WORKDIR /app
 COPY --from=builder /build/.venv ./.venv
 
 COPY app/__init__.py ./app/
+# The worker's answers to the dashboard, in the dashboard's language.
+COPY app/i18n/__init__.py app/i18n/*.json ./app/i18n/
 COPY app/constants.py ./app/
 COPY app/fleet_key.py ./app/
 # The plain-http rule for the key on the heartbeat (CASHPILOT_UI_URL).
@@ -116,6 +123,9 @@ COPY app/ratings.py ./app/
 COPY app/traffic_stall.py ./app/
 # The GPU grant (docker.gpu): sysfs read, device requests, the NVIDIA void stamp.
 COPY app/gpu.py ./app/
+# Keeps earner credentials out of Docker's container config (CASHPILOT_EARNER_SECRETS=file).
+COPY app/secret_env.py ./app/
+COPY --from=builder /build/shim/cashpilot-env /usr/local/lib/cashpilot/cashpilot-env
 COPY services/ ./services/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

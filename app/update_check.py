@@ -37,6 +37,7 @@ from typing import Any
 import httpx
 
 from app import version
+from app.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +139,7 @@ async def refresh(*, force: bool = False) -> str | None:
             response.raise_for_status()
             tag = _parse_tag(response.json())
         if tag is None:
-            raise ValueError("no release tag in the reply")
+            raise ValueError(t("err.update_check.no_release_tag_reply"))
     except Exception as exc:  # noqa: BLE001 - every failure means the same thing
         # DEBUG, not WARNING. A firewalled install would otherwise log a warning
         # every day forever about a feature its operator never asked for, and a
@@ -176,7 +177,7 @@ async def refresh_android(*, force: bool = False) -> str | None:
             response.raise_for_status()
             tag = _parse_tag(response.json())
         if tag is None:
-            raise ValueError("no release tag in the reply")
+            raise ValueError(t("err.update_check.no_release_tag_reply"))
     except Exception as exc:  # noqa: BLE001 - every failure means the same thing
         logger.debug("Android update check could not reach %s: %s", ANDROID_LATEST_URL, exc)
         _android_checked_at = time.time()

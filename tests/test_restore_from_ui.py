@@ -4923,7 +4923,7 @@ def test_the_roadmap_never_lets_the_private_key_leave_the_owner():
     root = Path(__file__).resolve().parents[1]
     roadmap = " ".join((root / "docs" / "roadmap.md").read_text("utf-8").split())
     assert "The private key never leaves the owner's machine." in roadmap
-    assert "never goes through the" in (root / "app" / "main.py").read_text("utf-8")
+    assert "never goes through the" in english_source(root / "app" / "main.py")
 
 
 def test_backup_doc_does_not_deny_the_passphrase_trip_it_describes():

@@ -51,7 +51,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-from app import gpu, layers, route_gate, socket_policy, version  # noqa: E402
+from app import gpu, layers, route_gate, secret_env, socket_policy, version  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
@@ -71,6 +71,7 @@ from app.constants import (  # noqa: E402
     TUNNEL_PREFIX,
     drift_warnings_enabled,
 )
+from app.i18n import t  # noqa: E402
 
 # Cached Docker availability (checked once at startup, refreshed on demand)
 _docker_available: bool | None = None
@@ -374,12 +375,9 @@ def proxy_refusal(exc: BaseException) -> str | None:
     if "sockguard" not in message and "policy denied" not in message:
         return None
     reason = " ".join(str(body.get("reason") or message).split())[:300]
-    text = f"The Docker socket proxy refused this: {reason}."
+    text = t("worker.socket_proxy_refused", reason=reason)
     if "bind" in reason.lower() or "mount" in reason.lower():
-        text += (
-            f" To let containers use a host folder, add it to {BIND_MOUNTS_ENV} in the .env "
-            "next to your compose file (comma-separated), then run docker compose up -d."
-        )
+        text += " " + t("worker.socket_proxy_bind_hint", env=BIND_MOUNTS_ENV)
     return text
 
 
@@ -395,7 +393,7 @@ def deploy_target(client: Any, name: str) -> Any | None:
     except NotFound:
         return None
     except DockerException as exc:
-        raise ContainerRuntimeError("Could not look up the deploy container in Docker.", 503) from exc
+        raise ContainerRuntimeError(t("err.orchestrator.could_not_look_up_deploy"), 503) from exc
 
 
 def require_deploy_target(expected: str | None, container: Any | None) -> None:
@@ -569,6 +567,12 @@ def _shape(container: Any) -> dict[str, Any]:
     devices = host.get("Devices") if isinstance(host.get("Devices"), list) else []
     mounts = attrs.get("Mounts") if isinstance(attrs.get("Mounts"), list) else []
     entrypoint = config.get("Entrypoint")
+    env_keys = {str(item).split("=", 1)[0] for item in config.get("Env") or []}
+    secrets_file = secret_env.is_shimmed(attrs)
+    if secrets_file:
+        # Its own entrypoint and the variables kept in its file, not the shim's.
+        entrypoint, in_file = secret_env.logical_view(attrs)
+        env_keys |= set(in_file)
     return {
         "image": str(config.get("Image") or ""),
         "cap_add": sorted({str(cap).upper().removeprefix("CAP_") for cap in host.get("CapAdd") or []}),
@@ -579,8 +583,10 @@ def _shape(container: Any) -> dict[str, Any]:
         ),
         "ports": sorted(str(key) for key in (host.get("PortBindings") or {})),
         "mounts": sorted({str(m.get("Destination") or "").rstrip("/") for m in mounts if isinstance(m, dict)} - {""}),
-        "env_keys": sorted({str(item).split("=", 1)[0] for item in config.get("Env") or []}),
+        "env_keys": sorted(env_keys),
         "entrypoint": [str(part) for part in entrypoint] if isinstance(entrypoint, list) else None,
+        # Its credentials are in a file, not in Docker's config (app/secret_env.py).
+        "secrets_file": secrets_file,
         "restart_policy": str((host.get("RestartPolicy") or {}).get("Name") or "no"),
         # The drivers of its GPU device requests (the GPU grant, app/gpu.py).
         "gpu": sorted(
@@ -702,7 +708,9 @@ def _find_container(slug: str, instance: int = 1):
         if not is_proxied(match) and _instance_of(match) == instance:
             return match
     raise ContainerNotFoundError(
-        f"Container for {slug} not found" if instance <= 1 else f"Instance {instance} of {slug} not found"
+        t("err.orchestrator.container_not_found", slug=slug)
+        if instance <= 1
+        else t("err.orchestrator.instance_not_found", instance=instance, slug=slug)
     )
 
 
@@ -860,23 +868,25 @@ def container_network(network_mode: str | None) -> str | None:
         network = _get_client().networks.get(_CONTAINER_NETWORK)
     except NotFound:
         raise ContainerNetworkError(
-            f"CASHPILOT_CONTAINER_NETWORK is {_CONTAINER_NETWORK!r}, and no network by that name exists on "
-            f"this host. Create it first: docker network create --driver bridge "
-            f"-o com.docker.network.bridge.name=cp-isolated {_CONTAINER_NETWORK}"
+            t(
+                "err.orchestrator.cashpilot_container_network_no_network",
+                container_network=repr(_CONTAINER_NETWORK),
+                container_network2=_CONTAINER_NETWORK,
+            )
         ) from None
     attrs = network.attrs or {}
     if (attrs.get("Name") or getattr(network, "name", "")) == "bridge" or (attrs.get("Options") or {}).get(
         "com.docker.network.bridge.default_bridge"
     ) == "true":
-        raise ContainerNetworkError(
-            "CASHPILOT_CONTAINER_NETWORK names Docker's default bridge, which every other container shares, "
-            "so no firewall rule can single out the earners. Name the bridge you created for them."
-        )
+        raise ContainerNetworkError(t("err.orchestrator.cashpilot_container_network_names_docker"))
     driver = attrs.get("Driver")
     if driver != "bridge":
         raise ContainerNetworkError(
-            f"CASHPILOT_CONTAINER_NETWORK is {_CONTAINER_NETWORK!r}, a {driver!r} network. Only a bridge keeps "
-            f"the containers behind this host's firewall rules."
+            t(
+                "err.orchestrator.cashpilot_container_network_network_only",
+                container_network=repr(_CONTAINER_NETWORK),
+                driver=repr(driver),
+            )
         )
     return _CONTAINER_NETWORK
 
@@ -906,8 +916,7 @@ def container_dns(network: str | None) -> list[str] | None:
             ipaddress.ip_address(server)
         except ValueError:
             raise ContainerNetworkError(
-                f"CASHPILOT_CONTAINER_DNS has {server!r}; it takes IP addresses separated by commas, "
-                f"for example 1.1.1.1,9.9.9.9, or nothing to keep the Docker daemon's resolvers."
+                t("err.orchestrator.cashpilot_container_dns_has_takes", server=repr(server))
             ) from None
     return servers or None
 
@@ -979,8 +988,7 @@ def _runtime_overrides() -> dict[str, str]:
         slug, sep, runtime = entry.partition("=")
         if not sep or not slug.strip() or not runtime.strip():
             raise ContainerRuntimeError(
-                f"CASHPILOT_CONTAINER_RUNTIME_OVERRIDES has {entry.strip()!r}; each entry is slug=runtime, "
-                f"for example bitping=runsc-hostnet-raw."
+                t("err.orchestrator.cashpilot_container_runtime_overrides_has", entry=repr(entry.strip()))
             )
         overrides[slug.strip()] = runtime.strip()
     return overrides
@@ -995,9 +1003,12 @@ def _proxy_allows_runtime(slug: str, runtime: str) -> str:
     """
     if proxied() and runtime not in socket_policy.ALLOWED_RUNTIMES:
         raise ContainerRuntimeError(
-            f"{slug} would run under the {runtime!r} runtime, and the Docker socket proxy allows only "
-            f"{', '.join(socket_policy.ALLOWED_RUNTIMES)}. The running container was not touched. Pick one "
-            f"of those in CASHPILOT_CONTAINER_RUNTIME or its overrides, or deploy without a runtime."
+            t(
+                "err.orchestrator.would_run_under_runtime_docker",
+                slug=slug,
+                runtime=repr(runtime),
+                allowed_runtimes=", ".join(socket_policy.ALLOWED_RUNTIMES),
+            )
         )
     return runtime
 
@@ -1056,7 +1067,9 @@ def container_runtime(
     """
     facts = layers.daemon_runtimes(fresh=True) if choice else None
     if choice and choice not in layers.CHOICES:
-        raise ContainerRuntimeError(f"{choice!r} is not a runtime choice; use one of {', '.join(layers.CHOICES)}.", 400)
+        raise ContainerRuntimeError(
+            t("err.layers.not_a_choice", choice=repr(choice), choices=", ".join(layers.CHOICES)), 400
+        )
     if required := catalog_runtime(slug):
         # The service's own catalog entry names the one runtime it works under
         # (Mysterium: runc, since gVisor has no iptables-nft or kernel WireGuard).
@@ -1091,7 +1104,7 @@ def container_runtime(
                 service=service_name(slug),
             )
         except layers.ChoiceRefused as exc:
-            raise ContainerRuntimeError(f"{exc} The running container was not touched.") from None
+            raise ContainerRuntimeError(t("err.layers.not_touched", reason=str(exc))) from None
     else:
         return None
     _check_choice(slug, choice, runtime, why + " Change or remove it to choose here.", facts)
@@ -1099,13 +1112,16 @@ def container_runtime(
     available = available_runtimes()
     if available is None:
         raise ContainerRuntimeError(
-            f"Cannot check the {runtime!r} runtime: the Docker daemon is not answering.", status_code=503
+            t("err.orchestrator.cannot_check_runtime_docker_daemon", runtime=repr(runtime)), status_code=503
         )
     if runtime not in available:
         raise ContainerRuntimeError(
-            f"The runtime settings give {slug} the {runtime!r} runtime, which this host's Docker daemon "
-            f"does not provide. Available: {sorted(available) or 'none reported'}. Register it in "
-            f"/etc/docker/daemon.json and restart Docker, or change CASHPILOT_CONTAINER_RUNTIME."
+            t(
+                "err.orchestrator.runtime_settings_give_runtime_which",
+                slug=slug,
+                runtime=repr(runtime),
+                available=sorted(available) or t("worker.none_reported"),
+            )
         )
     return runtime
 
@@ -1124,10 +1140,7 @@ class PastDeadline(ContainerRuntimeError):
 
 
 def _past_deadline(image: str) -> ContainerRuntimeError:
-    return PastDeadline(
-        f"The deploy of {image} ran past its {DEPLOY_DEADLINE_SECONDS // 60}-minute limit, so it was abandoned "
-        "before its container was created. Try again."
-    )
+    return PastDeadline(t("err.orchestrator.deploy_past_deadline", image=image, minutes=DEPLOY_DEADLINE_SECONDS // 60))
 
 
 def _refuse_past(deadline: float, image: str) -> None:
@@ -1192,27 +1205,27 @@ def _release_slug(registry: dict[str, int], slug: str) -> None:
             del registry[slug]
 
 
-def _claim_slug(registry: dict[str, int], slug: str, what: str) -> None:
+def _claim_slug(registry: dict[str, int], slug: str, action: str) -> None:
     """Count one more call in ``registry`` for ``slug``, or raise 409 while a restore or a removal of it runs."""
     with _SLUG_WORK_LOCK:
         if slug in _restoring:
             raise ContainerRuntimeError(
-                f"A restore of {slug} is running on this box, so {what}. Try again when it ends.", 409
+                t("err.orchestrator.restore_running_box_try_again", slug=slug, action=action), 409
             )
         if _removing.get(slug):
             raise ContainerRuntimeError(
-                f"A removal of {slug} is running on this box, so {what}. Try again when it ends.", 409
+                t("err.orchestrator.removal_running_box_try_again", slug=slug, action=action), 409
             )
         registry[slug] = registry.get(slug, 0) + 1
 
 
-def _holds_slug(what: str) -> Any:
+def _holds_slug(action: str) -> Any:
     """Start, restart and export hold their slug from their check to their last Docker action."""
 
     def decorate(fn: Any) -> Any:
         @functools.wraps(fn)
         def wrapper(slug: str, *args: Any, **kwargs: Any) -> Any:
-            _claim_slug(_operating, slug, f"it was not {what}")
+            _claim_slug(_operating, slug, action)
             try:
                 return fn(slug, *args, **kwargs)
             finally:
@@ -1227,14 +1240,14 @@ def _holds_gated_lock(fn: Any) -> Any:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         slug = str(kwargs.get("slug", args[0] if args else ""))
-        _claim_slug(_deploying, slug, "nothing was deployed")
+        _claim_slug(_deploying, slug, "deploy")
         try:
             if kwargs.get("start", True):
                 # A restore that did not finish left a half-written volume, which
                 # this deploy would keep and start; _restoring is empty after a
                 # worker restart, so only its record on disk tells. Checked once
                 # this deploy holds the slug, so no restore ends half-way between.
-                _refuse_mid_restore(slug, "deployed")
+                _refuse_mid_restore(slug, "deploy")
             if not fence_gated(slug):
                 return fn(*args, **kwargs)
             with GATED_DEPLOY_LOCK:
@@ -1354,7 +1367,7 @@ def deploy_raw(
     if name.startswith(TUNNEL_PREFIX):
         # Only a tunnel is named so, and is_tunnel_sidecar trusts the name: an
         # earner under it would run from this box's own IP as if it were one.
-        raise ContainerRuntimeError(f"{name} is a proxy tunnel's name, so {slug} cannot run under it; nothing changed.")
+        raise ContainerRuntimeError(t("err.orchestrator.proxy_tunnel_s_name_cannot", name=name, slug=slug))
     joined = (network_mode or "").startswith("container:")
     # First, before anything is pulled or replaced: a refused earner costs the
     # running one nothing.
@@ -1373,14 +1386,12 @@ def deploy_raw(
     # take the GPU through a host whose default runtime is nvidia.
     gpu_grant = gpu_grant_for_deploy(slug, image, instance)
     if gpu_grant and joined:
-        raise ContainerRuntimeError(
-            f"{service_name(slug)} needs this machine's GPU, which a proxied copy does not get. Nothing changed.", 400
-        )
+        raise ContainerRuntimeError(t("err.orchestrator.needs_machine_s_gpu_which", slug=service_name(slug)), 400)
     try:
         gpu_kwargs = gpu.docker_kwargs(gpu_grant)
     except gpu.GpuRefused as exc:
         raise ContainerRuntimeError(
-            f"{exc} Nothing was deployed; the running container was not touched.", 409
+            t("err.orchestrator.nothing_deployed_running_container_not", exc=exc), 409
         ) from None
     if gpu_kwargs["devices"]:
         devices = [*(devices or []), *gpu_kwargs["devices"]]
@@ -1395,7 +1406,9 @@ def deploy_raw(
         # while the running node is still running.
         gated_mode = lan_fence.resolve_mode(client)
         if problem := lan_fence.mode_problem(gated_mode, service_name(slug)):
-            raise ContainerNetworkError(f"{slug} was not deployed: {problem} The running container was not touched.")
+            raise ContainerNetworkError(
+                t("err.orchestrator.not_deployed_running_container_not", slug=slug, problem=problem)
+            )
 
     # The pull is on this side of the line for the same reason: a registry outage
     # or a typo'd image must not cost the running container. And once the image
@@ -1414,7 +1427,7 @@ def deploy_raw(
         # the image it just pulled: either way there is nothing to run, and
         # removing the old container first would only make that worse.
         raise ContainerRuntimeError(
-            f"{image} is not available on this worker: {pull_error or exc}. The running container was not touched."
+            t("err.orchestrator.not_available_worker_running_container", image=image, pull_error=pull_error or exc)
         ) from None
     entrypoint = _get_entrypoint(slug)
     _refuse_init_image(image, image_config, entrypoint, command)
@@ -1435,9 +1448,7 @@ def deploy_raw(
         if old is None:
             raise NotFound(name)
         if not start:
-            raise ContainerRuntimeError(
-                f"{name} already exists, so nothing was restored. A restore only creates a new container.", 409
-            )
+            raise ContainerRuntimeError(t("err.orchestrator.already_exists_nothing_restored_restore", name=name), 409)
         # The name alone is not proof the container is this copy of this
         # service: copy 2 of "foo" and copy 1 of a service slugged "foo-2" are
         # both cashpilot-foo-2. Replacing another service's container would
@@ -1446,8 +1457,14 @@ def deploy_raw(
         old_slug = old_labels.get(LABEL_SERVICE)
         if (old_slug and old_slug != slug) or (old_slug == slug and _instance_of(old) != instance):
             raise ContainerRuntimeError(
-                f"{name} already belongs to {old_slug} (copy {_instance_of(old)}), not to copy {instance} of "
-                f"{slug}. It was left running; remove it or deploy under another name."
+                t(
+                    "err.orchestrator.already_belongs_copy_not_copy",
+                    name=name,
+                    old_slug=old_slug,
+                    old=_instance_of(old),
+                    instance=instance,
+                    slug=slug,
+                )
             )
         if problem := _aside_taken(client, old, name, slug):
             raise ContainerRuntimeError(problem)
@@ -1474,10 +1491,12 @@ def deploy_raw(
         refused = _outside_proxy_roots(volumes)
         if refused:
             raise ContainerRuntimeError(
-                f"{name} keeps its data in {', '.join(refused)}, and the Docker socket proxy does not let "
-                f"containers bind that folder, so the replacement could not be created. The running "
-                f"container was not touched. Add the folder to {BIND_MOUNTS_ENV} in the .env next to your "
-                "compose file (comma-separated), then run docker compose up -d."
+                t(
+                    "err.orchestrator.keeps_data_docker_socket_proxy",
+                    name=name,
+                    refused=", ".join(refused),
+                    bind_mounts_env=BIND_MOUNTS_ENV,
+                )
             )
         _ensure_volumes(client, volumes)
         _prepare_wallet(client, slug, name, image, env, volumes, wallet_seed, wallet, start and not joined)
@@ -1504,12 +1523,7 @@ def deploy_raw(
                 # hold set meanwhile is newer than the one popped, so it stays.
                 if held_before is not None:
                     _MISMATCH_HELD.setdefault(name, held_before)
-                raise ContainerRuntimeError(
-                    f"{name} was not replaced: its identity could not be read from the running node, so the new "
-                    "one could not be checked against it. The running container was not touched. Try again in a "
-                    "minute. If the node is broken, stop it from the dashboard first: a stopped node is replaced "
-                    "without the check."
-                )
+                raise ContainerRuntimeError(t("err.orchestrator.not_replaced_identity_could_not", name=name))
             _remember_identity(name, identity)
         replaced_running = getattr(old, "status", "") == "running"
         try:
@@ -1522,8 +1536,7 @@ def deploy_raw(
                 # Its replacement would run beside it on the same identity volume.
                 _restore_identity(name, identity_before, held_before)
                 raise ContainerRuntimeError(
-                    f"{name} could not be stopped ({exc}), so it was not replaced and is still running. "
-                    "Try again in a minute.",
+                    t("err.orchestrator.could_not_stopped_not_replaced", name=name, exc=exc),
                     409,
                 ) from exc
         try:
@@ -1587,6 +1600,14 @@ def deploy_raw(
     # This line makes `docker logs cashpilot-worker` state what THIS worker
     # applied, so an operator comparing against the catalog can see the gap.
     logger.info("Creating container %s from %s (resources: %s)", name, image, resource_kwargs or "docker defaults")
+    # CASHPILOT_EARNER_SECRETS=file: the secret variables go into a file in the
+    # earner's own volume instead of its config (app/secret_env.py).
+    secrets_plan = secret_env.plan(
+        slug, get_service(slug) if get_service else None, env, command, entrypoint, image_config
+    )
+    if secrets_plan is not None:
+        env = secrets_plan.env
+        all_labels.update(secrets_plan.labels())
     # A fence-gated container is created, then started only once the fence is
     # confirmed again: containers.run would start it in the same call.
     run_kwargs: dict[str, Any] = dict(
@@ -1627,8 +1648,8 @@ def deploy_raw(
         init=not _brings_own_init(image_config, entrypoint, command),
         # From the worker's own catalog (see _get_entrypoint), like the stop
         # timeout below: neither is something the deploy request can set.
-        entrypoint=entrypoint,
-        command=command if command else None,
+        entrypoint=secrets_plan.entrypoint if secrets_plan else entrypoint,
+        command=secrets_plan.command if secrets_plan else (command if command else None),
         # The container keeps the catalog's grace for every stop, not only the
         # ones this worker sends with an explicit timeout.
         stop_timeout=_get_stop_timeout(slug),
@@ -1647,6 +1668,8 @@ def deploy_raw(
         runtime=runtime or None,
         **resource_kwargs,
     )
+    if secrets_plan is not None:
+        run_kwargs["mounts"] = [secret_env.mount(secrets_plan)]
     created = None
     created_id: str | None = None
     began = time.monotonic()
@@ -1654,6 +1677,8 @@ def deploy_raw(
         # Again here: the volumes and the old container's stop come after the
         # check above, and can take long. Past it, the old one is put back.
         _refuse_past(deadline, image)
+        if secrets_plan is not None:
+            secret_env.create_volume(client, secrets_plan, name)
         try:
             if on_created is not None:
                 # The ID from Docker's create answer, before the SDK's follow-up
@@ -1664,10 +1689,13 @@ def deploy_raw(
             else:
                 container = (
                     client.containers.create(**run_kwargs)
-                    if gated or not start
+                    if gated or not start or secrets_plan is not None
                     else client.containers.run(detach=True, **run_kwargs)
                 )
             created = container
+            if secrets_plan is not None:
+                # Between create and start: the earner never runs without its file.
+                secret_env.provision(container, secrets_plan)
             if not start:
                 # Restore: the caller writes the data, checks it, then starts it.
                 logger.info("Container %s created, not started: %s", name, container.short_id)
@@ -1677,7 +1705,7 @@ def deploy_raw(
                 # Left created, not started, when the fence is not confirmed: the guard
                 # starts it as soon as it is, and nothing runs before that.
                 _require_fence(slug)
-            if gated or on_created is not None:
+            if gated or on_created is not None or secrets_plan is not None:
                 container.start()
         except ContainerNetworkError:
             raise
@@ -1692,7 +1720,7 @@ def deploy_raw(
             from app import lan_fence
 
             if problem := lan_fence._started_unattached(container, gated_mode):
-                raise ContainerRuntimeError(f"{name} did not come up on its network: {problem}.")
+                raise ContainerRuntimeError(t("err.orchestrator.did_not_come_up_network", name=name, problem=problem))
     except ContainerNetworkError:
         # The fence went between the checks above and the start: the new node is
         # created and the guard starts it once the fence reads complete.
@@ -1722,6 +1750,9 @@ def deploy_raw(
             gated=gated,
             joined=joined,
         )
+        if secrets_plan is not None:
+            # The refused container is gone (_roll_back), so its credentials go too.
+            secret_env.remove_volume(client, secrets_plan.volume)
         if conflict and (current := deploy_target(client, name)) is not None and current.id != expected_container:
             raise DeployTargetChanged(current.id) from None
         raise _deploy_failure(exc, restored, slug) from exc
@@ -1995,7 +2026,9 @@ def _await_start(client: Any, name: str, created: Any | None, began: float, exc:
             # Docker answers an inspect only once the start lets go of the container.
             current.reload()
         except NotFound:
-            raise ContainerRuntimeError(f"{name} is gone: Docker did not start it ({exc}).", 500) from exc
+            raise ContainerRuntimeError(
+                t("err.orchestrator.gone_docker_did_not_start", name=name, exc=exc), 500
+            ) from exc
         except Exception as poll_exc:  # noqa: BLE001 - not known yet; looked at again below
             logger.debug("Could not read %s while it starts: %s", name, poll_exc)
         else:
@@ -2007,13 +2040,19 @@ def _await_start(client: Any, name: str, created: Any | None, began: float, exc:
                 return current
             if status in ("exited", "dead") or (status == "created" and state.get("Error")):
                 why = state.get("Error") or f"it is {status}"
-                raise ContainerRuntimeError(f"{name} did not start: {why}.", 500) from exc
+                raise ContainerRuntimeError(t("err.orchestrator.did_not_start", name=name, why=why), 500) from exc
         if time.monotonic() >= deadline:
             # 500, not 504: the deploy is rolled back by the time this is answered,
             # and a 504 tells a caller the worker may still be at it (main keeps a
             # proxied copy's record on one).
             raise ContainerRuntimeError(
-                f"{name} was not running {START_SETTLE_SECONDS} s after Docker was asked to start it ({exc}).", 500
+                t(
+                    "err.orchestrator.not_running_s_after_docker",
+                    name=name,
+                    start_settle_seconds=START_SETTLE_SECONDS,
+                    exc=exc,
+                ),
+                500,
             ) from exc
         time.sleep(_START_POLL_SECONDS)
 
@@ -2085,10 +2124,7 @@ def _ensure_volumes(client: Any, volumes: dict[str, Any] | list[str] | None) -> 
             if refusal is None:
                 raise
             raise ContainerRuntimeError(
-                f"The volume {vol} was not made by this worker, so the Docker socket proxy will not let a "
-                f"container use it ({refusal}). The running container was not touched. Run docker compose up -d "
-                "with the current compose file once: its cashpilot-migrate step moves the volume over, data "
-                "included (UPGRADING.md)."
+                t("err.orchestrator.volume_not_made_worker_docker", vol=vol, refusal=refusal)
             ) from None
 
 
@@ -2146,12 +2182,7 @@ def _refuse_init_image(
     what to do instead.
     """
     if _boots_init_system(image_config, entrypoint, command):
-        raise ContainerRuntimeError(
-            f"{image} runs an init system as its main process (/sbin/init, usually systemd), which needs a "
-            "privileged container with the host's cgroup tree. CashPilot never grants that, so the "
-            "container would exit at once and restart forever. Use the image's non-init tag (often "
-            "':lite') or the catalog image."
-        )
+        raise ContainerRuntimeError(t("err.orchestrator.runs_init_system_main_process", image=image))
 
 
 def _parse_stop_timeout(value: Any) -> int:
@@ -2233,10 +2264,7 @@ def _mark_stopped(name: str, stopped: bool, *, strict: bool = False) -> None:
             fh.write("".join(f"{n}\n" for n in sorted(names)))
     except OSError as exc:
         if strict:
-            raise ContainerRuntimeError(
-                f"{name} was not stopped: the stop could not be recorded ({exc}), and without that record the "
-                "worker would start it again within a minute."
-            ) from None
+            raise ContainerRuntimeError(t("err.orchestrator.not_stopped_stop_could_not", name=name, exc=exc)) from None
         logger.warning("Could not record that %s was %s: %s", name, "stopped" if stopped else "started", exc)
 
 
@@ -2372,10 +2400,10 @@ def _require_route(container: Any, slug: str) -> None:
     route_gate.check(slug, _network_mode(container), _get_client())
 
 
-@_holds_slug("started")
+@_holds_slug("start")
 def restart_service(slug: str, instance: int = 1) -> None:
     """Restart the container for a service."""
-    _refuse_mid_restore(slug, "started")
+    _refuse_mid_restore(slug, "start")
     container = _find_container(slug, instance)
     _require_route(container, slug)
     if _gated_container(slug, container):
@@ -2536,7 +2564,7 @@ def _require_fence(slug: str) -> None:
 
     problem = lan_fence.fence_problem(_get_client(), service_name(slug))
     if problem:
-        raise ContainerNetworkError(f"{slug} was not started: {problem}")
+        raise ContainerNetworkError(t("err.orchestrator.not_started", slug=slug, problem=problem))
 
 
 def _require_startable(container: Any, slug: str) -> None:
@@ -2554,14 +2582,16 @@ def _require_startable(container: Any, slug: str) -> None:
     try:
         mode = lan_fence.resolve_mode(_get_client())
     except RuntimeError as exc:
-        raise ContainerNetworkError(f"{slug} was not started: the isolation mode could not be read ({exc})") from None
+        raise ContainerNetworkError(
+            t("err.orchestrator.not_started_isolation_mode_could", slug=slug, exc=exc)
+        ) from None
     problem = (
         (lan_fence.FAILED_DEPLOY if getattr(container, "name", None) in deploy_failed() else None)
         or gated_spec_problem(container, mode)
         or identity_problem(container)
     )
     if problem:
-        raise ContainerNetworkError(f"{slug} was not started: {problem}")
+        raise ContainerNetworkError(t("err.orchestrator.not_started", slug=slug, problem=problem))
 
 
 def gated_spec_problem(container: Any, mode: str | None = None) -> str | None:
@@ -2721,10 +2751,12 @@ def _remove_container(container: Any, slug: str) -> None:
     so the data path (cashpilot-custom-<name>-data) stays. A catalog service is
     removed exactly as before: its data is never touched here.
     """
+    volume = secret_env.volume_of(container)
     if slug.startswith("custom-"):
         container.remove(force=True, v=True)
     else:
         container.remove(force=True)
+    secret_env.remove_volume(getattr(container, "client", None) or _get_client(), volume)
 
 
 def _norm_mount(path: str) -> str:
@@ -3003,10 +3035,7 @@ def refuse_critical_mounts(slug: str, volumes: Any, client: Any = None) -> None:
     conflicts = critical_mount_conflicts(slug, volumes, client)
     if conflicts:
         what = ", ".join(f"{source} ({owner})" for source, owner in conflicts)
-        raise CriticalMountError(
-            f"{slug} cannot mount {what}: it holds another service's wallet or identity, which only that "
-            "service may mount. Nothing was deployed; the running container was not touched."
-        )
+        raise CriticalMountError(t("err.orchestrator.cannot_mount_holds_another_service", slug=slug, what=what))
 
 
 _DEFAULT_REGISTRIES = ("docker.io/", "index.docker.io/", "registry-1.docker.io/")
@@ -3057,11 +3086,10 @@ def gpu_grant_for_deploy(slug: str | None, image: str, instance: int) -> dict[st
     if not slug or not grant:
         return None
     if instance != 1:
-        raise ContainerRuntimeError(f"{service_name(slug)} uses this machine's GPU and can run only one copy.", 400)
+        raise ContainerRuntimeError(t("err.orchestrator.uses_machine_s_gpu_can", slug=service_name(slug)), 400)
     if not catalog_image_matches(slug, image):
         raise ContainerRuntimeError(
-            f"{service_name(slug)} uses this machine's GPU and runs only the image this worker's catalog pins. "
-            "If the catalog image changed, update the worker first. Nothing was deployed.",
+            t("err.orchestrator.uses_machine_s_gpu_runs", slug=service_name(slug)),
             403,
         )
     return grant
@@ -3124,7 +3152,7 @@ def critical_spec_deviations(
         if isinstance(volumes, dict)
         else [str(entry).split(":")[1] if ":" in str(entry) else "" for entry in volumes or []]
     )
-    if strange := sorted({_norm_mount(t) for t in mounted} - targets):
+    if strange := sorted({_norm_mount(mount_path) for mount_path in mounted} - targets):
         found.append(f"it mounts {', '.join(strange)}, which the catalog does not")
     return found
 
@@ -3161,7 +3189,7 @@ def state_id(container: Any, targets: dict[str, str] | list[str] | None, client:
         if isinstance(m, dict)
     }
     parts: list[str] = []
-    for target in sorted(str(t).rstrip("/") for t in targets):
+    for target in sorted(str(mount_path).rstrip("/") for mount_path in targets):
         mount = mounts.get(target)
         if mount is None:
             # Not mounted: the state lives in the container itself and dies
@@ -3198,7 +3226,7 @@ def _state_id_entry(container: Any, slug: str, client: Any) -> dict[str, str]:
     return {"state_id": found} if found else {}
 
 
-@_holds_slug("read for a backup")
+@_holds_slug("backup")
 def read_critical_state(slug: str) -> tuple[bytes, list[str], str | None]:
     """Read a service's irreplaceable state as a deterministic tar archive.
 
@@ -3221,11 +3249,8 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str], str | None]:
     """
     targets = _critical_volume_targets(slug)
     if not targets:
-        raise ValueError(
-            f"{slug} declares no critical_volumes, so there is no irreplaceable state to export. "
-            "Adding a backup for a service whose state is re-downloadable would teach a false habit."
-        )
-    _refuse_mid_restore(slug, "read for a backup")
+        raise ValueError(t("err.orchestrator.declares_no_critical_volumes_there", slug=slug))
+    _refuse_mid_restore(slug, "backup")
 
     container = _find_container(slug)
     was_running = container.status == "running"
@@ -3248,10 +3273,12 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str], str | None]:
                         # Reading terabytes into memory, with the node paused, would
                         # take the worker and the node down for nothing.
                         raise ValueError(
-                            f"{slug}'s state is larger than {MAX_BACKUP_BYTES // (1024 * 1024)} MB, too big to "
-                            f"export here. That is a data folder, not an identity: Storj and Sia keep their "
-                            f"whole storage folder there. Back up {target} at the disk level with your own "
-                            "tools, then use I have a backup."
+                            t(
+                                "err.orchestrator.s_state_larger_than_mb",
+                                slug=slug,
+                                value=MAX_BACKUP_BYTES // (1024 * 1024),
+                                target=target,
+                            )
                         )
                     chunks.append(chunk)
             finally:
@@ -3479,8 +3506,12 @@ class RestoreError(ContainerRuntimeError):
 
 
 #: Said where Docker's own answer would go: that text stays in the worker log.
-_DOCKER_ANSWER_IN_LOG = "The worker's log has Docker's answer."
-_WORKER_LOG_SAYS_WHY = "The worker's log says why."
+def _docker_answer_in_log() -> str:
+    return t("err.orchestrator.docker_answer_in_log")
+
+
+def _worker_log_says_why() -> str:
+    return t("err.orchestrator.worker_log_says_why")
 
 
 def restore_targets(slug: str) -> dict[str, str] | None:
@@ -3505,10 +3536,7 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
     """
     labelled = client.containers.list(all=True, filters={"label": f"{LABEL_SERVICE}={slug}"})
     if labelled:
-        return (
-            f"{slug} already has a container on this box ({labelled[0].name}). A restore only creates a new one: "
-            "back the running one up, remove it from the dashboard and say yes to deleting its data, then restore"
-        )
+        return t("err.orchestrator.restore_has_container", slug=slug, container=labelled[0].name)
     for candidate in (name, name + REPLACED_SUFFIX, name + RESTORE_HELPER_SUFFIX):
         try:
             found = client.containers.get(candidate)
@@ -3527,22 +3555,17 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
                     continue
                 except Exception:  # noqa: BLE001 - a volume that cannot be checked counts as there
                     pass
-                return (
-                    f"a restore of {slug} did not finish, so the volume {held} may be half-written. "
-                    "Remove the service with its data (Remove from this box, in the service's dashboard panel, offers it), then restore"
-                )
+                return t("err.orchestrator.restore_unfinished_volume", slug=slug, volume=held)
             try:
                 found.remove(force=True)
             except NotFound:
                 pass
             except Exception as exc:  # noqa: BLE001 - said to the owner, Docker's text in the log
                 logger.warning("Could not remove %s, left by a restore that did not finish: %s", candidate, exc)
-                return (
-                    f"{candidate}, left by a restore that did not finish, could not be removed. {_DOCKER_ANSWER_IN_LOG}"
-                )
+                return t("err.orchestrator.restore_leftover_not_removed", name=candidate, log=_docker_answer_in_log())
             logger.warning("Removed %s, left by a restore that did not finish", candidate)
             continue
-        return f"a container named {candidate} already exists on this box"
+        return t("err.orchestrator.restore_name_taken", name=candidate)
     try:
         recorded = _restore_mark_volumes(slug) if slug in restore_marks() else None
     except RestoreRecordUnreadable as exc:
@@ -3553,10 +3576,7 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
         candidates = sorted(set(volumes.values()) | set(recorded))
         held = [v for v in candidates if _volume_exists(client, v)]
         if held:
-            return (
-                f"a restore of {slug} did not finish, so the volume {held[0]} may be half-written. "
-                "Remove the service with its data (Remove from this box, in the service's dashboard panel, offers it), then restore"
-            )
+            return t("err.orchestrator.restore_unfinished_volume", slug=slug, volume=held[0])
     for volume in volumes.values():
         try:
             client.volumes.get(volume)
@@ -3566,13 +3586,10 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
             refusal = proxy_refusal(exc)
             if not refusal:
                 logger.warning("Could not check the volume %s for a restore: %s", volume, exc)
-            return (
-                f"the volume {volume} could not be checked, so it counts as there. {refusal or _DOCKER_ANSWER_IN_LOG}"
+            return t(
+                "err.orchestrator.restore_volume_unchecked", volume=volume, refusal=refusal or _docker_answer_in_log()
             )
-        return (
-            f"the volume {volume} already exists on this box. A restore never writes into an existing volume: "
-            "if it holds nothing you need, remove it, then restore"
-        )
+        return t("err.orchestrator.restore_volume_exists", volume=volume)
     return None
 
 
@@ -3618,7 +3635,7 @@ def unfinished_restores() -> list[str]:
     return sorted(slugs)
 
 
-def _refuse_mid_restore(slug: str, what: str) -> None:
+def _refuse_mid_restore(slug: str, action: str) -> None:
     """Raise unless ``slug`` may start: no restore of it runs, and none left a half-written volume.
 
     A fence-gated service is also held by its failed mark on disk; this covers
@@ -3629,21 +3646,17 @@ def _refuse_mid_restore(slug: str, what: str) -> None:
     with _SLUG_WORK_LOCK:
         running = slug in _restoring
     if running:
-        raise ContainerRuntimeError(
-            f"A restore of {slug} is running on this box, so it was not {what}. Try again when it ends.", 409
-        )
+        raise ContainerRuntimeError(t("err.orchestrator.restore_running_box_not_try", slug=slug, action=action), 409)
     try:
         marked = slug in restore_marks()
     except RestoreRecordUnreadable:
         raise ContainerRuntimeError(
-            f"The worker could not read its record of restores that did not finish, so {slug} may hold a "
-            f"half-written restore and it was not {what}. The worker's log says why.",
+            t("err.orchestrator.worker_could_not_read_record", slug=slug, action=action),
             503,
         ) from None
     if marked or _restore_helper(slug) is not None:
         raise ContainerRuntimeError(
-            f"A restore of {slug} did not finish, so its data may be half-written and it was not {what}. "
-            "Remove the service with its data (Remove from this box, in the service's dashboard panel, offers it), then restore the backup again.",
+            t("err.orchestrator.restore_did_not_finish_data", slug=slug, action=action),
             409,
         )
 
@@ -3666,7 +3679,7 @@ def _create_restore_volume(client: Any, volume: str, nonce: str) -> str:
     if nonce is None:
         # Docker returns the existing volume for a name that exists. One the
         # proxy hid from the check above is still somebody's data.
-        raise RestoreError(f"the volume {volume} already existed (it was hidden from this worker), so it was not used")
+        raise RestoreError(t("err.orchestrator.volume_already_existed_hidden_worker", volume=volume))
     return nonce
 
 
@@ -3683,9 +3696,7 @@ def _require_made(client: Any, made: dict[str, str]) -> None:
     """
     for volume, nonce in made.items():
         if _restore_nonce(client.volumes.get(volume)) != nonce:
-            raise RestoreError(
-                f"another client replaced the volume {volume} after this restore made it, so it was not used"
-            )
+            raise RestoreError(t("err.orchestrator.another_client_replaced_volume_after", volume=volume))
 
 
 def _restore_cleanup(
@@ -3716,7 +3727,9 @@ def _restore_cleanup(
     # The helper first (made last): it holds the volumes too.
     for container in reversed(containers):
         try:
+            secrets_volume = secret_env.volume_of(container)
             container.remove(force=True)
+            secret_env.remove_volume(getattr(container, "client", None) or _get_client(), secrets_volume)
         except NotFound:
             pass
         except Exception as exc:  # noqa: BLE001 - keep going: the volumes must be read too
@@ -3762,7 +3775,7 @@ def _read_back(container: Any, target: str) -> bytes:
         for chunk in stream:
             size += len(chunk)
             if size > MAX_BACKUP_BYTES:
-                raise RestoreError(f"{target} reads back larger than a backup can be, so it is not the backup")
+                raise RestoreError(t("err.orchestrator.reads_back_larger_than_backup", target=target))
             chunks.append(chunk)
     finally:
         close = getattr(stream, "close", None)
@@ -3830,7 +3843,7 @@ def _write_through_helper(
         try:
             _require_made(client, {volume: nonces[volume]})
             if not writer.put_archive(RESTORE_WRITE_DIR, payload):
-                raise RestoreError(f"Docker did not write the volume {volume}")
+                raise RestoreError(t("err.orchestrator.docker_did_not_write_volume", volume=volume))
         finally:
             if writer is not mark:
                 writer.remove(force=True)
@@ -3862,15 +3875,12 @@ def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any])
 
     targets = restore_targets(slug)
     if not targets:
-        raise RestoreError(
-            f"{slug} keeps its state in a host folder, or keeps none, so it cannot be restored from the dashboard. "
-            "Use the command line steps in the backup guide."
-        )
+        raise RestoreError(t("err.orchestrator.keeps_state_host_folder_keeps", slug=slug))
     by_folder = {target.rstrip("/").rsplit("/", 1)[-1]: target for target in targets}
     if len(by_folder) != len(targets) or set(archives) != set(by_folder):
         want = ", ".join(sorted(by_folder))
         have = ", ".join(sorted(archives)) or "nothing"
-        raise RestoreError(f"this backup holds {have}, but {slug} keeps {want}. It is not a backup of {slug}.", 400)
+        raise RestoreError(t("err.orchestrator.backup_holds_but_keeps_not", have=have, slug=slug, want=want), 400)
     expected = {by_folder[f]: state_backup.tree_manifest(data) for f, data in archives.items()}
     payloads = {by_folder[f]: state_backup.relative_archive(data, RESTORE_ROOT) for f, data in archives.items()}
 
@@ -3880,25 +3890,20 @@ def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any])
         client = _get_client()
     except RuntimeError as exc:
         logger.warning("Restore of %s: Docker cannot be reached: %s", slug, exc)
-        raise RestoreError(f"Nothing was restored: {_docker_unreachable_text()}", 503) from None
+        raise RestoreError(
+            t("err.orchestrator.nothing_restored_2", docker_unreachable_text=_docker_unreachable_text()), 503
+        ) from None
     name = _container_name(slug)
     if not _RESTORE_LOCK.acquire(blocking=False):
-        raise RestoreError("Nothing was restored: another restore is running on this box. Try again when it ends.")
+        raise RestoreError(t("err.orchestrator.nothing_restored_another_restore_running"))
     try:
         with _SLUG_WORK_LOCK:
             if _deploying.get(slug):
-                raise RestoreError(
-                    f"Nothing was restored: a deploy of {slug} is running on this box. Try again when it ends."
-                )
+                raise RestoreError(t("err.orchestrator.nothing_restored_deploy_running_box", slug=slug))
             if _removing.get(slug):
-                raise RestoreError(
-                    f"Nothing was restored: a removal of {slug} is running on this box. Try again when it ends."
-                )
+                raise RestoreError(t("err.orchestrator.nothing_restored_removal_running_box", slug=slug))
             if _operating.get(slug):
-                raise RestoreError(
-                    f"Nothing was restored: a start, restart or backup of {slug} is running on this box. "
-                    "Try again when it ends."
-                )
+                raise RestoreError(t("err.orchestrator.nothing_restored_start_restart_backup", slug=slug))
             _restoring.add(slug)
         try:
             # The route lock a direct deploy holds (route_gate.deploying), from
@@ -3910,7 +3915,9 @@ def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any])
                     route_gate.check(slug, str(deploy.get("network_mode") or ""), client)
                 except route_gate.RouteRefused as exc:
                     # Before anything is made, so nothing needs undoing.
-                    raise RestoreError(f"Nothing was restored: {str(exc).rstrip('.')}.", 403) from None
+                    raise RestoreError(
+                        t("err.orchestrator.nothing_restored", value=str(exc).rstrip(".")), 403
+                    ) from None
                 with lock:
                     return _restore_locked(client, slug, name, gated, targets, expected, payloads, deploy)
         finally:
@@ -3941,10 +3948,10 @@ def _restore_locked(
         if not refusal:
             logger.warning("Restore of %s: Docker refused to list the box: %s", slug, exc)
         raise RestoreError(
-            f"Nothing was restored: Docker refused to show what is on this box. {refusal or _DOCKER_ANSWER_IN_LOG}"
+            t("err.orchestrator.nothing_restored_docker_refused_show", refusal=refusal or _docker_answer_in_log())
         ) from None
     if why:
-        raise RestoreError(f"Nothing was restored: {why.rstrip('.')}.")
+        raise RestoreError(t("err.orchestrator.nothing_restored", value=why.rstrip(".")))
     before = set(_named_volumes(deploy.get("volumes")))
     # Each volume this restore made, with the nonce it was created with.
     made: dict[str, str] = {}
@@ -3953,7 +3960,7 @@ def _restore_locked(
     try:
         failed_before = gated and name in deploy_failed()
     except FailedMarksUnreadable as exc:
-        raise RestoreError(f"Nothing was restored: {exc}.", 503) from None
+        raise RestoreError(t("err.orchestrator.nothing_restored_3", exc=exc), 503) from None
     files = 0
     # Chosen before the record is written, so the record names each volume with
     # the nonce it carries if it is this restore's, even after a worker crash.
@@ -3963,15 +3970,13 @@ def _restore_locked(
         # that dies midway, before or after its helper exists, leaves a slug
         # nothing starts, deploys or exports (_refuse_mid_restore).
         if not _mark_restore_unfinished(slug, True, [f"{v}:{n}" for v, n in nonces.items()]):
-            raise RestoreError(
-                f"the worker could not record that a restore of {slug} is under way, so nothing was made"
-            )
+            raise RestoreError(t("err.orchestrator.worker_could_not_record_restore", slug=slug))
         if gated:
             # On disk before the container exists: a worker that dies before the
             # read-back leaves a node the guard never starts (lan_fence.guard).
             _mark_failed(name, True)
             if name not in _failed_on_disk():
-                raise RestoreError(f"the worker could not record that {name} is not ready yet, so nothing was made")
+                raise RestoreError(t("err.orchestrator.worker_could_not_record_not", name=name))
         for volume in targets.values():
             made[volume] = _create_restore_volume(client, volume, nonces[volume])
         # The other volumes the service mounts (Anyone's config): this restore
@@ -3987,7 +3992,7 @@ def _restore_locked(
         container = client.containers.get(inspect.unwrap(deploy_raw)(slug=slug, **deploy, start=False))
         containers.append(container)
         if getattr(container, "status", "created") != "created":
-            raise RestoreError(f"{name} is {container.status}, not newly created, so it was not written to")
+            raise RestoreError(t("err.orchestrator.not_newly_created_not_written", name=name, status=container.status))
         # The container mounts them now, but another client can remove it and
         # then a volume: each one is read again right before its write.
         _require_made(client, made)
@@ -3998,18 +4003,16 @@ def _restore_locked(
             diff = state_backup.manifest_differences(expected[target], found)
             if diff:
                 shown = "; ".join(diff[:5]) + (f"; and {len(diff) - 5} more" if len(diff) > 5 else "")
-                raise RestoreError(f"{target} does not read back as the backup: {shown}")
+                raise RestoreError(t("err.orchestrator.does_not_read_back_backup", target=target, shown=shown))
             files += sum(1 for entry in found.values() if entry[0] == "file")
         container.reload()
         if container.status != "created":
-            raise RestoreError(f"{name} started before the restore finished, so it was undone")
+            raise RestoreError(t("err.orchestrator.started_before_restore_finished_undone", name=name))
         # Every volume read back as the backup: its half-written marks go now, right before the start.
         # A record left on disk would hold this good node after a worker restart and offer to
         # delete its data, so a record that will not go undoes the restore (the file still has it).
         if not _mark_restore_unfinished(slug, False):
-            raise RestoreError(
-                f"the worker could not record that the restore of {slug} finished, so it was not started"
-            )
+            raise RestoreError(t("err.orchestrator.worker_could_not_record_restore_2", slug=slug))
         with contextlib.suppress(NotFound):
             mark.remove(force=True)
         containers.remove(mark)
@@ -4072,15 +4075,21 @@ def _restore_locked(
             )
             left = [*left, name]
         if isinstance(exc, RestoreError):
-            raise RestoreError(f"{exc.detail}. The containers it made were removed.{note}", exc.status_code, left)
+            raise RestoreError(
+                t("err.orchestrator.containers_made_were_removed", detail=exc.detail, note=note), exc.status_code, left
+            )
         if isinstance(exc, ContainerRuntimeError):
             # deploy_raw's refusal can carry Docker's text: the log has it, the
             # owner gets the proxy's allowlisted reason when that was the cause.
             logger.warning("Restore of %s: %s could not be created: %s", slug, name, exc)
             refusal = proxy_refusal(exc.__cause__) if exc.__cause__ is not None else None
             raise RestoreError(
-                f"Docker could not create {name} as this worker's catalog runs it, so the restore was undone. "
-                f"{refusal or _WORKER_LOG_SAYS_WHY}{note}",
+                t(
+                    "err.orchestrator.docker_could_not_create_worker",
+                    name=name,
+                    refusal=refusal or _worker_log_says_why(),
+                    note=note,
+                ),
                 exc.status_code,
                 left,
             ) from None
@@ -4089,11 +4098,16 @@ def _restore_locked(
             if not refusal:
                 logger.warning("Restore of %s: Docker refused it: %s", slug, exc)
             raise RestoreError(
-                f"Docker refused the restore, so it was undone. {refusal or _DOCKER_ANSWER_IN_LOG}{note}", left=left
+                t(
+                    "err.orchestrator.docker_refused_restore_undone",
+                    refusal=refusal or _docker_answer_in_log(),
+                    note=note,
+                ),
+                left=left,
             ) from None
         if isinstance(exc, Exception):
             logger.exception("Restore of %s failed", slug)
-            raise RestoreError(f"The restore failed and was undone.{note}", 500, left) from None
+            raise RestoreError(t("err.orchestrator.restore_failed_undone", note=note), 500, left) from None
         raise
     logger.info("Restored %s from a backup: %d files in %s", slug, files, ", ".join(sorted(targets)))
     return {
@@ -4158,7 +4172,7 @@ def remove_instance(slug: str, instance: int) -> dict[str, Any]:
     so there is no data to keep or delete here: the container goes, nothing else.
     """
     if instance <= 1:
-        raise ValueError("The first instance is removed with the service, not on its own")
+        raise ValueError(t("err.orchestrator.first_instance_removed_service_not"))
     container = _find_container(slug, instance)
     # Read before it goes: the UI keeps the ids this copy ran with (identity ledger).
     identity = _identity_entry(container, slug)
@@ -4182,7 +4196,10 @@ def remove_extra_instances(slug: str) -> list[str]:
         if _instance_of(extra) > 1:
             # Not _remove_container: this is whole-service removal, where the
             # operator decides about data, and the first copy keeps its volumes.
+            # Its credentials volume is no data: it goes with it.
+            volume = secret_env.volume_of(extra)
             extra.remove(force=True)
+            secret_env.remove_volume(getattr(extra, "client", None) or _get_client(), volume)
             logger.info("Removed container %s", extra.name)
             removed.append(extra.name)
     return removed
@@ -4217,20 +4234,15 @@ def remove_service(
     """
     with _SLUG_WORK_LOCK:
         if slug in _restoring:
-            raise ContainerRuntimeError(
-                f"A restore of {slug} is running on this box, so nothing was removed. Try again when it ends.", 409
-            )
+            raise ContainerRuntimeError(t("err.orchestrator.restore_running_box_nothing_removed", slug=slug), 409)
         # A deploy keeps the volumes it finds and creates the missing ones: a
         # data delete during its pull would leave it to start a new identity on
         # an empty volume. A start, restart or backup reads the same container.
         if _deploying.get(slug):
-            raise ContainerRuntimeError(
-                f"A deploy of {slug} is running on this box, so nothing was removed. Try again when it ends.", 409
-            )
+            raise ContainerRuntimeError(t("err.orchestrator.deploy_running_box_nothing_removed", slug=slug), 409)
         if _operating.get(slug):
             raise ContainerRuntimeError(
-                f"A start, restart or backup of {slug} is running on this box, so nothing was removed. "
-                "Try again when it ends.",
+                t("err.orchestrator.start_restart_backup_running_box", slug=slug),
                 409,
             )
         # From the check to the last delete: a restore of this slug refuses meanwhile (restore_state).
@@ -4270,8 +4282,7 @@ def _restore_owned(slug: str, recorded: dict[str, str | None]) -> tuple[list[str
         except Exception as exc:  # noqa: BLE001 - unknown, so nothing is removed
             logger.warning("Could not read the volume %s a restore of %s made: %s", volume, slug, exc)
             raise ContainerRuntimeError(
-                f"The worker could not read the volume {volume} a restore of {slug} made, so nothing was removed. "
-                "The worker's log says why.",
+                t("err.orchestrator.worker_could_not_read_volume", volume=volume, slug=slug),
                 503,
             ) from None
         if _restore_nonce(found) == nonce:
@@ -4297,23 +4308,20 @@ def _remove_service(
         recorded = _restore_mark_nonces(slug) if slug in restore_marks() else None
     except RestoreRecordUnreadable:
         raise ContainerRuntimeError(
-            f"The worker could not read its record of restores that did not finish, so it cannot tell whether "
-            f"{slug}'s data is half-written, and nothing was removed. The worker's log says why.",
+            t("err.orchestrator.worker_could_not_read_record_2", slug=slug),
             503,
         ) from None
     unfinished = helper is not None or recorded is not None
     if only_if_restore_unfinished and not unfinished:
         raise RestoreClearedError(
-            f"No restore of {slug} that did not finish is on this box now, so nothing was removed. "
-            "Open the service again to see what runs there.",
+            t("err.orchestrator.no_restore_did_not_finish", slug=slug),
             409,
         )
     if not delete_volumes and unfinished:
         # The helper is the only mark of a half-written volume: removing it
         # while the volume stays would let the next deploy start on half the data.
         raise RestoreUnfinishedError(
-            f"A restore of {slug} did not finish, so its data volume holds a partial restore and nothing was "
-            "removed. Remove the service with its data, then restore the backup again.",
+            t("err.orchestrator.restore_did_not_finish_data_2", slug=slug),
             409,
         )
     # The volumes the helper holds (those a restore that did not finish wrote
@@ -4395,9 +4403,12 @@ def _remove_service(
             replaced = sorted(v for v in volume_names if nonce_on_record.get(v) and v not in owned)
             if replaced:
                 raise RestoreClearedError(
-                    f"The volume(s) {', '.join(replaced)} that {slug} mounts are not the ones the restore that "
-                    "did not finish made: another client replaced them, so nothing was removed. Check them "
-                    "yourself.",
+                    t(
+                        "err.orchestrator.volume_s_mounts_not_ones",
+                        replaced=", ".join(replaced),
+                        n=len(replaced),
+                        slug=slug,
+                    ),
                     409,
                 )
 
@@ -4435,13 +4446,15 @@ def _remove_service(
         # if the helper cannot come back. Without it, a failed volume delete and
         # a worker restart would leave a half-written volume nothing holds.
         raise ContainerRuntimeError(
-            f"A restore of {slug} did not finish, and the worker could not record that on disk before it "
-            "removed the restore's helper, so nothing was removed. The worker's log says why.",
+            t("err.orchestrator.restore_did_not_finish_worker", slug=slug),
             503,
         )
     if container is not None:
+        secrets_volume = secret_env.volume_of(container)
         container.remove(force=True)
         logger.info("Removed container %s", name)
+        # Its credentials file is no data the owner chooses to keep.
+        secret_env.remove_volume(getattr(container, "client", None) or _get_client(), secrets_volume)
     # A restore that died midway left its helper, which mounts the volume, so
     # the volume could not go and the next restore would refuse it. Only here
     # with delete_volumes: without it the refusal above stopped first.
@@ -4593,10 +4606,10 @@ def _remove_service(
     }
 
 
-@_holds_slug("started")
+@_holds_slug("start")
 def start_service(slug: str, instance: int = 1) -> None:
     """Start a stopped container for a service."""
-    _refuse_mid_restore(slug, "started")
+    _refuse_mid_restore(slug, "start")
     container = _find_container(slug, instance)
     _require_route(container, slug)
     if _gated_container(slug, container):
@@ -4886,7 +4899,7 @@ def _published_from_container(attrs: dict[str, Any]) -> set[_Binding]:
 
 def _describe(bindings: set[_Binding]) -> str:
     if not bindings:
-        return "no host port"
+        return t("update.no_host_port")
     return ", ".join(
         f"{ip if ':' not in ip else f'[{ip}]'}:{pub or '(random)'}->{target}/{proto}"
         for ip, pub, target, proto in sorted(bindings)
@@ -4899,12 +4912,9 @@ def _port_drift(pairs: list[tuple[str, set[_Binding]]], cfg: dict[str, Any]) -> 
     for service, live in pairs:
         wanted = _published_from_config(cfg, service)
         if wanted is None:
-            lines.append(f"{service} is missing from your compose file as the update reads it")
+            lines.append(t("update.drift.missing", service=service))
         elif wanted != live:
-            lines.append(
-                f"{service} is published on {_describe(live)}, but your compose file as the "
-                f"update reads it would publish {_describe(wanted)}"
-            )
+            lines.append(t("update.drift.ports", service=service, live=_describe(live), wanted=_describe(wanted)))
     return lines
 
 
@@ -5004,7 +5014,7 @@ def _read_file_from_container(container: Any, path: str) -> bytes:
                 fh = tar.extractfile(member)
                 if fh is not None:
                     return fh.read()
-    raise ValueError(f"{path} is not a file in the archive")
+    raise ValueError(t("err.orchestrator.not_file_archive", path=path))
 
 
 def _ensure_updater_image(client: docker.DockerClient) -> None:
@@ -5026,7 +5036,7 @@ def _ensure_updater_image(client: docker.DockerClient) -> None:
     except APIError as exc:
         refusal = proxy_refusal(exc)
         if refusal:
-            raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
+            raise SelfUpdateUnavailable(t("err.orchestrator.not_updating_2", refusal=refusal)) from exc
         logger.warning("Could not check for the update helper image: %s", exc)
     except Exception as exc:  # noqa: BLE001 - a read timeout or a dropped socket: the pull below reports it
         logger.warning("Could not check for the update helper image: %s", type(exc).__name__)
@@ -5038,11 +5048,11 @@ def _ensure_updater_image(client: docker.DockerClient) -> None:
         logger.warning("Could not pull the update helper image %s: %s", UPDATER_IMAGE, exc)
         refusal = proxy_refusal(exc)
         if refusal:
-            raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
-        raise RuntimeError(f"Docker could not pull the update helper image {UPDATER_IMAGE}.") from exc
+            raise SelfUpdateUnavailable(t("err.orchestrator.not_updating_2", refusal=refusal)) from exc
+        raise RuntimeError(t("err.orchestrator.docker_could_not_pull_update", updater_image=UPDATER_IMAGE)) from exc
     except Exception as exc:  # noqa: BLE001 - a read timeout or a dropped socket, not a daemon answer
         logger.warning("Pulling the update helper image %s did not finish: %s", UPDATER_IMAGE, type(exc).__name__)
-        raise RuntimeError(f"Docker could not pull the update helper image {UPDATER_IMAGE}.") from exc
+        raise RuntimeError(t("err.orchestrator.docker_could_not_pull_update", updater_image=UPDATER_IMAGE)) from exc
 
 
 def _resolve_compose_config(
@@ -5079,28 +5089,28 @@ def _resolve_compose_config(
         logger.warning("Self-update preflight failed to start: %s", exc)
         refusal = proxy_refusal(exc)
         if refusal:
-            raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
-        raise RuntimeError("Docker refused to start the update helper.") from exc
+            raise SelfUpdateUnavailable(t("err.orchestrator.not_updating_2", refusal=refusal)) from exc
+        raise RuntimeError(t("err.orchestrator.docker_refused_start_update_helper")) from exc
     try:
         try:
             status = check.wait(timeout=_PREFLIGHT_TIMEOUT)
             err = check.logs(stdout=False, stderr=True)
         except Exception as exc:  # timeout (requests) or daemon error
             logger.warning("Self-update preflight did not finish: %s", exc)
-            raise RuntimeError("The update check did not finish; try again.") from exc
+            raise RuntimeError(t("err.orchestrator.update_check_did_not_finish")) from exc
         code = status.get("StatusCode", 1) if isinstance(status, dict) else 1
         err_text = (err or b"").decode("utf-8", "replace").strip()
         if code != 0:
             raise SelfUpdateUnavailable(
-                "Not updating: docker compose rejected the configuration: " + (err_text[-600:] or f"exit {code}")
+                t("err.orchestrator.not_updating_docker_compose_rejected", detail=err_text[-600:] or f"exit {code}")
             )
         try:
             out = _read_file_from_container(check, _PREFLIGHT_OUT)
             cfg = _json.loads(out.decode("utf-8", "replace"))
         except Exception as exc:
-            raise RuntimeError("The update check returned unreadable output.") from exc
+            raise RuntimeError(t("err.orchestrator.update_check_returned_unreadable_output")) from exc
         if not isinstance(cfg, dict):
-            raise RuntimeError("The update check returned unreadable output.")
+            raise RuntimeError(t("err.orchestrator.update_check_returned_unreadable_output"))
         return cfg
     finally:
         with contextlib.suppress(Exception):
@@ -5163,37 +5173,32 @@ def _proxy_compose_refusals(cfg: dict[str, Any], services: list[str]) -> list[st
             if isinstance(vol, dict) and vol.get("type") == "bind":
                 source = str(vol.get("source") or "")
                 if source.startswith("/") and not _within_proxy_roots(source, roots):
-                    why.append(f"the host folder {source}")
+                    why.append(t("update.asks.folder", source=source))
         for dev in svc.get("devices") or []:
             if _compose_device_path(dev) not in socket_policy.ALLOWED_DEVICES:
-                why.append(f"the device {_compose_device_path(dev)}")
+                why.append(t("update.asks.device", device=_compose_device_path(dev)))
         reservations = ((svc.get("deploy") or {}).get("resources") or {}).get("reservations") or {}
         if svc.get("gpus") or reservations.get("devices"):
-            why.append("a GPU request")
+            why.append(t("update.asks.gpu"))
         if svc.get("privileged"):
-            why.append("privileged mode")
+            why.append(t("update.asks.privileged"))
         extra_caps = sorted({str(c).upper().removeprefix("CAP_") for c in svc.get("cap_add") or []} - caps)
         if extra_caps:
-            why.append(f"the capabilities {', '.join(extra_caps)}")
-        for key, label in (
-            ("pid", "the PID"),
-            ("ipc", "the IPC"),
-            ("userns_mode", "the user"),
-            ("cgroup", "the cgroup"),
-        ):
+            why.append(t("update.asks.caps", caps=", ".join(extra_caps)))
+        for key in ("pid", "ipc", "userns_mode", "cgroup"):
             if str(svc.get(key) or "").startswith("host"):
-                why.append(f"{label} namespace of the host")
+                why.append(t("update.asks.namespace", namespace=key))
         security_opt = [str(o).replace("=", ":").replace(" ", "") for o in svc.get("security_opt") or []]
         if not any(o in ("no-new-privileges", "no-new-privileges:true") for o in security_opt):
-            why.append("no no-new-privileges")
+            why.append(t("update.asks.no_new_privileges"))
         for opt in security_opt:
             if opt in ("seccomp:unconfined", "apparmor:unconfined", "systempaths:unconfined"):
                 why.append(opt)
         runtime = svc.get("runtime")
         if runtime and runtime not in socket_policy.ALLOWED_RUNTIMES:
-            why.append(f"the {runtime} runtime")
+            why.append(t("update.asks.runtime", runtime=runtime))
         if why:
-            found.append(f"{name}, which asks for {', '.join(why)}")
+            found.append(t("update.asks", name=name, why=", ".join(why)))
     return found
 
 
@@ -5219,24 +5224,22 @@ def _check_proxy_binds(working_dir: str, extra_paths: list[str]) -> None:
         # deployer and may not exist on this host; the helper binds it as is,
         # so no other value would work either: the deployer has to update.
         raise SelfUpdateUnavailable(
-            f"The update helper needs your compose folder, which Docker Compose recorded as "
-            f"{working_dir}, and the Docker socket proxy lets containers bind only the folders "
-            "it was told about. If Compose runs inside another container for you (a webhook, "
-            "Portainer or another deployer), that path is inside it, not on this host: update "
-            "the stack from your deployer instead. Otherwise either update with docker compose "
-            "pull && docker compose up -d, or add this line to the .env next to your compose "
-            "file and run docker compose up -d once (it lets containers bind that folder "
-            "through the proxy, which weakens it): "
-            f"{COMPOSE_DIR_ENV}={working_dir}"
+            t(
+                "err.orchestrator.update_helper_needs_your_compose",
+                working_dir=working_dir,
+                compose_dir_env=COMPOSE_DIR_ENV,
+            )
         )
     roots = _proxy_bind_roots()
     outside = [p for p in extra_paths if not _within_proxy_roots(p, roots)]
     if outside:
         raise SelfUpdateUnavailable(
-            f"This install reads its settings from {', '.join(outside)}, outside your compose folder, "
-            "and the Docker socket proxy will not let the update helper read it. Add the file's "
-            f"folder to {BIND_MOUNTS_ENV} in that settings file, then run docker compose up -d once, "
-            f"or update by hand: {_MANUAL_UPDATE}"
+            t(
+                "err.orchestrator.install_reads_settings_outside_your",
+                outside=", ".join(outside),
+                bind_mounts_env=BIND_MOUNTS_ENV,
+                manual_update=_MANUAL_UPDATE,
+            )
         )
 
 
@@ -5250,27 +5253,21 @@ def spawn_self_update() -> dict[str, Any]:
     client = _get_client()
     me = _self_container(client)
     if me is None:
-        raise SelfUpdateUnavailable(
-            "The worker cannot identify its own container, so it cannot locate "
-            "your compose project. Update manually: docker compose pull && docker compose up -d"
-        )
+        raise SelfUpdateUnavailable(t("err.orchestrator.worker_cannot_identify_own_container"))
     project = _compose_project(me)
     if not project["working_dir"]:
-        raise SelfUpdateUnavailable(
-            "This install is not managed by Docker Compose (no compose labels on "
-            "the worker container). Update manually with the commands you used to "
-            "install — for docker run, pull the new image and recreate the "
-            "cashpilot-ui and cashpilot-worker containers."
-        )
+        raise SelfUpdateUnavailable(t("err.orchestrator.install_not_managed_docker_compose"))
 
     working_dir = project["working_dir"]
     if not working_dir.startswith("/"):
         # Docker Desktop on Windows labels the project with a C:\... path, which
         # the daemon cannot use as a Linux bind target or working directory.
         raise SelfUpdateUnavailable(
-            f"The compose project lives at {working_dir}, a Windows path the update "
-            "helper cannot mount (Docker Desktop on Windows). Update from that folder "
-            f"instead: {_MANUAL_UPDATE}"
+            t(
+                "err.orchestrator.compose_project_lives_windows_path",
+                working_dir=working_dir,
+                manual_update=_MANUAL_UPDATE,
+            )
         )
 
     # The update is scoped to the CashPilot services BY NAME, both derived from
@@ -5294,9 +5291,7 @@ def spawn_self_update() -> dict[str, Any]:
                 live.append((ui_service, _published_from_container(ui.attrs)))
     if not services:
         raise SelfUpdateUnavailable(
-            "The worker container carries a compose project but no service name "
-            "label, so the update cannot be scoped safely. Update manually: "
-            f"{_MANUAL_UPDATE}"
+            t("err.orchestrator.worker_container_carries_compose_project", manual_update=_MANUAL_UPDATE)
         )
 
     environment: dict[str, str] = {}
@@ -5320,8 +5315,11 @@ def spawn_self_update() -> dict[str, Any]:
     if env_files:
         if not all(f.startswith("/") for f in env_files):
             raise SelfUpdateUnavailable(
-                f"This install reads its settings from {', '.join(env_files)}, a path the update "
-                f"helper cannot mount. Update from your compose folder instead: {_MANUAL_UPDATE}"
+                t(
+                    "err.orchestrator.install_reads_settings_path_update",
+                    env_files=", ".join(env_files),
+                    manual_update=_MANUAL_UPDATE,
+                )
             )
         environment["COMPOSE_ENV_FILES"] = ",".join(env_files)
         root = working_dir.rstrip("/") + "/"
@@ -5338,14 +5336,14 @@ def spawn_self_update() -> dict[str, Any]:
         try:
             existing = client.containers.get(UPDATER_NAME)
             if existing.status == "running":
-                raise SelfUpdateUnavailable("An update is already running.")
+                raise SelfUpdateUnavailable(t("err.orchestrator.update_already_running"))
             # A leftover from an interrupted run — clear it so the fixed name is free.
             existing.remove(force=True)
         except NotFound:
             pass
     except APIError as exc:
         logger.warning("Self-update lock check failed: %s", exc)
-        raise RuntimeError("Docker refused to start the update helper.") from exc
+        raise RuntimeError(t("err.orchestrator.docker_refused_start_update_helper")) from exc
 
     _ensure_updater_image(client)
     cfg = _resolve_compose_config(client, working_dir, environment, services, {**project_mount, **env_mounts})
@@ -5353,24 +5351,27 @@ def spawn_self_update() -> dict[str, Any]:
         refused = _proxy_compose_refusals(cfg, services)
         if refused:
             raise SelfUpdateUnavailable(
-                "Not updating: the Docker socket proxy would refuse to recreate "
-                + "; ".join(refused)
-                + ". Compose would stop halfway. A host folder can be allowed by adding it to "
-                f"{BIND_MOUNTS_ENV} in the .env next to your compose file; anything else has to go from the "
-                f"CashPilot services in that file, or update by hand: {_MANUAL_UPDATE}"
+                t(
+                    "err.orchestrator.not_updating_docker_socket_proxy",
+                    refused="; ".join(refused),
+                    env=BIND_MOUNTS_ENV,
+                    manual=_MANUAL_UPDATE,
+                )
             )
     drift = _port_drift(live, cfg)
     if drift:
-        source = (
-            "the env file" + ("s " if len(env_files) > 1 else " ") + ", ".join(env_files) + " you started it with"
-            if env_files
-            else "the .env file next to your compose file"
-        )
+        if env_files:
+            raise SelfUpdateUnavailable(
+                t(
+                    "err.orchestrator.not_updating_drift_env_files",
+                    drift="; ".join(drift),
+                    n=len(env_files),
+                    files=", ".join(env_files),
+                    manual=_MANUAL_UPDATE,
+                )
+            )
         raise SelfUpdateUnavailable(
-            "Not updating: " + "; ".join(drift) + ". This happens when a port or address was set on the command line "
-            "(for example CASHPILOT_UI_PORT=8088 docker compose up -d). The update "
-            f"cannot see your shell, only {source}. "
-            "Put the values there, or update by hand: " + _MANUAL_UPDATE
+            t("err.orchestrator.not_updating_drift", drift="; ".join(drift), manual=_MANUAL_UPDATE)
         )
 
     if proxied():
@@ -5404,12 +5405,12 @@ def spawn_self_update() -> dict[str, Any]:
         # conflict on the fixed helper name — that is the already-running
         # answer, not an outage. Anything else from the daemon is.
         if getattr(exc, "status_code", None) == 409:
-            raise SelfUpdateUnavailable("An update is already running (the helper name is in use).") from exc
+            raise SelfUpdateUnavailable(t("err.orchestrator.update_already_running_helper_name")) from exc
         logger.warning("Self-update helper failed to start: %s", exc)
         refusal = proxy_refusal(exc)
         if refusal:
-            raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
-        raise RuntimeError("Docker refused to start the update helper.") from exc
+            raise SelfUpdateUnavailable(t("err.orchestrator.not_updating_2", refusal=refusal)) from exc
+        raise RuntimeError(t("err.orchestrator.docker_refused_start_update_helper")) from exc
 
     logger.info(
         "Self-update started: helper %s updating %s in %s",

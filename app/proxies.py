@@ -21,6 +21,7 @@ from typing import Any
 
 from app import egress, gpu
 from app.constants import PROXIED_FORBIDDEN_CAPS
+from app.i18n import join_and, t
 
 KINDS = ("socks5", "http", "tailscale")
 SECRET_FIELDS = ("username", "password", "auth_key")
@@ -64,10 +65,10 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
     out: dict[str, Any] = {}
     out["name"] = _text(body.get("name", base.get("name")))[:80]
     if not out["name"]:
-        raise ProxyInputError("Give the proxy a name")
+        raise ProxyInputError(t("err.proxies.give_proxy_name"))
     kind = _text(body.get("kind", base.get("kind"))).lower()
     if kind not in KINDS:
-        raise ProxyInputError("The type must be socks5, http or tailscale")
+        raise ProxyInputError(t("err.proxies.type_must_socks5_http_tailscale"))
     out["kind"] = kind
 
     kept: list[str] = []
@@ -86,13 +87,11 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
         out["exit_node"] = _text(body.get("exit_node", base.get("exit_node")))
         out["login_server"] = _text(body.get("login_server", base.get("login_server")))
         if not out["auth_key"]:
-            raise ProxyInputError("A Tailscale proxy needs an auth key")
+            raise ProxyInputError(t("err.proxies.tailscale_proxy_needs_auth_key"))
         if not _EXIT_NODE_RE.match(out["exit_node"]):
-            raise ProxyInputError("Give the exit node's Tailscale 100.x address, not its name")
+            raise ProxyInputError(t("err.proxies.give_exit_node_s_tailscale"))
         if out["login_server"] and not valid_login_server(out["login_server"]):
-            raise ProxyInputError(
-                "The login server must be an https:// URL with no user name, password, query or fragment"
-            )
+            raise ProxyInputError(t("err.proxies.login_server_must_https_url"))
         out["host"], out["port"] = "", 0
         out["username"] = out["password"] = ""
     else:
@@ -102,9 +101,9 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
         except (TypeError, ValueError):
             out["port"] = 0
         if not _HOST_RE.match(out["host"]):
-            raise ProxyInputError("The host must be a host name or an IPv4 address")
+            raise ProxyInputError(t("err.proxies.host_must_host_name_ipv4"))
         if not 1 <= out["port"] <= 65535:
-            raise ProxyInputError("The port must be between 1 and 65535")
+            raise ProxyInputError(t("err.proxies.port_must_between_1_65535"))
         out["exit_node"] = out["login_server"] = ""
         out["auth_key"] = ""
 
@@ -120,17 +119,17 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
         try:
             out["cap_gb"] = float(cap)
         except (TypeError, ValueError):
-            raise ProxyInputError("The traffic cap is a number of GB, or empty for none") from None
+            raise ProxyInputError(t("err.proxies.traffic_cap_number_gb_empty")) from None
         # Below a megabyte the threshold rounds to nothing measurable and the
         # first heartbeat would stop every copy.
         if not MIN_CAP_GB <= out["cap_gb"] <= 1_000_000:
-            raise ProxyInputError("The traffic cap must be between 0.001 and 1,000,000 GB")
+            raise ProxyInputError(t("err.proxies.traffic_cap_must_between_0"))
     try:
         pct = int(body.get("cap_threshold_pct", base.get("cap_threshold_pct")) or DEFAULT_THRESHOLD_PCT)
     except (TypeError, ValueError):
-        raise ProxyInputError("The stop threshold is a percentage") from None
+        raise ProxyInputError(t("err.proxies.stop_threshold_percentage")) from None
     if not 10 <= pct <= 100:
-        raise ProxyInputError("The stop threshold must be between 10 and 100 percent")
+        raise ProxyInputError(t("err.proxies.stop_threshold_must_between_10"))
     out["cap_threshold_pct"] = pct
     reset = body.get("reset_day", base.get("reset_day"))
     if reset in (None, "", 0, "0"):
@@ -139,9 +138,9 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
         try:
             out["reset_day"] = int(reset)
         except (TypeError, ValueError):
-            raise ProxyInputError("The reset day is a day of the month") from None
+            raise ProxyInputError(t("err.proxies.reset_day_day_month")) from None
         if not 1 <= out["reset_day"] <= 28:
-            raise ProxyInputError("The reset day must be between 1 and 28, so every month has it")
+            raise ProxyInputError(t("err.proxies.reset_day_must_between_1"))
     return out
 
 
@@ -160,7 +159,12 @@ def _target(definition: dict[str, Any]) -> tuple[str, str, int, str]:
     return ("net", str(definition.get("host") or "").lower(), port, "")
 
 
-_SECRET_LABELS = {"username": "user", "password": "password", "auth_key": "auth key"}
+def _secret_label(field: str) -> str:
+    if field == "username":
+        return t("proxies.secret.user")
+    if field == "password":
+        return t("proxies.secret.password")
+    return t("proxies.secret.auth_key")
 
 
 def _refuse_retargeted_secret(existing: dict[str, Any], out: dict[str, Any], kept: list[str]) -> None:
@@ -169,13 +173,10 @@ def _refuse_retargeted_secret(existing: dict[str, Any], out: dict[str, Any], kep
     carried = [f for f in kept if out.get(f)]
     if not carried or _target(existing) == _target(out):
         return
-    what = " and ".join(_SECRET_LABELS[f] for f in carried)
-    where = "login server" if out["kind"] == "tailscale" else "host or port"
-    clear = "" if out["kind"] == "tailscale" else ", or tick Remove to save without it"
-    raise ProxyInputError(
-        f"The {where} changed, so type the {what} again{clear}. "
-        "CashPilot never sends a stored secret to a server it was not entered for."
-    )
+    what = join_and([_secret_label(f) for f in carried])
+    if out["kind"] == "tailscale":
+        raise ProxyInputError(t("err.proxies.login_server_changed_type_again", what=what))
+    raise ProxyInputError(t("err.proxies.host_changed_type_again", what=what))
 
 
 def public_view(proxy: dict[str, Any], copies: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -247,24 +248,23 @@ def refusal(svc: dict[str, Any]) -> str | None:
     docker_conf = svc.get("docker") or {}
     name = svc.get("name") or svc.get("slug") or "This service"
     if docker_conf.get("network_mode") == "host":
-        return f"{name} uses the host's network, so it cannot be moved behind a proxy."
+        return t("api.uses_host_s_network_cannot", name=name)
     if docker_conf.get("ports"):
-        return f"{name} publishes a port on the host, which a proxied copy cannot do."
+        return t("api.publishes_port_host_which_proxied", name=name)
     if docker_conf.get("volumes"):
-        return f"{name} keeps data in a volume or host directory, which a proxied copy would share."
+        return t("api.keeps_data_volume_host_directory_2", name=name)
     if docker_conf.get("devices"):
-        return f"{name} needs a device on the host, which a proxied copy does not get."
+        return t("api.needs_device_host_which_proxied", name=name)
     if gpu.spec_of(svc):
-        return f"{name} needs this machine's GPU, which a proxied copy does not get."
+        return t("api.needs_machine_s_gpu_which", name=name)
     if risky := sorted(set(_caps(docker_conf.get("cap_add"))) & PROXIED_FORBIDDEN_CAPS):
-        return (
-            f"{name} asks for {', '.join(risky)}, which would let it change or bypass the tunnel's firewall, "
-            "so it cannot run behind a proxy."
-        )
+        return t("api.asks_which_would_let_change", name=name, risky=", ".join(risky))
     prohibited = (svc.get("requirements") or {}).get("proxy_prohibited")
     if prohibited:
         source = prohibited.get("source") if isinstance(prohibited, dict) else None
-        return f"{name}'s terms forbid running it through a proxy or VPN" + (f" ({source})." if source else ".")
+        if source:
+            return t("api.terms_forbid_proxy_source", name=name, source=source)
+        return t("api.terms_forbid_proxy", name=name)
     return None
 
 
@@ -289,12 +289,12 @@ def derive_device_id(device_id: str, seed: str, pattern: str | None = None) -> s
     copy deployed from either app is the same device.
     """
     if not re.fullmatch(r"[0-9a-f]+|[0-9A-F]+", device_id):
-        raise ValueError("its device id is not in a format a copy can derive its own from")
+        raise ValueError(t("err.proxies.device_id_not_format_copy"))
     digest = hashlib.shake_256(f"{device_id}-{seed}".encode()).hexdigest((len(device_id) + 1) // 2)
     digest = digest[: len(device_id)]
     new_id = digest.upper() if device_id.isupper() else digest
     if pattern and not re.fullmatch(pattern, new_id):
-        raise ValueError("the device id derived for the copy does not match the catalog's format for it")
+        raise ValueError(t("err.proxies.device_id_derived_copy_does"))
     return new_id
 
 
@@ -311,7 +311,7 @@ def device_id_renamer(env: dict[str, Any], docker_conf: dict[str, Any], seed: st
         old_id = str(env.get(var.get("key")) or "") if var.get("per_device") else ""
         if var.get("per_device") and var.get("required") and not old_id:
             # Empty is only safe where the service makes its own id when given none.
-            raise ValueError(f"its deployment has no {var.get('key')}, so the copy cannot be given one of its own")
+            raise ValueError(t("err.proxies.deployment_has_no_copy_cannot", key=var.get("key")))
         if old_id:
             renamed[old_id] = derive_device_id(old_id, seed, var.get("pattern"))
 
