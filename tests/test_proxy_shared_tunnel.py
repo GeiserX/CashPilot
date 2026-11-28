@@ -6273,6 +6273,29 @@ class TestIsolatedTunnel:
         assert docker.named("cashpilot-honeygain-p3").status != "running"
         assert "cashpilot-earnfm-p3" not in proxy_tunnel.held()
 
+    def test_a_trip_while_new_settings_come_up_holds_the_other_copies_through_the_rollback(self, docker):
+        """The new settings were proven, then the watchdog trips while the tunnel waits for them: the old ones go back."""
+        _deploy("earnfm")
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        real = proxy_tunnel._wait_ready
+        waits = []
+
+        def wait_ready(container, *args, **kwargs):
+            if container.name != tunnel.name:  # the proof's own test tunnel
+                return real(container, *args, **kwargs)
+            waits.append(container.name)
+            if len(waits) == 1:
+                _tripped(tunnel)
+                raise proxy_tunnel.ProxyTunnelError("the tunnel stopped while it came up")
+            return real(container, *args, **kwargs)
+
+        with patch.object(proxy_tunnel, "_wait_ready", wait_ready), pytest.raises(proxy_tunnel.ProxyTunnelError):
+            _deploy("earnfm", proxy=_socks(password="changed"))
+        assert len(waits) == 2, "the old settings went back and came up"
+        assert "cashpilot-honeygain-p3" in proxy_tunnel.held()
+        assert docker.named("cashpilot-honeygain-p3").status != "running"
+
     def test_a_copy_replaced_since_the_beat_listed_it_is_not_held(self, docker):
         """The beat read the trip; a deploy replaced the copy under its name before the beat took the lock."""
         _deploy("earnfm")

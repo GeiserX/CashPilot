@@ -1905,7 +1905,14 @@ def _in_place(
         try:
             if previous is not None:
                 # Proven a moment ago, failed here: back to what ran before,
-                # and its copies back inside it.
+                # and its copies back inside it. A trip while the new settings
+                # came up (still under the proxy's lock, so the heartbeat could
+                # not hold the copies) holds them first: the restart below then
+                # leaves them stopped.
+                with contextlib.suppress(APIError):
+                    current.reload()
+                if tripped(client, current):
+                    _hold_others(client, current, chosen)
                 current.stop(timeout=SIDECAR_STOP_SECONDS)
                 current.put_archive(SECRET_DIR, _secret_tar(previous))
                 _gate_up(client, current)
