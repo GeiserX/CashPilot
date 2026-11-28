@@ -157,6 +157,7 @@ def overruled(slug: str, info: dict[str, Any], choice: str) -> str | None:
     if required and (GVISOR if required.startswith("runsc") else RUNC) != choice:
         reason = ((catalog.get_service(slug) or {}).get("docker") or {}).get("runtime_reason")
         if isinstance(reason, str) and reason.strip():
+            reason = catalog.translate(f"{slug}.docker.runtime_reason", reason, i18n.current())
             return i18n.t("layers.why.catalog_reason", service=name, runtime=required, reason=reason.strip())
         return i18n.t("layers.why.catalog", service=name, runtime=required)
     network_mode = ((catalog.get_service(slug) or {}).get("docker") or {}).get("network_mode")

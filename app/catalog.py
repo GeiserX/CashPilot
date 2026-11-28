@@ -1042,6 +1042,7 @@ I18N_FIELDS = (
     "docker.env[key].label",
     "docker.env[key].description",
     "docker.setup",
+    "docker.runtime_reason",
     "docker.critical_volumes[].holds",
     "docker.health_signals[].means",
     "docker.health_probe.checks[].means",
