@@ -108,9 +108,9 @@ def _check_text(name: str, content: str) -> str:
     if content.lstrip().startswith(_M4B_ENCRYPTED_PREFIX):
         raise ImportRefused(
             f"{name} is an encrypted money4band 5.0 file. In your money4band folder, run "
-            "`./Money4Band-<os>-<arch> config edit` for the release binary, or "
-            "`python main.py config edit` from source. Copy the decrypted JSON it opens, "
-            "and paste it here."
+            "`config edit` with the release file for your system (for example "
+            "`./Money4Band-linux-amd64 config edit`), or `python run.py config edit` "
+            "from source. Copy the decrypted JSON it opens, and paste it here."
         )
     lines = content.splitlines()
     if len(lines) > MAX_LINES:
