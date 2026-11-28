@@ -112,6 +112,7 @@
   "alert.activity.on": "On {name}: {message}",
   "alert.activity.pending": "Some were still pending (no answer yet), which usually means a firewall dropped them.",
   "alert.activity.reached": "{container} tried to reach {where, select, lan {your local network} tailnet {your tailnet} docker_host {the Docker host itself} docker_peer {another container on its Docker network (not an earner)} metadata {a cloud metadata address} link_local {a link-local address} other {{where}}}: {n, plural, one {# destination} other {# destinations}}, port {ports}.",
+  "alert.activity.spike": "On {box}: {container} {what, select, opens {opened {count, plural, other {# connections}}} received {received {amount}} other {sent {amount}}} in the last hour, more than {ratio} times its usual hour this week.",
   "alert.container.down": "{name} has not been running since {since} UTC on {nodes}, so it is not earning.",
   "alert.container.down_exit": "{name} has not been running since {since} UTC on {nodes} (exit code {codes}), so it is not earning.",
   "alert.container.fence_wait": "The worker starts it as soon as the LAN fence is confirmed; while it stays down, the Fleet page says what holds it. If you stopped it on purpose, stop it from the dashboard, which keeps this alert quiet, and start it there when you want it back.",
