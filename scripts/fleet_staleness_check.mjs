@@ -562,7 +562,8 @@ check('an online worker shows the proxy and the fence on', onlineLayers.includes
   && onlineLayers.includes('flag-ok">LAN fence: on'), onlineLayers);
 check('an offline worker shows its stale proxy, fence and gVisor as unknown, never ok',
   !offlineLayers.includes('flag-ok') && offlineLayers.includes('Socket proxy: unknown')
-  && offlineLayers.includes('LAN fence: unknown'), offlineLayers);
+  && offlineLayers.includes('LAN fence: unknown') && offlineLayers.includes('gVisor: unknown')
+  && onlineLayers.includes('gVisor: installed'), offlineLayers);
 check('an offline worker shows each earner\'s fence as unknown, not its last report',
   onlineLayers.includes('Honeygain</strong>: fenced') && !offlineLayers.includes('Honeygain</strong>: fenced')
   && offlineLayers.includes('Honeygain</strong>: fence unknown'), offlineLayers);
@@ -574,6 +575,11 @@ check('an offline worker inside a Secure VM shows its fence as unknown, never ok
   && vmOffline.includes('· Secure VM fence unknown'), vmOffline);
 const vmOnline = buildLayers(esc, CP, vmView, true)({id: 7}, layerInfo, true);
 check('an online worker inside a Secure VM shows a fresh fence as ok', vmOnline.includes('· in the Secure VM'), vmOnline);
+const stoppedView = {workers: {'7': {...layersView.workers['7'],
+  earners: [{...layersView.workers['7'].earners[0], status: 'exited'}]}}, commands: layersView.commands};
+const stoppedLayers = buildLayers(esc, CP, stoppedView, true)({id: 7}, layerInfo, true);
+check('a stopped earner keeps its choice for its next deploy, with no retry that would do nothing',
+  stoppedLayers.includes('gVisor on its next deploy') && !stoppedLayers.includes('Run under gVisor again'), stoppedLayers);
 check('a saved choice still on the old runtime offers it again',
   onlineLayers.includes('data-choice="gvisor"') && onlineLayers.includes('Run under gVisor again')
   && onlineLayers.includes('data-choice="runc"'), onlineLayers);
