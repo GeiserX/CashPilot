@@ -326,6 +326,17 @@ def test_json_inline_stamp(tmp_path):
     assert "ok" in run(en, es)[1]
 
 
+def test_an_android_target_in_utf16_is_read_by_its_encoding_declaration(tmp_path):
+    res = tmp_path / "res"
+    en = write(res / "values" / "strings.xml", '<resources><string name="hi">Hello %1$s</string></resources>')
+    de = res / "values-de" / "strings.xml"
+    de.parent.mkdir(parents=True)
+    xml = '<?xml version="1.0" encoding="utf-16"?><resources><string name="hi">Hallo %1$s</string></resources>'
+    de.write_bytes(xml.encode("utf-16"))
+    code, out = run(en, de)
+    assert code == 0 and "error:" not in out
+
+
 def test_android_sidecar_hashes(tmp_path):
     en = write(tmp_path / "res" / "values" / "strings.xml", '<resources><string name="a">Fleet</string></resources>')
     de = write(
@@ -944,6 +955,15 @@ def test_a_placeholder_of_another_kind_moved_between_select_keywords_fails(tmp_p
     es = write(tmp_path / "es.json", json.dumps({"k": f"{{g, select, x {{a {q}}} other {{b {p}}}}}"}))
     assert run(en, es)[0] == 1
     write(es, json.dumps({"k": f"{{g, select, other {{b {q}}} x {{a {p}}}}}"}))
+    assert run(en, es)[0] == 0
+
+
+def test_a_placeholder_moved_between_select_keywords_inside_quoted_braces_fails(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"k": "{g, select, x {'{%(p)s}'} other {'{%(q)s}'}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"k": "{g, select, x {'{%(q)s}'} other {'{%(p)s}'}}"}))
+    code, out = run(en, es)
+    assert code == 1 and "g = x" in out
+    write(es, json.dumps({"k": "{g, select, other {'{%(q)s}'} x {'{%(p)s}'}}"}))
     assert run(en, es)[0] == 0
 
 

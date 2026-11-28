@@ -708,6 +708,9 @@ def _icu_scan(
                     end = s.find("'", end + 2)
                 if end == -1:
                     raise IcuError("unterminated quote")
+                if marks is not None:
+                    # Quoted braces are literal, but a placeholder inside them still renders.
+                    out.update(marks[int(k)] for k in re.findall("\x02(\\d+)\x03", s[i:end]))
                 i = end + 1
                 continue
             i += 1
@@ -1120,7 +1123,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             fmt = fmt or detect_format(path)
             # Read before the parse: a write later refuses any change since.
-            raw = path.read_text(encoding="utf-8") if path.is_file() else None
+            # Only the catalog writer needs it; XML keeps its own encoding declaration.
+            raw = path.read_text(encoding="utf-8") if fmt == "catalog" and path.is_file() else None
             whole, inline = load(path, fmt, args.i18next_plurals)
             snapshot = (dict(whole), dict(inline or {}))
             # Ignored keys leave the comparison, never the file a stamp rewrites.
