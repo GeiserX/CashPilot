@@ -412,3 +412,20 @@ def test_the_uis_own_address_and_port_is_not_a_forbidden_target():
     )
     assert out.split("\n")[:1] == ["host 100.101.102.103 8080"]
     assert "192.168.1.10 8080" not in out
+
+
+def test_remove_stops_before_deleting_anything_when_the_guard_lock_is_held():
+    # A guard pass that still holds the lock can write the host rules back
+    # while remove takes them away, so remove must stop and keep the config.
+    out = _run(
+        """
+need_root() { :; }
+load_conf() { return 1; }
+flock() { return 1; }
+host_rules_remove() { echo RULES-REMOVED; }
+RUN_DIR=$(mktemp -d)/run; CONF=$(mktemp)
+if (cmd_remove --yes) 2>/dev/null; then echo RAN; else echo STOPPED; fi
+[ -f "$CONF" ] && echo CONF-KEPT
+"""
+    )
+    assert out.split() == ["STOPPED", "CONF-KEPT"]
