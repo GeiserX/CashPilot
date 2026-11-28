@@ -154,7 +154,7 @@ services:
 <div class="card settings-section" id="set-about">
   <h3 class="settings-section-title">{{ t('settings.about.title') }}</h3>
   <p class="settings-section-desc">
-    {{ t('settings.about.desc_html', update_to=t('app.update.update_to', version=t('settings.about.a_version')), pull=t('app.update.pull_patches'), repull=t('app.update.repull')) }}
+    {{ t('settings.about.desc_html', update_to=t('app.update.update_to', version='x.y.z'), pull=t('app.update.pull_patches'), repull=t('app.update.repull')) }}
   </p>
   <div id="update-card-container">
     <p class="loading-line">{{ t('settings.loading') }}</p>
