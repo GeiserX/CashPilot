@@ -113,6 +113,23 @@ class TestThePlan:
         monkeypatch.setattr(type(on), "read_bytes", refuse)
         assert _plan() is None
 
+    def test_a_shim_path_that_cannot_be_checked_keeps_the_environment_and_never_raises(self, on, monkeypatch):
+        def refuse(self):
+            raise PermissionError(13, "Permission denied", str(self))
+
+        monkeypatch.setattr(type(on), "is_file", refuse)
+        assert _plan() is None
+
+    def test_an_empty_entrypoint_clears_it_and_the_command_runs_first(self, on):
+        """Docker reads [""] as no entrypoint: the shim must exec the command, never an empty program name."""
+        p = _plan(entrypoint=[""])
+        assert p.command[0] == "-tou-accept" and p.entrypoint_len == 0
+        assert _plan(entrypoint=[""], command=None) is None
+
+    def test_a_password_inside_another_variable_keeps_the_environment(self, on):
+        """Docker would keep that variable, so the password would stay in docker inspect."""
+        assert _plan(env={**ENV, "HONEYGAIN_DEVICE_NAME": "box-hunter2"}) is None
+
     def test_a_command_that_cannot_be_split_keeps_the_environment_and_never_raises(self, on):
         assert _plan(command="-pass 'hunter2") is None
 

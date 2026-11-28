@@ -496,3 +496,15 @@ def test_a_key_file_inside_the_data_folder_is_not_outside_it(tmp_path: Path):
         {"CASHPILOT_DATA_DIR": str(tmp_path), "CASHPILOT_ENCRYPTION_KEY_FILE": str(_secret(tmp_path, key, "in-data"))}
     )
     assert not db.encryption_key_status()["outside"]
+
+
+def test_a_key_file_that_is_not_text_keeps_the_data_folder_copy(tmp_path: Path):
+    data = tmp_path / "data"
+    data.mkdir()
+    key = Fernet.generate_key().decode()
+    (data / ".fernet_key").write_text(key)
+    secret = _secret(tmp_path, key)
+    db = _reload({"CASHPILOT_DATA_DIR": str(data), "CASHPILOT_ENCRYPTION_KEY_FILE": str(secret)})
+    assert db.encryption_key_status()["removable"]  # the positive control
+    secret.write_bytes(b"\xff\xfe not a key")
+    assert not db.encryption_key_status()["removable"]
