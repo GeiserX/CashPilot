@@ -1288,7 +1288,7 @@
   "err.importers_parse.apps_setting_not_object": "The apps setting is not an object.",
   "err.importers_parse.could_not_tell_which_tool": "Could not tell which tool wrote these files. Pick the tool you used.",
   "err.importers_parse.each_file_needs_name_content": "Each file needs a name and its content.",
-  "err.importers_parse.encrypted_money4band": "{name} is an encrypted money4band 5.0 file. In your money4band folder, run `./Money4Band-<os>-<arch> config edit` for the release binary, or `python main.py config edit` from source. Copy the decrypted JSON it opens, and paste it here.",
+  "err.importers_parse.encrypted_money4band": "{name} is an encrypted money4band 5.0 file. In your money4band folder, run `config edit` with the release file for your system (for example `./Money4Band-linux-amd64 config edit`), or `python run.py config edit` from source. Copy the decrypted JSON it opens, and paste it here.",
   "err.importers_parse.files_add_up_more_than": "The files add up to more than {value} KiB.",
   "err.importers_parse.has_line_longer_than_kib": "{name} has a line longer than {value} KiB.",
   "err.importers_parse.has_more_than_keys_not": "{name} has more than {max_json_keys} keys; this is not a config file.",
