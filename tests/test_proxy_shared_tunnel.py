@@ -6180,6 +6180,31 @@ class TestIsolatedTunnel:
         assert tunnel.status == "running" and _gate(docker, tunnel).status == "running"
         assert earner.status == "running"
 
+    def test_a_docker_error_reading_the_new_settings_for_the_gate_puts_the_old_ones_back(self, docker):
+        """The read of the settings just written fails as a gate that cannot start does, never as a broken tunnel."""
+        _deploy_isolated()
+        tunnel = docker.named(OWN_TUNNEL)
+        earner = docker.named("cashpilot-bitping-p3")
+        old_auth = tunnel.files["proxy_auth"]
+        real = tunnel.get_archive
+        refused = []
+
+        def get_archive(path):
+            if tunnel.files.get("proxy_auth") != old_auth and not refused:
+                refused.append(path)
+                raise APIError("500 Server Error: archive read timed out")
+            return real(path)
+
+        with (
+            patch.object(tunnel, "get_archive", get_archive),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="The gate could not start"),
+        ):
+            _deploy_isolated(proxy=_socks(password="changed"))
+        assert refused
+        assert tunnel.files["proxy_auth"] == old_auth
+        assert tunnel.status == "running" and _gate(docker, tunnel).status == "running"
+        assert earner.status == "running"
+
     def test_an_orphan_gate_that_cannot_be_removed_never_stops_the_heartbeat(self, docker):
         _deploy("earnfm")
         _deploy_isolated()

@@ -926,13 +926,14 @@ def _gate_up(client: Any, tunnel: Any) -> None:
     tag = _labels(tunnel).get(LABEL_GATE)
     if not tag:
         return
-    files = {key: _read_secret_file_or_raise(tunnel, key) or "" for key in SECRET_KEYS}
-    files["gate"] = "1"
-    secrets = [files.get("auth_key", ""), *_auth_secrets(files.get("proxy_auth", ""))]
-    # A Docker error here is a gate that could not start, as one below is: the
-    # caller rolls back to the old settings on it (_in_place), never mistakes
-    # it for a broken tunnel.
+    secrets: list[str] = []
+    # A Docker error here, the read of the settings just written included, is a
+    # gate that could not start, as one below is: the caller rolls back to the
+    # old settings on it (_in_place), never mistakes it for a broken tunnel.
     try:
+        files = {key: _read_secret_file_or_raise(tunnel, key) or "" for key in SECRET_KEYS}
+        files["gate"] = "1"
+        secrets = [files.get("auth_key", ""), *_auth_secrets(files.get("proxy_auth", ""))]
         old = _get(client, gate_name(tag))
         if old is not None:
             if _labels(old).get(LABEL_GATE_OF) != tag:
