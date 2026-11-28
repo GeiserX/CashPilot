@@ -1,5 +1,5 @@
 ---
-source_hash: 374e39e6eac9
+source_hash: 1a7f6b462b56
 ---
 # money4band에서 옮겨 오기 { #moving-from-money4band }
 
@@ -21,12 +21,24 @@ ProxyRack 기기 id가 두 번 실행되어서는 안 됩니다. money4band 메�
 
 ## 사용할 파일 { #which-file-to-use }
 
-money4band 폴더의 `config/user-config.json`을 사용하십시오. money4band는
+money4band 폴더의 `config/user-config.json`을 사용하십시오. 이 파일을 CashPilot으로
+가져오는 방법은 money4band 버전에 따라 다릅니다.
+
+money4band 4.x에서는 money4band가
 **Setup Apps**를 실행할 때 이 파일을 작성하며, 이 파일에는 입력한 내용이 그대로 담깁니다. 그 옆의
 `.env`는 이 파일에서 생성되며 이것도 작동합니다. money4band 3.x에서 손으로 편집한
 `.env`도 마찬가지입니다. 두 파일 모두 디스크에만 남습니다. money4band의
 [.gitignore](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/.gitignore)에
 이 파일들이 나열되어 있습니다.
+
+money4band 5.0은 디스크에 있는 `config/user-config.json`을 암호화하고
+([보안 참고 사항](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
+시작할 때마다 자신의 `.env`를 삭제합니다
+([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
+CashPilot은 암호화된 파일을 읽을 수 없습니다. money4band 폴더에서 `m4b config edit`를
+실행하십시오. 복호화된 파일이 편집기에서 열립니다
+([CLI 참조](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+그 텍스트를 모두 복사해 가져오기 페이지에 붙여 넣은 다음, 편집기를 닫으십시오.
 
 JSON 파일을 우선 사용하십시오. `.env`에서는 Docker Compose가 따옴표 없는 값의 `$`를
 확장하므로, `$`가 들어 있는 비밀번호는 파일에 보이는 값과 다릅니다. CashPilot은
@@ -46,7 +58,9 @@ JSON 파일을 우선 사용하십시오. `.env`에서는 Docker Compose가 따�
 필드 이름은 money4band의
 [user-config 템플릿](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/template/user-config.json)과
 그 [생성기](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/utils/generator.py#L535-L545)가
-작성하는 `.env` 이름(`<APP>_<FLAG>`, 예: `REPOCKET_APIKEY`)에서 가져옵니다.
+작성하는 `.env` 이름(`<APP>_<FLAG>`, 예: `REPOCKET_APIKEY`)에서 가져옵니다. money4band 5.0도
+[앱 카탈로그](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/config/catalog/supported)에서
+같은 필드 이름을 사용합니다.
 
 | money4band 앱 | CashPilot 서비스 | 가져오는 항목 |
 |---|---|---|

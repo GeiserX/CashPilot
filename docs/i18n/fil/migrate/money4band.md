@@ -1,5 +1,5 @@
 ---
-source_hash: 374e39e6eac9
+source_hash: 1a7f6b462b56
 ---
 # Paglipat mula sa money4band { #moving-from-money4band }
 
@@ -21,12 +21,24 @@ instance, ihinto rin ang bawat isa sa mga iyon.
 
 ## Aling file ang gagamitin { #which-file-to-use }
 
-Gamitin ang `config/user-config.json` sa iyong folder ng money4band. Isinusulat ito ng money4band
+Gamitin ang `config/user-config.json` sa iyong folder ng money4band. Kung paano mo ito
+dadalhin sa CashPilot ay depende sa bersyon ng iyong money4band.
+
+Sa money4band 4.x, isinusulat ng money4band ang file
 kapag pinatakbo mo ang **Setup Apps**, at hawak nito ang mismong itinype mo. Ang `.env`
 katabi nito ay ginawa mula sa file na iyon at gumagana rin, gayundin ang in-edit sa kamay na
 `.env` ng money4band 3.x. Pareho silang nananatili sa iyong disk lang: inililista sila ng
 [.gitignore](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/.gitignore)
 ng money4band.
+
+Ine-encrypt ng money4band 5.0 ang `config/user-config.json` sa disk
+([mga tala sa seguridad](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption)),
+at binubura nito ang `.env` nito pagkatapos ng bawat pagsisimula
+([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
+Hindi mabasa ng CashPilot ang naka-encrypt na file. Patakbuhin ang `m4b config edit` sa iyong
+folder ng money4band: binubuksan nito ang na-decrypt na file sa iyong editor
+([CLI reference](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+Kopyahin ang lahat ng teksto nito, i-paste ito sa pahina ng import, pagkatapos isara ang editor.
 
 Mas mainam ang JSON file. Sa isang `.env`, ine-expand ng Docker Compose ang `$` sa mga value na walang quote,
 kaya ang password na may `$` ay hindi ang ipinapakita ng file. Hindi nanghuhula ang CashPilot:
@@ -48,7 +60,9 @@ Nagmumula ang mga pangalan ng field sa
 [user-config template](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/template/user-config.json) ng money4band
 at sa mga pangalan sa `.env` na isinusulat ng
 [generator](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/utils/generator.py#L535-L545) nito
-(`<APP>_<FLAG>`, halimbawa `REPOCKET_APIKEY`).
+(`<APP>_<FLAG>`, halimbawa `REPOCKET_APIKEY`). Pareho pa rin ang mga pangalan ng field
+sa money4band 5.0, sa
+[app catalog](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/config/catalog/supported) nito.
 
 | App sa money4band | Serbisyo sa CashPilot | Ano ang nalilipat |
 |---|---|---|

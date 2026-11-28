@@ -1,5 +1,5 @@
 ---
-source_hash: 374e39e6eac9
+source_hash: 1a7f6b462b56
 ---
 # money4band からの移行 { #moving-from-money4band }
 
@@ -20,12 +20,24 @@ ProxyRack のデバイス ID を 2 つ同時に動かしてはいけません。
 
 ## 使うファイル { #which-file-to-use }
 
-money4band のフォルダーにある `config/user-config.json` を使ってください。money4band は
+money4band のフォルダーにある `config/user-config.json` を使ってください。これを
+CashPilot に渡す方法は、money4band のバージョンによって違います。
+
+money4band 4.x では、money4band は
 **Setup Apps** を実行したときにこのファイルを書き出し、あなたが入力したものがそのまま入っています。
 その隣にある `.env` はこのファイルから生成されたもので、これも使えます。money4band 3.x で手で編集した
 `.env` も同じく使えます。どちらもあなたのディスクにだけ残ります。money4band の
 [.gitignore](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/.gitignore)
 にこれらが記載されています。
+
+money4band 5.0 は `config/user-config.json` をディスク上で暗号化し
+([セキュリティの説明](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption))、
+起動のたびに自分の `.env` を削除します
+([env builder](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11))。
+CashPilot は暗号化されたファイルを読めません。money4band のフォルダーで `m4b config edit` を
+実行してください。復号したファイルがエディターで開きます
+([CLI リファレンス](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit))。
+その内容をすべてコピーしてインポートのページに貼り付け、エディターを閉じます。
 
 JSON ファイルを優先してください。`.env` では、Docker Compose が引用符で囲まれていない値の `$` を展開するので、
 `$` を含むパスワードはファイルに見えているものとは違います。CashPilot は
@@ -46,7 +58,9 @@ JSON ファイルを優先してください。`.env` では、Docker Compose �
 [user-config テンプレート](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/template/user-config.json)
 と、その
 [ジェネレーター](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/utils/generator.py#L535-L545)
-が書き出す `.env` の名前(`<APP>_<FLAG>`、たとえば `REPOCKET_APIKEY`)から来ています。
+が書き出す `.env` の名前(`<APP>_<FLAG>`、たとえば `REPOCKET_APIKEY`)から来ています。money4band 5.0 も
+[アプリのカタログ](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/config/catalog/supported)
+で同じフィールド名を使っています。
 
 | money4band のアプリ | CashPilot のサービス | 引き継がれるもの |
 |---|---|---|

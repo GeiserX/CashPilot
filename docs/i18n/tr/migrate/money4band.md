@@ -1,5 +1,5 @@
 ---
-source_hash: 374e39e6eac9
+source_hash: 1a7f6b462b56
 ---
 # money4band'den geçiş { #moving-from-money4band }
 
@@ -22,12 +22,24 @@ her birini de durdurun.
 
 ## Hangi dosyayı kullanmalı { #which-file-to-use }
 
-money4band klasörünüzdeki `config/user-config.json` dosyasını kullanın. money4band bu dosyayı
-**Setup Apps** çalıştırdığınızda yazar ve dosya tam olarak sizin yazdıklarınızı tutar. Yanındaki
-`.env` o dosyadan üretilir ve o da çalışır; money4band 3.x'in elle düzenlenmiş `.env` dosyası da
-çalışır. İkisi de yalnızca diskinizde kalır: money4band'in
+money4band klasörünüzdeki `config/user-config.json` dosyasını kullanın. Bu dosyayı
+CashPilot'a nasıl ulaştıracağınız money4band sürümünüze bağlıdır.
+
+money4band 4.x'te money4band bu dosyayı **Setup Apps** çalıştırdığınızda yazar ve dosya
+tam olarak sizin yazdıklarınızı tutar. Yanındaki `.env` o dosyadan üretilir ve o da çalışır;
+money4band 3.x'in elle düzenlenmiş `.env` dosyası da çalışır. İkisi de yalnızca diskinizde
+kalır: money4band'in
 [.gitignore](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/.gitignore)
 dosyası onları listeler.
+
+money4band 5.0, `config/user-config.json` dosyasını diskte şifreler
+([güvenlik notları](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/security.md#credential-encryption))
+ve her başlatmadan sonra `.env` dosyasını siler
+([env oluşturucu](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/money4band/docker/env_builder.py#L5-L11)).
+CashPilot şifrelenmiş dosyayı okuyamaz. money4band klasörünüzde `m4b config edit`
+komutunu çalıştırın: komut, şifresi çözülmüş dosyayı düzenleyicinizde açar
+([CLI başvurusu](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/docs/cli-reference.md#config-edit)).
+Metnin tamamını kopyalayın, içe aktarma sayfasına yapıştırın, ardından düzenleyiciyi kapatın.
 
 JSON dosyasını tercih edin. Bir `.env` içinde Docker Compose tırnaksız değerlerdeki `$` işaretini
 genişletir, bu yüzden içinde `$` bulunan bir parola dosyada göründüğü gibi değildir. CashPilot
@@ -49,7 +61,9 @@ Alan adları money4band'in
 [user-config şablonundan](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/template/user-config.json)
 ve `.env` adları da onun
 [üretecinin](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/utils/generator.py#L535-L545)
-yazdığı adlardan gelir (`<APP>_<FLAG>`, örneğin `REPOCKET_APIKEY`).
+yazdığı adlardan gelir (`<APP>_<FLAG>`, örneğin `REPOCKET_APIKEY`). money4band 5.0
+[uygulama katalogunda](https://github.com/MRColorR/money4band/blob/af9d903e1908f5e7fc205ab6871bad2e0ca51f28/config/catalog/supported)
+aynı alan adlarını korur.
 
 | money4band uygulaması | CashPilot hizmeti | Neler taşınır |
 |---|---|---|
