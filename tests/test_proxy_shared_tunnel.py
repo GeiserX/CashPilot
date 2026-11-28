@@ -6255,6 +6255,24 @@ class TestIsolatedTunnel:
         assert docker.named("cashpilot-earnfm-p3").status == "running"
         assert docker.named("cashpilot-honeygain-p3").status != "running"
 
+    def test_a_trip_while_new_settings_are_proven_holds_the_other_copies(self, docker):
+        """The owner redeploys one copy on new settings; the watchdog trips during the proof, under the lock."""
+        _deploy("earnfm")
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        real = proxy_tunnel._prove
+
+        def prove(*args, **kwargs):
+            _tripped(tunnel)
+            return real(*args, **kwargs)
+
+        with patch.object(proxy_tunnel, "_prove", prove):
+            _deploy("earnfm", proxy=_socks(password="changed"))
+        assert docker.named("cashpilot-tunnel-p3").id == tunnel.id, "changed in place"
+        assert "cashpilot-honeygain-p3" in proxy_tunnel.held()
+        assert docker.named("cashpilot-honeygain-p3").status != "running"
+        assert "cashpilot-earnfm-p3" not in proxy_tunnel.held()
+
     def test_a_copy_replaced_since_the_beat_listed_it_is_not_held(self, docker):
         """The beat read the trip; a deploy replaced the copy under its name before the beat took the lock."""
         _deploy("earnfm")

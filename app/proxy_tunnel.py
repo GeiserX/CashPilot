@@ -887,6 +887,11 @@ def _hold_others_if_tripped(client: Any, tunnel: Any | None, chosen: str | None)
     heartbeat, which holds them (_hold_tripped), may not have seen the trip yet."""
     if chosen is None or not tripped(client, tunnel):
         return
+    _hold_others(client, tunnel, chosen)
+
+
+def _hold_others(client: Any, tunnel: Any, chosen: str | None) -> None:
+    """Hold and stop every copy in ``tunnel`` but ``chosen`` (every one when None)."""
     for member in _members(client, tunnel):
         if str(member.name) != chosen:
             _set_held(str(member.name), True, strict=True)
@@ -1638,7 +1643,7 @@ def _ensure_tunnel(
         and is_isolated(current) == isolated
     ):
         try:
-            return _in_place(client, current, proxy, own_ip, files, secrets, deadline=deadline)
+            return _in_place(client, current, proxy, own_ip, files, secrets, deadline=deadline, chosen=keep or starting)
         except _Broken as exc:
             # Not refused for a retired name in the way, as below: the tunnel is
             # down now and Docker cannot start it, so its earners run again only
@@ -1807,11 +1812,13 @@ def _in_place(
     secrets: list[str],
     *,
     deadline: float | None = None,
+    chosen: str | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Bring ``current`` up on ``files`` without replacing the container. See _ensure_tunnel.
 
     Raises _Broken when Docker refuses the container itself (a daemon restart
-    can leave one that cannot start), so the caller replaces it.
+    can leave one that cannot start), so the caller replaces it. ``chosen`` is
+    the copy this deploy or Start is for (see _hold_others_if_tripped).
     """
     current.reload()
     running = current.status == "running"
@@ -1859,6 +1866,11 @@ def _in_place(
             # Files written under a running tunnel would be recorded as its
             # settings while it still runs on the old ones.
             raise ProxyTunnelError(t("err.proxy_tunnel.docker_did_not_stop_settings", name=current.name))
+        # A trip while the new settings were proven (_prove): this deploy holds
+        # the proxy's lock, so the heartbeat could not hold the copies
+        # (_hold_tripped), and the restart below would start them again.
+        if tripped(client, current):
+            _hold_others(client, current, chosen)
     # Replacing the tunnel recreates every copy in it (a new device to each
     # provider), so a Docker error gets a second try first: only a container
     # Docker refuses twice is taken for broken.
@@ -2905,7 +2917,9 @@ def _start(
             # replaces both.
             files, secrets = _tunnel_settings(proxy, own_ip, shared_label(proxy_id, key))
             try:
-                shared, exit_info = _in_place(client, retired, proxy, own_ip, files, secrets, deadline=_pull_deadline())
+                shared, exit_info = _in_place(
+                    client, retired, proxy, own_ip, files, secrets, deadline=_pull_deadline(), chosen=name
+                )
             except _Broken as exc:
                 raise ProxyTunnelError(
                     t("err.proxy_tunnel.docker_could_not_start_not", name=retired.name, exc=exc, name2=name)
