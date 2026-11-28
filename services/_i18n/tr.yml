@@ -173,7 +173,7 @@ bytebenefit.referral.bonus.referrer:
   text: "Referans trafiği kazancının %20'si"
   source: "096a1e669ce2"
 bytebenefit.referral.bonus.referee:
-  text: "$1 (10,000 Coin) hoş geldin bonusu"
+  text: "$1 (10.000 Coin) hoş geldin bonusu"
   source: "e51d68265bf4"
 bytebenefit.rating.cons.0.text:
   text: "Uygulamanın Google Play sayfasına göre trafiğiniz, Infatica müşterilerinin web istihbaratı isteklerine hizmet eder; bu müşterilerin kim olduğu veya nasıl denetlendiği belirtilmez."
@@ -434,7 +434,7 @@ earnfm.payment.frequency:
   text: "Talep üzerine"
   source: "be820103712e"
 earnfm.cashout.notes:
-  text: "Minimum $15. Yöntemler: BEP20 veya Polygon üzerinde USDT ($1 ücret) ya da TRC20 ($3 ücret), PayPal, en az $15 değerinde Amazon veya Starbucks hediye kartları ya da transfer ücretleri düşülerek en az $1,000 tutarında banka havalesi. İlk ödemeden önce, ödeme makbuzlarında kullanılan bir fatura profili (yasal ad ve adres) doldurursunuz."
+  text: "Minimum $15. Yöntemler: BEP20 veya Polygon üzerinde USDT ($1 ücret) ya da TRC20 ($3 ücret), PayPal, en az $15 değerinde Amazon veya Starbucks hediye kartları ya da transfer ücretleri düşülerek en az $1.000 tutarında banka havalesi. İlk ödemeden önce, ödeme makbuzlarında kullanılan bir fatura profili (yasal ad ve adres) doldurursunuz."
   source: "3df5624c8702"
 earnfm.payout.notes:
   text: "Bakiye Earn.fm'de tutulur; talep üzerine çekilir."
@@ -449,7 +449,7 @@ earnfm.referral.bonus.referee:
   text: "$5 başlangıç bakiyesi"
   source: "fb8d2b82e1e7"
 earnfm.rating.cons.0.text:
-  text: "$15 minimum, USDT'de $1 ile $3 arası ücret ve yalnızca $1,000 ve üzerinde banka havalesi."
+  text: "$15 minimum, USDT'de $1 ile $3 arası ücret ve yalnızca $1.000 ve üzerinde banka havalesi."
   source: "1e1a5493f40f"
 earnfm.rating.cons.1.text:
   text: "İlk ödemeden önce yasal adınızı ve adresinizi içeren bir fatura profili doldurursunuz."
@@ -491,13 +491,13 @@ ebesucher.rating.pros.2.text:
   text: "Künye, Berlin-Charlottenburg'da kayıtlı (HRB 160730 B) işletmeci TurboAd GmbH'nin adını verir."
   source: "84cbddd4330b"
 flux.description:
-  text: "Flux, küresel olarak dağıtılmış bir işlem altyapısıdır. Düğüm operatörleri FLUX token stake eder ve sunucu kaynakları sağlar. Üç seviye vardır: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Resmi Docker imajları mevcuttur.\n"
+  text: "Flux, küresel olarak dağıtılmış bir işlem altyapısıdır. Düğüm operatörleri FLUX token stake eder ve sunucu kaynakları sağlar. Üç seviye vardır: Cumulus (1.000 FLUX), Nimbus (12.500 FLUX), Stratus (40.000 FLUX). Resmi Docker imajları mevcuttur.\n"
   source: "02dfc13a22fc"
 flux.short_description:
   text: "Merkeziyetsiz işlem gücü - FLUX token stake gerektirir"
   source: "ba2bca8449db"
 flux.earnings.notes:
-  text: "1,000+ FLUX stake gerektirir (fiyata bağlı olarak ~$50-500). Daha yüksek seviyeler daha fazla teminat gerektirir ama daha çok kazanır."
+  text: "1.000+ FLUX stake gerektirir (fiyata bağlı olarak ~$50-500). Daha yüksek seviyeler daha fazla teminat gerektirir ama daha çok kazanır."
   source: "a8f6679daf85"
 flux.payment.frequency:
   text: "Blok ödülleri"
@@ -512,7 +512,7 @@ flux.requirements.min_storage:
   text: "220GB"
   source: "fd0df44a57f5"
 flux.rating.cons.0.text:
-  text: "En küçük düğüm seviyesi için teminat olarak 1,000 FLUX kilitlenmesi gerekir."
+  text: "En küçük düğüm seviyesi için teminat olarak 1.000 FLUX kilitlenmesi gerekir."
   source: "a69f2d39e25d"
 flux.rating.cons.1.text:
   text: "Blok ödülü her yıl %10 düşer ve 2026 tarihli bir rehber, küçük seviye ödüllerini dolar bazında zayıf buldu."
@@ -632,7 +632,7 @@ helium.payout.notes:
   text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
   source: "8d61a71de590"
 helium.rating.cons.0.text:
-  text: "HIP 149, 6 Temmuz 2026'da Proof-of-Coverage ödüllerini kaldırdı; IoT hotspot'ları artık yalnızca taşıdıkları veri için kazanıyor ve bunların 114,000'den fazlası hiç veri taşımadı."
+  text: "HIP 149, 6 Temmuz 2026'da Proof-of-Coverage ödüllerini kaldırdı; IoT hotspot'ları artık yalnızca taşıdıkları veri için kazanıyor ve bunların 114.000'den fazlası hiç veri taşımadı."
   source: "e05c0111696f"
 helium.rating.cons.1.text:
   text: "Helium'un ödül modeli oylamayla birkaç kez değişti, CEO'su görevden ayrıldı ve HNT yaklaşık %96 değer kaybetti."
@@ -713,7 +713,7 @@ honeygain.payment.frequency:
   text: "Talep üzerine"
   source: "be820103712e"
 honeygain.cashout.notes:
-  text: "Minimum $20 (20,000 kredi). İki seçenek vardır: Tipalti aracılığıyla PayPal, yaklaşık %15 ücretle, ya da ücretsiz olarak bir JumpTask cüzdanına ödenen JumpTask kredileri. Bir talep için e-postayla gönderilen 6 haneli bir kod gerekir. İlk PayPal ödemesi, size e-postayla gönderilen bağlantıdan Tipalti'ye kaydolana kadar \"bilgiler bekleniyor\" durumunda kalır. Bu bağlantı yalnızca bir kez çalışır; bu yüzden tek seferde bitirebileceğiniz ve telefonunuz yanınızdayken açın: şifre belirledikten sonra Tipalti bir cep telefonu numarasını SMS ile onaylamanızı ister (kodların süresi birkaç dakika içinde dolar), ardından adınızı, adresinizi, ülkenizi, doğum tarihinizi ve PayPal adresinizi sorar. Tipalti ödeme başına $2.02 ücret alır; %1.9-3'lük döviz çevirme ücretinden kaçınmak için USD seçin. Ödeme 2 iş günü içinde yapılır. Bakiye, ödeme Tipalti'yi beklerken bile, talep ettiğiniz anda hesabınızdan düşer. Sonraki her Tipalti girişinde, cihazı 30 gün hatırlama seçeneğini işaretlemediğiniz sürece yeni bir SMS kodu gönderilir. Ekim 2026'da Tipalti, İspanya'daki bir alıcıdan vergi formu istemedi."
+  text: "Minimum $20 (20.000 kredi). İki seçenek vardır: Tipalti aracılığıyla PayPal, yaklaşık %15 ücretle, ya da ücretsiz olarak bir JumpTask cüzdanına ödenen JumpTask kredileri. Bir talep için e-postayla gönderilen 6 haneli bir kod gerekir. İlk PayPal ödemesi, size e-postayla gönderilen bağlantıdan Tipalti'ye kaydolana kadar \"bilgiler bekleniyor\" durumunda kalır. Bu bağlantı yalnızca bir kez çalışır; bu yüzden tek seferde bitirebileceğiniz ve telefonunuz yanınızdayken açın: şifre belirledikten sonra Tipalti bir cep telefonu numarasını SMS ile onaylamanızı ister (kodların süresi birkaç dakika içinde dolar), ardından adınızı, adresinizi, ülkenizi, doğum tarihinizi ve PayPal adresinizi sorar. Tipalti ödeme başına $2.02 ücret alır; %1.9-3'lük döviz çevirme ücretinden kaçınmak için USD seçin. Ödeme 2 iş günü içinde yapılır. Bakiye, ödeme Tipalti'yi beklerken bile, talep ettiğiniz anda hesabınızdan düşer. Sonraki her Tipalti girişinde, cihazı 30 gün hatırlama seçeneğini işaretlemediğiniz sürece yeni bir SMS kodu gönderilir. Ekim 2026'da Tipalti, İspanya'daki bir alıcıdan vergi formu istemedi."
   source: "553463d96535"
 honeygain.payout.notes:
   text: "Bakiye Honeygain'de tutulur; talep üzerine çekilir."
@@ -1064,7 +1064,7 @@ nodepay.payout.notes:
   text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
   source: "8d61a71de590"
 nodepay.rating.cons.0.text:
-  text: "Nodepay, ilk sezon incelemesinde bot olarak değerlendirdiği 300,000'den fazla hesabı kaldırdı ve 17 milyar puanı iptal etti."
+  text: "Nodepay, ilk sezon incelemesinde bot olarak değerlendirdiği 300.000'den fazla hesabı kaldırdı ve 17 milyar puanı iptal etti."
   source: "d97fddce3502"
 nodepay.rating.cons.1.text:
   text: "Ödüller NC token'a dönüştürülen puanlardır, bu yüzden değerleri token'a bağlıdır."
@@ -1142,8 +1142,8 @@ nodle.cashout.notes:
   text: "NODL, uygulamanın ZKsync Era üzerindeki kendi cüzdanında durur; uygulamadan veya bir ZKsync Era blok gezgininden kontrol edin. Nodle, Polkadot parachain'inden ayrıldı ve Polkadot-ZKsync köprüsü 31 Aralık 2025'te kapandı; bu yüzden hâlâ Polkadot tarafında olan NODL artık ZKsync'e taşınamaz."
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "Henüz belirlenmedi: CashPilot bu hizmetin kazançlarınızı nerede tuttuğunu henüz kontrol etmedi."
-  source: "8d61a71de590"
+  text: "NODL'leriniz, Nodle uygulamasının ZKsync Era üzerindeki kendi cüzdanında durur. CashPilot bu cüzdanın adresini göremez."
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "Davetle katılan her yeni etkin kullanıcı için bir NODL ödülü (Nodle tutarı yayımlamaz)"
   source: "03308fe33661"
@@ -1502,8 +1502,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "Panoda cihaz için kolay anlaşılır bir ad"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "Proxyrack istemcisi konteyner başlarken indirilemedi; bu yüzden konteyner çalışıyor ama hiçbir şey kazanmıyor. Yeniden başlatmak istemciyi tekrar indirir; yeniden başlattıktan sonra da devam ederse bu makinenin internete erişebildiğini kontrol edin."
-  source: "b5143d72ce35"
+  text: "ProxyRack istemcisi bu kopyada çalışamıyor, bu yüzden kopya hiçbir şey kazanmıyor. Genellikle sebep, ProxyRack'in güncelleme sunucusunun yanıt vermemesidir ve istemci o olmadan başlayamaz. Kopya her 5 dakikada bir yeniden dener ve sunucu yanıt verir vermez kendiliğinden başlar. Sizin düzeltmeniz gereken bir şey yok."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "Bu kopya başladığında ProxyRack istemcisi indirilmedi, çünkü ProxyRack'in güncelleme sunucusuna ulaşılamadı. Bu yüzden kopya çalışıyor ama hiçbir şey kazanmıyor. CashPilot yeniden denemek için onu her 6 saatte bir yeniden başlatır. CashPilot'un kendi başlatmasını alması için onu yeniden dağıtın. Bu başlatma istemciyi korur ve her 5 dakikada bir kendiliğinden yeniden dener."
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "ProxyRack'te oturum açın, Devices'ı açın, Add device'ı seçin ve bu UUID'yi yapıştırın. Cihaz hesabınıza eklenene kadar kimse için kazanmaz. Bir API anahtarı girdiyseniz konteyner kendini kaydeder: cihazın orada listelendiğini kontrol edin."
   source: "54c4041903b5"
@@ -2159,7 +2162,7 @@ traffmonetizer.payment.frequency:
   text: "Talep üzerine"
   source: "be820103712e"
 traffmonetizer.cashout.notes:
-  text: "Minimum $10. PayPal artık sunulmuyor. Önce profilde bir ödeme yöntemi kaydedin: Solana veya TON üzerinde USDT (en düşük ücretler), Arbitrum (düşük ücretler) veya Tron TRC20 (yüksek ağ ücretleri) ya da en az $1,000 tutarında banka havalesi. Kaydettiğiniz ilk adres hemen geçerli olur; sonradan değiştirmek için e-posta onayı gerekir. Pano, ilk para çekmeden önce bir mesajlaşma iletişim bilgisi (WhatsApp, Telegram veya Skype) isteyebilir. Bir talep tam dolar olarak öder ve sentler bakiyede kalır."
+  text: "Minimum $10. PayPal artık sunulmuyor. Önce profilde bir ödeme yöntemi kaydedin: Solana veya TON üzerinde USDT (en düşük ücretler), Arbitrum (düşük ücretler) veya Tron TRC20 (yüksek ağ ücretleri) ya da en az $1.000 tutarında banka havalesi. Kaydettiğiniz ilk adres hemen geçerli olur; sonradan değiştirmek için e-posta onayı gerekir. Pano, ilk para çekmeden önce bir mesajlaşma iletişim bilgisi (WhatsApp, Telegram veya Skype) isteyebilir. Bir talep tam dolar olarak öder ve sentler bakiyede kalır."
   source: "0bf13220a706"
 traffmonetizer.payout.notes:
   text: "Profilin ödeme ayarlarında kaydedilen zincirde (Solana, TON, Arbitrum veya Tron) USDT ya da banka havalesi. Adres konteynerde değil, Traffmonetizer'ın ayarlarında durur."
@@ -2180,7 +2183,7 @@ traffmonetizer.rating.cons.1.text:
   text: "Aynı yorumcular canlı sohbet ve e-posta desteğinin, bazen haftalarca, yanıt vermediğini bildiriyor."
   source: "514323fc7b1f"
 traffmonetizer.rating.cons.2.text:
-  text: "Yalnızca kripto veya en az $1,000 tutarında banka havalesi; PayPal kaldırıldı ve bir talep yalnızca tam dolar öder."
+  text: "Yalnızca kripto veya en az $1.000 tutarında banka havalesi; PayPal kaldırıldı ve bir talep yalnızca tam dolar öder."
   source: "ad8194944e13"
 traffmonetizer.rating.cons.3.text:
   text: "Traffmonetizer'ın koşulları ev IP'si gerektirir, bu yüzden barındırma bağlantısındaki bir sunucu koşulların dışında kalır."

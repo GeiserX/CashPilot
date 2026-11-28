@@ -173,7 +173,7 @@ bytebenefit.referral.bonus.referrer:
   text: "20 % des gains issus du trafic des filleuls"
   source: "096a1e669ce2"
 bytebenefit.referral.bonus.referee:
-  text: "Bonus de bienvenue de $1 (10,000 Coins)"
+  text: "Bonus de bienvenue de $1 (10 000 Coins)"
   source: "e51d68265bf4"
 bytebenefit.rating.cons.0.text:
   text: "La fiche Google Play de l'app indique que votre trafic sert aux requêtes de veille web des clients d'Infatica, sans dire qui ils sont ni comment ils sont contrôlés."
@@ -434,7 +434,7 @@ earnfm.payment.frequency:
   text: "Sur demande"
   source: "be820103712e"
 earnfm.cashout.notes:
-  text: "Minimum $15. Moyens : USDT sur BEP20 ou Polygon (frais de $1) ou TRC20 (frais de $3), PayPal, cartes cadeaux Amazon ou Starbucks dès $15, ou virement bancaire dès $1,000, frais de transfert déduits. Avant le premier paiement, vous remplissez un profil de facturation (nom légal et adresse), utilisé pour les reçus de paiement."
+  text: "Minimum $15. Moyens : USDT sur BEP20 ou Polygon (frais de $1) ou TRC20 (frais de $3), PayPal, cartes cadeaux Amazon ou Starbucks dès $15, ou virement bancaire dès $1 000, frais de transfert déduits. Avant le premier paiement, vous remplissez un profil de facturation (nom légal et adresse), utilisé pour les reçus de paiement."
   source: "3df5624c8702"
 earnfm.payout.notes:
   text: "Solde conservé par Earn.fm ; retiré sur demande."
@@ -449,7 +449,7 @@ earnfm.referral.bonus.referee:
   text: "Solde de départ de $5"
   source: "fb8d2b82e1e7"
 earnfm.rating.cons.0.text:
-  text: "Un minimum de $15, des frais de $1 à $3 sur l'USDT, et un virement bancaire seulement à partir de $1,000."
+  text: "Un minimum de $15, des frais de $1 à $3 sur l'USDT, et un virement bancaire seulement à partir de $1 000."
   source: "1e1a5493f40f"
 earnfm.rating.cons.1.text:
   text: "Avant le premier paiement, vous remplissez un profil de facturation avec votre nom légal et votre adresse."
@@ -491,13 +491,13 @@ ebesucher.rating.pros.2.text:
   text: "Les mentions légales nomment l'exploitant, TurboAd GmbH, immatriculé à Berlin-Charlottenburg (HRB 160730 B)."
   source: "84cbddd4330b"
 flux.description:
-  text: "Flux est une infrastructure de calcul distribuée dans le monde entier. Les opérateurs de nœuds stakent des jetons FLUX et fournissent des ressources serveur. Trois niveaux : Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Images Docker officielles disponibles.\n"
+  text: "Flux est une infrastructure de calcul distribuée dans le monde entier. Les opérateurs de nœuds stakent des jetons FLUX et fournissent des ressources serveur. Trois niveaux : Cumulus (1 000 FLUX), Nimbus (12 500 FLUX), Stratus (40 000 FLUX). Images Docker officielles disponibles.\n"
   source: "02dfc13a22fc"
 flux.short_description:
   text: "Calcul décentralisé - nécessite une mise en jetons FLUX"
   source: "ba2bca8449db"
 flux.earnings.notes:
-  text: "Nécessite une mise de 1,000+ FLUX (~$50-500 selon le cours). Les niveaux supérieurs demandent plus de garantie mais gagnent plus."
+  text: "Nécessite une mise de 1 000+ FLUX (~$50-500 selon le cours). Les niveaux supérieurs demandent plus de garantie mais gagnent plus."
   source: "a8f6679daf85"
 flux.payment.frequency:
   text: "Récompenses de bloc"
@@ -512,7 +512,7 @@ flux.requirements.min_storage:
   text: "220GB"
   source: "fd0df44a57f5"
 flux.rating.cons.0.text:
-  text: "Le plus petit niveau de nœud demande 1,000 FLUX bloqués en garantie."
+  text: "Le plus petit niveau de nœud demande 1 000 FLUX bloqués en garantie."
   source: "a69f2d39e25d"
 flux.rating.cons.1.text:
   text: "La récompense de bloc baisse de 10 % chaque année, et un guide de 2026 a jugé faibles en dollars les récompenses du petit niveau."
@@ -632,7 +632,7 @@ helium.payout.notes:
   text: "Pas encore déterminé : CashPilot n'a pas encore vérifié où ce service conserve vos gains."
   source: "8d61a71de590"
 helium.rating.cons.0.text:
-  text: "HIP 149 a supprimé les récompenses Proof-of-Coverage le 6 juillet 2026 ; les hotspots IoT ne gagnent plus que pour les données qu'ils transportent, et plus de 114,000 d'entre eux n'en ont transporté aucune."
+  text: "HIP 149 a supprimé les récompenses Proof-of-Coverage le 6 juillet 2026 ; les hotspots IoT ne gagnent plus que pour les données qu'ils transportent, et plus de 114 000 d'entre eux n'en ont transporté aucune."
   source: "e05c0111696f"
 helium.rating.cons.1.text:
   text: "Le modèle de récompenses d'Helium a changé par vote plusieurs fois, son PDG a démissionné et le HNT a chuté d'environ 96 %."
@@ -713,7 +713,7 @@ honeygain.payment.frequency:
   text: "Sur demande"
   source: "be820103712e"
 honeygain.cashout.notes:
-  text: "Minimum $20 (20,000 crédits). Deux options : PayPal via Tipalti, avec environ 15 % de frais, ou des crédits JumpTask sans frais, versés sur un portefeuille JumpTask. Une demande nécessite un code à 6 chiffres envoyé par e-mail. Le premier paiement PayPal reste « waiting for details » tant que vous ne vous êtes pas inscrit sur Tipalti via le lien reçu par e-mail. Ce lien ne fonctionne qu'une fois : ouvrez-le quand vous pouvez tout terminer d'une traite et que vous avez votre téléphone sous la main. Après la création d'un mot de passe, Tipalti vous fait confirmer un numéro de mobile par SMS (les codes expirent en quelques minutes), puis demande vos nom, adresse, pays et date de naissance, ainsi que votre adresse PayPal. Tipalti facture $2.02 par paiement ; choisissez USD pour éviter ses frais de conversion de devise de 1.9-3 %. Le paiement suit sous 2 jours ouvrés. Le solde quitte votre compte dès la demande, même pendant que le paiement attend Tipalti. Chaque connexion ultérieure à Tipalti envoie un nouveau code SMS, sauf si vous cochez l'option pour mémoriser l'appareil pendant 30 jours. En octobre 2026, Tipalti n'a pas demandé de formulaire fiscal à un bénéficiaire en Espagne."
+  text: "Minimum $20 (20 000 crédits). Deux options : PayPal via Tipalti, avec environ 15 % de frais, ou des crédits JumpTask sans frais, versés sur un portefeuille JumpTask. Une demande nécessite un code à 6 chiffres envoyé par e-mail. Le premier paiement PayPal reste « waiting for details » tant que vous ne vous êtes pas inscrit sur Tipalti via le lien reçu par e-mail. Ce lien ne fonctionne qu'une fois : ouvrez-le quand vous pouvez tout terminer d'une traite et que vous avez votre téléphone sous la main. Après la création d'un mot de passe, Tipalti vous fait confirmer un numéro de mobile par SMS (les codes expirent en quelques minutes), puis demande vos nom, adresse, pays et date de naissance, ainsi que votre adresse PayPal. Tipalti facture $2.02 par paiement ; choisissez USD pour éviter ses frais de conversion de devise de 1.9-3 %. Le paiement suit sous 2 jours ouvrés. Le solde quitte votre compte dès la demande, même pendant que le paiement attend Tipalti. Chaque connexion ultérieure à Tipalti envoie un nouveau code SMS, sauf si vous cochez l'option pour mémoriser l'appareil pendant 30 jours. En octobre 2026, Tipalti n'a pas demandé de formulaire fiscal à un bénéficiaire en Espagne."
   source: "553463d96535"
 honeygain.payout.notes:
   text: "Solde conservé par Honeygain ; retiré sur demande."
@@ -1064,7 +1064,7 @@ nodepay.payout.notes:
   text: "Pas encore déterminé : CashPilot n'a pas encore vérifié où ce service conserve vos gains."
   source: "8d61a71de590"
 nodepay.rating.cons.0.text:
-  text: "Lors du bilan de sa première saison, Nodepay a supprimé plus de 300,000 comptes qu'il jugeait être des bots et annulé 17 milliards de points."
+  text: "Lors du bilan de sa première saison, Nodepay a supprimé plus de 300 000 comptes qu'il jugeait être des bots et annulé 17 milliards de points."
   source: "d97fddce3502"
 nodepay.rating.cons.1.text:
   text: "Les récompenses sont des points convertis en jeton NC : leur valeur repose donc sur le jeton."
@@ -1142,8 +1142,8 @@ nodle.cashout.notes:
   text: "Les NODL se trouvent dans le portefeuille de l'app sur ZKsync Era ; consultez-les dans l'app ou sur un explorateur de blocs ZKsync Era. Nodle a quitté sa parachain Polkadot, et le pont Polkadot vers ZKsync a fermé le 31 décembre 2025 : les NODL encore du côté Polkadot ne peuvent donc plus passer sur ZKsync."
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "Pas encore déterminé : CashPilot n'a pas encore vérifié où ce service conserve vos gains."
-  source: "8d61a71de590"
+  text: "Vos NODL se trouvent dans le portefeuille propre de l'application Nodle, sur ZKsync Era. CashPilot ne peut pas voir l'adresse de ce portefeuille."
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "Une récompense en NODL pour chaque nouvel utilisateur actif qui rejoint via l'invitation (Nodle ne publie pas le montant)"
   source: "03308fe33661"
@@ -1502,8 +1502,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "Nom convivial de l'appareil dans le tableau de bord"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "Le client de Proxyrack ne s'est pas téléchargé au démarrage du conteneur : le conteneur tourne donc, mais ne gagne rien. Un redémarrage le télécharge à nouveau ; si le problème persiste après un redémarrage, vérifiez que cette machine a accès à Internet."
-  source: "b5143d72ce35"
+  text: "Le client ProxyRack ne peut pas s'exécuter sur cette copie, elle ne gagne donc rien. En général, le serveur de mises à jour de ProxyRack ne répond pas, et le client ne peut pas démarrer sans lui. La copie réessaie toutes les 5 minutes et démarre d'elle-même dès que le serveur répond. Vous n'avez rien à corriger."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "Le client ProxyRack ne s'est pas téléchargé au démarrage de cette copie, car le serveur de mises à jour de ProxyRack était injoignable, si bien que la copie tourne, mais ne gagne rien. CashPilot la redémarre toutes les 6 heures pour réessayer. Redéployez-la pour lui donner le démarrage propre à CashPilot, qui garde le client et réessaie de lui-même toutes les 5 minutes."
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "Connectez-vous à ProxyRack, ouvrez Devices, choisissez Add device et collez cet UUID. Tant que l'appareil n'est pas sur votre compte, il ne gagne pour personne. Si vous avez saisi une clé d'API, le conteneur s'enregistre lui-même : vérifiez que l'appareil y figure."
   source: "54c4041903b5"
@@ -2159,7 +2162,7 @@ traffmonetizer.payment.frequency:
   text: "Sur demande"
   source: "be820103712e"
 traffmonetizer.cashout.notes:
-  text: "Minimum $10. PayPal n'est plus proposé. Enregistrez d'abord un moyen de paiement dans le profil : USDT sur Solana ou TON (frais les plus bas), Arbitrum (frais bas) ou Tron TRC20 (frais de réseau élevés), ou un virement bancaire dès $1,000. La première adresse enregistrée s'applique immédiatement ; la modifier ensuite demande une confirmation par e-mail. Le tableau de bord peut demander un contact de messagerie (WhatsApp, Telegram ou Skype) avant le premier retrait. Une demande paie des dollars entiers et les centimes restent sur le solde."
+  text: "Minimum $10. PayPal n'est plus proposé. Enregistrez d'abord un moyen de paiement dans le profil : USDT sur Solana ou TON (frais les plus bas), Arbitrum (frais bas) ou Tron TRC20 (frais de réseau élevés), ou un virement bancaire dès $1 000. La première adresse enregistrée s'applique immédiatement ; la modifier ensuite demande une confirmation par e-mail. Le tableau de bord peut demander un contact de messagerie (WhatsApp, Telegram ou Skype) avant le premier retrait. Une demande paie des dollars entiers et les centimes restent sur le solde."
   source: "0bf13220a706"
 traffmonetizer.payout.notes:
   text: "USDT sur la chaîne enregistrée dans les paramètres de paiement du profil (Solana, TON, Arbitrum ou Tron), ou virement bancaire. L'adresse se trouve dans les paramètres de Traffmonetizer, pas dans le conteneur."
@@ -2180,7 +2183,7 @@ traffmonetizer.rating.cons.1.text:
   text: "Les mêmes utilisateurs signalent que le chat en direct et le support par e-mail ne répondent pas, parfois pendant des semaines."
   source: "514323fc7b1f"
 traffmonetizer.rating.cons.2.text:
-  text: "Uniquement la crypto ou un virement bancaire dès $1,000 ; PayPal a disparu, et une demande ne paie que des dollars entiers."
+  text: "Uniquement la crypto ou un virement bancaire dès $1 000 ; PayPal a disparu, et une demande ne paie que des dollars entiers."
   source: "ad8194944e13"
 traffmonetizer.rating.cons.3.text:
   text: "Les conditions de Traffmonetizer exigent une IP résidentielle : un serveur sur une connexion d'hébergement sort donc de leur cadre."

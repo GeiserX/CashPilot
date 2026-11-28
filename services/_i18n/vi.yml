@@ -173,7 +173,7 @@ bytebenefit.referral.bonus.referrer:
   text: "20% thu nhập từ lưu lượng của người được giới thiệu"
   source: "096a1e669ce2"
 bytebenefit.referral.bonus.referee:
-  text: "Thưởng chào mừng $1 (10,000 Coins)"
+  text: "Thưởng chào mừng $1 (10.000 Coins)"
   source: "e51d68265bf4"
 bytebenefit.rating.cons.0.text:
   text: "Trang Google Play của ứng dụng cho biết lưu lượng của bạn phục vụ các yêu cầu thu thập dữ liệu web của khách hàng Infatica, mà không nói họ là ai hay được kiểm tra thế nào."
@@ -434,7 +434,7 @@ earnfm.payment.frequency:
   text: "Theo yêu cầu"
   source: "be820103712e"
 earnfm.cashout.notes:
-  text: "Tối thiểu $15. Phương thức: USDT trên BEP20 hoặc Polygon (phí $1) hoặc TRC20 (phí $3), PayPal, thẻ quà tặng Amazon hoặc Starbucks từ $15, hoặc chuyển khoản ngân hàng từ $1,000 đã trừ phí chuyển. Trước lần thanh toán đầu tiên, bạn điền hồ sơ thanh toán (họ tên pháp lý và địa chỉ), dùng cho biên lai thanh toán."
+  text: "Tối thiểu $15. Phương thức: USDT trên BEP20 hoặc Polygon (phí $1) hoặc TRC20 (phí $3), PayPal, thẻ quà tặng Amazon hoặc Starbucks từ $15, hoặc chuyển khoản ngân hàng từ $1.000 đã trừ phí chuyển. Trước lần thanh toán đầu tiên, bạn điền hồ sơ thanh toán (họ tên pháp lý và địa chỉ), dùng cho biên lai thanh toán."
   source: "3df5624c8702"
 earnfm.payout.notes:
   text: "Số dư do Earn.fm giữ; rút theo yêu cầu."
@@ -449,7 +449,7 @@ earnfm.referral.bonus.referee:
   text: "Số dư khởi đầu $5"
   source: "fb8d2b82e1e7"
 earnfm.rating.cons.0.text:
-  text: "Mức tối thiểu $15, phí USDT từ $1 đến $3, và chuyển khoản ngân hàng chỉ từ $1,000."
+  text: "Mức tối thiểu $15, phí USDT từ $1 đến $3, và chuyển khoản ngân hàng chỉ từ $1.000."
   source: "1e1a5493f40f"
 earnfm.rating.cons.1.text:
   text: "Trước lần thanh toán đầu tiên, bạn phải điền hồ sơ thanh toán với họ tên pháp lý và địa chỉ."
@@ -491,13 +491,13 @@ ebesucher.rating.pros.2.text:
   text: "Trang thông tin pháp lý nêu tên đơn vị vận hành, TurboAd GmbH, đăng ký tại Berlin-Charlottenburg (HRB 160730 B)."
   source: "84cbddd4330b"
 flux.description:
-  text: "Flux là một hạ tầng điện toán phân tán toàn cầu. Người vận hành nút stake token FLUX và cung cấp tài nguyên máy chủ. Ba hạng: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Có image Docker chính thức.\n"
+  text: "Flux là một hạ tầng điện toán phân tán toàn cầu. Người vận hành nút stake token FLUX và cung cấp tài nguyên máy chủ. Ba hạng: Cumulus (1.000 FLUX), Nimbus (12.500 FLUX), Stratus (40.000 FLUX). Có image Docker chính thức.\n"
   source: "02dfc13a22fc"
 flux.short_description:
   text: "Điện toán phi tập trung - cần stake token FLUX"
   source: "ba2bca8449db"
 flux.earnings.notes:
-  text: "Cần stake 1,000+ FLUX (~$50-500 tùy giá). Hạng cao hơn cần nhiều tài sản thế chấp hơn nhưng kiếm nhiều hơn."
+  text: "Cần stake 1.000+ FLUX (~$50-500 tùy giá). Hạng cao hơn cần nhiều tài sản thế chấp hơn nhưng kiếm nhiều hơn."
   source: "a8f6679daf85"
 flux.payment.frequency:
   text: "Phần thưởng khối"
@@ -512,7 +512,7 @@ flux.requirements.min_storage:
   text: "220GB"
   source: "fd0df44a57f5"
 flux.rating.cons.0.text:
-  text: "Hạng nút nhỏ nhất cần khóa 1,000 FLUX làm tài sản thế chấp."
+  text: "Hạng nút nhỏ nhất cần khóa 1.000 FLUX làm tài sản thế chấp."
   source: "a69f2d39e25d"
 flux.rating.cons.1.text:
   text: "Phần thưởng khối giảm 10% mỗi năm, và một hướng dẫn năm 2026 nhận thấy phần thưởng của hạng nhỏ khá thấp nếu tính bằng đô la."
@@ -632,7 +632,7 @@ helium.payout.notes:
   text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
   source: "8d61a71de590"
 helium.rating.cons.0.text:
-  text: "HIP 149 đã bỏ phần thưởng Proof-of-Coverage vào ngày 6 tháng 7 năm 2026; hotspot IoT giờ chỉ kiếm tiền từ dữ liệu chúng truyền, và hơn 114,000 hotspot không truyền chút dữ liệu nào."
+  text: "HIP 149 đã bỏ phần thưởng Proof-of-Coverage vào ngày 6 tháng 7 năm 2026; hotspot IoT giờ chỉ kiếm tiền từ dữ liệu chúng truyền, và hơn 114.000 hotspot không truyền chút dữ liệu nào."
   source: "e05c0111696f"
 helium.rating.cons.1.text:
   text: "Mô hình phần thưởng của Helium đã thay đổi qua bỏ phiếu nhiều lần, CEO đã từ chức, và HNT giảm khoảng 96%."
@@ -713,7 +713,7 @@ honeygain.payment.frequency:
   text: "Theo yêu cầu"
   source: "be820103712e"
 honeygain.cashout.notes:
-  text: "Tối thiểu $20 (20,000 credit). Hai lựa chọn: PayPal qua Tipalti, phí khoảng 15%, hoặc credit JumpTask không mất phí, trả vào ví JumpTask. Mỗi yêu cầu cần một mã 6 chữ số gửi qua email. Khoản thanh toán PayPal đầu tiên ở trạng thái \"waiting for details\" cho đến khi bạn đăng ký trên Tipalti qua liên kết họ gửi email. Liên kết đó chỉ dùng được một lần, nên hãy mở khi bạn có thể làm xong trong một lượt và có điện thoại bên cạnh: sau khi đặt mật khẩu, Tipalti yêu cầu bạn xác nhận số di động qua SMS (mã hết hạn trong vài phút), rồi hỏi họ tên, địa chỉ, quốc gia và ngày sinh, cùng địa chỉ PayPal của bạn. Tipalti thu $2.02 mỗi khoản thanh toán; hãy chọn USD để tránh phí quy đổi tiền tệ 1.9-3% của họ. Tiền đến trong vòng 2 ngày làm việc. Số dư rời khỏi tài khoản ngay khi bạn gửi yêu cầu, kể cả khi khoản thanh toán còn đang chờ Tipalti. Mỗi lần đăng nhập Tipalti sau đó đều gửi mã SMS mới, trừ khi bạn đánh dấu tùy chọn ghi nhớ thiết bị trong 30 ngày. Vào tháng 10 năm 2026, Tipalti không yêu cầu biểu mẫu thuế với một người nhận ở Tây Ban Nha."
+  text: "Tối thiểu $20 (20.000 credit). Hai lựa chọn: PayPal qua Tipalti, phí khoảng 15%, hoặc credit JumpTask không mất phí, trả vào ví JumpTask. Mỗi yêu cầu cần một mã 6 chữ số gửi qua email. Khoản thanh toán PayPal đầu tiên ở trạng thái \"waiting for details\" cho đến khi bạn đăng ký trên Tipalti qua liên kết họ gửi email. Liên kết đó chỉ dùng được một lần, nên hãy mở khi bạn có thể làm xong trong một lượt và có điện thoại bên cạnh: sau khi đặt mật khẩu, Tipalti yêu cầu bạn xác nhận số di động qua SMS (mã hết hạn trong vài phút), rồi hỏi họ tên, địa chỉ, quốc gia và ngày sinh, cùng địa chỉ PayPal của bạn. Tipalti thu $2.02 mỗi khoản thanh toán; hãy chọn USD để tránh phí quy đổi tiền tệ 1.9-3% của họ. Tiền đến trong vòng 2 ngày làm việc. Số dư rời khỏi tài khoản ngay khi bạn gửi yêu cầu, kể cả khi khoản thanh toán còn đang chờ Tipalti. Mỗi lần đăng nhập Tipalti sau đó đều gửi mã SMS mới, trừ khi bạn đánh dấu tùy chọn ghi nhớ thiết bị trong 30 ngày. Vào tháng 10 năm 2026, Tipalti không yêu cầu biểu mẫu thuế với một người nhận ở Tây Ban Nha."
   source: "553463d96535"
 honeygain.payout.notes:
   text: "Số dư do Honeygain giữ; rút theo yêu cầu."
@@ -1064,7 +1064,7 @@ nodepay.payout.notes:
   text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
   source: "8d61a71de590"
 nodepay.rating.cons.0.text:
-  text: "Trong đợt rà soát mùa đầu tiên, Nodepay đã xóa hơn 300,000 tài khoản mà họ cho là bot và hủy 17 tỷ điểm."
+  text: "Trong đợt rà soát mùa đầu tiên, Nodepay đã xóa hơn 300.000 tài khoản mà họ cho là bot và hủy 17 tỷ điểm."
   source: "d97fddce3502"
 nodepay.rating.cons.1.text:
   text: "Phần thưởng là điểm quy đổi sang token NC, nên giá trị của chúng phụ thuộc vào token."
@@ -1142,8 +1142,8 @@ nodle.cashout.notes:
   text: "NODL nằm trong ví riêng của ứng dụng trên ZKsync Era; hãy kiểm tra trong ứng dụng hoặc trên một block explorer của ZKsync Era. Nodle đã rời parachain Polkadot, và cầu nối Polkadot sang ZKsync đã đóng vào ngày 31 tháng 12 năm 2025, nên NODL còn ở phía Polkadot không thể chuyển sang ZKsync nữa."
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "Chưa xác định: CashPilot chưa kiểm tra dịch vụ này giữ thu nhập của bạn ở đâu."
-  source: "8d61a71de590"
+  text: "NODL của bạn nằm trong ví riêng của ứng dụng Nodle trên ZKsync Era. CashPilot không thể xem địa chỉ của ví đó."
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "Một phần thưởng NODL cho mỗi người dùng mới hoạt động tham gia qua lời mời (Nodle không công bố số tiền)"
   source: "03308fe33661"
@@ -1502,8 +1502,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "Tên dễ nhận biết cho thiết bị trên bảng điều khiển"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "Client của Proxyrack không tải về được khi container khởi động, nên container vẫn chạy nhưng không kiếm được gì. Khởi động lại sẽ tải lại nó; nếu vẫn còn sau khi khởi động lại, hãy kiểm tra xem máy này có truy cập được internet không."
-  source: "b5143d72ce35"
+  text: "Client của ProxyRack không thể chạy trên bản sao này, nên bản sao không kiếm được gì. Nguyên nhân thường gặp là máy chủ cập nhật của ProxyRack không phản hồi, và client không thể khởi động nếu thiếu nó. Bản sao thử lại mỗi 5 phút và tự khởi động ngay khi máy chủ phản hồi. Bạn không cần sửa gì cả."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "Client của ProxyRack không được tải về khi bản sao này khởi động, vì không kết nối được với máy chủ cập nhật của ProxyRack, nên bản sao vẫn chạy nhưng không kiếm được gì. CashPilot khởi động lại nó mỗi 6 giờ để thử lại. Hãy triển khai lại nó để nó có cách khởi động riêng của CashPilot, cách này giữ lại client và tự thử lại mỗi 5 phút."
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "Đăng nhập ProxyRack, mở Devices, chọn Add device và dán UUID này. Cho đến khi thiết bị có trong tài khoản của bạn, nó không kiếm tiền cho ai cả. Nếu bạn đã nhập khóa API, container sẽ tự đăng ký: hãy kiểm tra thiết bị có trong danh sách ở đó."
   source: "54c4041903b5"
@@ -2159,7 +2162,7 @@ traffmonetizer.payment.frequency:
   text: "Theo yêu cầu"
   source: "be820103712e"
 traffmonetizer.cashout.notes:
-  text: "Tối thiểu $10. Không còn PayPal. Trước tiên hãy lưu một phương thức thanh toán trong hồ sơ: USDT trên Solana hoặc TON (phí thấp nhất), Arbitrum (phí thấp) hoặc Tron TRC20 (phí mạng cao), hoặc chuyển khoản ngân hàng từ $1,000. Địa chỉ đầu tiên bạn lưu có hiệu lực ngay; đổi địa chỉ sau này cần xác nhận qua email. Bảng điều khiển có thể yêu cầu một liên hệ nhắn tin (WhatsApp, Telegram hoặc Skype) trước lần rút đầu tiên. Mỗi yêu cầu chỉ trả số đô la chẵn và phần xu còn lại trong số dư."
+  text: "Tối thiểu $10. Không còn PayPal. Trước tiên hãy lưu một phương thức thanh toán trong hồ sơ: USDT trên Solana hoặc TON (phí thấp nhất), Arbitrum (phí thấp) hoặc Tron TRC20 (phí mạng cao), hoặc chuyển khoản ngân hàng từ $1.000. Địa chỉ đầu tiên bạn lưu có hiệu lực ngay; đổi địa chỉ sau này cần xác nhận qua email. Bảng điều khiển có thể yêu cầu một liên hệ nhắn tin (WhatsApp, Telegram hoặc Skype) trước lần rút đầu tiên. Mỗi yêu cầu chỉ trả số đô la chẵn và phần xu còn lại trong số dư."
   source: "0bf13220a706"
 traffmonetizer.payout.notes:
   text: "USDT trên chuỗi đã lưu trong cài đặt thanh toán của hồ sơ (Solana, TON, Arbitrum hoặc Tron), hoặc chuyển khoản ngân hàng. Địa chỉ nằm trong cài đặt của Traffmonetizer, không nằm trong container."
@@ -2180,7 +2183,7 @@ traffmonetizer.rating.cons.1.text:
   text: "Cũng những người đánh giá đó cho biết live chat và hỗ trợ qua email không trả lời, có khi hàng tuần."
   source: "514323fc7b1f"
 traffmonetizer.rating.cons.2.text:
-  text: "Chỉ crypto hoặc chuyển khoản ngân hàng từ $1,000; PayPal không còn, và mỗi yêu cầu chỉ trả số đô la chẵn."
+  text: "Chỉ crypto hoặc chuyển khoản ngân hàng từ $1.000; PayPal không còn, và mỗi yêu cầu chỉ trả số đô la chẵn."
   source: "ad8194944e13"
 traffmonetizer.rating.cons.3.text:
   text: "Điều khoản của Traffmonetizer yêu cầu IP dân cư, nên máy chủ trên kết nối máy chủ thuê nằm ngoài phạm vi điều khoản."

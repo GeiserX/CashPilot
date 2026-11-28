@@ -173,7 +173,7 @@ bytebenefit.referral.bonus.referrer:
   text: "20% dari penghasilan lalu lintas referal"
   source: "096a1e669ce2"
 bytebenefit.referral.bonus.referee:
-  text: "Bonus sambutan $1 (10,000 Coins)"
+  text: "Bonus sambutan $1 (10.000 Coins)"
   source: "e51d68265bf4"
 bytebenefit.rating.cons.0.text:
   text: "Halaman aplikasi di Google Play menyebutkan bahwa lalu lintas Anda melayani permintaan intelijen web dari klien Infatica, tanpa menyebut siapa mereka atau bagaimana mereka diperiksa."
@@ -434,7 +434,7 @@ earnfm.payment.frequency:
   text: "Sesuai permintaan"
   source: "be820103712e"
 earnfm.cashout.notes:
-  text: "Minimum $15. Metode: USDT di BEP20 atau Polygon (biaya $1) atau TRC20 (biaya $3), PayPal, kartu hadiah Amazon atau Starbucks mulai $15, atau transfer bank mulai $1,000 dengan biaya transfer dipotong. Sebelum pembayaran pertama Anda mengisi profil penagihan (nama resmi dan alamat), yang digunakan untuk tanda terima pembayaran."
+  text: "Minimum $15. Metode: USDT di BEP20 atau Polygon (biaya $1) atau TRC20 (biaya $3), PayPal, kartu hadiah Amazon atau Starbucks mulai $15, atau transfer bank mulai $1.000 dengan biaya transfer dipotong. Sebelum pembayaran pertama Anda mengisi profil penagihan (nama resmi dan alamat), yang digunakan untuk tanda terima pembayaran."
   source: "3df5624c8702"
 earnfm.payout.notes:
   text: "Saldo disimpan oleh Earn.fm; ditarik sesuai permintaan."
@@ -449,7 +449,7 @@ earnfm.referral.bonus.referee:
   text: "Saldo awal $5"
   source: "fb8d2b82e1e7"
 earnfm.rating.cons.0.text:
-  text: "Minimum $15, biaya $1 hingga $3 untuk USDT, dan transfer bank hanya mulai $1,000."
+  text: "Minimum $15, biaya $1 hingga $3 untuk USDT, dan transfer bank hanya mulai $1.000."
   source: "1e1a5493f40f"
 earnfm.rating.cons.1.text:
   text: "Sebelum pembayaran pertama Anda mengisi profil penagihan dengan nama resmi dan alamat Anda."
@@ -491,13 +491,13 @@ ebesucher.rating.pros.2.text:
   text: "Impresum menyebutkan operatornya, TurboAd GmbH, terdaftar di Berlin-Charlottenburg (HRB 160730 B)."
   source: "84cbddd4330b"
 flux.description:
-  text: "Flux adalah infrastruktur komputasi yang tersebar secara global. Operator node melakukan stake token FLUX dan menyediakan sumber daya server. Tiga tingkat: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Image Docker resmi tersedia.\n"
+  text: "Flux adalah infrastruktur komputasi yang tersebar secara global. Operator node melakukan stake token FLUX dan menyediakan sumber daya server. Tiga tingkat: Cumulus (1.000 FLUX), Nimbus (12.500 FLUX), Stratus (40.000 FLUX). Image Docker resmi tersedia.\n"
   source: "02dfc13a22fc"
 flux.short_description:
   text: "Komputasi terdesentralisasi - memerlukan stake token FLUX"
   source: "ba2bca8449db"
 flux.earnings.notes:
-  text: "Memerlukan stake 1,000+ FLUX (~$50-500 tergantung harga). Tingkat yang lebih tinggi memerlukan jaminan lebih besar tetapi menghasilkan lebih banyak."
+  text: "Memerlukan stake 1.000+ FLUX (~$50-500 tergantung harga). Tingkat yang lebih tinggi memerlukan jaminan lebih besar tetapi menghasilkan lebih banyak."
   source: "a8f6679daf85"
 flux.payment.frequency:
   text: "Reward blok"
@@ -512,7 +512,7 @@ flux.requirements.min_storage:
   text: "220GB"
   source: "fd0df44a57f5"
 flux.rating.cons.0.text:
-  text: "Tingkat node terkecil memerlukan 1,000 FLUX yang dikunci sebagai jaminan."
+  text: "Tingkat node terkecil memerlukan 1.000 FLUX yang dikunci sebagai jaminan."
   source: "a69f2d39e25d"
 flux.rating.cons.1.text:
   text: "Reward blok turun 10% setiap tahun, dan sebuah panduan 2026 menilai reward tingkat kecil lemah jika dihitung dalam dolar."
@@ -632,7 +632,7 @@ helium.payout.notes:
   text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
   source: "8d61a71de590"
 helium.rating.cons.0.text:
-  text: "HIP 149 menghentikan reward Proof-of-Coverage pada 6 Juli 2026; hotspot IoT kini hanya menghasilkan dari data yang mereka bawa, dan lebih dari 114,000 di antaranya tidak membawa data sama sekali."
+  text: "HIP 149 menghentikan reward Proof-of-Coverage pada 6 Juli 2026; hotspot IoT kini hanya menghasilkan dari data yang mereka bawa, dan lebih dari 114.000 di antaranya tidak membawa data sama sekali."
   source: "e05c0111696f"
 helium.rating.cons.1.text:
   text: "Model reward Helium sudah beberapa kali berubah lewat pemungutan suara, CEO-nya mundur, dan HNT turun sekitar 96%."
@@ -713,7 +713,7 @@ honeygain.payment.frequency:
   text: "Sesuai permintaan"
   source: "be820103712e"
 honeygain.cashout.notes:
-  text: "Minimum $20 (20,000 kredit). Dua pilihan: PayPal melalui Tipalti, dengan biaya sekitar 15%, atau kredit JumpTask tanpa biaya, dibayarkan ke dompet JumpTask. Permintaan memerlukan kode 6 digit yang dikirim lewat email. Pembayaran PayPal pertama tetap berstatus \"waiting for details\" sampai Anda mendaftar di Tipalti dari tautan yang mereka kirim lewat email. Tautan itu hanya berfungsi sekali, jadi buka saat Anda bisa menyelesaikannya dalam satu kali duduk dan ponsel ada di dekat Anda: setelah membuat kata sandi, Tipalti meminta Anda mengonfirmasi nomor ponsel lewat SMS (kodenya kedaluwarsa dalam beberapa menit), lalu meminta nama, alamat, negara, dan tanggal lahir, serta alamat PayPal Anda. Tipalti mengenakan $2.02 per pembayaran; pilih USD untuk menghindari biaya konversi mata uang 1.9-3%. Pembayaran menyusul dalam 2 hari kerja. Saldo keluar dari akun Anda segera setelah Anda mengajukan permintaan, bahkan saat pembayaran masih menunggu Tipalti. Setiap login Tipalti berikutnya mengirim kode SMS baru kecuali Anda mencentang opsi untuk mengingat perangkat selama 30 hari. Pada Oktober 2026 Tipalti tidak meminta formulir pajak dari penerima di Spanyol."
+  text: "Minimum $20 (20.000 kredit). Dua pilihan: PayPal melalui Tipalti, dengan biaya sekitar 15%, atau kredit JumpTask tanpa biaya, dibayarkan ke dompet JumpTask. Permintaan memerlukan kode 6 digit yang dikirim lewat email. Pembayaran PayPal pertama tetap berstatus \"waiting for details\" sampai Anda mendaftar di Tipalti dari tautan yang mereka kirim lewat email. Tautan itu hanya berfungsi sekali, jadi buka saat Anda bisa menyelesaikannya dalam satu kali duduk dan ponsel ada di dekat Anda: setelah membuat kata sandi, Tipalti meminta Anda mengonfirmasi nomor ponsel lewat SMS (kodenya kedaluwarsa dalam beberapa menit), lalu meminta nama, alamat, negara, dan tanggal lahir, serta alamat PayPal Anda. Tipalti mengenakan $2.02 per pembayaran; pilih USD untuk menghindari biaya konversi mata uang 1.9-3%. Pembayaran menyusul dalam 2 hari kerja. Saldo keluar dari akun Anda segera setelah Anda mengajukan permintaan, bahkan saat pembayaran masih menunggu Tipalti. Setiap login Tipalti berikutnya mengirim kode SMS baru kecuali Anda mencentang opsi untuk mengingat perangkat selama 30 hari. Pada Oktober 2026 Tipalti tidak meminta formulir pajak dari penerima di Spanyol."
   source: "553463d96535"
 honeygain.payout.notes:
   text: "Saldo disimpan oleh Honeygain; ditarik sesuai permintaan."
@@ -1064,7 +1064,7 @@ nodepay.payout.notes:
   text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
   source: "8d61a71de590"
 nodepay.rating.cons.0.text:
-  text: "Dalam tinjauan musim pertamanya, Nodepay menghapus lebih dari 300,000 akun yang dianggapnya bot dan membatalkan 17 miliar poin."
+  text: "Dalam tinjauan musim pertamanya, Nodepay menghapus lebih dari 300.000 akun yang dianggapnya bot dan membatalkan 17 miliar poin."
   source: "d97fddce3502"
 nodepay.rating.cons.1.text:
   text: "Reward berupa poin yang dikonversi menjadi token NC, sehingga nilainya bergantung pada token tersebut."
@@ -1142,8 +1142,8 @@ nodle.cashout.notes:
   text: "NODL berada di dompet aplikasi itu sendiri di ZKsync Era; periksa di aplikasi atau di block explorer ZKsync Era. Nodle meninggalkan parachain Polkadot-nya, dan jembatan Polkadot-ke-ZKsync ditutup pada 31 Desember 2025, sehingga NODL yang masih berada di sisi Polkadot tidak dapat lagi dipindahkan ke ZKsync."
   source: "cd2b7f7914f7"
 nodle.payout.notes:
-  text: "Belum ditentukan: CashPilot belum memeriksa di mana layanan ini menyimpan penghasilan Anda."
-  source: "8d61a71de590"
+  text: "NODL Anda berada di dompet milik aplikasi Nodle sendiri di ZKsync Era. CashPilot tidak dapat melihat alamat dompet itu."
+  source: "796d67192f5f"
 nodle.referral.bonus.referrer:
   text: "Reward NODL untuk setiap pengguna aktif baru yang bergabung melalui undangan (Nodle tidak memublikasikan jumlahnya)"
   source: "03308fe33661"
@@ -1502,8 +1502,11 @@ proxyrack.docker.env.DEVICE_NAME.description:
   text: "Nama yang mudah dikenali untuk perangkat di dasbor"
   source: "df01af60b81c"
 proxyrack.docker.health_signals.0.means:
-  text: "Klien Proxyrack tidak terunduh saat kontainer dimulai, sehingga kontainer berjalan tetapi tidak menghasilkan apa pun. Restart akan mengunduhnya lagi; jika tetap ada setelah restart, periksa apakah mesin ini dapat menjangkau internet."
-  source: "b5143d72ce35"
+  text: "Klien ProxyRack tidak dapat berjalan di salinan ini, jadi salinan ini tidak menghasilkan apa pun. Penyebab yang biasa adalah server pembaruan ProxyRack tidak merespons, dan klien tidak dapat dimulai tanpanya. Salinan ini mencoba lagi setiap 5 menit dan mulai dengan sendirinya begitu server merespons. Tidak ada yang perlu Anda perbaiki."
+  source: "0df8b8cfac10"
+proxyrack.docker.health_signals.1.means:
+  text: "Klien ProxyRack tidak terunduh saat salinan ini dimulai, karena server pembaruan ProxyRack tidak dapat dijangkau, jadi salinan ini berjalan tetapi tidak menghasilkan apa pun. CashPilot memulai ulang salinan ini setiap 6 jam untuk mencoba lagi. Terapkan ulang salinan ini agar mendapat proses mulai milik CashPilot sendiri, yang menyimpan klien dan mencoba lagi dengan sendirinya setiap 5 menit."
+  source: "0a2ee4b478b2"
 proxyrack.device_link.steps:
   text: "Masuk ke ProxyRack, buka Devices, pilih Add device, dan tempel UUID ini. Sampai perangkat ada di akun Anda, perangkat itu tidak menghasilkan untuk siapa pun. Jika Anda memasukkan kunci API, kontainer mendaftarkan dirinya sendiri: periksa bahwa perangkat tercantum di sana."
   source: "54c4041903b5"
@@ -2159,7 +2162,7 @@ traffmonetizer.payment.frequency:
   text: "Sesuai permintaan"
   source: "be820103712e"
 traffmonetizer.cashout.notes:
-  text: "Minimum $10. PayPal tidak lagi tersedia. Simpan satu metode pembayaran di profil terlebih dahulu: USDT di Solana atau TON (biaya terendah), Arbitrum (biaya rendah), atau Tron TRC20 (biaya jaringan tinggi), atau transfer bank mulai $1,000. Alamat pertama yang Anda simpan langsung berlaku; mengubahnya nanti memerlukan konfirmasi email. Dasbor mungkin meminta kontak messenger (WhatsApp, Telegram, atau Skype) sebelum penarikan pertama. Permintaan membayar dalam dolar bulat dan sennya tetap di saldo."
+  text: "Minimum $10. PayPal tidak lagi tersedia. Simpan satu metode pembayaran di profil terlebih dahulu: USDT di Solana atau TON (biaya terendah), Arbitrum (biaya rendah), atau Tron TRC20 (biaya jaringan tinggi), atau transfer bank mulai $1.000. Alamat pertama yang Anda simpan langsung berlaku; mengubahnya nanti memerlukan konfirmasi email. Dasbor mungkin meminta kontak messenger (WhatsApp, Telegram, atau Skype) sebelum penarikan pertama. Permintaan membayar dalam dolar bulat dan sennya tetap di saldo."
   source: "0bf13220a706"
 traffmonetizer.payout.notes:
   text: "USDT di jaringan yang disimpan di pengaturan pembayaran profil (Solana, TON, Arbitrum, atau Tron), atau transfer bank. Alamatnya disimpan di pengaturan Traffmonetizer, bukan di kontainer."
@@ -2180,7 +2183,7 @@ traffmonetizer.rating.cons.1.text:
   text: "Pengulas yang sama melaporkan dukungan live chat dan email tidak menjawab, terkadang berminggu-minggu."
   source: "514323fc7b1f"
 traffmonetizer.rating.cons.2.text:
-  text: "Hanya kripto atau transfer bank mulai $1,000; PayPal sudah tidak ada, dan permintaan hanya membayar dalam dolar bulat."
+  text: "Hanya kripto atau transfer bank mulai $1.000; PayPal sudah tidak ada, dan permintaan hanya membayar dalam dolar bulat."
   source: "ad8194944e13"
 traffmonetizer.rating.cons.3.text:
   text: "Ketentuan Traffmonetizer mensyaratkan IP residensial, jadi server di koneksi hosting berada di luar ketentuan tersebut."
