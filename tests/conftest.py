@@ -93,7 +93,7 @@ def _no_runtime_choice(request, monkeypatch):
         return
     from app import main
 
-    async def none(worker_id, slug):
+    async def none(worker_id, slug, **_):
         return None
 
     monkeypatch.setattr(main, "_runtime_choice_for", none)
