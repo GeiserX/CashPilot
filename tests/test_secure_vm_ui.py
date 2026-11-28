@@ -53,7 +53,10 @@ class TestTheCommands:
         cmd = resp.json()["install"]
         assert "/GeiserX/CashPilot/v3.1.0/scripts/cashpilot-vm" in cmd
         assert layer_scripts.sha256("cashpilot-vm") in cmd
-        assert cmd.endswith('sudo bash "$d/cashpilot-vm" install --ui http://ui.example:8080 --host-worker box')
+        # --ref: the guest's compose file comes from the same release as the script.
+        assert cmd.endswith(
+            'sudo bash "$d/cashpilot-vm" install --ui http://ui.example:8080 --host-worker box --ref v3.1.0'
+        )
 
     def test_the_fleet_key_is_never_in_the_command(self):
         with patch.dict("os.environ", {"CASHPILOT_API_KEY": "fleet-key-must-not-leak"}):
@@ -77,7 +80,7 @@ class TestTheCommands:
 
     def test_only_the_ui_address_is_kept(self):
         resp = _get([_worker(7, "box")], ui_url="https://ui.example/fleet?x=1#y")
-        assert resp.json()["install"].endswith("--ui https://ui.example --host-worker box")
+        assert resp.json()["install"].endswith("--ui https://ui.example --host-worker box --ref v3.1.0")
 
     @pytest.mark.parametrize(
         "bad",
@@ -137,3 +140,25 @@ class TestTheShippedFiles:
         assert keys <= set(source), sorted(keys - set(source))
         # The fence states come in through a template string.
         assert {f"layers.vm.fence_{s}" for s in ("ok", "stale", "failed", "unknown")} <= set(source)
+
+
+class TestTwoWorkersWithOneName:
+    # A Secure VM names its host by worker name. When two workers share it
+    # (an old offline one and its replacement), the VM belongs to neither.
+
+    def test_the_commands_are_refused_until_one_is_renamed(self):
+        resp = _get([_worker(7, "box"), _worker(8, "box"), _vm_of("box")])
+        assert resp.status_code == 409
+        assert "Two workers are called box" in resp.json()["detail"]
+
+    def test_vm_host_picks_only_a_unique_name(self):
+        workers = [_worker(7, "box"), _worker(8, "nas"), _vm_of("box")]
+        vm = secure_vm.placement.system_info(workers[2])
+        assert secure_vm.vm_host(vm, workers)["id"] == 7
+        assert secure_vm.vm_host(vm, [*workers, _worker(10, "box")]) is None
+        # The VM itself never counts as its own host.
+        assert secure_vm.vm_host(vm, [_vm_of("box")]) is None
+
+    def test_the_fleet_page_matches_the_same_way(self):
+        js = (ROOT / "app/templates/_secure_vm.html").read_text()
+        assert "hosts.length === 1 ? hosts[0] : null" in js
