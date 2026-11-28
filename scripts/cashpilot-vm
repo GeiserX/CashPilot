@@ -294,10 +294,15 @@ render_ns_rules() {
     name=${entry%% *}; cidr=${entry#* }
     echo "-A FORWARD -i $TAP -d $cidr -m comment --comment cpvm:$name -j DROP"
   done
-  for ip in $(host_addrs); do
+  # A list that cannot be read fails the render, so the guard never writes a
+  # fence with a drop missing. An empty list is fine.
+  local addrs nets
+  addrs=$(host_addrs) || return 1
+  nets=$(host_connected_public) || return 1
+  for ip in $addrs; do
     echo "-A FORWARD -i $TAP -d $ip/32 -m comment --comment cpvm:host-$ip -j DROP"
   done
-  for cidr in $(host_connected_public); do
+  for cidr in $nets; do
     echo "-A FORWARD -i $TAP -d $cidr -m comment --comment cpvm:connected-$cidr -j DROP"
   done
   ip=$(egress_ip) || return 1
@@ -607,7 +612,7 @@ guard_pass() {
   if ! ns_exists || ! nsx ip link show "$TAP" >/dev/null 2>&1; then net_up; fi
   if ! desired=$(render_ns_rules); then
     link_cut || true
-    guard_fail "the home's public IP could not be read, so the fence cannot drop it"
+    guard_fail "the host's addresses or the home's public IP could not be read, so the fence cannot drop them"
     return 1
   fi
   if [ ! -f "$STATE/fence.rules" ] || [ ! -f "$STATE/fence.golden" ] || [ "$desired" != "$(cat "$STATE/fence.rules")" ]; then
@@ -1130,9 +1135,12 @@ download_image() {
   BASE_IMAGE=$img
 }
 
-write_seed() {
+# A subshell, so its EXIT trap removes the folder with the plain-text fleet
+# key on every path, a failed mkfs.vfat or mcopy included.
+write_seed() (
   local d
   d=$(mktemp -d)
+  trap 'rm -rf "$d"' EXIT
   local api_key=$1 guest_hostkey_priv guest_hostkey_pub host_pub hosts_line=""
   host_pub=$(cat "$STATE/ssh/id_ed25519.pub")
   guest_hostkey_priv=$(sed 's/^/      /' "$STATE/ssh/guest_host_ed25519")
@@ -1274,10 +1282,9 @@ EOF
   rm -f "$STATE/seed.img"
   mkfs.vfat -n CIDATA -C "$STATE/seed.img" 2048 >/dev/null
   mcopy -i "$STATE/seed.img" "$d/user-data" "$d/meta-data" "$d/network-config" ::
-  rm -rf "$d"
   chown "$SVC_USER" "$STATE/seed.img"
   chmod 600 "$STATE/seed.img"
-}
+)
 
 ensure_user() {
   if ! id "$SVC_USER" >/dev/null 2>&1; then
@@ -1603,13 +1610,12 @@ selftest_if_asked() {
   load_conf || return 0
   [ -s "$STATE/provisioned" ] && [ ! -f "$RUN_DIR/hold" ] && tap_up || return 0
   GUEST_SSH_TIMEOUT=15 guest_ssh "test -e /run/cashpilot-vm-ask/selftest" 2>/dev/null || return 0
-  GUEST_SSH_TIMEOUT=15 guest_ssh "sudo rm -f /run/cashpilot-vm-ask/selftest" 2>/dev/null || true
+  # Within 5 minutes of the last test the request stays where it is, so the
+  # first pass after the gap runs it.
   now=$(date +%s)
   [ -f "$RUN_DIR/selftest.last" ] && read -r last <"$RUN_DIR/selftest.last" || true
-  if [ $((now - last)) -lt 300 ]; then
-    log "self-test asked again within 5 minutes; skipped"
-    return 0
-  fi
+  [ $((now - last)) -ge 300 ] || return 0
+  GUEST_SSH_TIMEOUT=15 guest_ssh "sudo rm -f /run/cashpilot-vm-ask/selftest" 2>/dev/null || true
   echo "$now" >"$RUN_DIR/selftest.last"
   selftest_once quiet || rc=1
   save_selftest "$rc"
@@ -1630,7 +1636,10 @@ cmd_verify() {
   load_conf || die "not installed"
   guest_pid >/dev/null || die "the guest is not running"
   tap_up || die "the guest is cut off right now (the guard found drift); see: cashpilot-vm status"
+  local red_failed=0
   if [ "$red" = 1 ]; then
+    # With --json, the red run's lines go to stderr, so stdout holds only the JSON.
+    if [ "$json" = 1 ]; then exec 3>&1 1>&2; fi
     # Only on a throwaway host: the fence is opened for the length of one probe run.
     say "RED: opening the fence for one probe run. Nothing else changes; the guard writes it back."
     # The guard lock is held from here until the fence is put back, so no
@@ -1644,7 +1653,7 @@ cmd_verify() {
     nsx iptables -P FORWARD ACCEPT
     nsx iptables -I FORWARD 1 -m comment --comment cpvm:red-test -j ACCEPT
     # The host's own drop for the veth is a second layer; open it too.
-    iptables -w -I CPVM-IN 1 -m comment --comment cpvm:red-test -j ACCEPT
+    iptables -w -I CPVM-IN 1 -i "$VETH_HOST" -m comment --comment cpvm:red-test -j ACCEPT
     selftest_once loud || true
     # Only a connection or a refusal from a forbidden target proves the probes
     # work. A missing result or a missing gVisor fails the test, but proves nothing.
@@ -1652,6 +1661,7 @@ cmd_verify() {
       say "RED as expected: with the fence open the guest reaches the targets above."
     else
       say "RED FAILED: with the fence open no forbidden target answered the guest, so these probes cannot tell."
+      red_failed=1
     fi
     rm -f "$RUN_DIR/hold"
     exec 8>&-
@@ -1659,11 +1669,14 @@ cmd_verify() {
     trap - EXIT
     tap_up || die "the guard did not reconnect the guest after the red run"
     say "Fence written back by the guard (exact match). GREEN run:"
+    if [ "$json" = 1 ]; then exec 1>&3 3>&-; fi
   fi
   if [ "$json" = 1 ]; then
     local rc=0
     selftest_once quiet || rc=1
     save_selftest "$rc"
+    # A red run that proved nothing fails the whole check, even after a green run.
+    [ "$red_failed" = 0 ] || rc=1
     printf '{"ok": %s, "checked_at": %s, "lines": %s}\n' "$([ $rc = 0 ] && echo true || echo false)" "$(date +%s)" "$(json_str "$SELFTEST_LINES")"
     return $rc
   fi
@@ -1671,6 +1684,10 @@ cmd_verify() {
   selftest_once loud || rc=1
   save_selftest "$rc"
   if [ $rc = 0 ]; then say "GREEN: nothing outside the guest is reachable except the UI, and the internet works."; else say "RED: see the FAIL lines above."; fi
+  if [ "$red_failed" = 1 ]; then
+    say "FAILED: the red run did not prove that the probes see an open fence."
+    rc=1
+  fi
   return $rc
 }
 
