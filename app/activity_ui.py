@@ -58,19 +58,6 @@ SPIKE_BYTES_FLOOR = 1024**3
 SPIKE_OPENS_FLOOR = 2000
 
 
-def class_label(cls: str) -> str:
-    """What an alert calls a class of destination."""
-    labels = {
-        "lan": t("alert.activity.class.lan"),
-        "tailnet": t("alert.activity.class.tailnet"),
-        "docker_host": t("alert.activity.class.docker_host"),
-        "docker_peer": t("alert.activity.class.docker_peer"),
-        "metadata": t("alert.activity.class.metadata"),
-        "link_local": t("alert.activity.class.link_local"),
-    }
-    return labels[cls]
-
-
 def _int(value: Any, low: int = 0, high: int = 2**62) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
         return None
@@ -223,7 +210,7 @@ def alert_findings(window: dict[str, Any]) -> list[dict[str, Any]]:
                 message = t(
                     "alert.activity.reached",
                     container=s["container"],
-                    where=class_label(cls),
+                    where=cls,
                     n=len(rows),
                     ports=", ".join(map(str, ports)),
                 )
