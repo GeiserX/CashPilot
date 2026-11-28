@@ -22,6 +22,15 @@
 #      stays and the earner has nowhere to send a packet.
 #   4. A probe through the tunnel. /run/ready is written only when the exit IP
 #      it sees is not the box's own.
+#   5. cp-watch, for as long as the tunnel runs: when this firewall changes, or
+#      a probe leaves from the box's own address, the tunnel stops with exit
+#      status 86 and the worker stops its copies (app/proxy_tunnel.py).
+#
+# A copy that holds NET_ADMIN or NET_RAW never shares this namespace. It runs
+# in a namespace of its own, in a second container (role "inner", cp-inner)
+# on an internal Docker network, and this container is its gate (key "gate"):
+# it forwards what comes in on that network into the tunnel and nothing else.
+# That copy can change its own namespace, never the firewall below.
 #
 # Settings come from one file per key in /run/cashpilot-secret, which the
 # worker writes before the container starts. Nothing secret is in the
@@ -61,6 +70,9 @@ die() {
     exit 1
 }
 
+# The earner's side of an isolated copy: no proxy of its own, a route to its gate.
+[ "$(read_key role)" = inner ] && exec cp-inner
+
 KIND=$(read_key kind)
 OWN_IP=$(read_key own_ip)
 
@@ -81,6 +93,18 @@ cap() {
 DEV=$(ip -4 route show default | awk '{print $5; exit}')
 GW=$(ip -4 route show default | awk '{print $3; exit}')
 [ -n "$DEV" ] && [ -n "$GW" ] || die "no default route on the container network; nothing to tunnel over"
+
+# A gate is also on the internal network of an isolated copy (cp-inner). That
+# network gives no default route, so it is the interface that is neither lo
+# nor the default route's. The network is an internal macvlan one (no parent:
+# Docker gives it a dummy interface that drops what it is sent), so the copy
+# reaches this gate and nothing else, the host included.
+INNER=
+if [ "$(read_key gate)" = 1 ]; then
+    INNER=$(ip -4 -o addr show | awk -v d="$DEV" '$2 != "lo" && $2 != d {print $2; exit}')
+    [ -n "$INNER" ] || die "this gate has no interface on its copy's network"
+    [ "$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null)" = 1 ] || die "this gate was created without IP forwarding"
+fi
 
 case "$KIND" in
 socks5 | http)
@@ -117,7 +141,7 @@ tailscale)
     TUN=tailscale0
     # tailscaled marks its own sockets with 0x80000 (net/netns/netns_linux.go).
     # Only those may use the real interface; the earner cannot set a mark
-    # because it has no CAP_NET_ADMIN (the worker refuses it for proxied copies).
+    # because it has no CAP_NET_ADMIN here (one that holds it runs behind a gate).
     EGRESS_RULE="oifname \"$DEV\" meta mark and 0xff0000 == 0x80000 accept"
     # tailscaled routes every peer it may reach through tailscale0. Only the
     # exit node's way to the internet is the earner's: the tailnet itself and
@@ -161,6 +185,7 @@ table inet cashpilot {
         oifname "lo" accept
         ${TUN_DENY:-}
         oifname "$TUN" accept
+        ${GATE_OUT:-}
         $EGRESS_RULE
     }
     chain in {
@@ -168,10 +193,39 @@ table inet cashpilot {
         ct state established,related accept
         iifname "lo" accept
     }
+${GATE_CHAINS:-}
 }
 EOF
 nft -f /run/cp-tunnel.nft
 }
+
+# A gate forwards its copy's traffic into the tunnel and nowhere else: never
+# to the real interface, never to the ranges TUN_DENY drops. Replies come back
+# only for connections the copy opened. The MSS clamp and the ICMP to the copy
+# keep large packets working through tailscale0's smaller MTU.
+GATE_CHAINS=
+GATE_OUT=
+if [ -n "$INNER" ]; then
+    # tailscale0 takes only this node's tailnet address as a source, so the
+    # copy's packets take it too. tun2proxy answers any source, and its own
+    # address on tun0 would turn the replies into local traffic, so no NAT there.
+    GATE_NAT=
+    [ "$KIND" = tailscale ] && GATE_NAT="
+    chain gate_nat {
+        type nat hook postrouting priority 100; policy accept;
+        iifname \"$INNER\" oifname \"$TUN\" masquerade
+    }"
+    INNER_DENY=$(printf '%s\n' "${TUN_DENY:-}" | sed "s/^ *oifname/        iifname \"$INNER\" oifname/")
+    GATE_CHAINS="    chain gate_forward {
+        type filter hook forward priority 0; policy drop;
+        iifname \"$TUN\" oifname \"$INNER\" ct state established,related accept
+        iifname \"$INNER\" oifname \"$TUN\" tcp flags syn tcp option maxseg size set rt mtu
+$INNER_DENY
+        iifname \"$INNER\" oifname \"$TUN\" accept
+    }
+${GATE_NAT:-}"
+    GATE_OUT="oifname \"$INNER\" ip protocol icmp accept"
+fi
 
 if [ -n "${CG_RULES:-}" ]; then
     EGRESS_RULE=$CG_RULES
@@ -346,5 +400,9 @@ fi
 # 4: ready only when traffic really leaves through the tunnel.
 (probe_until_ready || echo "cp-tunnel: no working exit through the tunnel after 40 probe attempts" >&2) &
 
-wait "$TPID"
+# 5: every rule is loaded; from here on a change to them is a tamper.
+cp-watch "$TPID" firewall &
+
+wait "$TPID" || true
+[ -f /run/tripped ] && exit 86
 die "the tunnel process exited; the earner stays cut off until this container restarts"

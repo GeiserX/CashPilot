@@ -1359,7 +1359,10 @@ def deploy_raw(
     # First, before anything is pulled or replaced: a refused earner costs the
     # running one nothing.
     route_gate.check(slug, network_mode, client, leave_route=leave_route)
-    gated = fence_gated(slug)
+    # A proxied copy of a fence-gated service (Mysterium) has no network of its
+    # own to fence: it joins its tunnel's namespace, whose only way out is the
+    # tunnel, and the LAN fence's guard never holds it (lan_fence._gated).
+    gated = fence_gated(slug) and not joined
 
     # Decided before the old container is touched: a network or runtime that
     # cannot be used must fail the deploy while the running service is still running.

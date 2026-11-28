@@ -20,7 +20,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from app import egress, gpu
-from app.constants import PROXIED_FORBIDDEN_CAPS
+from app.constants import PROXIED_FORBIDDEN_CAPS, PROXIED_ISOLATED_CAPS, PROXIED_ISOLATED_DEVICES
 
 KINDS = ("socks5", "http", "tailscale")
 SECRET_FIELDS = ("username", "password", "auth_key")
@@ -203,6 +203,8 @@ def public_view(proxy: dict[str, Any], copies: list[dict[str, Any]] | None = Non
                 "slug": c["slug"],
                 "stopped_by_cap": bool(c.get("stopped_by_cap")),
                 "removing": bool(c.get("removing_since")),
+                # What its owner acknowledged lowers its isolation: the row's badge.
+                "acknowledged": list(c.get("acknowledged") or []),
             }
             for c in copies or []
         ],
@@ -237,35 +239,112 @@ def _caps(values: Any) -> list[str]:
     return [str(c).upper().removeprefix("CAP_") for c in (values or []) if isinstance(c, str)]
 
 
-def refusal(svc: dict[str, Any]) -> str | None:
+#: What an owner can acknowledge on a proxied copy or a routed service, in the
+#: order the deploy form lists them. Each lowers its isolation, so each is its
+#: own checkbox (app/templates/fleet.html, app/static/js/app.js); the worker
+#: enforces the first three again (worker_api._validate_proxied).
+ACK_KEYS = ("net_admin", "net_raw", "tun_device", "no_inbound")
+
+
+def _host_folder(source: str) -> bool:
+    return source.startswith(("/", ".", "~", "$"))
+
+
+def _volume_sources(docker_conf: dict[str, Any]) -> list[str]:
+    return [str(v).split(":", 1)[0] for v in docker_conf.get("volumes") or [] if isinstance(v, str)]
+
+
+def _udp(docker_conf: dict[str, Any]) -> bool:
+    """Whether the service needs inbound UDP ports (Mysterium's VPN range)."""
+    return bool(docker_conf.get("udp_port_range"))
+
+
+def refusal(svc: dict[str, Any], *, routed: bool = False, kind: str | None = None) -> str | None:
     """Why ``svc`` cannot run through a proxy, or None.
 
-    A proxied copy lives inside its tunnel's network namespace. Host
-    networking, published ports and devices need the host's own network or
-    hardware, and a volume would be shared with the copy on the box.
+    ``routed`` judges the service itself moved behind the proxy (route_gate),
+    not a copy beside it. ``kind`` is the proxy's type, when it is known.
+
+    A copy lives in a tunnel's network namespace, with its own named volumes
+    (earner_spec). What needs the host's network, its inbound ports, its
+    folders or its GPU cannot follow it there; what lowers its isolation
+    (acknowledgements) can, once its owner acknowledges it.
     """
     docker_conf = svc.get("docker") or {}
     name = svc.get("name") or svc.get("slug") or "This service"
+    reqs = svc.get("requirements") or {}
+    for key, what in (
+        ("container_prohibited", "running it in Docker, a virtual machine or a hosting service"),
+        ("proxy_prohibited", "running it through a proxy or VPN"),
+    ):
+        if prohibited := reqs.get(key):
+            source = prohibited.get("source") if isinstance(prohibited, dict) else None
+            return f"{name}'s terms forbid {what}, so CashPilot does not run it through a proxy" + (
+                f" ({source})." if source else "."
+            )
     if docker_conf.get("network_mode") == "host":
-        return f"{name} uses the host's network, so it cannot be moved behind a proxy."
+        return (
+            f"{name} uses the host's own network, and a proxied copy has a network of its own, so it cannot run "
+            "behind a proxy. Run it directly on the box instead."
+        )
     if docker_conf.get("ports"):
-        return f"{name} publishes a port on the host, which a proxied copy cannot do."
-    if docker_conf.get("volumes"):
-        return f"{name} keeps data in a volume or host directory, which a proxied copy would share."
-    if docker_conf.get("devices"):
-        return f"{name} needs a device on the host, which a proxied copy does not get."
+        return (
+            f"{name} needs inbound connections on a published port. Those reach this box, never the proxy's "
+            "address, so it cannot work behind a proxy. Run it directly on the box instead."
+        )
+    if not routed and any(_host_folder(source) for source in _volume_sources(docker_conf)):
+        return f"{name} keeps its data in a folder on the host, which a copy would share with the original."
     if gpu.spec_of(svc):
         return f"{name} needs this machine's GPU, which a proxied copy does not get."
-    if risky := sorted(set(_caps(docker_conf.get("cap_add"))) & PROXIED_FORBIDDEN_CAPS):
+    devices = {str(d).split(":")[0].rstrip("/") for d in docker_conf.get("devices") or []}
+    if devices - PROXIED_ISOLATED_DEVICES:
+        return f"{name} needs a device on the host, which a service behind a proxy does not get."
+    if risky := sorted(set(_caps(docker_conf.get("cap_add"))) & (PROXIED_FORBIDDEN_CAPS - PROXIED_ISOLATED_CAPS)):
+        return f"{name} asks for {', '.join(risky)}, which reaches past any network namespace, so it cannot run behind a proxy."
+    if _udp(docker_conf) and kind in ("socks5", "http"):
         return (
-            f"{name} asks for {', '.join(risky)}, which would let it change or bypass the tunnel's firewall, "
-            "so it cannot run behind a proxy."
+            f"{name} carries its traffic over UDP, which a SOCKS5 or HTTP proxy does not pass. "
+            "Use a Tailscale exit node instead."
         )
-    prohibited = (svc.get("requirements") or {}).get("proxy_prohibited")
-    if prohibited:
-        source = prohibited.get("source") if isinstance(prohibited, dict) else None
-        return f"{name}'s terms forbid running it through a proxy or VPN" + (f" ({source})." if source else ".")
     return None
+
+
+def acknowledgements(svc: dict[str, Any]) -> list[str]:
+    """What the owner must acknowledge to run ``svc`` behind a proxy (ACK_KEYS), in order; empty for none."""
+    docker_conf = svc.get("docker") or {}
+    caps = set(_caps(docker_conf.get("cap_add")))
+    devices = {str(d).split(":")[0].rstrip("/") for d in docker_conf.get("devices") or []}
+    needs = {
+        "net_admin": "NET_ADMIN" in caps,
+        "net_raw": "NET_RAW" in caps,
+        "tun_device": bool(devices & PROXIED_ISOLATED_DEVICES),
+        "no_inbound": _udp(docker_conf),
+    }
+    return [key for key in ACK_KEYS if needs[key]]
+
+
+def missing_acknowledgements(svc: dict[str, Any], given: list[str] | None) -> list[str]:
+    return [key for key in acknowledgements(svc) if key not in set(given or [])]
+
+
+def copy_volume_names(svc: dict[str, Any], proxy_id: int) -> list[str]:
+    """The names a copy's own volumes get (copy_volumes), from the catalog, for the deploy form."""
+    return [f"{source}-p{proxy_id}" for source in _volume_sources(svc.get("docker") or {}) if not _host_folder(source)]
+
+
+def copy_volumes(recorded: dict[str, Any], proxy_id: int) -> dict[str, dict[str, str]]:
+    """The copy's own named volumes: the original's, each named ``<name>-p<proxy id>``.
+
+    A volume holds the device's identity (a key, a wallet), so a copy that
+    shared the original's would be the same device on two addresses. A fresh
+    one makes the copy a new device, as its renamed device id does. Raises
+    ValueError for a host folder, which refusal() turns away before."""
+    out: dict[str, dict[str, str]] = {}
+    for source, mount in (recorded.get("volumes") or {}).items():
+        if _host_folder(str(source)):
+            raise ValueError("it keeps data in a folder on the host, which a copy would share")
+        out[f"{source}-p{proxy_id}"] = dict(mount)
+    return out
 
 
 def copy_device_id(device_id: str, proxy_id: int, pattern: str | None = None) -> str:
@@ -349,6 +428,10 @@ def earner_spec(recorded: dict[str, Any], docker_conf: dict[str, Any], proxy_id:
         "cap_add": recorded.get("cap_add") or None,
         "labels": dict(recorded.get("labels") or {}),
     }
+    if volumes := copy_volumes(recorded, proxy_id):
+        spec["volumes"] = volumes
+    if recorded.get("devices"):
+        spec["devices"] = list(recorded["devices"])
     if recorded.get("resources"):
         spec["resources"] = recorded["resources"]
     if recorded.get("command") and docker_conf.get("command"):
@@ -371,6 +454,11 @@ def routed_spec(spec: dict[str, Any]) -> dict[str, Any]:
         "cap_add": spec.get("cap_add") or None,
         "labels": dict(spec.get("labels") or {}),
     }
+    # The service's own volumes: it moved, so its identity goes with it.
+    if spec.get("volumes"):
+        out["volumes"] = dict(spec["volumes"])
+    if spec.get("devices"):
+        out["devices"] = list(spec["devices"])
     if spec.get("resources"):
         out["resources"] = spec["resources"]
     if spec.get("command"):

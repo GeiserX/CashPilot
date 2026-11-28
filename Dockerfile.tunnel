@@ -49,7 +49,7 @@ RUN apt-get update \
 COPY --from=tun2proxy /out/tun2proxy-bin /usr/local/bin/tun2proxy-bin
 COPY --from=tailscale /usr/local/bin/tailscaled /usr/local/bin/tailscaled
 COPY --from=tailscale /usr/local/bin/tailscale /usr/local/bin/tailscale
-COPY tunnel/cp-tunnel tunnel/cp-probe /usr/local/bin/
-RUN chmod 0755 /usr/local/bin/cp-tunnel /usr/local/bin/cp-probe
+COPY tunnel/cp-tunnel tunnel/cp-probe tunnel/cp-inner tunnel/cp-watch /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/cp-tunnel /usr/local/bin/cp-probe /usr/local/bin/cp-inner /usr/local/bin/cp-watch
 
 ENTRYPOINT ["/usr/local/bin/cp-tunnel"]

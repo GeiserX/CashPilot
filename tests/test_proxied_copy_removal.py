@@ -173,7 +173,9 @@ class TestASlowWorker:
         assert isinstance(out, JSONResponse) and out.status_code == 202
         assert b'"status":"removing"' in out.body
         assert copies == [(7, "proxyrack", True)]
-        assert view["copies"] == [{"worker_id": 7, "slug": "proxyrack", "stopped_by_cap": False, "removing": True}]
+        assert view["copies"] == [
+            {"worker_id": 7, "slug": "proxyrack", "stopped_by_cap": False, "removing": True, "acknowledged": []}
+        ]
 
     def test_the_proxy_says_its_copies_are_still_being_removed(self, db):
         async def go():

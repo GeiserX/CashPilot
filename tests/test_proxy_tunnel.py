@@ -1353,12 +1353,15 @@ class TestATunnelLogsOutOfTheTailnetWhenStopped:
 # ---------------------------------------------------------------------------
 
 
-def _run_firewall_step(tmp_path: Path, nft_mode: str) -> tuple[int, str, str]:
+def _run_firewall_step(
+    tmp_path: Path, nft_mode: str, *, gate: bool = False, forwarding: str = "1", inner: bool = True
+) -> tuple[int, str, str]:
     """Run cp-tunnel up to its rules being loaded, with stub ip, stat, nft and curl.
 
     ``nft_mode``: ``match`` (the cgroup rule loads and counts the probe),
     ``no-cgroup`` (nft refuses any rule set naming cgroupv2), ``refuse`` (it
-    refuses every rule set).
+    refuses every rule set). ``gate`` runs it as an isolated copy's gate, with
+    ``forwarding`` in ip_forward and, when ``inner``, a second interface (eth1).
     """
     import subprocess
 
@@ -1367,11 +1370,17 @@ def _run_firewall_step(tmp_path: Path, nft_mode: str) -> tuple[int, str, str]:
     secret.mkdir(parents=True)
     for key, value in {"kind": "socks5", "proxy_ip": "203.0.113.5", "proxy_port": "1080"}.items():
         (secret / key).write_text(value)
+    if gate:
+        (secret / "gate").write_text("1")
     (tmp_path / "cgroup").write_text("0::/docker/abc\n")
+    (tmp_path / "ip_forward").write_text(forwarding + "\n")
+    addrs = "1: lo    inet 127.0.0.1/8 scope host lo\n2: eth0    inet 172.17.0.2/16 scope global eth0\n"
+    if inner:
+        addrs += "3: eth1    inet 10.99.0.2/24 scope global eth1\n"
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     stubs = {
-        "ip": 'echo "default via 172.17.0.1 dev eth0"',
+        "ip": f'case "$*" in *"-o addr"*) printf "{addrs}" ;; *) echo "default via 172.17.0.1 dev eth0" ;; esac',
         "stat": "echo cgroup2fs",
         "curl": "exit 0",
         "nft": f"""
@@ -1396,6 +1405,7 @@ if [ {nft_mode} = match ]; then sed 's/counter/counter packets 1 bytes 60/' "$lo
         head.replace("/run/", f"{run}/")
         .replace("/run\n", f"{run}\n")
         .replace("/proc/self/cgroup", str(tmp_path / "cgroup"))
+        .replace("/proc/sys/net/ipv4/ip_forward", str(tmp_path / "ip_forward"))
     )
     script += f'\necho RULES_LOADED\ncat "{run}/loaded.nft"\n'
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
@@ -1421,6 +1431,39 @@ class TestTheTunnelFirewallFallsBack:
         code, out, err = _run_firewall_step(tmp_path, "refuse")
         assert code != 0 and "RULES_LOADED" not in out
         assert "refusing to start" in err
+
+
+class TestTheGateOfAnIsolatedCopy:
+    """A gate forwards what its copy sends into the tunnel, and nothing anywhere else."""
+
+    def test_its_copy_reaches_the_tunnel_only(self, tmp_path):
+        code, out, err = _run_firewall_step(tmp_path, "match", gate=True)
+        assert code == 0, err
+        rules = out.split("RULES_LOADED", 1)[1]
+        chain = rules.split("chain gate_forward {", 1)[1].split("\n    }", 1)[0]
+        lines = [line.strip() for line in chain.strip().splitlines()]
+        assert lines[0] == "type filter hook forward priority 0; policy drop;"
+        assert 'iifname "tun0" oifname "eth1" ct state established,related accept' in lines
+        # The private ranges are dropped before the copy's accept, never after.
+        deny = next(i for i, line in enumerate(lines) if line.startswith('iifname "eth1" oifname "tun0" ip daddr {'))
+        accept = lines.index('iifname "eth1" oifname "tun0" accept')
+        assert lines[deny].endswith("drop") and deny < accept
+        # No rule lets it out of the real interface.
+        assert not [line for line in lines if 'oifname "eth0"' in line]
+        # tun2proxy answers any source: no masquerade into tun0.
+        assert "gate_nat" not in rules and "masquerade" not in chain
+        assert 'oifname "eth1" ip protocol icmp accept' in rules
+
+    def test_a_plain_tunnel_has_no_forward_chain(self, tmp_path):
+        code, out, err = _run_firewall_step(tmp_path, "match")
+        assert code == 0, err
+        assert "gate_forward" not in out and 'oifname "eth1"' not in out
+
+    def test_a_gate_without_forwarding_or_without_its_copys_network_never_starts(self, tmp_path):
+        code, out, err = _run_firewall_step(tmp_path / "a", "match", gate=True, forwarding="0")
+        assert code != 0 and "RULES_LOADED" not in out and "without IP forwarding" in err
+        code, out, err = _run_firewall_step(tmp_path / "b", "match", gate=True, inner=False)
+        assert code != 0 and "RULES_LOADED" not in out and "no interface on its copy's network" in err
 
 
 def _run_until_rules_logged(tmp_path: Path) -> tuple[int, list[str], str]:
