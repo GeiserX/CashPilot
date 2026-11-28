@@ -112,7 +112,7 @@ CHAINS: dict[str, Chain] = {
 PRIVATE_CHAINS = {
     "monero": ("XMR", "Reading a Monero balance needs a private view key. Check the balance in your wallet."),
 }
-KNOWN_SLUGS = CHAINS.keys() | PRIVATE_CHAINS.keys() | {"none", "base", "sia", "bittensor"}
+KNOWN_SLUGS = CHAINS.keys() | PRIVATE_CHAINS.keys() | {"none", "base", "sia", "bittensor", "zksync-era"}
 
 # (chain, address, endpoint) -> (expires_at, result)
 _cache: dict[tuple[str, str, str], tuple[float, dict[str, Any]]] = {}

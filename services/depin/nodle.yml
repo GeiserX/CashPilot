@@ -66,6 +66,7 @@ collector:
 
 payout:
   model: minted
+  chain: zksync-era
   address_source: app
   notes: "Your NODL sits in the Nodle app's own wallet on ZKsync Era. CashPilot cannot see that wallet's address."
 
