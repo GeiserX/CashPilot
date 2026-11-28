@@ -794,7 +794,7 @@ class TestApiServices:
         ):
             data = {s["slug"]: s for s in client.get("/api/services/available").json()}
         assert data["hg"]["route_refusal"] is None and data["hg"]["routes"] == {"4": 3}
-        assert "publishes a port" in data["st"]["route_refusal"] and data["st"]["routes"] == {}
+        assert "published port" in data["st"]["route_refusal"] and data["st"]["routes"] == {}
 
     def test_api_services_available_skips_broken(self, client):
         svcs = [

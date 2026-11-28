@@ -3944,9 +3944,12 @@ def _hold_tripped(tunnel: Any, earner: Any | None, proxy_id: str) -> None:
             earner.reload()
             if earner.status in _LIVE:
                 earner.stop(timeout=orchestrator._get_stop_timeout(_labels(earner).get(LABEL_SERVICE) or ""))
+                # docker-py keeps the status it read until a reload: this beat reports it too.
+                earner.reload()
         tunnel.reload()
         if tunnel.status in _LIVE:
             tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
+            tunnel.reload()
     finally:
         lock.release()
 

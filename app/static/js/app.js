@@ -4368,7 +4368,7 @@ const CP = (() => {
     // Read once, before anything waits: a Route box changed while the first
     // box deploys must not send another route (or none) to the next one.
     const route = _routeChoice(routeRoot, slug);
-    const routeAcks = _routeAcks(routeRoot, slug);
+    const routeAcks = route > 0 ? _routeAcks(routeRoot, slug) : [];
     if (workerIds.length === 0) {
       toast(t('app.dep.pick_worker'), 'warning');
       if (statusEl) statusEl.textContent = t('app.dep.pick_node');

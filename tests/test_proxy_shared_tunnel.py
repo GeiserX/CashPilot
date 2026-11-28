@@ -5955,6 +5955,26 @@ class TestIsolatedTunnel:
         assert earner.name not in proxy_tunnel.held()
         assert _gate(docker, tunnel).id != old_gate
 
+    def test_the_beat_that_holds_a_tripped_copy_reports_it_stopped(self, docker, monkeypatch):
+        """docker-py keeps a model's status until a reload, and stop() does not reload: the beat said "running"."""
+        _deploy_isolated()
+        _tripped(docker.named(OWN_TUNNEL))
+        real_list = FakeDocker.list
+
+        def detached_list(self, all=False, filters=None):
+            return [copy.copy(c) for c in real_list(self, all=all, filters=filters)]
+
+        def daemon_stop(self, timeout=None):
+            real = self._d.by_id[self.id]
+            if real.status == "running":
+                real.status = "exited"
+
+        monkeypatch.setattr(FakeDocker, "list", detached_list)
+        monkeypatch.setattr(FakeContainer, "stop", daemon_stop)
+        (entry,) = _heartbeat()
+        assert entry["tripped"] is True and entry["status"] == "exited"
+        assert docker.named("cashpilot-bitping-p3").status == "exited"
+
     def test_a_tripped_gate_holds_the_copy_too(self, docker):
         _deploy_isolated()
         tunnel = docker.named(OWN_TUNNEL)

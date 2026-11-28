@@ -396,7 +396,7 @@ class TestTheWorkerRefuses:
                 "proxy": {"kind": "http", "host": "proxy.example", "port": 8080},
             },
         )
-        assert resp.status_code == 400 and "mount volumes" in resp.text
+        assert resp.status_code == 400 and "never the direct service's" in resp.text
 
     def test_a_custom_image_on_the_wallet_service_without_a_password(self, worker):
         resp = worker(

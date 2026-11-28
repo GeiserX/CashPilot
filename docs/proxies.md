@@ -334,8 +334,8 @@ a proxied copy. An earner in a tunnel's namespace never holds `NET_ADMIN`,
 `NET_RAW` or `SYS_ADMIN`, or any host device: those would let it rewrite the
 firewall or send packets past it. An earner that needs `NET_ADMIN`, `NET_RAW`
 or `/dev/net/tun` runs in a namespace of its own instead, behind a gate (see
-[Copies that need NET_ADMIN or NET_RAW](#copies-that-need-net_admin-or-net_raw)),
-and only when its owner acknowledged each of them. `SYS_ADMIN`, `ALL` and any
+[Copies that need NET_ADMIN or NET_RAW](#copies-that-need-net_admin-or-net_raw)).
+It runs there only when its owner acknowledged each of them. `SYS_ADMIN`, `ALL` and any
 other host device are refused everywhere. The worker checks all of this
 itself, whatever the catalog or the UI says.
 
@@ -503,9 +503,9 @@ Honeygain stays refused too: its help centre forbids VPNs.
 
 A volume holds the device's identity: a key, a wallet, a session. A copy that
 shared the original's volume would be the same device on two addresses. So
-each named volume of a copy gets its own name, `<volume>-p<proxy id>`, and
-starts empty: the provider sees a new device, as it does for the copy's new
-device name. The deploy form lists those names. The worker refuses a copy
+each named volume of a copy gets its own name, `<volume>-p<proxy id>`. The new
+volume starts empty, so the provider sees a new device, as it does for the
+copy's new device name. The deploy form lists those names. The worker refuses a copy
 whose volume is not named that way.
 
 Removing a copy keeps its volumes, so the copy has the same identity if you
@@ -555,21 +555,21 @@ bug reachable with `NET_ADMIN` or `NET_RAW` is still reachable. The ticks are
 stored with the copy (or with the routed service's route) and sent again on
 every rebuild. If the catalog later asks for one more, the rebuild is refused
 until you add the copy again and tick it. The copy row on the Fleet page shows
-a **reduced isolation** badge with the reasons. **Withdraw** removes the copy;
-its volumes stay. For a routed service, deploy it again with the box's own
+a **reduced isolation** badge with the reasons. **Withdraw** removes the copy,
+and its volumes stay. For a routed service, deploy it again with the box's own
 IP as its route.
 
-A worker older than this feature refuses nothing of this by itself, so the UI
-sends such a copy, or any copy with a volume, only to a worker that reports
-`proxied_isolation`.
+An older worker cannot run these copies. The UI sends a copy that needs a tick,
+or any copy with a volume, only to a worker that reports `proxied_isolation`.
+For any other worker, it asks you to update the worker first.
 
 ### The tunnel watchdog
 
 Every tunnel and every gate runs `cp-watch` for as long as it runs:
 
-- every 5 seconds it compares the tunnel's firewall with the one it loaded;
-- every 10 minutes it sends a probe through the tunnel, and checks that it
-  does not leave from the box's own IP.
+- Every 5 seconds, it compares the tunnel's firewall with the one it loaded.
+- Every 10 minutes, it sends a probe through the tunnel and checks that the
+  probe does not leave from the box's own IP.
 
 When either check fails, it stops the tunnel with exit status 86. The worker
 reads that status on the next heartbeat. It stops every copy in that tunnel
