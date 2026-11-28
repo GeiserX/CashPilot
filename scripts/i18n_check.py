@@ -856,21 +856,20 @@ def placeholders(text: str) -> frozenset:
             # language, so compare what renders for the keyword, not the
             # branch alone: {name} moved from one keyword to another fails.
             # Every combination of keywords is compared, so a placeholder
-            # moved between combinations of two selects fails too. Past
-            # _SELECT_COMBOS combinations each select is compared on its own,
-            # which keeps the scan small.
+            # moved between combinations of two selects fails too. A message
+            # with more than _SELECT_COMBOS combinations is too big to check,
+            # and fails. Two selects with one name share their keywords.
             selects: dict = {}
-            for t in sorted(t for t in out if t[0] == "select"):
-                selects.setdefault(t[1], t[2])
+            for t in out:
+                if t[0] == "select":
+                    selects.setdefault(t[1], set()).update(t[2])
             names = sorted(selects)
-            if not names:
-                picks = []
-            elif math.prod(len(selects[n]) for n in names) <= _SELECT_COMBOS:
-                picks = [
-                    dict(zip(names, keys, strict=True)) for keys in itertools.product(*(selects[n] for n in names))
-                ]
-            else:
-                picks = [{n: k} for n in names for k in selects[n]]
+            picks = []
+            if math.prod(len(selects[n]) for n in names) > _SELECT_COMBOS:
+                out.add(("too-many-selects",))
+            elif names:
+                keysets = [sorted(selects[n]) for n in names]
+                picks = [dict(zip(names, keys, strict=True)) for keys in itertools.product(*keysets)]
             for pick in picks:
                 shown: set = set()
                 _icu_scan(body, 0, None, shown, 0, pick)
@@ -958,6 +957,9 @@ def check_target(source: dict, target: dict, hashes: dict | None) -> dict:
         if ("broken-braces",) in t_sig:
             # Reported even when the English is broken the same way.
             found["placeholder"].append((key, "unbalanced or malformed braces"))
+            continue
+        if ("too-many-selects",) in s_sig | t_sig:
+            found["placeholder"].append((key, f"more than {_SELECT_COMBOS} select combinations; split the message"))
             continue
         no_other = sorted(t[1] for t in t_sig if t[0] == "no-other")
         if no_other:

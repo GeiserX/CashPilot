@@ -907,3 +907,23 @@ def test_a_placeholder_moved_between_two_selects_keywords_fails(tmp_path):
     assert code == 1 and "a = x, b = x" in out
     write(es, json.dumps({"k": src}))
     assert run(en, es)[0] == 0
+
+
+def test_a_message_with_too_many_select_combinations_fails(tmp_path):
+    src = "{a, select, x {{b, select, x {{p}} other {{q}}}} other {{b, select, x {{q}} other {{p}}}}}"
+    src += "".join(f" {{{n}, select, x {{{n.upper()}}} other {{{n.upper()}}}}}" for n in "cdefg")
+    en = write(tmp_path / "en.json", json.dumps({"k": src}))
+    es = write(tmp_path / "es.json", json.dumps({"k": src}))
+    code, out = run(en, es)
+    assert code == 1 and "more than 64 select combinations" in out
+
+
+def test_two_selects_with_one_name_share_their_keywords(tmp_path):
+    en = write(
+        tmp_path / "en.json", json.dumps({"k": "{g, select, x {{p} {q}} other {}} {g, select, y {{p}} other {}}"})
+    )
+    es = write(
+        tmp_path / "es.json", json.dumps({"k": "{g, select, x {{p} {q}} other {}} {g, select, y {{q}} other {}}"})
+    )
+    code, out = run(en, es)
+    assert code == 1 and "g = y" in out
