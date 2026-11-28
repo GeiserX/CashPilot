@@ -196,6 +196,8 @@ the guest is stopped or cut off, it cannot ask the UI, so `remove` says so, and
 you delete the worker on the Fleet page. A UI
 that cannot forget a worker on request (3.0.x and older) gets no request.
 `remove` then says so, and you delete the worker on the Fleet page.
+If a guard pass or a red test is still running after 60 seconds, `remove`
+stops before it deletes anything on the host. Run it again to finish.
 
 ## Unraid
 
