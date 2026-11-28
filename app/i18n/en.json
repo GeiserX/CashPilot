@@ -2079,7 +2079,7 @@
   "obligations.push.today": "CashPilot: {name}, {action, select, claim {claim} withdraw {withdraw} keep-active {keep it active} renew {renew the credential} other {{action}}} by today",
   "obligations.push.tomorrow": "CashPilot: {name}, {action, select, claim {claim} withdraw {withdraw} keep-active {keep it active} renew {renew the credential} other {{action}}} by tomorrow",
   "obligations.push.within": "CashPilot: {name}, {action, select, claim {claim} withdraw {withdraw} keep-active {keep it active} renew {renew the credential} other {{action}}} within {days, plural, one {# day} other {# days}}",
-  "obligations.push.written_off": "The provider may already have written this off.",
+  "obligations.push.written_off": "The provider may already have written this off, and the balance may be gone.",
   "obligations.summary.body": "{names}. Open the CashPilot dashboard, Money waiting, to see each one.",
   "obligations.summary.title": "CashPilot: {n, plural, one {# thing} other {# things}} to do before you lose money",
   "onboarding.back": "Back",
