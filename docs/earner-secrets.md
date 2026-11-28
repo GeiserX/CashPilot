@@ -99,10 +99,13 @@ Be clear about the limits:
   about the copy Docker keeps. To keep the database's key away from the
   database, see [Encryption key outside the data folder](encryption-key.md).
 
-What it does protect: the container config, every copy of it (backups of
-`/var/lib/docker/containers`, support bundles, `docker inspect` output pasted
-into a forum post), and every tool that can read the Docker API but cannot
-exec into containers or read the host's disk.
+- **Anything with full Docker API access can still read the file.** `docker
+  cp cashpilot-honeygain:/run/cashpilot-secret/env -` and `docker exec` both
+  work for such a client, without root on the host.
+
+What it does protect: `docker inspect` output and the container config, with
+every copy of it. That covers backups of `/var/lib/docker/containers`, support
+bundles, and `docker inspect` output pasted into a forum post.
 
 ## Check it
 

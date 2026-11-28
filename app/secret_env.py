@@ -20,9 +20,10 @@ variables (``secret: true`` in its catalog entry):
 ``docker restart`` and a reboot run the same entrypoint again, and the volume
 keeps the files, so nothing changes there. The volume goes with the container
 (remove_volume). What this does not do: root on the host still reads the
-values from ``/proc/<pid>/environ`` and from the volume on disk. It keeps them
-out of the container config, out of copies of that config, and away from
-anything that only talks to the Docker API.
+values from ``/proc/<pid>/environ`` and from the volume on disk, and any
+client with the Docker API can still read the file through ``docker cp`` (the
+archive endpoint) or ``docker exec``. It keeps them out of ``docker inspect``,
+the container config and every copy of that config.
 
 Off by default, so nothing changes until the owner sets the variable. A
 service can opt out with ``docker.secrets_in_file: false`` in its catalog
@@ -162,7 +163,11 @@ def plan(
     image_config: dict[str, Any],
     user: str | None = None,
 ) -> Plan | None:
-    """The plan for this earner, or None to create it as before (mode off, nothing secret, or it cannot be done)."""
+    """The plan for this earner, or None to create it as before (mode off, nothing secret, or it cannot be done).
+
+    Never raises: the deploy calls it after the old container is stopped and
+    before its rollback begins, so a failure here would leave the old earner down.
+    """
     if mode() != MODE_FILE or not covers(service, slug):
         return None
     keys = [key for key in secret_keys(service) if str(env.get(key) or "")]
@@ -176,6 +181,11 @@ def plan(
             slug,
         )
         return None
+    try:
+        shim = SHIM_BINARY.read_bytes()
+    except OSError as exc:
+        logger.warning("%s could not be read (%s); %s keeps its credentials in its environment", SHIM_BINARY, exc, slug)
+        return None
     values = {key: str(env[key]) for key in keys}
     for value in values.values():
         if "\0" in value:
@@ -185,15 +195,21 @@ def plan(
     base = [str(p) for p in entrypoint] if entrypoint else [str(p) for p in image_config.get("Entrypoint") or []]
     # Docker drops the image's CMD when the entrypoint is set on create.
     image_cmd = [] if entrypoint else [str(p) for p in image_config.get("Cmd") or []]
-    tokens = shlex.split(command) if command else image_cmd
+    try:
+        tokens = shlex.split(command) if command else image_cmd
+    except ValueError:
+        # Docker splits it the same way and refuses it, inside the deploy's rollback.
+        logger.warning("The command of %s cannot be split; it keeps its credentials in its environment", slug)
+        return None
     for token in [*base, *tokens]:
-        for key in keys:
-            if "${" + key + "}" in token:
-                # The shim would fill it in, changing an argument the earner was given as written.
-                logger.warning(
-                    "The command of %s already holds ${%s}; it keeps its credentials in its environment", slug, key
-                )
-                return None
+        if any("${" + key + "}" in token for key in keys):
+            # The shim would fill it in, changing an argument the earner was given as written.
+            logger.warning(
+                "The command of %s already holds a placeholder for a credential; it keeps its credentials in its "
+                "environment",
+                slug,
+            )
+            return None
     if any(value in token for value in values.values() for token in base):
         logger.warning("The entrypoint of %s holds a credential; it keeps its credentials in its environment", slug)
         return None
@@ -211,7 +227,7 @@ def plan(
         command=argv,
         keys=keys,
         entrypoint_len=len(base),
-        files={ENV_NAME: record, SHIM_NAME: SHIM_BINARY.read_bytes()},
+        files={ENV_NAME: record, SHIM_NAME: shim},
         uid=uid,
         mode=file_mode,
         volume=f"{VOLUME_PREFIX}{uuid.uuid4().hex[:16]}",
@@ -272,7 +288,7 @@ def remove_volume(client: Any, name: str | None) -> None:
     try:
         client.volumes.get(name).remove()
     except Exception as exc:  # noqa: BLE001 - in use by a clone, or already gone
-        logger.info("Left the credentials volume %s: %s", name, exc)
+        logger.info("Left a credentials volume behind: %s", exc)
 
 
 def is_shimmed(attrs: dict[str, Any]) -> bool:

@@ -92,7 +92,7 @@ works without Swarm.
     mkdir -p secrets
     docker exec cashpilot-ui cat /data/.fernet_key > secrets/cashpilot_encryption_key
     sudo chown 1000:1000 secrets/cashpilot_encryption_key
-    chmod 400 secrets/cashpilot_encryption_key
+    sudo chmod 400 secrets/cashpilot_encryption_key
     ```
 
 2. Add the secret to `docker-compose.yml`:
